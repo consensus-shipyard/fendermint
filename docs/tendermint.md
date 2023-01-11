@@ -58,9 +58,7 @@ $ curl -s 'localhost:26657/abci_query?data="foo"' | jq -r ".result.response.valu
 bar
 ```
 
-Nice!
-
-The status of the node can be checked like so:
+Nice! The status of the node can be checked like so:
 
 ```shell
 curl -s localhost:26657/status
@@ -72,6 +70,76 @@ To start from a clean slate, we can just clear out the data directory and run `t
 rm -rf ~/.tendermint
 ```
 
-## Smoke Test with the `kvstore`
+## Sanity check the Rust libraries
 
-TODO: Do the simplest check to see if the tendermint-rs ABCI example works on the PR branch that targets 0.37
+This is an optional step to check that the branch that we'll need to be using from `tendermint-rs` works with our chosen version of `tendermint`. In practice we'll just add a library reference to the github project until it's released, we don't have to clone the project. But it's useful to do so, to get familiar with the code.
+
+```shell
+git clone git@github.com:informalsystems/tendermint-rs.git
+cd tendermint-rs
+git checkout origin/mikhail/multi-tc-version-support
+```
+
+Then, go into the `abci` crate to try the [example](https://github.com/informalsystems/tendermint-rs/tree/main/abci#examples) with the `kvstore` that, unlike previously, will run external to `tendermint`:
+
+```shell
+cd abci
+```
+
+Build and run the store:
+
+```shell
+cargo run --bin kvstore-rs --features binary,kvstore-app
+```
+
+Go back to the terminal we used to run `tendermint` and do what they suggest.
+
+First ensure we have the genesis files:
+
+```shell
+tendermint init
+```
+
+Then try to run Tendermint; it's supposed to connect to `127.0.0.1:26658` where the store is running, and bind itself to `127.0.0.1:26657`:
+
+```shell
+tendermint unsafe_reset_all && tendermint start
+```
+
+Unfortunately this doesn't seem to work. In the Tendermint logs we see the process stopping with an error message:
+
+```console
+$ tendermint start
+I[2023-01-11|10:30:13.757] service start                                module=proxy msg="Starting multiAppConn service" impl=multiAppConn
+I[2023-01-11|10:30:13.757] service start                                module=abci-client connection=query msg="Starting socketClient service" impl=socketClient
+...
+E[2023-01-11|10:30:13.777] Stopping abci.socketClient for error: read message: read tcp 127.0.0.1:35778->127.0.0.1:26658: read: connection reset by peer module=abci-client connection=query
+I[2023-01-11|10:30:13.777] service stop                                 module=abci-client connection=query msg="Stopping socketClient service" impl=socketClient
+E[2023-01-11|10:30:13.777] query connection terminated. Did the application crash? Please restart tendermint module=proxy err="read message: read tcp 127.0.0.1:35778->127.0.0.1:26658: read: connection reset by peer"
+fish: Job 1, 'tendermint start' terminated by signal SIGTERM (Polite quit request)
+```
+
+We can see the opposite side of the error in the console of the store:
+
+```console
+$ cargo run --bin kvstore-rs --features binary,kvstore-app
+   ...
+2023-01-11T10:30:13.757461Z  INFO tendermint_abci::server: Incoming connection from: 127.0.0.1:35778
+2023-01-11T10:30:13.757808Z  INFO tendermint_abci::server: Incoming connection from: 127.0.0.1:35792
+2023-01-11T10:30:13.758160Z  INFO tendermint_abci::server: Incoming connection from: 127.0.0.1:35808
+2023-01-11T10:30:13.758581Z  INFO tendermint_abci::server: Incoming connection from: 127.0.0.1:35816
+2023-01-11T10:30:13.759077Z  INFO tendermint_abci::server: Listening for incoming requests from 127.0.0.1:35816
+2023-01-11T10:30:13.759632Z  INFO tendermint_abci::server: Listening for incoming requests from 127.0.0.1:35778
+2023-01-11T10:30:13.760138Z  INFO tendermint_abci::server: Listening for incoming requests from 127.0.0.1:35792
+2023-01-11T10:30:13.760395Z  INFO tendermint_abci::server: Listening for incoming requests from 127.0.0.1:35808
+2023-01-11T10:30:13.777266Z ERROR tendermint_abci::server: Failed to read incoming request from client 127.0.0.1:35778: error encoding protocol buffer
+
+Caused by:
+    failed to decode Protobuf message: Request.value: buffer underflow
+
+Location:
+    /home/aakoshh/.cargo/registry/src/github.com-1ecc6299db9ec823/flex-error-0.4.4/src/tracer_impl/eyre.rs:10:9
+2023-01-11T10:30:13.781317Z  INFO tendermint_abci::server: Client 127.0.0.1:35816 terminated stream
+2023-01-11T10:30:13.781337Z  INFO tendermint_abci::server: Client 127.0.0.1:35808 terminated stream
+2023-01-11T10:30:13.781351Z  INFO tendermint_abci::server: Client 127.0.0.1:35792 terminated stream
+```
