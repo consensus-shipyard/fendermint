@@ -143,3 +143,47 @@ Location:
 2023-01-11T10:30:13.781337Z  INFO tendermint_abci::server: Client 127.0.0.1:35808 terminated stream
 2023-01-11T10:30:13.781351Z  INFO tendermint_abci::server: Client 127.0.0.1:35792 terminated stream
 ```
+
+We can try it with the latest stable version of Tendermint:
+
+```shell
+cd tendermint
+git checkout v0.34.24
+make install
+rm ~/.tendermint
+tendermint init
+```
+
+With this version, Tendermint is able to start:
+
+```console
+❯ tendermint unsafe_reset_all && tendermint start
+Deprecated: snake_case commands will be replaced by hyphen-case commands in the next major release
+I[2023-01-11|10:51:31.856] Removed all blockchain history               module=main dir=/home/aakoshh/.tendermint/data
+I[2023-01-11|10:51:31.870] Reset private validator file to genesis state module=main keyFile=/home/aakoshh/.tendermint/config/priv_validator_key.json stateFile=/home/aakoshh/.tendermint/data/priv_validator_state.json
+I[2023-01-11|10:51:31.978] service start                                module=proxy msg="Starting multiAppConn service" impl=multiAppConn
+I[2023-01-11|10:51:31.978] service start                                module=abci-client connection=query msg="Starting socketClient service" impl=socketClient
+I[2023-01-11|10:51:31.978] service start                                module=abci-client connection=snapshot msg="Starting socketClient service" impl=socketClient
+I[2023-01-11|10:51:31.978] service start                                module=abci-client connection=mempool msg="Starting socketClient service" impl=socketClient
+I[2023-01-11|10:51:31.978] service start                                module=abci-client connection=consensus msg="Starting socketClient service" impl=socketClient
+I[2023-01-11|10:51:31.978] service start                                module=events msg="Starting EventBus service" impl=EventBus
+I[2023-01-11|10:51:31.978] service start                                module=pubsub msg="Starting PubSub service" impl=PubSub
+I[2023-01-11|10:51:31.993] service start                                module=txindex msg="Starting IndexerService service" impl=IndexerService
+I[2023-01-11|10:51:31.994] ABCI Handshake App Info                      module=consensus height=0 hash=00000000000000000000000000000000 software-version=0.1.0 protocol-version=1
+I[2023-01-11|10:51:31.994] ABCI Replay Blocks                           module=consensus appHeight=0 storeHeight=0 stateHeight=0
+I[2023-01-11|10:51:31.998] Completed ABCI Handshake - Tendermint and App are synced module=consensus appHeight=0 appHash=00000000000000000000000000000000
+I[2023-01-11|10:51:31.998] Version info                                 module=main tendermint_version=v0.34.24 block=11 p2p=8
+...
+```
+
+And we can see commits in the ABCI server:
+
+```console
+...
+2023-01-11T10:51:31.979523Z  INFO tendermint_abci::server: Listening for incoming requests from 127.0.0.1:57168
+2023-01-11T10:51:33.064188Z  INFO tendermint_abci::application::kvstore: Committed height 1
+2023-01-11T10:51:34.091852Z  INFO tendermint_abci::application::kvstore: Committed height 2
+...
+```
+
+So it looks like something changed during the `0.34` to `0.37` transition in the Protobuf encoding that the decoder doesn't expect. We'll have to find out what and fix it.
