@@ -1,6 +1,6 @@
 # Architecture
 
-The following diagrams shows preliminary vision for the collaboration between the Filecoin rootnet and the subnets,
+The following diagrams show preliminary vision for the collaboration between the Filecoin rootnet and the subnets,
 some of which can be implemented using Fendermint:
 
 ![Architecture](images/IPC%20with%20Tendermint%20Core.jpg)
