@@ -9,9 +9,68 @@ Another project worth looking at is Penumbra's [tower-abci](https://github.com/p
 
 That should be enough to get us started with Tendermint.
 
+
 ## Install Tendermint Core
 
-TODO: Instructions on downloading the right version of tendermint, building and installing.
+We will need Tendermint Core running and building the blockchain, and since we don't want to fork it, we can install the pre-packaged `tendermint` binary from the [releases](https://github.com/tendermint/tendermint/releases). At the time of this writing, our target is the [v0.37.0-rc2](https://github.com/tendermint/tendermint/releases/tag/v0.37.0-rc2) pre-release.
+
+Alternatively, we can [install](https://github.com/tendermint/tendermint/blob/main/docs/introduction/install.md) the project from source. I expect to have to dig around in the source code to understand the finer nuances, so this is what I'll do. It needs `go` 1.18 or higher [installed](https://go.dev/doc/install) (check with `go version`).
+
+The following code downloads the source, checks out the branch with the necessary ABCI++ features, and installs it.
+```shell
+git clone https://github.com/tendermint/tendermint.git
+cd tendermint
+git checkout v0.37.0-rc2
+make install
+```
+
+Check that the installation worked:
+
+```console
+$ tendermint version
+v0.37.0-rc2
+```
+
+After this we can follow the [quick start guide](https://github.com/tendermint/tendermint/blob/main/docs/introduction/quick-start.md#initialization) to initialize a local node and try out the venerable `kvstore` application.
+
+Create the genesis files under `$HOME/.tendermint`:
+
+```shell
+tendermint init
+```
+
+Start a node; we'll see blocks being created every second:
+
+```shell
+tendermint node --proxy_app=kvstore
+```
+
+Then, from another terminal, send a transaction:
+
+```shell
+curl -s 'localhost:26657/broadcast_tx_commit?tx="foo=bar"'
+```
+
+Finally, query the value of the key we just added:
+
+```console
+$ curl -s 'localhost:26657/abci_query?data="foo"' | jq -r ".result.response.value | @base64d"
+bar
+```
+
+Nice!
+
+The status of the node can be checked like so:
+
+```shell
+curl -s localhost:26657/status
+```
+
+To start from a clean slate, we can just clear out the data directory and run `tendermint init` again:
+
+```shell
+rm -rf ~/.tendermint
+```
 
 ## Smoke Test with the `kvstore`
 
