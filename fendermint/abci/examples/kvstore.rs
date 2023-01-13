@@ -1,3 +1,5 @@
+// Copyright 2022-2023 Protocol Labs
+// SPDX-License-Identifier: Apache-2.0, MIT
 //! Example ABCI application, an in-memory key-value store.
 
 use async_stm::{atomically, TVar};

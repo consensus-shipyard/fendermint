@@ -1,3 +1,5 @@
+// Copyright 2022-2023 Protocol Labs
+// SPDX-License-Identifier: Apache-2.0, MIT
 use async_trait::async_trait;
 use futures::future::FutureExt;
 use std::{
@@ -126,7 +128,10 @@ pub trait Application {
 /// Wrapper to adapt an `Application` to a `tower::Service`.
 pub struct ApplicationService<A>(pub A);
 
-impl<A: Application + Sync + Send + Clone + 'static> Service<Request> for ApplicationService<A> {
+impl<A> Service<Request> for ApplicationService<A>
+where
+    A: Application + Sync + Send + Clone + 'static,
+{
     type Response = Response;
     type Error = BoxError;
     type Future = Pin<Box<dyn Future<Output = Result<Response, BoxError>> + Send + 'static>>;
