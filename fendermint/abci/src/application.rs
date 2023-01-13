@@ -10,6 +10,8 @@ use tower::Service;
 use tower_abci::BoxError;
 
 /// Asynchronous equivalent of of [tendermint_abci::Application].
+///
+/// See the [spec](https://github.com/tendermint/tendermint/blob/v0.37.0-rc2/spec/abci) for the expected behaviour.
 #[allow(unused_variables)]
 #[async_trait]
 pub trait Application {

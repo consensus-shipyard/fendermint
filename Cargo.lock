@@ -1099,7 +1099,7 @@ dependencies = [
 [[package]]
 name = "tower-abci"
 version = "0.4.0"
-source = "git+https://github.com/consensus-shipyard/tower-abci.git?branch=tendermint-v0.37-updates#6e33d6a3c996e36551d682e4d2004dca1e3e73f5"
+source = "git+https://github.com/consensus-shipyard/tower-abci.git?branch=tendermint-v0.37#ac40edd08a15275a68601380b52cf9458ffb9293"
 dependencies = [
  "bytes",
  "futures",

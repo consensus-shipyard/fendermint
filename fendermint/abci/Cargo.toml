@@ -11,7 +11,7 @@ async-trait = { workspace = true }
 futures = { workspace = true }
 tower = "0.4"
 
-tower-abci = { git = "https://github.com/consensus-shipyard/tower-abci.git", branch = "tendermint-v0.37-updates" }
+tower-abci = { git = "https://github.com/consensus-shipyard/tower-abci.git", branch = "tendermint-v0.37" }
 tendermint = { git = "https://github.com/aakoshh/tendermint-rs.git", branch = "mikhail/multi-tc-version-support" }
 
 
