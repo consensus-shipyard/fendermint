@@ -10,7 +10,15 @@ license.workspace = true
 async-trait = { workspace = true }
 futures = { workspace = true }
 tower = "0.4"
-# tower-abci = { git = "https://github.com/consensus-shipyard/tower-abci.git", branch = "tendermint-v0.37" }
-tower-abci = { path = "../../../../tower-abci" }
-#tendermint = { git = "https://github.com/informalsystems/tendermint-rs.git", branch = "mikhail/multi-tc-version-support" }
-tendermint = { path = "../../../../tendermint-rs/tendermint" }
+
+tower-abci = { git = "https://github.com/consensus-shipyard/tower-abci.git", branch = "tendermint-v0.37-updates" }
+tendermint = { git = "https://github.com/aakoshh/tendermint-rs.git", branch = "mikhail/multi-tc-version-support" }
+
+
+[dev-dependencies]
+async-stm = "0.1.2"
+im = "15.1.0"
+structopt = "0.3"
+tokio = { version = "1" }
+tracing = "0.1"
+tracing-subscriber = "0.3"
