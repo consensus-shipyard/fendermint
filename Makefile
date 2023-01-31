@@ -9,8 +9,11 @@ clean:
 	cargo clean
 
 lint: license clean
-	cargo fmt --all
-	cargo clippy --all -- -D warnings -A clippy::upper_case_acronyms
+	cargo fmt --all --check
+	cargo clippy --all -- -D warnings
 
 license:
 	./scripts/add_license.sh
+
+test:
+	cargo test
