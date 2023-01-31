@@ -23,5 +23,5 @@ fvm_ipld_encoding = "0.3"
 fvm_ipld_car = "0.6"
 
 # The following are on crates.io but as pre-releases.
-fvm = "3.0.0-alpha.21"
+fvm = { version = "3.0.0-alpha.21", default-features = false } # no opencl or it fails on CI
 fvm_shared = "3.0.0-alpha.17"
