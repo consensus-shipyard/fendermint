@@ -11,7 +11,6 @@ fendermint_abci = { path = "../abci" }
 fvm = { workspace = true }
 fvm_ipld_car = { workspace = true }
 tokio = { workspace = true }
-tempfile = { workspace = true }
 
 # The current 0.2.0 version of forest_db is not published to crates.io.
 # Using the `tag` of the `forest` repo rather than the `version` of just `forest_db` so we don't get a random commit in `main`.
@@ -22,3 +21,6 @@ forest_db = { git = "https://github.com/ChainSafe/forest.git", tag = "v0.6.0", f
 # in `ref-fvm` like looking up actor addresses depend on built-in actors like the `InitActor` maintaining state.
 # TODO: Figure out how to load only what we need, and nothing else.
 actors-v10 = { package = "fil_builtin_actors_bundle", git = "https://github.com/filecoin-project/builtin-actors", branch = "next", features = ["m2-native"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

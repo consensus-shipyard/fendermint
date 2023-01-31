@@ -1,27 +1,33 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use forest_db::rocks::RocksDb;
-use forest_db::rocks_config::RocksDbConfig;
-use fvm_ipld_car::load_car_unchecked;
-
 #[tokio::main]
 async fn main() {
-    // Just to see if dependencies compile together, see if we can load an actor bundle into a temporary RocksDB.
-    // Run it with `cargo run -p fendermint_app`
+    println!("Soon.")
+}
 
-    let bundle = actors_v10::BUNDLE_CAR;
+#[cfg(test)]
+mod tests {
+    use forest_db::rocks::RocksDb;
+    use forest_db::rocks_config::RocksDbConfig;
+    use fvm_ipld_car::load_car_unchecked;
 
-    let dir = tempfile::Builder::new()
-        .tempdir()
-        .expect("error creating temporary path for db");
-    let path = dir.path().join("rocksdb");
-    let db =
-        RocksDb::open(path.clone(), &RocksDbConfig::default()).expect("error creating RocksDB");
+    #[tokio::test]
+    async fn load_car() {
+        // Just to see if dependencies compile together, see if we can load an actor bundle into a temporary RocksDB.
+        // Run it with `cargo run -p fendermint_app`
 
-    let _cids = load_car_unchecked(&db, bundle)
-        .await
-        .expect("error loading bundle CAR");
+        let bundle = actors_v10::BUNDLE_CAR;
 
-    println!("Bundle CAR loaded into {}. Bye!", path.to_string_lossy())
+        let dir = tempfile::Builder::new()
+            .tempdir()
+            .expect("error creating temporary path for db");
+        let path = dir.path().join("rocksdb");
+        let db =
+            RocksDb::open(path.clone(), &RocksDbConfig::default()).expect("error creating RocksDB");
+
+        let _cids = load_car_unchecked(&db, bundle)
+            .await
+            .expect("error loading bundle CAR");
+    }
 }
