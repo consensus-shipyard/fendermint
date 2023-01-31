@@ -1,19 +1,26 @@
-all: build
-.PHONY: all
+.PHONY: all build test lint license check-fmt check-clippy
+
+all: test build
 
 build:
-	cargo build
-.PHONY: build
+	cargo build --release
+
+test:
+	cargo test --release
 
 clean:
 	cargo clean
 
-lint: license clean
-	cargo fmt --all --check
-	cargo clippy --all -- -D warnings
+lint: \
+	license \
+	check-fmt \
+	check-clippy
 
 license:
 	./scripts/add_license.sh
 
-test:
-	cargo test
+check-fmt:
+	cargo fmt --all --check
+
+check-clippy:
+	cargo clippy --all -- -D warnings

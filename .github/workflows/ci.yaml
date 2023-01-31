@@ -16,11 +16,14 @@ jobs:
     steps:
       - name: Check out the project
         uses: actions/checkout@v2
-      - name: Check code formatting
-        uses: actions-rs/cargo@v1
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
         with:
-          command: fmt
-          args: -- --all --check
+          profile: minimal
+          toolchain: stable
+          components: rustfmt
+      - name: Check code formatting
+        run: make check-fmt
       - name: Check license headers
         run: make license
 
