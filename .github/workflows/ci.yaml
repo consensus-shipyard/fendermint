@@ -11,22 +11,23 @@ on:
 jobs:
   # Check code formatting; anything that doesn't require compilation.
   pre-compile-checks:
+    name: Pre-compile checks
     runs-on: ubuntu-latest
     steps:
-    - name: Check out the project
-      uses: actions/checkout@v2
-    - name: Check code formatting
-      uses: actions-rs/cargo@v1
-      with:
-        command: fmt
-        args: -- --all --check
-    - name: Check license headers
-      run: make license
+      - name: Check out the project
+        uses: actions/checkout@v2
+      - name: Check code formatting
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: -- --all --check
+      - name: Check license headers
+        run: make license
 
   # Test matrix, running tasks from the Makefile.
   tests:
     needs: [pre-compile-checks]
-    name: ${{ matrix.make.name }} (${{ matrix.os }})
+    name: ${{ matrix.make.name }} (${{ matrix.os }}, ${{ matrix.rust }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -38,33 +39,37 @@ jobs:
             task: lint
           - name: Test
             task: test
+        exclude:
+          - rust: nightly
+            make:
+              name: Lint
 
-        env:
-          RUST_BACKTRACE: full
-          RUSTFLAGS: -Dwarnings
-          CARGO_INCREMENTAL: '0'
-          SCCACHE_CACHE_SIZE: 2G
+    env:
+      RUST_BACKTRACE: full
+      RUSTFLAGS: -Dwarnings
+      CARGO_INCREMENTAL: '0'
+      SCCACHE_CACHE_SIZE: 2G
 
-        steps:
-          - name: Check out the project
-            uses: actions/checkout@v2
+    steps:
+      - name: Check out the project
+        uses: actions/checkout@v2
 
-          - name: Install Rust
-            uses: actions-rs/toolchain@v1
-            with:
-              profile: minimal
-              target: wasm32-unknown-unknown
-              toolchain: ${{ matrix.rust }}
-              override: true
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          target: wasm32-unknown-unknown
+          toolchain: ${{ matrix.rust }}
+          override: true
 
-          - name: Setup sccache
-            uses: hanabi1224/sccache-action@v1.2.0 # https://github.com/hanabi1224/sccache-action used by Forest.
-            timeout-minutes: 5
-            continue-on-error: true
-            with:
-              release-name: v0.3.1
-              cache-key: cargo-${{ matrix.os }}-${{matrix.rust}}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain', 'rust-toolchain.toml') }}
-              cache-update: false # It contains the lock file, should be immutable.
+      - name: Setup sccache
+        uses: hanabi1224/sccache-action@v1.2.0 # https://github.com/hanabi1224/sccache-action used by Forest.
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          release-name: v0.3.1
+          cache-key: cargo-${{ matrix.os }}-${{matrix.rust}}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain', 'rust-toolchain.toml') }}
+          cache-update: false # It contains the lock file, should be immutable.
 
-          - name: ${{ matrix.make.name }}
-            run: make ${{ matrix.make.task }}
+      - name: ${{ matrix.make.name }}
+        run: make ${{ matrix.make.task }}
