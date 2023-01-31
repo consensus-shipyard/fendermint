@@ -65,6 +65,10 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
+      # Protobuf compiler required by libp2p-core
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+
       - name: Setup sccache
         uses: hanabi1224/sccache-action@v1.2.0 # https://github.com/hanabi1224/sccache-action used by Forest.
         timeout-minutes: 5
