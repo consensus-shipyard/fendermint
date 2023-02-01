@@ -51,7 +51,9 @@ jobs:
       RUST_BACKTRACE: full
       RUSTFLAGS: -Dwarnings
       CARGO_INCREMENTAL: '0'
-      SCCACHE_CACHE_SIZE: 2G
+      SCCACHE_CACHE_SIZE: 10G
+      CC: "sccache clang"
+      CXX: "sccache clang++"
 
     steps:
       - name: Check out the project
