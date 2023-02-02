@@ -1363,6 +1363,7 @@ name = "fendermint_app"
 version = "0.1.0"
 dependencies = [
  "fendermint_abci",
+ "fendermint_vm_interpreter",
  "fil_builtin_actors_bundle",
  "forest_db",
  "fvm",
@@ -1372,15 +1373,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "fendermint_vm_message"
+name = "fendermint_vm_interpreter"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
+ "cid",
+ "fendermint_vm_message",
+ "fvm",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding 0.3.3",
+ "fvm_shared 3.0.0-alpha.17",
+]
+
+[[package]]
+name = "fendermint_vm_message"
+version = "0.1.0"
+dependencies = [
  "cid",
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared 3.0.0-alpha.17",
  "serde",
  "serde_tuple",
+ "thiserror",
 ]
 
 [[package]]
