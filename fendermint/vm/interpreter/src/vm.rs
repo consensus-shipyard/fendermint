@@ -3,24 +3,60 @@ use std::marker::PhantomData;
 use anyhow::anyhow;
 use async_trait::async_trait;
 
+use cid::Cid;
 use fendermint_vm_message::{SignedMessage, SignedMessageError};
 use fvm::{
     call_manager::DefaultCallManager,
+    engine::{EngineConfig, EnginePool},
     executor::{ApplyRet, DefaultExecutor, Executor},
-    machine::DefaultMachine,
+    machine::{DefaultMachine, NetworkConfig},
     DefaultKernel,
 };
 use fvm_ipld_blockstore::Blockstore;
-use fvm_shared::message::Message as FvmMessage;
+use fvm_shared::{
+    clock::ChainEpoch, econ::TokenAmount, message::Message as FvmMessage, version::NetworkVersion,
+};
 
-use crate::{externs::FendermintExterns, Interpreter};
+use crate::{externs::FendermintExterns, Interpreter, Timestamp};
 
+/// A state we create for the execution of all the messages in a block.
 pub struct FvmState<DB>
 where
     DB: Blockstore + 'static,
 {
     executor:
         DefaultExecutor<DefaultKernel<DefaultCallManager<DefaultMachine<DB, FendermintExterns>>>>,
+}
+
+impl<DB> FvmState<DB>
+where
+    DB: Blockstore + 'static,
+{
+    pub fn new(
+        blockstore: DB,
+        block_height: ChainEpoch,
+        block_timestamp: Timestamp,
+        network_version: NetworkVersion,
+        initial_state: Cid,
+        base_fee: TokenAmount,
+        circ_supply: TokenAmount,
+    ) -> anyhow::Result<Self> {
+        let nc = NetworkConfig::new(network_version);
+
+        // TODO: Configure:
+        // * circ_supply; by default it's for Filecoin
+        // * base_fee; by default it's zero
+        let mut mc = nc.for_epoch(block_height, block_timestamp.0, initial_state);
+        mc.set_base_fee(base_fee);
+        mc.set_circulating_supply(circ_supply);
+
+        let ec = EngineConfig::from(&nc);
+        let engine = EnginePool::new_default(ec)?;
+        let machine = DefaultMachine::new(&mc, blockstore, FendermintExterns)?;
+        let executor = DefaultExecutor::new(engine, machine)?;
+
+        Ok(Self { executor })
+    }
 }
 
 /// Interpreter working on already verified unsigned messages.

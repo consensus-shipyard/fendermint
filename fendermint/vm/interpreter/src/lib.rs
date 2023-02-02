@@ -3,6 +3,9 @@ use async_trait::async_trait;
 mod externs;
 mod vm;
 
+/// Unix timestamp (in seconds) of the current block.
+pub struct Timestamp(u64);
+
 /// The interpreter applies messages on some state.
 ///
 /// It is asynchronous so that message execution can have side effects,
