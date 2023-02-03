@@ -2,35 +2,45 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 
 use fendermint_vm_message::signed::{SignedMessage, SignedMessageError};
-use fvm::executor::ApplyRet;
 
-use crate::{fvm::FvmMessage, Deliverer};
+use crate::{
+    fvm::{FvmApplyRet, FvmMessage},
+    Interpreter,
+};
 
 /// Interpreter working on signed messages, validating their signature before sending
 /// the unsigned parts on for execution.
-pub struct SignedMessageDeliverer<I> {
+pub struct SignedMessageInterpreter<I> {
     inner: I,
+}
+
+impl<I> SignedMessageInterpreter<I> {
+    pub fn new(inner: I) -> Self {
+        Self { inner }
+    }
 }
 
 pub enum SignedMesssageApplyRet {
     InvalidSignature(String),
-    Applied(ApplyRet),
+    Applied(FvmApplyRet),
 }
 
 #[async_trait]
-impl<I> Deliverer for SignedMessageDeliverer<I>
+impl<I> Interpreter for SignedMessageInterpreter<I>
 where
-    I: Deliverer<Message = FvmMessage, Output = ApplyRet>,
+    I: Interpreter<Message = FvmMessage, DeliverOutput = FvmApplyRet>,
 {
-    type Message = SignedMessage;
-    type Output = SignedMesssageApplyRet;
     type State = I::State;
+    type Message = SignedMessage;
+    type BeginOutput = I::BeginOutput;
+    type DeliverOutput = SignedMesssageApplyRet;
+    type EndOutput = I::EndOutput;
 
     async fn deliver(
         &self,
         state: Self::State,
         msg: Self::Message,
-    ) -> anyhow::Result<(Self::State, Self::Output)> {
+    ) -> anyhow::Result<(Self::State, Self::DeliverOutput)> {
         match msg.verify() {
             Err(SignedMessageError::Ipld(e)) => Err(anyhow!(e)),
             Err(SignedMessageError::InvalidSignature(s)) => {
@@ -43,5 +53,13 @@ where
                 Ok((state, SignedMesssageApplyRet::Applied(ret)))
             }
         }
+    }
+
+    async fn begin(&self, state: Self::State) -> anyhow::Result<(Self::State, Self::BeginOutput)> {
+        self.inner.begin(state).await
+    }
+
+    async fn end(&self, state: Self::State) -> anyhow::Result<(Self::State, Self::EndOutput)> {
+        self.inner.end(state).await
     }
 }

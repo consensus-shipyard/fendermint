@@ -8,9 +8,10 @@ pub mod signed;
 /// Unix timestamp (in seconds) of the current block.
 pub struct Timestamp(pub u64);
 
-/// The interpreter applies messages on some state.
+/// The `Interpreter`applies messages on some state, which is
+/// tied to the lifecycle of a block in the ABCI.
 ///
-/// By making them generic, the intention is that interpreters can
+/// By making it generic, the intention is that interpreters can
 /// be stacked, changing the type of message along the way. For
 /// example on the outermost layer the input message can be a mix
 /// of self-contained messages and CIDs proposed for resolution
@@ -40,10 +41,17 @@ pub struct Timestamp(pub u64);
 /// signalling unexpected problems there's no recovering from and
 /// that should stop the block processing altogether.
 #[async_trait]
-pub trait Deliverer: Sync + Send {
+pub trait Interpreter: Sync + Send {
     type State: Send;
     type Message: Send;
-    type Output;
+    type BeginOutput;
+    type DeliverOutput;
+    type EndOutput;
+
+    /// Called once at the beginning of a block.
+    ///
+    /// This is our chance to to run `cron` jobs for example.
+    async fn begin(&self, state: Self::State) -> anyhow::Result<(Self::State, Self::BeginOutput)>;
 
     /// Apply a message onto the state.
     ///
@@ -58,5 +66,11 @@ pub trait Deliverer: Sync + Send {
         &self,
         state: Self::State,
         msg: Self::Message,
-    ) -> anyhow::Result<(Self::State, Self::Output)>;
+    ) -> anyhow::Result<(Self::State, Self::DeliverOutput)>;
+
+    /// Called once at the end of a block.
+    ///
+    /// This is where we can apply end-of-epoch processing, for example to process staking
+    /// requests once every 1000 blocks.
+    async fn end(&self, state: Self::State) -> anyhow::Result<(Self::State, Self::EndOutput)>;
 }

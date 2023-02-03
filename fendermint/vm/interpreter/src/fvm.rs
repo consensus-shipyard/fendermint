@@ -13,9 +13,10 @@ use fvm::{
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, version::NetworkVersion};
 
-use crate::{externs::FendermintExterns, Deliverer, Timestamp};
+use crate::{externs::FendermintExterns, Interpreter, Timestamp};
 
 pub type FvmMessage = fvm_shared::message::Message;
+pub type FvmApplyRet = ApplyRet;
 
 /// A state we create for the execution of all the messages in a block.
 pub struct FvmState<DB>
@@ -58,29 +59,49 @@ where
 }
 
 /// Interpreter working on already verified unsigned messages.
-pub struct FvmMessageDeliverer<DB> {
+pub struct FvmMessageInterpreter<DB> {
     _phantom_db: PhantomData<DB>,
 }
 
+impl<DB> FvmMessageInterpreter<DB> {
+    pub fn new() -> Self {
+        Self {
+            _phantom_db: PhantomData,
+        }
+    }
+}
+
 #[async_trait]
-impl<DB> Deliverer for FvmMessageDeliverer<DB>
+impl<DB> Interpreter for FvmMessageInterpreter<DB>
 where
     DB: Blockstore + 'static + Send + Sync,
 {
-    type Message = FvmMessage;
     type State = FvmState<DB>;
-    type Output = ApplyRet;
+    type Message = FvmMessage;
+    type BeginOutput = ();
+    type DeliverOutput = FvmApplyRet;
+    type EndOutput = ();
+
+    async fn begin(&self, state: Self::State) -> anyhow::Result<(Self::State, Self::BeginOutput)> {
+        // TODO: Cron.
+        Ok((state, ()))
+    }
 
     async fn deliver(
         &self,
         mut state: Self::State,
         msg: Self::Message,
-    ) -> anyhow::Result<(Self::State, Self::Output)> {
+    ) -> anyhow::Result<(Self::State, Self::DeliverOutput)> {
         let raw_length = fvm_ipld_encoding::to_vec(&msg).map(|bz| bz.len())?;
         let ret =
             state
                 .executor
                 .execute_message(msg, fvm::executor::ApplyKind::Explicit, raw_length)?;
         Ok((state, ret))
+    }
+
+    async fn end(&self, state: Self::State) -> anyhow::Result<(Self::State, Self::EndOutput)> {
+        // TODO: Epoch transitions for checkpointing.
+        Ok((state, ()))
     }
 }

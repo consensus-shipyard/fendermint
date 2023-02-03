@@ -2,12 +2,18 @@ use async_trait::async_trait;
 
 use fendermint_vm_message::{chain::ChainMessage, signed::SignedMessage};
 
-use crate::{signed::SignedMesssageApplyRet, Deliverer};
+use crate::{signed::SignedMesssageApplyRet, Interpreter};
 
 /// Interpreter working on chain messages; in the future it will schedule
 /// CID lookups to turn references into self-contained user or cross messages.
-pub struct ChainMessageDeliverer<I> {
+pub struct ChainMessageInterpreter<I> {
     inner: I,
+}
+
+impl<I> ChainMessageInterpreter<I> {
+    pub fn new(inner: I) -> Self {
+        Self { inner }
+    }
 }
 
 pub enum ChainMessageApplyRet {
@@ -15,24 +21,34 @@ pub enum ChainMessageApplyRet {
 }
 
 #[async_trait]
-impl<I> Deliverer for ChainMessageDeliverer<I>
+impl<I> Interpreter for ChainMessageInterpreter<I>
 where
-    I: Deliverer<Message = SignedMessage, Output = SignedMesssageApplyRet>,
+    I: Interpreter<Message = SignedMessage, DeliverOutput = SignedMesssageApplyRet>,
 {
-    type Message = ChainMessage;
-    type Output = ChainMessageApplyRet;
     type State = I::State;
+    type Message = ChainMessage;
+    type BeginOutput = I::BeginOutput;
+    type DeliverOutput = ChainMessageApplyRet;
+    type EndOutput = I::EndOutput;
 
     async fn deliver(
         &self,
         state: Self::State,
         msg: Self::Message,
-    ) -> anyhow::Result<(Self::State, Self::Output)> {
+    ) -> anyhow::Result<(Self::State, Self::DeliverOutput)> {
         match msg {
             ChainMessage::Signed(msg) => {
                 let (state, ret) = self.inner.deliver(state, msg).await?;
                 Ok((state, ChainMessageApplyRet::Signed(ret)))
             }
         }
+    }
+
+    async fn begin(&self, state: Self::State) -> anyhow::Result<(Self::State, Self::BeginOutput)> {
+        self.inner.begin(state).await
+    }
+
+    async fn end(&self, state: Self::State) -> anyhow::Result<(Self::State, Self::EndOutput)> {
+        self.inner.end(state).await
     }
 }

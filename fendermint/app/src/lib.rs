@@ -1,1 +1,1 @@
-mod app;
+pub mod app;

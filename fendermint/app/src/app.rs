@@ -5,7 +5,7 @@ use cid::Cid;
 use fendermint_abci::Application;
 use fendermint_vm_interpreter::chain::ChainMessageApplyRet;
 use fendermint_vm_interpreter::fvm::FvmState;
-use fendermint_vm_interpreter::{Deliverer, Timestamp};
+use fendermint_vm_interpreter::{Interpreter, Timestamp};
 use fendermint_vm_message::chain::ChainMessage;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::econ::TokenAmount;
@@ -37,17 +37,54 @@ impl<DB, I> FendermintApp<DB, I>
 where
     DB: Blockstore + 'static,
 {
+    pub fn new(db: Arc<DB>, interpreter: I) -> Self {
+        Self {
+            db,
+            interpreter: Arc::new(interpreter),
+            exec_state: Arc::new(Mutex::new(None)),
+        }
+    }
+}
+
+impl<DB, I> FendermintApp<DB, I>
+where
+    DB: Blockstore + 'static,
+{
     /// Get the last committed state.
     fn committed_state(&self) -> State {
         todo!("retrieve state from the DB")
     }
+
+    /// Put the execution state during block execution. Has to be empty.
+    fn put_exec_state(&self, state: FvmState<DB>) {
+        let mut guard = self.exec_state.lock().expect("mutex poisoned");
+        assert!(guard.is_some(), "exec state not empty");
+        *guard = Some(state);
+    }
+
+    /// Take the execution state during block execution. Has to be non-empty.
+    fn take_exec_state(&self) -> FvmState<DB> {
+        let mut guard = self.exec_state.lock().expect("mutex poisoned");
+        guard.take().expect("exec state empty")
+    }
 }
 
+// NOTE: The `Application` interface doesn't allow failures at the moment. The protobuf
+// of `Response` actually has an `Exception` type, so in theory we could use that, and
+// Tendermint would break up the connection. However, before the response could reach it,
+// the `tower-abci` library would throw an exception because when it tried to convert
+// a `Response::Exception` into a `ConensusResponse` for example.
 #[async_trait]
 impl<DB, I> Application for FendermintApp<DB, I>
 where
     DB: Blockstore + Clone + Send + Sync + 'static,
-    I: Deliverer<State = FvmState<DB>, Message = ChainMessage, Output = ChainMessageApplyRet>,
+    I: Interpreter<
+        State = FvmState<DB>,
+        Message = ChainMessage,
+        BeginOutput = (),
+        DeliverOutput = ChainMessageApplyRet,
+        EndOutput = (),
+    >,
 {
     /// Provide information about the ABCI application.
     async fn info(&self, _request: request::Info) -> response::Info {
@@ -105,17 +142,15 @@ where
         )
         .expect("error creating new state");
 
-        // TODO: Call the begin to run cron stuff.
+        let (state, ()) = self.interpreter.begin(state).await.expect("begin failed");
 
-        let mut guard = self.exec_state.lock().expect("mutex poisoned");
-        assert!(guard.is_none(), "state not empty at begin");
-        *guard = Some(state);
+        self.put_exec_state(state);
 
         response::BeginBlock { events: Vec::new() }
     }
 
     /// Apply a transaction to the application's state.
-    async fn deliver_tx(&self, _request: request::DeliverTx) -> response::DeliverTx {
+    async fn deliver_tx(&self, request: request::DeliverTx) -> response::DeliverTx {
         todo!()
     }
 
