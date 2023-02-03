@@ -8,8 +8,9 @@ license.workspace = true
 
 [dependencies]
 thiserror = { workspace = true }
-cid = { workspace = true }
 serde = { workspace = true }
 serde_tuple = { workspace = true }
+
+cid = { workspace = true }
 fvm_shared = { workspace = true }
 fvm_ipld_encoding = { workspace = true }

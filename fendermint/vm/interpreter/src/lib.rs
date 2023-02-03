@@ -1,26 +1,44 @@
 use async_trait::async_trait;
 
 mod externs;
-mod vm;
+pub mod vm;
 
 /// Unix timestamp (in seconds) of the current block.
-pub struct Timestamp(u64);
+pub struct Timestamp(pub u64);
 
 /// The interpreter applies messages on some state.
 ///
-/// It is asynchronous so that message execution can have side effects,
-/// such as scheduling the resolution of embedded CIDs. These kind of
-/// side effects could be signalled through the `Output` as well, but
-/// the intention is to be able to stack interpreters, and at least
-/// some of them might want execute something asynchronous.
+/// By making them generic, the intention is that interpreters can
+/// be stacked, changing the type of message along the way. For
+/// example on the outermost layer the input message can be a mix
+/// of self-contained messages and CIDs proposed for resolution
+/// or execution, while in the innermost layer it's all self-contained.
+/// Some interpreters would act like middlewares to resolve CIDs into
+/// a concrete message.
+///
+/// The execution is asynchronous, so that the middleware is allowed
+/// to potentially interact with the outside world. If this was restricted
+/// to things like scheduling a CID resolution, we could use effects
+/// returned from message processing. However, when a node is catching
+/// up with the chain others have already committed, they have to do the
+/// message resolution synchronously, so it has to be done during
+/// message processing. Alternatively we'd have to split the processing
+/// into async steps to pre-process the message, then synchronous steps
+/// to update the state. But this approach is more flexible, because
+/// the middlewares can decide on a message-by-message basis whether
+/// to forward the message to the inner layer. Unfortunately block-level
+/// pre-processing is not possible, because we are fed the messages
+/// one by one through the ABCI.
 ///
 /// There is no separate type for `Error`, only `Output`. The reason
 /// is that we'll be calling high level executors internally that
 /// already have their internal error handling, returning all domain
 /// errors such as `OutOfGas` in their output, and only using the
-/// error case for things that are independent of the message itself.
+/// error case for things that are independent of the message itself,
+/// signalling unexpected problems there's no recovering from and
+/// that should stop the block processing altogether.
 #[async_trait]
-trait Interpreter: Sync + Send {
+pub trait Interpreter: Sync + Send {
     type State: Send;
     type Message: Send;
     type Output;

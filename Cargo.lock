@@ -1362,13 +1362,19 @@ dependencies = [
 name = "fendermint_app"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "cid",
  "fendermint_abci",
  "fendermint_vm_interpreter",
+ "fendermint_vm_message",
  "fil_builtin_actors_bundle",
  "forest_db",
  "fvm",
+ "fvm_ipld_blockstore",
  "fvm_ipld_car",
+ "fvm_shared 3.0.0-alpha.17",
  "tempfile",
+ "tendermint",
  "tokio",
 ]
 
