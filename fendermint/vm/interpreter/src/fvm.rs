@@ -16,7 +16,15 @@ use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, version::NetworkVersion};
 use crate::{externs::FendermintExterns, Interpreter, Timestamp};
 
 pub type FvmMessage = fvm_shared::message::Message;
-pub type FvmApplyRet = ApplyRet;
+
+/// The return value extended with some things from the message that
+/// might not be available to the caller, because of the message lookups
+/// and transformations that happen along the way, e.g. where we need
+/// a field, we might just have a CID.
+pub struct FvmApplyRet {
+    pub apply_ret: ApplyRet,
+    pub gas_limit: i64,
+}
 
 /// A state we create for the execution of all the messages in a block.
 pub struct FvmState<DB>
@@ -104,10 +112,18 @@ where
         msg: Self::Message,
     ) -> anyhow::Result<(Self::State, Self::DeliverOutput)> {
         let raw_length = fvm_ipld_encoding::to_vec(&msg).map(|bz| bz.len())?;
-        let ret =
+        let gas_limit = msg.gas_limit;
+
+        let apply_ret =
             state
                 .executor
                 .execute_message(msg, fvm::executor::ApplyKind::Explicit, raw_length)?;
+
+        let ret = FvmApplyRet {
+            apply_ret,
+            gas_limit,
+        };
+
         Ok((state, ret))
     }
 

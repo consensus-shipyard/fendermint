@@ -174,7 +174,6 @@ where
 
         self.put_exec_state(state);
 
-        // TODO: Map events from cron.
         let ret = self
             .modify_exec_state(|s| self.interpreter.begin(s))
             .await
@@ -244,24 +243,23 @@ fn invalid_deliver_tx(err: AppError, description: String) -> response::DeliverTx
 }
 
 fn to_deliver_tx(ret: FvmApplyRet) -> response::DeliverTx {
-    let code = if ret.msg_receipt.exit_code.is_success() {
+    let receipt = ret.apply_ret.msg_receipt;
+    let code = if receipt.exit_code.is_success() {
         Code::Ok
     } else {
         Code::Err(
-            NonZeroU32::try_from(ret.msg_receipt.exit_code.value())
-                .expect("error codes are non-zero"),
+            NonZeroU32::try_from(receipt.exit_code.value()).expect("error codes are non-zero"),
         )
     };
 
     // Based on the sanity check in the `DefaultExecutor`.
-    // gas_cost = gas_fee_cap * gas_limit
+    // gas_cost = gas_fee_cap * gas_limit; this is how much the account is charged up front.
     // &base_fee_burn + &over_estimation_burn + &refund + &miner_tip == gas_cost
-    // But that's in tokens, and there doesn't seem to be a way to see what the price was.
-    // TODO: Add the gas limit to the result.
-    let gas_wanted = 0;
-    let gas_used = ret.msg_receipt.gas_used;
+    // But that's in tokens. I guess the closes to what we want is the limit.
+    let gas_wanted = ret.gas_limit;
+    let gas_used = receipt.gas_used;
 
-    let data = ret.msg_receipt.return_data.to_vec().into();
+    let data = receipt.return_data.to_vec().into();
 
     // TODO: Convert events. This is currently not possible because the event fields are private.
     // I changed that in https://github.com/filecoin-project/ref-fvm/pull/1507 but it's still in review.
