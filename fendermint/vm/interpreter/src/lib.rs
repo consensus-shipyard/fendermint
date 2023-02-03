@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 use async_trait::async_trait;
 
+pub mod bytes;
 pub mod chain;
 mod externs;
 pub mod fvm;

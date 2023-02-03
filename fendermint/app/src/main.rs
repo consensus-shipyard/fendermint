@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use fendermint_app::app;
 use fendermint_vm_interpreter::{
-    chain::ChainMessageInterpreter, fvm::FvmMessageInterpreter, signed::SignedMessageInterpreter,
+    bytes::BytesMessageInterpreter, chain::ChainMessageInterpreter, fvm::FvmMessageInterpreter,
+    signed::SignedMessageInterpreter,
 };
 use forest_db::rocks::RocksDb;
 
@@ -14,8 +15,9 @@ async fn main() {
     let interpreter = FvmMessageInterpreter::<RocksDb>::new();
     let interpreter = SignedMessageInterpreter::new(interpreter);
     let interpreter = ChainMessageInterpreter::new(interpreter);
+    let interpreter = BytesMessageInterpreter::new(interpreter);
     let db = open_db();
-    let _app: app::App<RocksDb, _> = app::App::new(db, interpreter);
+    let _app = app::App::new(db, interpreter);
 }
 
 fn open_db() -> Arc<RocksDb> {

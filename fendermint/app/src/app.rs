@@ -7,11 +7,11 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use cid::Cid;
 use fendermint_abci::Application;
+use fendermint_vm_interpreter::bytes::BytesMessageApplyRet;
 use fendermint_vm_interpreter::chain::ChainMessageApplyRet;
 use fendermint_vm_interpreter::fvm::{FvmApplyRet, FvmState};
 use fendermint_vm_interpreter::signed::SignedMesssageApplyRet;
 use fendermint_vm_interpreter::{Interpreter, Timestamp};
-use fendermint_vm_message::chain::ChainMessage;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::version::NetworkVersion;
@@ -19,7 +19,7 @@ use tendermint::abci::{request, response, Code};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-// TODO: What range should we use for our own error codes? Shold we shift FVM errors?
+// TODO: What range should we use for our own error codes? Should we shift FVM errors?
 
 #[repr(u32)]
 enum AppError {
@@ -104,17 +104,17 @@ where
 // NOTE: The `Application` interface doesn't allow failures at the moment. The protobuf
 // of `Response` actually has an `Exception` type, so in theory we could use that, and
 // Tendermint would break up the connection. However, before the response could reach it,
-// the `tower-abci` library would throw an exception because when it tried to convert
-// a `Response::Exception` into a `ConensusResponse` for example.
+// the `tower-abci` library would throw an exception when it tried to convert a
+// `Response::Exception` into a `ConensusResponse` for example.
 #[async_trait]
 impl<DB, I> Application for App<DB, I>
 where
     DB: Blockstore + Clone + Send + Sync + 'static,
     I: Interpreter<
         State = FvmState<DB>,
-        Message = ChainMessage,
+        Message = Vec<u8>,
         BeginOutput = (),
-        DeliverOutput = ChainMessageApplyRet,
+        DeliverOutput = BytesMessageApplyRet,
         EndOutput = (),
     >,
 {
@@ -186,23 +186,22 @@ where
 
     /// Apply a transaction to the application's state.
     async fn deliver_tx(&self, request: request::DeliverTx) -> response::DeliverTx {
-        match fvm_ipld_encoding::from_slice::<ChainMessage>(&request.tx) {
-            Err(e) => invalid_deliver_tx(AppError::InvalidEncoding, e.description),
-            Ok(msg) => {
-                let output = self
-                    .modify_exec_state(|s| self.interpreter.deliver(s, msg))
-                    .await
-                    .expect("deliver failed");
+        let msg = request.tx.to_vec();
+        let result = self
+            .modify_exec_state(|s| self.interpreter.deliver(s, msg))
+            .await
+            .expect("deliver failed");
 
-                match output {
-                    ChainMessageApplyRet::Signed(SignedMesssageApplyRet::InvalidSignature(d)) => {
-                        invalid_deliver_tx(AppError::InvalidSignature, d)
-                    }
-                    ChainMessageApplyRet::Signed(SignedMesssageApplyRet::Applied(ret)) => {
-                        to_deliver_tx(ret)
-                    }
+        match result {
+            Err(e) => invalid_deliver_tx(AppError::InvalidEncoding, e.description),
+            Ok(ret) => match ret {
+                ChainMessageApplyRet::Signed(SignedMesssageApplyRet::InvalidSignature(d)) => {
+                    invalid_deliver_tx(AppError::InvalidSignature, d)
                 }
-            }
+                ChainMessageApplyRet::Signed(SignedMesssageApplyRet::Applied(ret)) => {
+                    to_deliver_tx(ret)
+                }
+            },
         }
     }
 
