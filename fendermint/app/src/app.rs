@@ -3,9 +3,10 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use cid::Cid;
 use fendermint_abci::Application;
-use fendermint_vm_interpreter::vm::{FvmState, SignedMesssageApplyRet};
+use fendermint_vm_interpreter::chain::ChainMessageApplyRet;
+use fendermint_vm_interpreter::fvm::FvmState;
 use fendermint_vm_interpreter::{Interpreter, Timestamp};
-use fendermint_vm_message::SignedMessage;
+use fendermint_vm_message::chain::ChainMessage;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::version::NetworkVersion;
@@ -46,7 +47,7 @@ where
 impl<DB, EI> Application for FendermintApp<DB, EI>
 where
     DB: Blockstore + Clone + Send + Sync + 'static,
-    EI: Interpreter<State = FvmState<DB>, Message = SignedMessage, Output = SignedMesssageApplyRet>,
+    EI: Interpreter<State = FvmState<DB>, Message = ChainMessage, Output = ChainMessageApplyRet>,
 {
     /// Provide information about the ABCI application.
     async fn info(&self, _request: request::Info) -> response::Info {

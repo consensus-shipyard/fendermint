@@ -1,10 +1,8 @@
 use std::marker::PhantomData;
 
-use anyhow::anyhow;
 use async_trait::async_trait;
 
 use cid::Cid;
-use fendermint_vm_message::{SignedMessage, SignedMessageError};
 use fvm::{
     call_manager::DefaultCallManager,
     engine::{EngineConfig, EnginePool},
@@ -13,11 +11,11 @@ use fvm::{
     DefaultKernel,
 };
 use fvm_ipld_blockstore::Blockstore;
-use fvm_shared::{
-    clock::ChainEpoch, econ::TokenAmount, message::Message as FvmMessage, version::NetworkVersion,
-};
+use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, version::NetworkVersion};
 
 use crate::{externs::FendermintExterns, Interpreter, Timestamp};
+
+pub type FvmMessage = fvm_shared::message::Message;
 
 /// A state we create for the execution of all the messages in a block.
 pub struct FvmState<DB>
@@ -60,12 +58,12 @@ where
 }
 
 /// Interpreter working on already verified unsigned messages.
-pub struct MessageInterpreter<DB> {
+pub struct FvmMessageInterpreter<DB> {
     _phantom_db: PhantomData<DB>,
 }
 
 #[async_trait]
-impl<DB> Interpreter for MessageInterpreter<DB>
+impl<DB> Interpreter for FvmMessageInterpreter<DB>
 where
     DB: Blockstore + 'static + Send + Sync,
 {
@@ -73,7 +71,7 @@ where
     type State = FvmState<DB>;
     type Output = ApplyRet;
 
-    async fn exec_msg(
+    async fn exec(
         &self,
         mut state: Self::State,
         msg: Self::Message,
@@ -84,47 +82,5 @@ where
                 .executor
                 .execute_message(msg, fvm::executor::ApplyKind::Explicit, raw_length)?;
         Ok((state, ret))
-    }
-}
-
-/// Interpreter working on signed messages, validating their signature before sending
-/// the unsigned parts on for execution.
-pub struct SignedMessageInterpreter<MI> {
-    message_interpreter: MI,
-}
-
-pub enum SignedMesssageApplyRet {
-    InvalidSignature(String),
-    Applied(ApplyRet),
-}
-
-#[async_trait]
-impl<MI> Interpreter for SignedMessageInterpreter<MI>
-where
-    MI: Interpreter<Message = FvmMessage, Output = ApplyRet>,
-{
-    type Message = SignedMessage;
-    type Output = SignedMesssageApplyRet;
-    type State = MI::State;
-
-    async fn exec_msg(
-        &self,
-        state: Self::State,
-        msg: Self::Message,
-    ) -> anyhow::Result<(Self::State, Self::Output)> {
-        match msg.verify() {
-            Err(SignedMessageError::Ipld(e)) => Err(anyhow!(e)),
-            Err(SignedMessageError::InvalidSignature(s)) => {
-                Ok((state, SignedMesssageApplyRet::InvalidSignature(s)))
-            }
-            Ok(()) => {
-                let (state, ret) = self
-                    .message_interpreter
-                    .exec_msg(state, msg.message)
-                    .await?;
-
-                Ok((state, SignedMesssageApplyRet::Applied(ret)))
-            }
-        }
     }
 }

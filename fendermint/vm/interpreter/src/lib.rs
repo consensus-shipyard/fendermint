@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 
+pub mod chain;
 mod externs;
-pub mod vm;
+pub mod fvm;
+pub mod signed;
 
 /// Unix timestamp (in seconds) of the current block.
 pub struct Timestamp(pub u64);
@@ -52,7 +54,7 @@ pub trait Interpreter: Sync + Send {
     /// Only return an error case if something truly unexpected happens
     /// that should stop message processing altogether; otherwise use
     /// the output for signalling all execution results.
-    async fn exec_msg(
+    async fn exec(
         &self,
         state: Self::State,
         msg: Self::Message,
