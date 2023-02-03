@@ -175,12 +175,12 @@ where
         self.put_exec_state(state);
 
         // TODO: Map events from cron.
-        let () = self
+        let ret = self
             .modify_exec_state(|s| self.interpreter.begin(s))
             .await
             .expect("begin failed");
 
-        response::BeginBlock { events: Vec::new() }
+        to_begin_block(ret)
     }
 
     /// Apply a transaction to the application's state.
@@ -198,7 +198,7 @@ where
                         invalid_deliver_tx(AppError::InvalidSignature, d)
                     }
                     ChainMessageApplyRet::Signed(SignedMesssageApplyRet::Applied(ret)) => {
-                        valid_deliver_tx(ret)
+                        to_deliver_tx(ret)
                     }
                 }
             }
@@ -208,17 +208,12 @@ where
     /// Signals the end of a block.
     async fn end_block(&self, _request: request::EndBlock) -> response::EndBlock {
         // TODO: Return events from epoch transitions.
-        let () = self
+        let ret = self
             .modify_exec_state(|s| self.interpreter.end(s))
             .await
             .expect("end failed");
 
-        // TODO: Map the end.
-        response::EndBlock {
-            validator_updates: Vec::new(),
-            consensus_param_updates: None,
-            events: Vec::new(),
-        }
+        to_end_block(ret)
     }
 
     /// Commit the current state at the current height.
@@ -248,7 +243,7 @@ fn invalid_deliver_tx(err: AppError, description: String) -> response::DeliverTx
     }
 }
 
-fn valid_deliver_tx(ret: FvmApplyRet) -> response::DeliverTx {
+fn to_deliver_tx(ret: FvmApplyRet) -> response::DeliverTx {
     let code = if ret.msg_receipt.exit_code.is_success() {
         Code::Ok
     } else {
@@ -284,4 +279,22 @@ fn valid_deliver_tx(ret: FvmApplyRet) -> response::DeliverTx {
         events,
         codespace: Default::default(),
     }
+}
+
+/// Map the return values from epoch boundary operations to validator updates.
+///
+/// (Currently just a placeholder).
+fn to_end_block(_ret: ()) -> response::EndBlock {
+    response::EndBlock {
+        validator_updates: Vec::new(),
+        consensus_param_updates: None,
+        events: Vec::new(),
+    }
+}
+
+/// Map the return values from cron operations.
+///
+/// (Currently just a placeholder).
+fn to_begin_block(_ret: ()) -> response::BeginBlock {
+    response::BeginBlock { events: Vec::new() }
 }
