@@ -1,20 +1,33 @@
+use std::future::Future;
+use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use cid::Cid;
 use fendermint_abci::Application;
 use fendermint_vm_interpreter::chain::ChainMessageApplyRet;
-use fendermint_vm_interpreter::fvm::FvmState;
+use fendermint_vm_interpreter::fvm::{FvmApplyRet, FvmState};
+use fendermint_vm_interpreter::signed::SignedMesssageApplyRet;
 use fendermint_vm_interpreter::{Interpreter, Timestamp};
 use fendermint_vm_message::chain::ChainMessage;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::version::NetworkVersion;
-use tendermint::abci::{request, response};
+use tendermint::abci::{request, response, Code};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-struct State {
+// TODO: What range should we use for our own error codes? Shold we shift FVM errors?
+
+#[repr(u32)]
+enum AppError {
+    /// Failed to deserialize the transaction.
+    InvalidEncoding = 51,
+    /// Failed to validate the user signature.
+    InvalidSignature = 52,
+}
+
+struct AppState {
     block_height: u64,
     state_root: Cid,
     network_version: NetworkVersion,
@@ -23,7 +36,7 @@ struct State {
 }
 
 /// Handle ABCI requests.
-pub struct FendermintApp<DB, I>
+pub struct App<DB, I>
 where
     DB: Blockstore + 'static,
 {
@@ -33,7 +46,7 @@ where
     exec_state: Arc<Mutex<Option<FvmState<DB>>>>,
 }
 
-impl<DB, I> FendermintApp<DB, I>
+impl<DB, I> App<DB, I>
 where
     DB: Blockstore + 'static,
 {
@@ -46,12 +59,12 @@ where
     }
 }
 
-impl<DB, I> FendermintApp<DB, I>
+impl<DB, I> App<DB, I>
 where
     DB: Blockstore + 'static,
 {
     /// Get the last committed state.
-    fn committed_state(&self) -> State {
+    fn committed_state(&self) -> AppState {
         todo!("retrieve state from the DB")
     }
 
@@ -67,6 +80,18 @@ where
         let mut guard = self.exec_state.lock().expect("mutex poisoned");
         guard.take().expect("exec state empty")
     }
+
+    /// Take the execution state, update it, put it back, return the output.
+    async fn modify_exec_state<T, F, R>(&self, f: F) -> anyhow::Result<T>
+    where
+        F: FnOnce(FvmState<DB>) -> R,
+        R: Future<Output = anyhow::Result<(FvmState<DB>, T)>>,
+    {
+        let state = self.take_exec_state();
+        let (state, ret) = f(state).await?;
+        self.put_exec_state(state);
+        Ok(ret)
+    }
 }
 
 // NOTE: The `Application` interface doesn't allow failures at the moment. The protobuf
@@ -75,7 +100,7 @@ where
 // the `tower-abci` library would throw an exception because when it tried to convert
 // a `Response::Exception` into a `ConensusResponse` for example.
 #[async_trait]
-impl<DB, I> Application for FendermintApp<DB, I>
+impl<DB, I> Application for App<DB, I>
 where
     DB: Blockstore + Clone + Send + Sync + 'static,
     I: Interpreter<
@@ -142,16 +167,36 @@ where
         )
         .expect("error creating new state");
 
-        let (state, ()) = self.interpreter.begin(state).await.expect("begin failed");
-
         self.put_exec_state(state);
+
+        let () = self
+            .modify_exec_state(|s| self.interpreter.begin(s))
+            .await
+            .expect("begin failed");
 
         response::BeginBlock { events: Vec::new() }
     }
 
     /// Apply a transaction to the application's state.
     async fn deliver_tx(&self, request: request::DeliverTx) -> response::DeliverTx {
-        todo!()
+        match fvm_ipld_encoding::from_slice::<ChainMessage>(&request.tx) {
+            Err(e) => invalid_deliver_tx(AppError::InvalidEncoding, e.description),
+            Ok(msg) => {
+                let output = self
+                    .modify_exec_state(|s| self.interpreter.deliver(s, msg))
+                    .await
+                    .expect("deliver failed");
+
+                match output {
+                    ChainMessageApplyRet::Signed(SignedMesssageApplyRet::InvalidSignature(d)) => {
+                        invalid_deliver_tx(AppError::InvalidSignature, d)
+                    }
+                    ChainMessageApplyRet::Signed(SignedMesssageApplyRet::Applied(ret)) => {
+                        valid_deliver_tx(ret)
+                    }
+                }
+            }
+        }
     }
 
     /// Signals the end of a block.
@@ -162,5 +207,50 @@ where
     /// Commit the current state at the current height.
     async fn commit(&self) -> response::Commit {
         todo!()
+    }
+}
+
+/// Response to delivery where the input was blatantly invalid.
+/// This indicates that the validator who made the block was Byzantine.
+fn invalid_deliver_tx(err: AppError, description: String) -> response::DeliverTx {
+    response::DeliverTx {
+        code: Code::Err(NonZeroU32::try_from(err as u32).expect("error codes are non-zero")),
+        info: description,
+        ..Default::default()
+    }
+}
+
+fn valid_deliver_tx(ret: FvmApplyRet) -> response::DeliverTx {
+    let code = if ret.msg_receipt.exit_code.is_success() {
+        Code::Ok
+    } else {
+        Code::Err(
+            NonZeroU32::try_from(ret.msg_receipt.exit_code.value())
+                .expect("error codes are non-zero"),
+        )
+    };
+
+    // Based on the sanity check in the `DefaultExecutor`.
+    // gas_cost = gas_fee_cap * gas_limit
+    // &base_fee_burn + &over_estimation_burn + &refund + &miner_tip == gas_cost
+    // But that's in tokens, and there doesn't seem to be a way to see what the price was.
+    // TODO: Add the gas limit to the result.
+    let gas_wanted = 0;
+    let gas_used = ret.msg_receipt.gas_used;
+
+    let data = ret.msg_receipt.return_data.to_vec().into();
+
+    // TODO: Convert events.
+    let events = Vec::new();
+
+    response::DeliverTx {
+        code,
+        data,
+        log: Default::default(),
+        info: Default::default(),
+        gas_wanted,
+        gas_used,
+        events,
+        codespace: Default::default(),
     }
 }

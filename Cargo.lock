@@ -1362,6 +1362,7 @@ dependencies = [
 name = "fendermint_app"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "cid",
  "fendermint_abci",
@@ -1372,6 +1373,7 @@ dependencies = [
  "fvm",
  "fvm_ipld_blockstore",
  "fvm_ipld_car",
+ "fvm_ipld_encoding 0.3.3",
  "fvm_shared 3.0.0-alpha.17",
  "tempfile",
  "tendermint",

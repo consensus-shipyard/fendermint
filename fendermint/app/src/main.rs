@@ -15,7 +15,7 @@ async fn main() {
     let interpreter = SignedMessageInterpreter::new(interpreter);
     let interpreter = ChainMessageInterpreter::new(interpreter);
     let db = open_db();
-    let _app: app::FendermintApp<RocksDb, _> = app::FendermintApp::new(db, interpreter);
+    let _app: app::App<RocksDb, _> = app::App::new(db, interpreter);
 }
 
 fn open_db() -> Arc<RocksDb> {
