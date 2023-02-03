@@ -80,6 +80,7 @@ where
 }
 
 /// Interpreter working on already verified unsigned messages.
+#[derive(Clone)]
 pub struct FvmMessageInterpreter<DB> {
     _phantom_db: PhantomData<DB>,
 }

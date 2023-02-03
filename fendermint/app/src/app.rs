@@ -38,6 +38,7 @@ struct AppState {
 }
 
 /// Handle ABCI requests.
+#[derive(Clone)]
 pub struct App<DB, I>
 where
     DB: Blockstore + 'static,

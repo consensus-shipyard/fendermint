@@ -12,6 +12,7 @@ use crate::{
 
 /// Interpreter working on signed messages, validating their signature before sending
 /// the unsigned parts on for execution.
+#[derive(Clone)]
 pub struct SignedMessageInterpreter<I> {
     inner: I,
 }

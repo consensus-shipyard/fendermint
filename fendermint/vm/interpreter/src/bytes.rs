@@ -9,6 +9,7 @@ use crate::{chain::ChainMessageApplyRet, Interpreter};
 pub type BytesMessageApplyRet = Result<ChainMessageApplyRet, fvm_ipld_encoding::Error>;
 
 /// Interpreter working on raw bytes.
+#[derive(Clone)]
 pub struct BytesMessageInterpreter<I> {
     inner: I,
 }

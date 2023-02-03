@@ -8,6 +8,7 @@ use crate::{signed::SignedMesssageApplyRet, Interpreter};
 
 /// Interpreter working on chain messages; in the future it will schedule
 /// CID lookups to turn references into self-contained user or cross messages.
+#[derive(Clone)]
 pub struct ChainMessageInterpreter<I> {
     inner: I,
 }
