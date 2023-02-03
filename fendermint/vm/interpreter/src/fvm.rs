@@ -92,6 +92,12 @@ impl<DB> FvmMessageInterpreter<DB> {
     }
 }
 
+impl<DB> Default for FvmMessageInterpreter<DB> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl<DB> Interpreter for FvmMessageInterpreter<DB>
 where
