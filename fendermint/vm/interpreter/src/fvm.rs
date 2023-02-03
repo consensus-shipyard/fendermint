@@ -56,6 +56,17 @@ where
 
         Ok(Self { executor })
     }
+
+    /// Commit the state. It must not fail, but we're returning a result so that error
+    /// handling can be done in the application root.
+    ///
+    /// For now this is not part of the `Interpreter` because it's not clear what atomic
+    /// semantics we can hope to provide if the middlewares call each other: did it go
+    /// all the way down, or did it stop somewhere? Easier to have one commit of the state
+    /// as a whole.
+    pub fn commit(mut self) -> anyhow::Result<Cid> {
+        self.executor.flush()
+    }
 }
 
 /// Interpreter working on already verified unsigned messages.

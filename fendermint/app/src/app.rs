@@ -68,6 +68,11 @@ where
         todo!("retrieve state from the DB")
     }
 
+    /// Set the last committed state.
+    fn set_committed_state(&self, _state: AppState) {
+        todo!("write state to the DB")
+    }
+
     /// Put the execution state during block execution. Has to be empty.
     fn put_exec_state(&self, state: FvmState<DB>) {
         let mut guard = self.exec_state.lock().expect("mutex poisoned");
@@ -169,6 +174,7 @@ where
 
         self.put_exec_state(state);
 
+        // TODO: Map events from cron.
         let () = self
             .modify_exec_state(|s| self.interpreter.begin(s))
             .await
@@ -201,12 +207,34 @@ where
 
     /// Signals the end of a block.
     async fn end_block(&self, _request: request::EndBlock) -> response::EndBlock {
-        todo!()
+        // TODO: Return events from epoch transitions.
+        let () = self
+            .modify_exec_state(|s| self.interpreter.end(s))
+            .await
+            .expect("end failed");
+
+        // TODO: Map the end.
+        response::EndBlock {
+            validator_updates: Vec::new(),
+            consensus_param_updates: None,
+            events: Vec::new(),
+        }
     }
 
     /// Commit the current state at the current height.
     async fn commit(&self) -> response::Commit {
-        todo!()
+        let exec_state = self.take_exec_state();
+        let state_root = exec_state.commit().expect("failed to commit FVM");
+
+        let mut state = self.committed_state();
+        state.state_root = state_root;
+        self.set_committed_state(state);
+
+        response::Commit {
+            data: state_root.to_bytes().into(),
+            // We have to retain blocks until we can support Snapshots.
+            retain_height: Default::default(),
+        }
     }
 }
 
@@ -240,7 +268,10 @@ fn valid_deliver_tx(ret: FvmApplyRet) -> response::DeliverTx {
 
     let data = ret.msg_receipt.return_data.to_vec().into();
 
-    // TODO: Convert events.
+    // TODO: Convert events. This is currently not possible because the event fields are private.
+    // I changed that in https://github.com/filecoin-project/ref-fvm/pull/1507 but it's still in review.
+    // A possible workaround would be to retrieve the events by their CID, and use a custom type to parse.
+    // It will be part of https://github.com/filecoin-project/ref-fvm/pull/1635 :)
     let events = Vec::new();
 
     response::DeliverTx {
