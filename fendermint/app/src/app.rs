@@ -5,7 +5,7 @@ use cid::Cid;
 use fendermint_abci::Application;
 use fendermint_vm_interpreter::chain::ChainMessageApplyRet;
 use fendermint_vm_interpreter::fvm::FvmState;
-use fendermint_vm_interpreter::{Interpreter, Timestamp};
+use fendermint_vm_interpreter::{Deliverer, Timestamp};
 use fendermint_vm_message::chain::ChainMessage;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::econ::TokenAmount;
@@ -23,17 +23,17 @@ struct State {
 }
 
 /// Handle ABCI requests.
-pub struct FendermintApp<DB, EI>
+pub struct FendermintApp<DB, I>
 where
     DB: Blockstore + 'static,
 {
     db: Arc<DB>,
-    exec_interpreter: Arc<EI>,
+    interpreter: Arc<I>,
     /// State accumulating changes during block execution.
     exec_state: Arc<Mutex<Option<FvmState<DB>>>>,
 }
 
-impl<DB, EI> FendermintApp<DB, EI>
+impl<DB, I> FendermintApp<DB, I>
 where
     DB: Blockstore + 'static,
 {
@@ -44,10 +44,10 @@ where
 }
 
 #[async_trait]
-impl<DB, EI> Application for FendermintApp<DB, EI>
+impl<DB, I> Application for FendermintApp<DB, I>
 where
     DB: Blockstore + Clone + Send + Sync + 'static,
-    EI: Interpreter<State = FvmState<DB>, Message = ChainMessage, Output = ChainMessageApplyRet>,
+    I: Deliverer<State = FvmState<DB>, Message = ChainMessage, Output = ChainMessageApplyRet>,
 {
     /// Provide information about the ABCI application.
     async fn info(&self, _request: request::Info) -> response::Info {

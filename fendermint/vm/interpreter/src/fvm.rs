@@ -13,7 +13,7 @@ use fvm::{
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, version::NetworkVersion};
 
-use crate::{externs::FendermintExterns, Interpreter, Timestamp};
+use crate::{externs::FendermintExterns, Deliverer, Timestamp};
 
 pub type FvmMessage = fvm_shared::message::Message;
 
@@ -58,12 +58,12 @@ where
 }
 
 /// Interpreter working on already verified unsigned messages.
-pub struct FvmMessageInterpreter<DB> {
+pub struct FvmMessageDeliverer<DB> {
     _phantom_db: PhantomData<DB>,
 }
 
 #[async_trait]
-impl<DB> Interpreter for FvmMessageInterpreter<DB>
+impl<DB> Deliverer for FvmMessageDeliverer<DB>
 where
     DB: Blockstore + 'static + Send + Sync,
 {
@@ -71,7 +71,7 @@ where
     type State = FvmState<DB>;
     type Output = ApplyRet;
 
-    async fn exec(
+    async fn deliver(
         &self,
         mut state: Self::State,
         msg: Self::Message,

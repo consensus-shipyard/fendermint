@@ -40,7 +40,7 @@ pub struct Timestamp(pub u64);
 /// signalling unexpected problems there's no recovering from and
 /// that should stop the block processing altogether.
 #[async_trait]
-pub trait Interpreter: Sync + Send {
+pub trait Deliverer: Sync + Send {
     type State: Send;
     type Message: Send;
     type Output;
@@ -54,7 +54,7 @@ pub trait Interpreter: Sync + Send {
     /// Only return an error case if something truly unexpected happens
     /// that should stop message processing altogether; otherwise use
     /// the output for signalling all execution results.
-    async fn exec(
+    async fn deliver(
         &self,
         state: Self::State,
         msg: Self::Message,

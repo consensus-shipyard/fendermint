@@ -4,11 +4,11 @@ use async_trait::async_trait;
 use fendermint_vm_message::signed::{SignedMessage, SignedMessageError};
 use fvm::executor::ApplyRet;
 
-use crate::{fvm::FvmMessage, Interpreter};
+use crate::{fvm::FvmMessage, Deliverer};
 
 /// Interpreter working on signed messages, validating their signature before sending
 /// the unsigned parts on for execution.
-pub struct SignedMessageInterpreter<I> {
+pub struct SignedMessageDeliverer<I> {
     inner: I,
 }
 
@@ -18,15 +18,15 @@ pub enum SignedMesssageApplyRet {
 }
 
 #[async_trait]
-impl<I> Interpreter for SignedMessageInterpreter<I>
+impl<I> Deliverer for SignedMessageDeliverer<I>
 where
-    I: Interpreter<Message = FvmMessage, Output = ApplyRet>,
+    I: Deliverer<Message = FvmMessage, Output = ApplyRet>,
 {
     type Message = SignedMessage;
     type Output = SignedMesssageApplyRet;
     type State = I::State;
 
-    async fn exec(
+    async fn deliver(
         &self,
         state: Self::State,
         msg: Self::Message,
@@ -38,7 +38,7 @@ where
                 Ok((state, SignedMesssageApplyRet::InvalidSignature(s)))
             }
             Ok(()) => {
-                let (state, ret) = self.inner.exec(state, msg.message).await?;
+                let (state, ret) = self.inner.deliver(state, msg.message).await?;
 
                 Ok((state, SignedMesssageApplyRet::Applied(ret)))
             }
