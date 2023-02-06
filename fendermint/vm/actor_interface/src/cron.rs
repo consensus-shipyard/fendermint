@@ -1,7 +1,6 @@
-use fvm_shared::{ActorID, METHOD_CONSTRUCTOR};
+use fvm_shared::METHOD_CONSTRUCTOR;
 
-/// Cron actor address.
-pub const CRON_ACTOR_ID: ActorID = 3;
+define_singleton!(CRON_ACTOR = 3);
 
 /// Cron actor methods available
 #[repr(u64)]
