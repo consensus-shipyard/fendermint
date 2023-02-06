@@ -1,3 +1,5 @@
+// Copyright 2022-2023 Protocol Labs
+// SPDX-License-Identifier: Apache-2.0, MIT
 //! The modules in this crate a thin interfaces to builtin-actors,
 //! so that the rest of the system doesn't have to copy-paste things
 //! such as actor IDs, method numbers, method parameter data types.

@@ -302,7 +302,5 @@ fn to_events(_stamped_events: Vec<StampedEvent>) -> Vec<Event> {
     // I changed that in https://github.com/filecoin-project/ref-fvm/pull/1507 but it's still in review.
     // A possible workaround would be to retrieve the events by their CID, and use a custom type to parse.
     // It will be part of https://github.com/filecoin-project/ref-fvm/pull/1635 :)
-    let events = Vec::new();
-
-    events
+    Vec::new()
 }
