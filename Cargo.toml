@@ -30,8 +30,7 @@ fvm_ipld_car = "0.6"
 
 # The following are on crates.io but as pre-releases.
 fvm = { version = "3.0.0-alpha.22", default-features = false } # no opencl or it fails on CI
-# Couldn't update to alpha.18 becuase 17 is prescribed by the builtin actors at the moment.
-fvm_shared = "3.0.0-alpha.17"
+fvm_shared = "3.0.0-alpha.18"
 
 # Tendermint dependencies are forked because we are building against 0.37 release candidates.
 tower-abci = { git = "https://github.com/consensus-shipyard/tower-abci.git", branch = "tendermint-v0.37" }
