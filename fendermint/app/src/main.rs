@@ -41,7 +41,7 @@ mod tests {
         // Not loading the actors from the library any more. It would be possible, as long as dependencies are aligned.
         // let bundle_car = actors_v10::BUNDLE_CAR;
 
-        let bundle_path = std::env::var("BUILTIN_ACTOR_BUNDLE")
+        let bundle_path = std::env::var("BUILTIN_ACTORS_BUNDLE")
             .unwrap_or("../../../builtin-actors/output/bundle.car".to_owned());
 
         let bundle_car = std::fs::read(&bundle_path)
