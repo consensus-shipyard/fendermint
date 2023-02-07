@@ -295,7 +295,7 @@ where
     };
 
     let ok = apply_model(&data1, &data2) || apply_model(&data2, &data1);
-    tx.prepare_and_commit();
+    drop(tx);
     ok
 }
 
@@ -351,7 +351,7 @@ where
     }
 
     // Finish the reads and start another read transaction. Now the writes should be visible.
-    txr.prepare_and_commit();
+    drop(txr);
     txr = sut.read();
 
     for (ns, op) in &gets {

@@ -102,8 +102,10 @@ pub trait KVTransactionPrepared {
 }
 
 /// Interface for stores that support read-only transactions.
+///
+/// Any resources held by the read transaction should be released when it's dropped.
 pub trait KVReadable<S: KVStore> {
-    type Tx<'a>: KVRead<S> + KVTransaction
+    type Tx<'a>: KVRead<S>
     where
         Self: 'a;
 
