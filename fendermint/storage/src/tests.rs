@@ -409,6 +409,8 @@ where
 
 #[cfg(feature = "inmem")]
 mod im {
+    use std::borrow::Cow;
+
     use crate::{im::InMemoryBackend, Codec, Decode, Encode, KVError, KVResult, KVStore};
     use quickcheck_macros::quickcheck;
     use serde::{de::DeserializeOwned, Serialize};
@@ -424,8 +426,10 @@ mod im {
     }
 
     impl<T: Serialize> Encode<T> for TestKVStore {
-        fn to_repr(value: &T) -> KVResult<Self::Repr> {
-            fvm_ipld_encoding::to_vec(value).map_err(|e| KVError::Codec(Box::new(e)))
+        fn to_repr(value: &T) -> KVResult<Cow<Self::Repr>> {
+            fvm_ipld_encoding::to_vec(value)
+                .map_err(|e| KVError::Codec(Box::new(e)))
+                .map(Cow::Owned)
         }
     }
     impl<T: DeserializeOwned> Decode<T> for TestKVStore {

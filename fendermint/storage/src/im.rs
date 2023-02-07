@@ -189,7 +189,7 @@ where
         let mut m = self.data.get(ns).cloned().unwrap_or_default();
         let kr = S::to_repr(k)?;
         let vr = S::to_repr(v)?;
-        m.insert(kr, Arc::new(vr));
+        m.insert(kr.into_owned(), Arc::new(vr.into_owned()));
         self.data.insert(ns.clone(), m);
         Ok(())
     }

@@ -1,6 +1,6 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
-// For benchmarks.
+use std::borrow::Cow;
 use std::error::Error;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -39,7 +39,7 @@ pub trait Encode<T>
 where
     Self: KVStore,
 {
-    fn to_repr(value: &T) -> KVResult<Self::Repr>;
+    fn to_repr(value: &T) -> KVResult<Cow<Self::Repr>>;
 }
 
 /// Decode data from binary with a serialization scheme.
