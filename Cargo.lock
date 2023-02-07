@@ -1201,6 +1201,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fendermint_storage"
+version = "0.1.0"
+dependencies = [
+ "im",
+]
+
+[[package]]
 name = "fendermint_testing"
 version = "0.1.0"
 dependencies = [
