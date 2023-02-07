@@ -4,9 +4,9 @@ use std::hash::Hash;
 use std::io::Error as IoError;
 use std::marker::PhantomData;
 
-// /// In-memory KV store backend.
-// #[cfg(feature = "inmem")]
-// pub mod im;
+/// In-memory KV store backend.
+#[cfg(feature = "inmem")]
+pub mod im;
 
 /// Possible errors during key-value operations.
 #[derive(Debug)]
