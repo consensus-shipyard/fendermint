@@ -1,3 +1,5 @@
+// Copyright 2022-2023 Protocol Labs
+// SPDX-License-Identifier: Apache-2.0, MIT
 // For benchmarks.
 use std::error::Error;
 use std::hash::Hash;

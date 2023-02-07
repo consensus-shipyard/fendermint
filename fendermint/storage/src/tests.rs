@@ -1,3 +1,5 @@
+// Copyright 2022-2023 Protocol Labs
+// SPDX-License-Identifier: Apache-2.0, MIT
 use crate::{Codec, KVCollection, KVRead, KVReadable, KVStore, KVTransaction, KVWritable, KVWrite};
 use quickcheck::{Arbitrary, Gen};
 use std::collections::HashMap;
