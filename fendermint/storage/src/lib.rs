@@ -1,7 +1,6 @@
 // For benchmarks.
 use std::error::Error;
 use std::hash::Hash;
-use std::io::Error as IoError;
 use std::marker::PhantomData;
 
 /// In-memory KV store backend.
@@ -14,7 +13,7 @@ pub enum KVError {
     /// KV transaction was aborted due to some business rule violation.
     Abort(Box<dyn Error + Send + Sync>),
     /// An error occurred during serializing or deserializing the data.
-    Codec(IoError),
+    Codec(Box<dyn Error + Send + Sync>),
     /// Some unexpected error occurred in the underlying implementation,
     /// e.g. some IO error with a database.
     Unexpected(Box<dyn Error + Send + Sync>),
@@ -48,6 +47,11 @@ where
 {
     fn from_repr(repr: &Self::Repr) -> KVResult<T>;
 }
+
+/// Encode and decode data.
+///
+/// Ideally this would be just a trait alias, but that's an unstable feature.
+pub trait Codec<T>: Encode<T> + Decode<T> {}
 
 /// Operations available on a read transaction.
 pub trait KVRead<S: KVStore> {
@@ -148,5 +152,5 @@ where
     }
 }
 
-// #[cfg(test)]
-// mod test;
+#[cfg(test)]
+mod tests;
