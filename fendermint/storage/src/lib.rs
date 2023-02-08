@@ -79,26 +79,30 @@ pub trait KVTransaction {
     type Prepared: KVTransactionPrepared;
     /// Prepare to commit the transaction. This gives us a chance to do
     /// Optimistic Concurrency Control, to only take out locks during commit.
-    fn prepare(self) -> Option<Self::Prepared>;
+    fn prepare(self) -> KVResult<Option<Self::Prepared>>;
 
     /// Abandon the changes of the transaction.
-    fn rollback(self);
+    fn rollback(self) -> KVResult<()>;
 
     /// Convenience method to prepare and commit.
     ///
     /// Returns a flag indicating whether the commit successful.
-    fn prepare_and_commit(self) -> bool
+    fn prepare_and_commit(self) -> KVResult<bool>
     where
         Self: Sized,
     {
-        self.prepare().map(|tx| tx.commit()).is_some()
+        if let Some(prepared) = self.prepare()? {
+            prepared.commit()?;
+            return Ok(true);
+        }
+        Ok(false)
     }
 }
 
 /// Transaction in a state when it's ready to be committed.
 pub trait KVTransactionPrepared {
-    fn commit(self);
-    fn rollback(self);
+    fn commit(self) -> KVResult<()>;
+    fn rollback(self) -> KVResult<()>;
 }
 
 /// Interface for stores that support read-only transactions.

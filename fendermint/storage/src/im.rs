@@ -119,38 +119,27 @@ impl<'a, S: KVStore> KVTransaction for Transaction<'a, S, Write> {
     // An exclusive lock has already been taken.
     type Prepared = Self;
 
-    fn prepare(self) -> Option<Self> {
-        Some(self)
+    fn prepare(self) -> KVResult<Option<Self>> {
+        Ok(Some(self))
     }
 
-    fn rollback(mut self) {
+    fn rollback(mut self) -> KVResult<()> {
         mem::take(&mut self.token);
+        Ok(())
     }
 }
 
 impl<'a, S: KVStore> KVTransactionPrepared for Transaction<'a, S, Write> {
-    fn commit(mut self) {
+    fn commit(mut self) -> KVResult<()> {
         let mut guard = self.backend.data.lock().unwrap();
         *guard = mem::take(&mut self.data);
         mem::take(&mut self.token);
+        Ok(())
     }
 
-    fn rollback(self) {
+    fn rollback(self) -> KVResult<()> {
         KVTransaction::rollback(self)
     }
-}
-
-impl<'a, S: KVStore> KVTransaction for Transaction<'a, S, Read> {
-    type Prepared = Self;
-    fn prepare(self) -> Option<Self> {
-        Some(self)
-    }
-    fn rollback(self) {}
-}
-
-impl<'a, S: KVStore> KVTransactionPrepared for Transaction<'a, S, Read> {
-    fn commit(self) {}
-    fn rollback(self) {}
 }
 
 impl<'a, S: KVStore, M> Drop for Transaction<'a, S, M> {

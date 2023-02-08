@@ -163,12 +163,12 @@ where
             TestOpNs::Rollback => {
                 //println!("ROLLBACK");
                 model = Model::default();
-                tx.rollback();
+                tx.rollback().unwrap();
                 tx = sut.write();
             }
         }
     }
-    tx.rollback();
+    tx.rollback().unwrap();
     ok
 }
 
@@ -205,8 +205,8 @@ where
             TestOpNs::Rollback => {}
         }
     }
-    tx1.rollback();
-    tx2.rollback();
+    tx1.rollback().unwrap();
+    tx2.rollback().unwrap();
     ok
 }
 
@@ -240,7 +240,7 @@ where
                 _ => (),
             }
         }
-        tx.prepare_and_commit();
+        tx.prepare_and_commit().unwrap();
     };
 
     let sutc = sut.clone();
@@ -335,7 +335,7 @@ where
     }
 
     // Commit the writes, but they should still not be visible to the reads that started earlier.
-    txw.prepare_and_commit();
+    txw.prepare_and_commit().unwrap();
 
     for (ns, op) in &gets {
         let coll = colls.s2i(ns);
