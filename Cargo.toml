@@ -1,5 +1,5 @@
 [workspace]
-members = ["fendermint/abci", "fendermint/app", "fendermint/storage", "fendermint/testing", "fendermint/vm/*"]
+members = ["fendermint/abci", "fendermint/app", "fendermint/rocksdb", "fendermint/storage", "fendermint/testing", "fendermint/vm/*"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -37,3 +37,7 @@ fvm_shared = "3.0.0-alpha.18"
 # Tendermint dependencies are forked because we are building against 0.37 release candidates.
 tower-abci = { git = "https://github.com/consensus-shipyard/tower-abci.git", branch = "tendermint-v0.37" }
 tendermint = { git = "https://github.com/aakoshh/tendermint-rs.git", branch = "mikhail/multi-tc-version-support" }
+
+# The current 0.2.0 version of forest_db is not published to crates.io.
+# Using the `tag` of the `forest` repo rather than the `version` of just `forest_db` so we don't get a random commit in `main`.
+forest_db = { git = "https://github.com/ChainSafe/forest.git", tag = "v0.6.0", features = ["rocksdb"] }
