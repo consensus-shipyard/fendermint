@@ -89,4 +89,17 @@ impl RocksDb {
     pub fn flush(&self) -> Result<(), Error> {
         self.db.flush().map_err(|e| Error::Other(e.to_string()))
     }
+
+    /// Create a new column family, using the default options.
+    ///
+    /// Returns error if it already exists.
+    pub fn new_cf_handle<'a>(&self, name: &'a str) -> Result<&'a str, Error> {
+        if self.db.cf_handle(name).is_some() {
+            return Err(Error::Other(format!(
+                "column family '{name}' already exists"
+            )));
+        }
+        self.db.create_cf(name, &self.options)?;
+        Ok(name)
+    }
 }

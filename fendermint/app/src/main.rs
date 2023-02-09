@@ -9,8 +9,6 @@ use fendermint_vm_interpreter::{
     signed::SignedMessageInterpreter,
 };
 
-const APP_NAMESPACE: &'static str = "app";
-
 #[tokio::main]
 async fn main() {
     let interpreter = FvmMessageInterpreter::<RocksDb>::new();
@@ -19,7 +17,8 @@ async fn main() {
     let interpreter = BytesMessageInterpreter::new(interpreter);
 
     let db = open_db();
-    let app = app::App::<_, AppStore<&'static str>, _>::new(db, APP_NAMESPACE, interpreter);
+    let ns = db.new_cf_handle("app").unwrap();
+    let app = app::App::<_, AppStore, _>::new(db, ns, interpreter);
     let _service = ApplicationService(app);
 }
 
