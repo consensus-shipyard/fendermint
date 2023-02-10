@@ -8,7 +8,8 @@ use std::{
 };
 
 use crate::{
-    Decode, Encode, KVRead, KVReadable, KVResult, KVStore, KVTransaction, KVWritable, KVWrite,
+    Decode, Encode, KVRead, KVReadable, KVResult, KVStore, KVTransaction, KVTransactionPrepared,
+    KVWritable, KVWrite,
 };
 
 /// Read-only mode.
@@ -116,6 +117,19 @@ pub struct Transaction<'a, S: KVStore, M> {
 
 impl<'a, S: KVStore> KVTransaction for Transaction<'a, S, Write> {
     // An exclusive lock has already been taken.
+    type Prepared = Self;
+
+    fn prepare(self) -> KVResult<Option<Self>> {
+        Ok(Some(self))
+    }
+
+    fn rollback(mut self) -> KVResult<()> {
+        mem::take(&mut self.token);
+        Ok(())
+    }
+}
+
+impl<'a, S: KVStore> KVTransactionPrepared for Transaction<'a, S, Write> {
     fn commit(mut self) -> KVResult<()> {
         let mut guard = self.backend.data.lock().unwrap();
         *guard = mem::take(&mut self.data);
@@ -123,9 +137,8 @@ impl<'a, S: KVStore> KVTransaction for Transaction<'a, S, Write> {
         Ok(())
     }
 
-    fn rollback(mut self) -> KVResult<()> {
-        mem::take(&mut self.token);
-        Ok(())
+    fn rollback(self) -> KVResult<()> {
+        KVTransaction::rollback(self)
     }
 }
 

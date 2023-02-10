@@ -240,7 +240,7 @@ where
                 _ => (),
             }
         }
-        tx.commit().unwrap();
+        tx.prepare_and_commit().unwrap();
     };
 
     let sutc = sut.clone();
@@ -335,7 +335,7 @@ where
     }
 
     // Commit the writes, but they should still not be visible to the reads that started earlier.
-    txw.commit().unwrap();
+    txw.prepare_and_commit().unwrap();
 
     for (ns, op) in &gets {
         let coll = colls.s2i(ns);
