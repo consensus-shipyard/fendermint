@@ -1,6 +1,8 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
-use crate::{Codec, KVCollection, KVRead, KVReadable, KVStore, KVTransaction, KVWritable, KVWrite};
+use crate::{
+    Codec, KVCollection, KVError, KVRead, KVReadable, KVStore, KVTransaction, KVWritable, KVWrite,
+};
 use quickcheck::{Arbitrary, Gen};
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -10,6 +12,11 @@ use std::thread;
 /// We'll see how this works out. We would have to wrap any KVStore
 /// with something that can handle strings as namespaces.
 pub type TestNamespace = &'static str;
+
+/// Return all namespaces used by the tests, so they can be pre-allocated, if necessary.
+pub fn test_namespaces() -> &'static [&'static str] {
+    ["foo", "bar", "fizz", "buzz", "spam", "eggs"].as_slice()
+}
 
 /// Test operations on some collections with known types,
 /// so we can have the simplest possible model implementation.
@@ -38,8 +45,8 @@ impl Arbitrary for TestOpNs {
     fn arbitrary(g: &mut Gen) -> Self {
         use TestOpKV::*;
         use TestOpNs::*;
-        match u8::arbitrary(g) % 100 {
-            i if i < 49 => {
+        match u8::arbitrary(g) % 10 {
+            i if i < 4 => {
                 let ns = g.choose(&["spam", "eggs"]).unwrap();
                 let k = *g.choose(&["foo", "bar"]).unwrap();
                 match u8::arbitrary(g) % 10 {
@@ -48,7 +55,7 @@ impl Arbitrary for TestOpNs {
                     _ => S2I(ns, Del(k.to_owned())),
                 }
             }
-            i if i < 98 => {
+            i if i < 9 => {
                 let ns = g.choose(&["fizz", "buzz"]).unwrap();
                 let k = u8::arbitrary(g) % 2;
                 match u8::arbitrary(g) % 10 {
@@ -229,18 +236,26 @@ where
     S: KVStore<Namespace = TestNamespace> + Clone + Codec<String> + Codec<u8>,
     B: KVWritable<S> + KVReadable<S> + Clone + Send + 'static,
 {
-    let apply_sut = |sut: &B, data: &TestData| {
+    // Tests can now fail during writes because they realise some other transaction has already committed.
+    let try_apply_sut = |sut: &B, data: &TestData| -> Result<(), KVError> {
         let mut tx = sut.write();
         for op in data.ops.iter() {
             match op {
-                TestOpNs::S2I(ns, TestOpKV::Put(k, v)) => tx.put(ns, k, v).unwrap(),
-                TestOpNs::S2I(ns, TestOpKV::Del(k)) => tx.delete(ns, k).unwrap(),
-                TestOpNs::I2S(ns, TestOpKV::Put(k, v)) => tx.put(ns, k, v).unwrap(),
-                TestOpNs::I2S(ns, TestOpKV::Del(k)) => tx.delete(ns, k).unwrap(),
+                TestOpNs::S2I(ns, TestOpKV::Put(k, v)) => tx.put(ns, k, v)?,
+                TestOpNs::S2I(ns, TestOpKV::Del(k)) => tx.delete(ns, k)?,
+                TestOpNs::I2S(ns, TestOpKV::Put(k, v)) => tx.put(ns, k, v)?,
+                TestOpNs::I2S(ns, TestOpKV::Del(k)) => tx.delete(ns, k)?,
                 _ => (),
             }
         }
-        tx.commit().unwrap();
+        tx.commit()
+    };
+
+    // Try to apply once, if it fails due to conflict, retry, otherwise panic.
+    let apply_sut = move |sut: &B, data: &TestData| match try_apply_sut(sut, data) {
+        Err(KVError::Conflict) => try_apply_sut(sut, data).unwrap(),
+        Err(other) => panic!("error applying test data: {other:?}"),
+        Ok(()) => (),
     };
 
     let sutc = sut.clone();

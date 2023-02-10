@@ -183,7 +183,7 @@ where
     }
 }
 
-#[cfg(all(feature = "inmem", feature = "testing", test))]
+#[cfg(all(feature = "inmem", test))]
 mod tests {
     use std::borrow::Cow;
 

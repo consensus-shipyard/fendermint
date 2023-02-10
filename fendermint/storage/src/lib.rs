@@ -12,7 +12,7 @@ pub mod im;
 /// Common test utilities.
 #[cfg(feature = "testing")]
 #[allow(dead_code)]
-mod testing;
+pub mod testing;
 
 /// Possible errors during key-value operations.
 #[derive(Debug)]
