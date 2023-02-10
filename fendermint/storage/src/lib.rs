@@ -78,33 +78,14 @@ pub trait KVWrite<S: KVStore>: KVRead<S> {
 /// Transaction running on a KV store, ending with a commit or a rollback.
 /// This mimics the `Aux` interface in the STM module.
 pub trait KVTransaction {
-    type Prepared: KVTransactionPrepared;
-    /// Prepare to commit the transaction. This gives us a chance to do
-    /// Optimistic Concurrency Control, to only take out locks during commit.
-    fn prepare(self) -> KVResult<Option<Self::Prepared>>;
-
     /// Abandon the changes of the transaction.
     fn rollback(self) -> KVResult<()>;
 
-    /// Convenience method to prepare and commit.
+    /// Check for write conflicts, then commit the changes.
     ///
-    /// Returns a flag indicating whether the commit successful.
-    fn prepare_and_commit(self) -> KVResult<bool>
-    where
-        Self: Sized,
-    {
-        if let Some(prepared) = self.prepare()? {
-            prepared.commit()?;
-            return Ok(true);
-        }
-        Ok(false)
-    }
-}
-
-/// Transaction in a state when it's ready to be committed.
-pub trait KVTransactionPrepared {
+    /// Returns `KVError::Conflict` if the commit failed due to some keys
+    /// having changed during the transaction.
     fn commit(self) -> KVResult<()>;
-    fn rollback(self) -> KVResult<()>;
 }
 
 /// Interface for stores that support read-only transactions.
