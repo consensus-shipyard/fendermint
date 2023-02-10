@@ -12,33 +12,30 @@ use fendermint_storage::{KVError, KVRead, KVReadable, KVStore};
 use rocksdb::BoundColumnFamily;
 use rocksdb::ErrorKind;
 use rocksdb::OptimisticTransactionDB;
+use rocksdb::SnapshotWithThreadMode;
 use rocksdb::Transaction;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
 use std::thread;
 
 use crate::RocksDb;
 
-/// Marker for read-only mode.
-pub struct Read;
-/// Marker for read-write mode.
-pub struct Write;
-
-pub struct RocksDbTx<'a, M> {
+/// Cache column families to avoid further cloning on each access.
+struct ColumnFamilyCache<'a> {
     db: &'a OptimisticTransactionDB,
-    tx: ManuallyDrop<Transaction<'a, OptimisticTransactionDB>>,
-    /// Cache column families to avoid further cloning on each access.
     cfs: RefCell<BTreeMap<String, Arc<BoundColumnFamily<'a>>>>,
-    /// Indicate read-only or read-write mode.
-    _mode: PhantomData<M>,
-    /// Flag to support sanity checking in `Drop`.
-    read_only: bool,
 }
 
-impl<'a, M> RocksDbTx<'a, M> {
+impl<'a> ColumnFamilyCache<'a> {
+    fn new(db: &'a OptimisticTransactionDB) -> Self {
+        Self {
+            db,
+            cfs: Default::default(),
+        }
+    }
+
     /// Look up a column family and pass it to a closure.
     /// Return an error if it doesn't exist.
     fn with_cf_handle<F, T>(&self, name: &str, f: F) -> KVResult<T>
@@ -64,23 +61,32 @@ impl<'a, M> RocksDbTx<'a, M> {
     }
 }
 
+/// For reads, we can just take a snapshot of the DB.
+pub struct RocksDbReadTx<'a> {
+    cache: ColumnFamilyCache<'a>,
+    snapshot: SnapshotWithThreadMode<'a, OptimisticTransactionDB>,
+}
+
+/// For writes, we use a transaction which we'll either commit or roll back at the end.
+pub struct RocksDbWriteTx<'a> {
+    cache: ColumnFamilyCache<'a>,
+    tx: ManuallyDrop<Transaction<'a, OptimisticTransactionDB>>,
+}
+
 impl<S> KVReadable<S> for RocksDb
 where
     S: KVStore<Repr = Vec<u8>>,
     S::Namespace: AsRef<str>,
 {
-    type Tx<'a> = RocksDbTx<'a, Read>
+    type Tx<'a> = RocksDbReadTx<'a>
     where
         Self: 'a;
 
     fn read(&self) -> Self::Tx<'_> {
-        let tx = self.db.transaction();
-        RocksDbTx {
-            db: self.db.as_ref(),
-            tx: ManuallyDrop::new(tx),
-            cfs: Default::default(),
-            read_only: true,
-            _mode: PhantomData,
+        let snapshot = self.db.snapshot();
+        RocksDbReadTx {
+            cache: ColumnFamilyCache::new(&self.db),
+            snapshot,
         }
     }
 }
@@ -90,23 +96,19 @@ where
     S: KVStore<Repr = Vec<u8>>,
     S::Namespace: AsRef<str>,
 {
-    type Tx<'a> = RocksDbTx<'a, Write>
+    type Tx<'a> = RocksDbWriteTx<'a>
     where
         Self: 'a;
 
     fn write(&self) -> Self::Tx<'_> {
-        let tx = self.db.transaction();
-        RocksDbTx {
-            db: self.db.as_ref(),
-            tx: ManuallyDrop::new(tx),
-            cfs: Default::default(),
-            read_only: false,
-            _mode: PhantomData,
+        RocksDbWriteTx {
+            cache: ColumnFamilyCache::new(&self.db),
+            tx: ManuallyDrop::new(self.db.transaction()),
         }
     }
 }
 
-impl<'a, S, M> KVRead<S> for RocksDbTx<'a, M>
+impl<'a, S> KVRead<S> for RocksDbReadTx<'a>
 where
     S: KVStore<Repr = Vec<u8>>,
     S::Namespace: AsRef<str>,
@@ -115,7 +117,29 @@ where
     where
         S: Encode<K> + Decode<V>,
     {
-        self.with_cf_handle(ns.as_ref(), |cf| {
+        self.cache.with_cf_handle(ns.as_ref(), |cf| {
+            let key = S::to_repr(k)?;
+
+            let res = self.snapshot.get_cf(cf, key.as_ref()).map_err(unexpected)?;
+
+            match res {
+                Some(bz) => Ok(Some(S::from_repr(&bz)?)),
+                None => Ok(None),
+            }
+        })
+    }
+}
+
+impl<'a, S> KVRead<S> for RocksDbWriteTx<'a>
+where
+    S: KVStore<Repr = Vec<u8>>,
+    S::Namespace: AsRef<str>,
+{
+    fn get<K, V>(&self, ns: &S::Namespace, k: &K) -> KVResult<Option<V>>
+    where
+        S: Encode<K> + Decode<V>,
+    {
+        self.cache.with_cf_handle(ns.as_ref(), |cf| {
             let key = S::to_repr(k)?;
 
             let res = self.tx.get_cf(cf, key.as_ref()).map_err(unexpected)?;
@@ -128,7 +152,7 @@ where
     }
 }
 
-impl<'a, S> KVWrite<S> for RocksDbTx<'a, Write>
+impl<'a, S> KVWrite<S> for RocksDbWriteTx<'a>
 where
     S: KVStore<Repr = Vec<u8>>,
     S::Namespace: AsRef<str>,
@@ -137,7 +161,7 @@ where
     where
         S: Encode<K> + Encode<V>,
     {
-        self.with_cf_handle(ns.as_ref(), |cf| {
+        self.cache.with_cf_handle(ns.as_ref(), |cf| {
             let k = S::to_repr(k)?;
             let v = S::to_repr(v)?;
 
@@ -153,7 +177,7 @@ where
     where
         S: Encode<K>,
     {
-        self.with_cf_handle(ns.as_ref(), |cf| {
+        self.cache.with_cf_handle(ns.as_ref(), |cf| {
             let k = S::to_repr(k)?;
 
             self.tx.delete_cf(cf, k.as_ref()).map_err(unexpected)?;
@@ -163,7 +187,7 @@ where
     }
 }
 
-impl<'a> KVTransaction for RocksDbTx<'a, Write> {
+impl<'a> KVTransaction for RocksDbWriteTx<'a> {
     type Prepared = Self;
 
     fn prepare(self) -> KVResult<Option<Self::Prepared>> {
@@ -171,7 +195,7 @@ impl<'a> KVTransaction for RocksDbTx<'a, Write> {
         // But it's not clear if any write conflicts will be detected here, or only during commit time.
         // If this is a misunderstanding, then this library would be unable to work the way STM assumes,
         // and we can just go back to work with `TransactionDB` which locks column families being updated.
-        // Or we can just forget `prepare`, and try to commit with an option of failure after all the
+        // Or we can just forget `prepare`, and add a `try_commit` with an option of failure after all the
         // locks over the STM data structures have been acquired.
         match self.tx.prepare() {
             Err(e) if e.kind() == ErrorKind::Busy => Ok(None),
@@ -185,7 +209,7 @@ impl<'a> KVTransaction for RocksDbTx<'a, Write> {
     }
 }
 
-impl<'a> KVTransactionPrepared for RocksDbTx<'a, Write> {
+impl<'a> KVTransactionPrepared for RocksDbWriteTx<'a> {
     fn commit(self) -> KVResult<()> {
         // This method cleans up the transaction without running the panicky destructor.
         let mut this = ManuallyDrop::new(self);
@@ -198,9 +222,9 @@ impl<'a> KVTransactionPrepared for RocksDbTx<'a, Write> {
     }
 }
 
-impl<'a, M> Drop for RocksDbTx<'a, M> {
+impl<'a> Drop for RocksDbWriteTx<'a> {
     fn drop(&mut self) {
-        if !self.read_only && !thread::panicking() {
+        if !thread::panicking() {
             panic!("Transaction prematurely dropped. Must call `.commit()` or `.rollback()`.");
         }
     }
