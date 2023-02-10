@@ -120,7 +120,10 @@ where
         self.cache.with_cf_handle(ns.as_ref(), |cf| {
             let key = S::to_repr(k)?;
 
-            let res = self.snapshot.get_cf(cf, key.as_ref()).map_err(unexpected)?;
+            let res = self
+                .snapshot
+                .get_cf(cf, key.as_ref())
+                .map_err(to_kv_error)?;
 
             match res {
                 Some(bz) => Ok(Some(S::from_repr(&bz)?)),
@@ -142,7 +145,7 @@ where
         self.cache.with_cf_handle(ns.as_ref(), |cf| {
             let key = S::to_repr(k)?;
 
-            let res = self.tx.get_cf(cf, key.as_ref()).map_err(unexpected)?;
+            let res = self.tx.get_cf(cf, key.as_ref()).map_err(to_kv_error)?;
 
             match res {
                 Some(bz) => Ok(Some(S::from_repr(&bz)?)),
@@ -167,7 +170,7 @@ where
 
             self.tx
                 .put_cf(cf, k.as_ref(), v.as_ref())
-                .map_err(unexpected)?;
+                .map_err(to_kv_error)?;
 
             Ok(())
         })
@@ -180,7 +183,7 @@ where
         self.cache.with_cf_handle(ns.as_ref(), |cf| {
             let k = S::to_repr(k)?;
 
-            self.tx.delete_cf(cf, k.as_ref()).map_err(unexpected)?;
+            self.tx.delete_cf(cf, k.as_ref()).map_err(to_kv_error)?;
 
             Ok(())
         })
@@ -199,13 +202,13 @@ impl<'a> KVTransaction for RocksDbWriteTx<'a> {
         // locks over the STM data structures have been acquired.
         match self.tx.prepare() {
             Err(e) if e.kind() == ErrorKind::Busy => Ok(None),
-            Err(e) => Err(unexpected(e)),
+            Err(e) => Err(to_kv_error(e)),
             Ok(()) => Ok(Some(self)),
         }
     }
 
     fn rollback(self) -> KVResult<()> {
-        self.tx.rollback().map_err(unexpected)
+        self.tx.rollback().map_err(to_kv_error)
     }
 }
 
@@ -214,7 +217,7 @@ impl<'a> KVTransactionPrepared for RocksDbWriteTx<'a> {
         // This method cleans up the transaction without running the panicky destructor.
         let mut this = ManuallyDrop::new(self);
         let tx = unsafe { ManuallyDrop::take(&mut this.tx) };
-        tx.commit().map_err(unexpected)
+        tx.commit().map_err(to_kv_error)
     }
 
     fn rollback(self) -> KVResult<()> {
@@ -230,6 +233,10 @@ impl<'a> Drop for RocksDbWriteTx<'a> {
     }
 }
 
-fn unexpected(e: rocksdb::Error) -> KVError {
-    KVError::Unexpected(Box::new(e))
+fn to_kv_error(e: rocksdb::Error) -> KVError {
+    if e.kind() == ErrorKind::Busy {
+        KVError::Conflict
+    } else {
+        KVError::Unexpected(Box::new(e))
+    }
 }
