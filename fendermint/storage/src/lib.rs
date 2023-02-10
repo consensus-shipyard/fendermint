@@ -108,6 +108,17 @@ pub trait KVWritable<S: KVStore> {
 
     /// Start a read-write tranasction.
     fn write(&self) -> Self::Tx<'_>;
+
+    /// Start a read-write transaction, use it, then commit.
+    fn with_write<F, T>(&self, f: F) -> KVResult<T>
+    where
+        F: FnOnce(&mut Self::Tx<'_>) -> KVResult<T>,
+    {
+        let mut tx = self.write();
+        let res = f(&mut tx)?;
+        tx.commit()?;
+        Ok(res)
+    }
 }
 
 /// A collection of homogenous objects under the same namespace.
