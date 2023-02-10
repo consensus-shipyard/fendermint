@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::anyhow;
-use num_cpus;
 use rocksdb::{
     BlockBasedOptions, Cache, DBCompactionStyle, DBCompressionType, DataBlockIndexType, LogLevel,
     Options,
@@ -49,9 +48,8 @@ impl Default for RocksDbConfig {
     }
 }
 
-impl Into<Options> for &RocksDbConfig {
-    fn into(self) -> Options {
-        let config = self;
+impl From<&RocksDbConfig> for Options {
+    fn from(config: &RocksDbConfig) -> Self {
         let mut db_opts = Options::default();
         db_opts.create_if_missing(config.create_if_missing);
         db_opts.increase_parallelism(config.parallelism);

@@ -183,11 +183,8 @@ impl<'a> KVTransactionPrepared for RocksDbTx<'a, Write> {
     fn commit(self) -> KVResult<()> {
         // This method cleans up the transaction without running the panicky destructor.
         let mut this = ManuallyDrop::new(self);
-        let res = unsafe {
-            let tx = ManuallyDrop::take(&mut this.tx);
-            tx.commit().map_err(unexpected)
-        };
-        res
+        let tx = unsafe { ManuallyDrop::take(&mut this.tx) };
+        tx.commit().map_err(unexpected)
     }
 
     fn rollback(self) -> KVResult<()> {
