@@ -167,6 +167,12 @@ impl<'a> KVTransaction for RocksDbTx<'a, Write> {
     type Prepared = Self;
 
     fn prepare(self) -> KVResult<Option<Self::Prepared>> {
+        // TODO: Prepare will write changes into the WAL, so commit is simple and quick.
+        // But it's not clear if any write conflicts will be detected here, or only during commit time.
+        // If this is a misunderstanding, then this library would be unable to work the way STM assumes,
+        // and we can just go back to work with `TransactionDB` which locks column families being updated.
+        // Or we can just forget `prepare`, and try to commit with an option of failure after all the
+        // locks over the STM data structures have been acquired.
         match self.tx.prepare() {
             Err(e) if e.kind() == ErrorKind::Busy => Ok(None),
             Err(e) => Err(unexpected(e)),
