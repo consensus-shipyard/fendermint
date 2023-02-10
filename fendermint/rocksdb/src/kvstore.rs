@@ -266,8 +266,7 @@ mod tests {
             .tempdir()
             .expect("error creating temporary path for db");
         let path = dir.path().join("rocksdb");
-        let db =
-            RocksDb::open(path.clone(), &RocksDbConfig::default()).expect("error creating RocksDB");
+        let db = RocksDb::open(path, &RocksDbConfig::default()).expect("error creating RocksDB");
 
         // Create the column families the test will use.
         for name in test_namespaces() {

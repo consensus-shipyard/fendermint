@@ -269,7 +269,7 @@ where
     let apply_model = |a: &TestData, b: &TestData| -> bool {
         let mut model = Model::default();
         // First apply all the writes
-        for op in a.ops.iter().chain(b.ops.iter()).map(|op| op.clone()) {
+        for op in a.ops.iter().chain(b.ops.iter()).cloned() {
             match op {
                 TestOpNs::S2I(ns, TestOpKV::Put(k, v)) => {
                     model.s2i.entry(ns).or_default().insert(k, v);
@@ -290,14 +290,14 @@ where
         for op in a.ops.iter().chain(b.ops.iter()) {
             match op {
                 TestOpNs::S2I(ns, TestOpKV::Get(k)) => {
-                    let expected = tx.get::<String, u8>(&ns, k).unwrap();
+                    let expected = tx.get::<String, u8>(ns, k).unwrap();
                     let found = model.s2i.get(ns).and_then(|m| m.get(k)).cloned();
                     if found != expected {
                         return false;
                     }
                 }
                 TestOpNs::I2S(ns, TestOpKV::Get(k)) => {
-                    let expected = tx.get::<u8, String>(&ns, k).unwrap();
+                    let expected = tx.get::<u8, String>(ns, k).unwrap();
                     let found = model.i2s.get(ns).and_then(|m| m.get(k)).cloned();
                     if found != expected {
                         return false;
@@ -330,22 +330,16 @@ where
     let mut gets = Vec::new();
     let mut ok = true;
 
-    for op in data.ops.clone() {
-        match op {
-            TestOpNs::S2I(ns, op) => {
-                let coll = colls.s2i(ns);
-                apply_both(&mut txw, &mut model.s2i, coll, ns, op.clone());
-                match &op {
-                    TestOpKV::Get(k) => {
-                        if coll.get(&txr, &k).unwrap().is_some() {
-                            ok = false;
-                        }
-                        gets.push((ns, op));
-                    }
-                    _ => {}
+    for op in data.ops {
+        if let TestOpNs::S2I(ns, op) = op {
+            let coll = colls.s2i(ns);
+            apply_both(&mut txw, &mut model.s2i, coll, ns, op.clone());
+            if let TestOpKV::Get(k) = &op {
+                if coll.get(&txr, k).unwrap().is_some() {
+                    ok = false;
                 }
+                gets.push((ns, op));
             }
-            _ => {}
         }
     }
 
@@ -354,14 +348,11 @@ where
 
     for (ns, op) in &gets {
         let coll = colls.s2i(ns);
-        match op {
-            TestOpKV::Get(k) => {
-                let found = coll.get(&txr, &k).unwrap();
-                if found.is_some() {
-                    ok = false;
-                }
+        if let TestOpKV::Get(k) = op {
+            let found = coll.get(&txr, k).unwrap();
+            if found.is_some() {
+                ok = false;
             }
-            _ => unreachable!(),
         }
     }
 
@@ -371,15 +362,12 @@ where
 
     for (ns, op) in &gets {
         let coll = colls.s2i(ns);
-        match op {
-            TestOpKV::Get(k) => {
-                let found = coll.get(&txr, &k).unwrap();
-                let expected = model.s2i.get(ns).and_then(|m| m.get(k)).cloned();
-                if found != expected {
-                    ok = false;
-                }
+        if let TestOpKV::Get(k) = op {
+            let found = coll.get(&txr, k).unwrap();
+            let expected = model.s2i.get(ns).and_then(|m| m.get(k)).cloned();
+            if found != expected {
+                ok = false;
             }
-            _ => unreachable!(),
         }
     }
 
