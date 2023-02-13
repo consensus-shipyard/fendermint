@@ -49,15 +49,6 @@ pub struct AppState {
     circ_supply: TokenAmount,
 }
 
-struct AppStore<DB, S>
-where
-    DB: Blockstore + 'static,
-    S: KVStore,
-{
-    db: DB,
-    namespace: S::Namespace,
-}
-
 /// Handle ABCI requests.
 #[derive(Clone)]
 pub struct App<DB, S, I>
@@ -65,7 +56,9 @@ where
     DB: Blockstore + 'static,
     S: KVStore,
 {
-    store: Arc<AppStore<DB, S>>,
+    db: Arc<DB>,
+    /// Namespace to store app state.
+    namespace: S::Namespace,
     /// Interpreter for block lifecycle events.
     interpreter: Arc<I>,
     /// State accumulating changes during block execution.
@@ -80,9 +73,9 @@ where
     DB: Blockstore + KVWritable<S> + KVReadable<S> + Clone + 'static,
 {
     pub fn new(db: DB, namespace: S::Namespace, interpreter: I) -> Self {
-        let store = AppStore { db, namespace };
         Self {
-            store: Arc::new(store),
+            db: Arc::new(db),
+            namespace,
             interpreter: Arc::new(interpreter),
             exec_state: Arc::new(Mutex::new(None)),
             check_state: Arc::new(tokio::sync::Mutex::new(None)),
@@ -90,7 +83,7 @@ where
     }
 }
 
-impl<DB, S> AppStore<DB, S>
+impl<DB, S, I> App<DB, S, I>
 where
     S: KVStore + Codec<AppState> + Encode<AppStoreKey>,
     DB: Blockstore + KVWritable<S> + KVReadable<S> + 'static,
@@ -109,13 +102,7 @@ where
             .with_write(|tx| tx.put(&self.namespace, &AppStoreKey::State, &state))
             .expect("commit failed");
     }
-}
 
-impl<DB, S, I> App<DB, S, I>
-where
-    DB: Blockstore + 'static,
-    S: KVStore,
-{
     /// Put the execution state during block execution. Has to be empty.
     fn put_exec_state(&self, state: FvmState<DB>) {
         let mut guard = self.exec_state.lock().expect("mutex poisoned");
@@ -168,7 +155,7 @@ where
 {
     /// Provide information about the ABCI application.
     async fn info(&self, _request: request::Info) -> response::Info {
-        let state = self.store.committed_state();
+        let state = self.committed_state();
         let height =
             tendermint::block::Height::try_from(state.block_height).expect("height too big");
         let app_hash = tendermint::hash::AppHash::try_from(state.state_root.to_bytes())
@@ -198,9 +185,9 @@ where
         let mut guard = self.check_state.lock().await;
 
         let state = guard.take().unwrap_or_else(|| {
-            let state = self.store.committed_state();
-            FvmCheckState::new(self.store.db.clone(), state.state_root)
-                .expect("error creating check state")
+            let db = self.db.as_ref().to_owned();
+            let state = self.committed_state();
+            FvmCheckState::new(db, state.state_root).expect("error creating check state")
         });
 
         // TODO: We can make use of `request.kind` to skip signature checks on repeated calls.
@@ -227,7 +214,8 @@ where
 
     /// Signals the beginning of a new block, prior to any `DeliverTx` calls.
     async fn begin_block(&self, request: request::BeginBlock) -> response::BeginBlock {
-        let state = self.store.committed_state();
+        let db = self.db.as_ref().to_owned();
+        let state = self.committed_state();
         let height = request.header.height.into();
         let timestamp = Timestamp(
             request
@@ -237,7 +225,6 @@ where
                 .try_into()
                 .expect("negative timestamp"),
         );
-        let db = self.store.db.clone();
 
         let state = FvmState::new(
             db,
@@ -295,9 +282,9 @@ where
         let exec_state = self.take_exec_state();
         let state_root = exec_state.commit().expect("failed to commit FVM");
 
-        let mut state = self.store.committed_state();
+        let mut state = self.committed_state();
         state.state_root = state_root;
-        self.store.set_committed_state(state);
+        self.set_committed_state(state);
 
         // Reset check state.
         let mut guard = self.check_state.lock().await;
