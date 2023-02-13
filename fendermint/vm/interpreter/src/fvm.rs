@@ -270,24 +270,21 @@ where
             };
             Ok((state, ret))
         };
-        let Some(id) = state.state_tree.lookup_id(&msg.from)? else {
-            return checked(state, ExitCode::SYS_SENDER_INVALID)
-        };
-        let Some(mut actor) = state.state_tree.get_actor(id)? else {
-            return checked(state, ExitCode::SYS_SENDER_INVALID)
-        };
 
-        let balance_needed = msg.gas_fee_cap * msg.gas_limit;
-
-        if actor.balance < balance_needed {
-            checked(state, ExitCode::SYS_SENDER_STATE_INVALID)
-        } else if actor.sequence != msg.sequence {
-            checked(state, ExitCode::SYS_SENDER_STATE_INVALID)
-        } else {
-            actor.sequence += 1;
-            actor.balance -= balance_needed;
-            state.state_tree.set_actor(id, actor);
-            checked(state, ExitCode::OK)
+        // NOTE: This would be a great place for let-else, but clippy runs into a compilation bug.
+        if let Some(id) = state.state_tree.lookup_id(&msg.from)? {
+            if let Some(mut actor) = state.state_tree.get_actor(id)? {
+                let balance_needed = msg.gas_fee_cap * msg.gas_limit;
+                if actor.balance < balance_needed || actor.sequence != msg.sequence {
+                    return checked(state, ExitCode::SYS_SENDER_STATE_INVALID);
+                } else {
+                    actor.sequence += 1;
+                    actor.balance -= balance_needed;
+                    state.state_tree.set_actor(id, actor);
+                    return checked(state, ExitCode::OK);
+                }
+            }
         }
+        return checked(state, ExitCode::SYS_SENDER_INVALID);
     }
 }
