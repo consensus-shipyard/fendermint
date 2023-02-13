@@ -261,6 +261,7 @@ where
         &self,
         mut state: Self::State,
         msg: Self::Message,
+        _is_recheck: bool,
     ) -> anyhow::Result<(Self::State, Self::Output)> {
         let checked = |state, exit_code| {
             let ret = FvmCheckRet {

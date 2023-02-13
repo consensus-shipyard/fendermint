@@ -94,9 +94,14 @@ pub trait CheckInterpreter: Sync + Send {
     ///
     /// Returns the updated state, and the check output, which should be
     /// able to describe both the success and failure cases.
+    ///
+    /// The recheck flags indicates that we are checking the transaction
+    /// again because we have seen a new block and the state changed.
+    /// As an optimisation, checks that do not depend on state can be skipped.
     async fn check(
         &self,
         state: Self::State,
         msg: Self::Message,
+        is_recheck: bool,
     ) -> anyhow::Result<(Self::State, Self::Output)>;
 }

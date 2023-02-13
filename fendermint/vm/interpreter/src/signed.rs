@@ -80,8 +80,11 @@ where
         &self,
         state: Self::State,
         msg: Self::Message,
+        is_recheck: bool,
     ) -> anyhow::Result<(Self::State, Self::Output)> {
-        match msg.verify() {
+        let verify_result = if is_recheck { Ok(()) } else { msg.verify() };
+
+        match verify_result {
             Err(SignedMessageError::Ipld(e)) => Err(anyhow!(e)),
             Err(SignedMessageError::InvalidSignature(s)) => {
                 // There is nobody we can punish for this, we can just tell Tendermint to discard this message,
@@ -89,7 +92,7 @@ where
                 Ok((state, Err(InvalidSignature(s))))
             }
             Ok(()) => {
-                let (state, ret) = self.inner.check(state, msg.message).await?;
+                let (state, ret) = self.inner.check(state, msg.message, is_recheck).await?;
                 Ok((state, Ok(ret)))
             }
         }

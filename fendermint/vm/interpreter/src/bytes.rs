@@ -77,6 +77,7 @@ where
         &self,
         state: Self::State,
         msg: Self::Message,
+        is_recheck: bool,
     ) -> anyhow::Result<(Self::State, Self::Output)> {
         match fvm_ipld_encoding::from_slice::<ChainMessage>(&msg) {
             Err(e) =>
@@ -85,7 +86,7 @@ where
                 Ok((state, Err(e)))
             }
             Ok(msg) => {
-                let (state, ret) = self.inner.check(state, msg).await?;
+                let (state, ret) = self.inner.check(state, msg, is_recheck).await?;
                 Ok((state, Ok(ret)))
             }
         }

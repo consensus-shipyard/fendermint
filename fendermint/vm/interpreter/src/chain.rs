@@ -79,10 +79,11 @@ where
         &self,
         state: Self::State,
         msg: Self::Message,
+        is_recheck: bool,
     ) -> anyhow::Result<(Self::State, Self::Output)> {
         match msg {
             ChainMessage::Signed(msg) => {
-                let (state, ret) = self.inner.check(state, msg).await?;
+                let (state, ret) = self.inner.check(state, msg, is_recheck).await?;
 
                 Ok((state, Ok(ret)))
             }

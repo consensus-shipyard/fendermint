@@ -19,6 +19,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::event::StampedEvent;
 use fvm_shared::version::NetworkVersion;
 use serde::{Deserialize, Serialize};
+use tendermint::abci::request::CheckTxKind;
 use tendermint::abci::{request, response, Code, Event};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -191,9 +192,10 @@ where
         });
 
         // TODO: We can make use of `request.kind` to skip signature checks on repeated calls.
+        let is_recheck = request.kind == CheckTxKind::Recheck;
         let (state, result) = self
             .interpreter
-            .check(state, request.tx.to_vec())
+            .check(state, request.tx.to_vec(), is_recheck)
             .await
             .expect("error running check");
 
