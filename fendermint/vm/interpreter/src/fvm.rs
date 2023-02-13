@@ -250,9 +250,7 @@ where
     DB: Blockstore + 'static + Send + Sync,
 {
     type State = FvmCheckState<DB>;
-
     type Message = FvmMessage;
-
     type Output = FvmCheckRet;
 
     /// Check that:
@@ -261,9 +259,35 @@ where
     /// * sender has enough funds to cover the gas cost
     async fn check(
         &self,
-        _state: Self::State,
-        _msg: Self::Message,
+        mut state: Self::State,
+        msg: Self::Message,
     ) -> anyhow::Result<(Self::State, Self::Output)> {
-        todo!()
+        let checked = |state, exit_code| {
+            let ret = FvmCheckRet {
+                sender: msg.from,
+                gas_limit: msg.gas_limit,
+                exit_code,
+            };
+            Ok((state, ret))
+        };
+        let Some(id) = state.state_tree.lookup_id(&msg.from)? else {
+            return checked(state, ExitCode::SYS_SENDER_INVALID)
+        };
+        let Some(mut actor) = state.state_tree.get_actor(id)? else {
+            return checked(state, ExitCode::SYS_SENDER_INVALID)
+        };
+
+        let balance_needed = msg.gas_fee_cap * msg.gas_limit;
+
+        if actor.balance < balance_needed {
+            checked(state, ExitCode::SYS_SENDER_STATE_INVALID)
+        } else if actor.sequence != msg.sequence {
+            checked(state, ExitCode::SYS_SENDER_STATE_INVALID)
+        } else {
+            actor.sequence += 1;
+            actor.balance -= balance_needed;
+            state.state_tree.set_actor(id, actor);
+            checked(state, ExitCode::OK)
+        }
     }
 }
