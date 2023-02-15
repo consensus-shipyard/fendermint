@@ -11,7 +11,7 @@ use crate::signed::SignedMessage;
 /// signed by BLS signatures are aggregated to the block level, and their original
 /// signatures are stripped from the messages, to save space. Tendermint Core will
 /// not do this for us (perhaps with ABCI++ Vote Extensions we could do it), though.
-#[derive(Clone, Debug, Serialize, Deserialize, Hash)]
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq)]
 #[serde(untagged)]
 pub enum ChainMessage {
     /// A message that can be passed on to the FVM as-is.
@@ -29,4 +29,26 @@ pub enum ChainMessage {
     // (2) go to the validator who proposed the execution.
     // This should ensure that even if low-power validator poposed a CID, the others aren't neglecting it.
     // To remember after a restart who the original proposer was, the proposed CIDs have to go onto the ledger.
+}
+
+#[cfg(feature = "arb")]
+impl quickcheck::Arbitrary for ChainMessage {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        ChainMessage::Signed(SignedMessage::arbitrary(g))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use fendermint_vm_message::chain::ChainMessage;
+    use quickcheck_macros::quickcheck;
+
+    #[quickcheck]
+    fn chain_message(value0: ChainMessage) {
+        let repr = fvm_ipld_encoding::to_vec(&value0).expect("failed to encode");
+        let value1: ChainMessage =
+            fvm_ipld_encoding::from_slice(repr.as_ref()).expect("failed to decode");
+
+        assert_eq!(value1, value0)
+    }
 }

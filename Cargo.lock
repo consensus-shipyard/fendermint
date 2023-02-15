@@ -1244,6 +1244,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_shared",
  "quickcheck 1.0.3",
+ "quickcheck_macros",
  "serde",
  "serde_tuple",
  "thiserror",

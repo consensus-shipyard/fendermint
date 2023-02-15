@@ -19,7 +19,10 @@ arbitrary = { workspace = true, optional = true }
 quickcheck = { workspace = true, optional = true }
 
 [dev-dependencies]
-# Enable arb for tests.
+quickcheck = { workspace = true }
+quickcheck_macros = { workspace = true }
+
+# Enable arb on self for tests.
 fendermint_vm_message = { path = ".", features = ["arb"] }
 
 [features]
