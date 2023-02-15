@@ -52,7 +52,7 @@ where
     ) -> anyhow::Result<(Self::State, Self::DeliverOutput)> {
         match msg {
             ChainMessage::Signed(msg) => {
-                let (state, ret) = self.inner.deliver(state, msg).await?;
+                let (state, ret) = self.inner.deliver(state, *msg).await?;
                 Ok((state, ChainMessageApplyRet::Signed(ret)))
             }
             ChainMessage::ForExecution(_) | ChainMessage::ForResolution(_) => {
@@ -91,7 +91,7 @@ where
     ) -> anyhow::Result<(Self::State, Self::Output)> {
         match msg {
             ChainMessage::Signed(msg) => {
-                let (state, ret) = self.inner.check(state, msg, is_recheck).await?;
+                let (state, ret) = self.inner.check(state, *msg, is_recheck).await?;
 
                 Ok((state, Ok(ret)))
             }

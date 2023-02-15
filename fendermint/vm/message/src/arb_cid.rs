@@ -6,6 +6,7 @@
 //! dependencies to use 0.9 because then the IPLD and other FVM traits don't work.
 //!
 //! TODO: Remove this module when the `cid` dependency is updated.
+//! NOTE: A simpler alternative is https://github.com/ChainSafe/forest/blob/v0.6.0/blockchain/blocks/src/lib.rs
 use cid::{
     multihash::{Code, MultihashDigest, MultihashGeneric},
     CidGeneric, Version,

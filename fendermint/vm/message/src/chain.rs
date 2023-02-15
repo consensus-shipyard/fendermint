@@ -12,10 +12,10 @@ use crate::signed::SignedMessage;
 /// signed by BLS signatures are aggregated to the block level, and their original
 /// signatures are stripped from the messages, to save space. Tendermint Core will
 /// not do this for us (perhaps with ABCI++ Vote Extensions we could do it), though.
-#[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub enum ChainMessage {
     /// A message that can be passed on to the FVM as-is.
-    Signed(SignedMessage),
+    Signed(Box<SignedMessage>),
     // TODO: ForResolution - A message CID proposed for async resolution.
     // This will not need a signature, it is proposed by the validator who made the block.
     // We might want to add a `from` and a signature anyway if we want to reward relayers.
@@ -41,7 +41,7 @@ mod arb {
     impl quickcheck::Arbitrary for ChainMessage {
         fn arbitrary(g: &mut quickcheck::Gen) -> Self {
             match u8::arbitrary(g) % 3 {
-                0 => ChainMessage::Signed(SignedMessage::arbitrary(g)),
+                0 => ChainMessage::Signed(Box::new(SignedMessage::arbitrary(g))),
                 1 => ChainMessage::ForResolution(crate::arb_cid::arbitrary_cid(g)),
                 _ => ChainMessage::ForExecution(crate::arb_cid::arbitrary_cid(g)),
             }
