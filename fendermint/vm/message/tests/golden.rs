@@ -41,7 +41,7 @@ fn read_or_create<T>(
 
     let mut s = String::new();
     f.read_to_string(&mut s).expect("Cannot read golden file.");
-    s
+    s.trim_end().to_owned()
 }
 
 /// Check that a golden file we created earlier can still be read by the current model by
@@ -84,10 +84,9 @@ fn test_cbor_txt<T: Serialize + DeserializeOwned + Debug>(
 /// Test that the CID of something we deserialized from CBOR matches what we saved earlier,
 /// ie. that we produce the same CID, which is important if it's the basis of signing.
 pub fn test_cid<T: Debug>(prefix: &str, name: &str, data: T, cid: fn(&T) -> Cid) {
-    let exp_cid = cid(&data);
-    let hex_cid = read_or_create(prefix, name, "cid", &exp_cid, |d| hex::encode(d.to_bytes()));
-    let exp_cid = hex::encode(exp_cid.to_bytes());
-    assert_eq!(hex_cid, exp_cid)
+    let exp_cid = hex::encode(cid(&data).to_bytes());
+    let got_cid = read_or_create(prefix, name, "cid", &exp_cid, |d| d.to_owned());
+    assert_eq!(got_cid, exp_cid)
 }
 
 macro_rules! golden_cbor {
