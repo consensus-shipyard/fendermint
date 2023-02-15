@@ -47,7 +47,7 @@ impl SignedMessage {
 
     /// Calculate the CID of an FVM message.
     pub fn cid(message: &Message) -> Result<Cid, fvm_ipld_encoding::Error> {
-        crate::cid(&message)
+        crate::cid(message)
     }
 
     /// Verify that the message CID was signed by the `from` address.
