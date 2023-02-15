@@ -35,18 +35,15 @@ pub enum ChainMessage {
 
 #[cfg(feature = "arb")]
 mod arb {
-    use cid::Cid;
-
-    use crate::signed::SignedMessage;
-
     use super::ChainMessage;
+    use crate::signed::SignedMessage;
 
     impl quickcheck::Arbitrary for ChainMessage {
         fn arbitrary(g: &mut quickcheck::Gen) -> Self {
             match u8::arbitrary(g) % 3 {
                 0 => ChainMessage::Signed(SignedMessage::arbitrary(g)),
-                1 => ChainMessage::ForExecution(Cid::arbitrary(g)),
-                _ => ChainMessage::ForExecution(Cid::arbitrary(g)),
+                1 => ChainMessage::ForResolution(crate::arb_cid::arbitrary_cid(g)),
+                _ => ChainMessage::ForExecution(crate::arb_cid::arbitrary_cid(g)),
             }
         }
     }
