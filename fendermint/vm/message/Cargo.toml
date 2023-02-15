@@ -21,8 +21,11 @@ quickcheck = { workspace = true, optional = true }
 [dev-dependencies]
 quickcheck = { workspace = true }
 quickcheck_macros = { workspace = true }
+cid = { workspace = true, features = ["arb"] }
 
 # Enable arb on self for tests.
+# Ideally we could do this with `#[cfg(any(test, feature = "arb"))]`,
+# however in that case all the extra dependencies would not kick in.
 fendermint_vm_message = { path = ".", features = ["arb"] }
 
 [features]

@@ -1,3 +1,4 @@
+use cid::Cid;
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 use serde::{Deserialize, Serialize};
@@ -12,7 +13,6 @@ use crate::signed::SignedMessage;
 /// signatures are stripped from the messages, to save space. Tendermint Core will
 /// not do this for us (perhaps with ABCI++ Vote Extensions we could do it), though.
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq)]
-#[serde(untagged)]
 pub enum ChainMessage {
     /// A message that can be passed on to the FVM as-is.
     Signed(SignedMessage),
@@ -21,6 +21,7 @@ pub enum ChainMessage {
     // We might want to add a `from` and a signature anyway if we want to reward relayers.
     // Or the validator itself can be rewarded for inclusion, since a message like this
     // will be a top-down or bottom-up message, and this incentivises them to do the relaying.
+    ForResolution(Cid),
 
     // TODO: ForExecution - A message CID proposed for execution in the containing block, assumed to be resolvable.
     // This will again not need a signature, it is proposed by the validator who made the block.
@@ -29,18 +30,31 @@ pub enum ChainMessage {
     // (2) go to the validator who proposed the execution.
     // This should ensure that even if low-power validator poposed a CID, the others aren't neglecting it.
     // To remember after a restart who the original proposer was, the proposed CIDs have to go onto the ledger.
+    ForExecution(Cid),
 }
 
 #[cfg(feature = "arb")]
-impl quickcheck::Arbitrary for ChainMessage {
-    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        ChainMessage::Signed(SignedMessage::arbitrary(g))
+mod arb {
+    use cid::Cid;
+
+    use crate::signed::SignedMessage;
+
+    use super::ChainMessage;
+
+    impl quickcheck::Arbitrary for ChainMessage {
+        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+            match u8::arbitrary(g) % 3 {
+                0 => ChainMessage::Signed(SignedMessage::arbitrary(g)),
+                1 => ChainMessage::ForExecution(Cid::arbitrary(g)),
+                _ => ChainMessage::ForExecution(Cid::arbitrary(g)),
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use fendermint_vm_message::chain::ChainMessage;
+    use crate::chain::ChainMessage;
     use quickcheck_macros::quickcheck;
 
     #[quickcheck]
