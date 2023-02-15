@@ -1,3 +1,5 @@
+// Copyright 2022-2023 Protocol Labs
+// SPDX-License-Identifier: Apache-2.0, MIT
 //! Unfortunately ref-fvm depends on cid:0.8.6, which depends on quickcheck:0.9
 //! whereas here we use quickcheck:0.1. This causes conflicts and the `Arbitrary`
 //! implementations for `Cid` are not usable to us, nor can we patch all `cid`
