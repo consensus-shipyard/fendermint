@@ -31,13 +31,13 @@ fn read_or_create<T>(
             std::fs::create_dir_all(p).expect("failed to create golden directory");
         }
         let s = to_string(fallback);
-        let mut f = File::create(&p)
+        let mut f = File::create(p)
             .unwrap_or_else(|e| panic!("Cannot create golden file at {:?}: {}", p, e));
         f.write_all(s.as_bytes()).unwrap();
     }
 
     let mut f =
-        File::open(&p).unwrap_or_else(|e| panic!("Cannot open golden file at {:?}: {}", p, e));
+        File::open(p).unwrap_or_else(|e| panic!("Cannot open golden file at {:?}: {}", p, e));
 
     let mut s = String::new();
     f.read_to_string(&mut s).expect("Cannot read golden file.");
@@ -67,7 +67,7 @@ fn test_cbor_txt<T: Serialize + DeserializeOwned + Debug>(
 
     let bz = hex::decode(cbor).expect("failed to decode hex");
     let data1: T = fvm_ipld_encoding::from_slice(&bz)
-        .expect(&format!("Cannot deserialize {}/{}.cbor", prefix, name));
+        .unwrap_or_else(|_| panic!("Cannot deserialize {}/{}.cbor", prefix, name));
 
     // Use the deserialised data as fallback for the debug string, so if the txt doesn't exist, it's created
     // from what we just read back.

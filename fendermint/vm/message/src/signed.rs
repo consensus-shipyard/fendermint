@@ -55,7 +55,7 @@ impl SignedMessage {
         message: &Message,
         signature: &Signature,
     ) -> Result<(), SignedMessageError> {
-        let cid = Self::cid(&message)?.to_bytes();
+        let cid = Self::cid(message)?.to_bytes();
         signature
             .verify(&cid, &message.from)
             .map_err(SignedMessageError::InvalidSignature)
