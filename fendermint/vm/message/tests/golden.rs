@@ -1,3 +1,4 @@
+use cid::Cid;
 use serde::{de::DeserializeOwned, Serialize};
 use std::fmt::Debug;
 use std::fs::File;
@@ -45,7 +46,7 @@ fn read_or_create<T>(
 /// comparing to a debug string (which should at least be readable enough to show what changed).
 ///
 /// If the golden file doesn't exist, create one now.
-pub fn test_cbor_txt<T: Serialize + DeserializeOwned + Debug>(
+fn test_cbor_txt<T: Serialize + DeserializeOwned + Debug>(
     prefix: &str,
     name: &str,
     arb_data: fn(g: &mut quickcheck::Gen) -> T,
@@ -78,6 +79,15 @@ pub fn test_cbor_txt<T: Serialize + DeserializeOwned + Debug>(
     data1
 }
 
+/// Test that the CID of something we deserialized from CBOR matches what we saved earlier,
+/// ie. that we produce the same CID, which is important if it's the basis of signing.
+pub fn test_cid<T: Debug>(prefix: &str, name: &str, data: T, cid: fn(&T) -> Cid) {
+    let exp_cid = cid(&data);
+    let hex_cid = read_or_create(prefix, name, "cid", &exp_cid, |d| hex::encode(d.to_bytes()));
+    let exp_cid = hex::encode(exp_cid.to_bytes());
+    assert_eq!(hex_cid, exp_cid)
+}
+
 macro_rules! golden_cbor {
     ($prefix:literal, $name:ident, $gen:expr) => {
         #[test]
@@ -88,6 +98,18 @@ macro_rules! golden_cbor {
     };
 }
 
+macro_rules! golden_cid {
+    ($prefix:literal, $name:ident, $gen:expr, $cid:expr) => {
+        #[test]
+        fn $name() {
+            let label = stringify!($name);
+            let data = crate::test_cbor_txt($prefix, &label, $gen);
+            crate::test_cid($prefix, &label, data, $cid);
+        }
+    };
+}
+
+/// Examples of `ChainMessage`.
 mod chain {
     use fendermint_vm_message::chain::ChainMessage;
     use quickcheck::Arbitrary;
@@ -118,4 +140,12 @@ mod chain {
         }
       }
     }
+}
+
+/// Examples of FVM messages, which is what we sign.
+mod fvm {
+    use fendermint_vm_message::signed::SignedMessage;
+    use quickcheck::Arbitrary;
+
+    golden_cid! { "fvm", message, |g| SignedMessage::arbitrary(g).message, |m| SignedMessage::cid(m).unwrap() }
 }
