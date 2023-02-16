@@ -17,7 +17,7 @@ use fvm::{
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::{
     address::Address, clock::ChainEpoch, econ::TokenAmount, message::Message,
-    version::NetworkVersion,
+    version::NetworkVersion, ActorID,
 };
 
 use crate::Timestamp;
@@ -203,10 +203,10 @@ where
         self.store.get(key)
     }
 
-    pub fn actor_state(&self, addr: &Address) -> anyhow::Result<Option<ActorState>> {
+    pub fn actor_state(&self, addr: &Address) -> anyhow::Result<Option<(ActorID, ActorState)>> {
         self.with_state_tree(|state_tree| {
             if let Some(id) = state_tree.lookup_id(addr)? {
-                Ok(state_tree.get_actor(id)?)
+                Ok(state_tree.get_actor(id)?.map(|st| (id, st)))
             } else {
                 Ok(None)
             }

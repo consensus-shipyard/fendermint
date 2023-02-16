@@ -7,13 +7,13 @@ use fendermint_vm_message::chain::ChainMessage;
 
 use crate::{
     chain::{ChainMessageApplyRet, ChainMessageCheckRet},
-    fvm::{FvmQuery, FvmQueryResult},
+    fvm::{FvmQuery, FvmQueryRet},
     CheckInterpreter, Interpreter, QueryInterpreter,
 };
 
 pub type BytesMessageApplyRet = Result<ChainMessageApplyRet, fvm_ipld_encoding::Error>;
 pub type BytesMessageCheckRet = Result<ChainMessageCheckRet, fvm_ipld_encoding::Error>;
-pub type BytesMessageQueryRet = Result<FvmQueryResult, fvm_ipld_encoding::Error>;
+pub type BytesMessageQueryRet = Result<FvmQueryRet, fvm_ipld_encoding::Error>;
 
 /// Close to what the ABCI sends: (Path, Bytes).
 pub type BytesMessageQuery = (String, Vec<u8>);
@@ -102,7 +102,7 @@ where
 #[async_trait]
 impl<I> QueryInterpreter for BytesMessageInterpreter<I>
 where
-    I: QueryInterpreter<Query = FvmQuery, Output = FvmQueryResult>,
+    I: QueryInterpreter<Query = FvmQuery, Output = FvmQueryRet>,
 {
     type State = I::State;
     type Query = BytesMessageQuery;

@@ -3,7 +3,7 @@ use cid::Cid;
 use fvm::state_tree::ActorState;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::serde::{Deserialize, Serialize};
-use fvm_shared::address::Address;
+use fvm_shared::{address::Address, ActorID};
 
 use crate::QueryInterpreter;
 
@@ -21,11 +21,11 @@ pub enum FvmQuery {
     ActorState(Address),
 }
 
-pub enum FvmQueryResult {
+pub enum FvmQueryRet {
     /// Bytes from the IPLD store retult, if found.
     Ipld(Option<Vec<u8>>),
     /// The full state of an actor, if found.
-    ActorState(Option<ActorState>),
+    ActorState(Option<(ActorID, ActorState)>),
 }
 
 #[async_trait]
@@ -35,7 +35,7 @@ where
 {
     type State = FvmQueryState<DB>;
     type Query = FvmQuery;
-    type Output = FvmQueryResult;
+    type Output = FvmQueryRet;
 
     async fn query(
         &self,
@@ -43,8 +43,8 @@ where
         qry: Self::Query,
     ) -> anyhow::Result<(Self::State, Self::Output)> {
         let res = match qry {
-            FvmQuery::Ipld(cid) => FvmQueryResult::Ipld(state.store_get(&cid)?),
-            FvmQuery::ActorState(addr) => FvmQueryResult::ActorState(state.actor_state(&addr)?),
+            FvmQuery::Ipld(cid) => FvmQueryRet::Ipld(state.store_get(&cid)?),
+            FvmQuery::ActorState(addr) => FvmQueryRet::ActorState(state.actor_state(&addr)?),
         };
         Ok((state, res))
     }
