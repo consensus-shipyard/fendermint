@@ -332,7 +332,7 @@ fn to_deliver_tx(ret: FvmApplyRet) -> response::DeliverTx {
     let gas_used: i64 = receipt.gas_used.try_into().expect("gas used not i64");
 
     let data = receipt.return_data.to_vec().into();
-    let events = to_events(ret.apply_ret.events);
+    let events = to_events("message", ret.apply_ret.events);
 
     response::DeliverTx {
         code,
@@ -378,13 +378,13 @@ fn to_end_block(_ret: ()) -> response::EndBlock {
 ///
 /// (Currently just a placeholder).
 fn to_begin_block(ret: FvmApplyRet) -> response::BeginBlock {
-    let events = to_events(ret.apply_ret.events);
+    let events = to_events("begin", ret.apply_ret.events);
 
     response::BeginBlock { events }
 }
 
 /// Convert events to key-value pairs.
-fn to_events(stamped_events: Vec<StampedEvent>) -> Vec<Event> {
+fn to_events(kind: &str, stamped_events: Vec<StampedEvent>) -> Vec<Event> {
     stamped_events
         .into_iter()
         .map(|se| {
@@ -404,7 +404,7 @@ fn to_events(stamped_events: Vec<StampedEvent>) -> Vec<Event> {
                 });
             }
 
-            Event::new("StampedEvent", attrs)
+            Event::new(kind.to_string(), attrs)
         })
         .collect()
 }
