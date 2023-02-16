@@ -5,10 +5,12 @@ use std::marker::PhantomData;
 mod check;
 mod exec;
 mod externs;
+mod query;
 mod state;
 
 pub use check::FvmCheckRet;
 pub use exec::FvmApplyRet;
+pub use query::{FvmQuery, FvmQueryResult};
 pub use state::{FvmCheckState, FvmState};
 
 pub type FvmMessage = fvm_shared::message::Message;
