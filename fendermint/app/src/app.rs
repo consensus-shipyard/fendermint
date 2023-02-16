@@ -20,7 +20,7 @@ use fvm_shared::event::StampedEvent;
 use fvm_shared::version::NetworkVersion;
 use serde::{Deserialize, Serialize};
 use tendermint::abci::request::CheckTxKind;
-use tendermint::abci::{request, response, Code, Event};
+use tendermint::abci::{request, response, Code, Event, EventAttribute};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -383,10 +383,28 @@ fn to_begin_block(ret: FvmApplyRet) -> response::BeginBlock {
     response::BeginBlock { events }
 }
 
-fn to_events(_stamped_events: Vec<StampedEvent>) -> Vec<Event> {
-    // TODO: Convert events. This is currently not possible because the event fields are private.
-    // I changed that in https://github.com/filecoin-project/ref-fvm/pull/1507 but it's still in review.
-    // A possible workaround would be to retrieve the events by their CID, and use a custom type to parse.
-    // It will be part of https://github.com/filecoin-project/ref-fvm/pull/1635 :)
-    Vec::new()
+/// Convert events to key-value pairs.
+fn to_events(stamped_events: Vec<StampedEvent>) -> Vec<Event> {
+    stamped_events
+        .into_iter()
+        .map(|se| {
+            let mut attrs = Vec::new();
+
+            attrs.push(EventAttribute {
+                key: "emitter".to_string(),
+                value: se.emitter.to_string(),
+                index: true,
+            });
+
+            for e in se.event.entries {
+                attrs.push(EventAttribute {
+                    key: e.key,
+                    value: hex::encode(e.value),
+                    index: !e.flags.is_empty(),
+                });
+            }
+
+            Event::new("StampedEvent", attrs)
+        })
+        .collect()
 }
