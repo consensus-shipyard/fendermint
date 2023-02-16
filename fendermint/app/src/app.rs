@@ -282,10 +282,12 @@ where
     /// Commit the current state at the current height.
     async fn commit(&self) -> response::Commit {
         let exec_state = self.take_exec_state();
+        let block_height = exec_state.block_height();
         let state_root = exec_state.commit().expect("failed to commit FVM");
 
         let mut state = self.committed_state();
         state.state_root = state_root;
+        state.block_height = block_height.try_into().expect("negative height");
         self.set_committed_state(state);
 
         // Reset check state.
