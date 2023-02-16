@@ -28,6 +28,14 @@ use tendermint::abci::{request, response, Code, Event, EventAttribute};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// IPLD encoding of data types we know we must be able to encode.
+macro_rules! must_encode {
+    ($var:ident) => {
+        fvm_ipld_encoding::to_vec(&$var)
+            .unwrap_or_else(|e| panic!("error encoding {}: {}", stringify!($var), e))
+    };
+}
+
 #[derive(Serialize)]
 #[repr(u8)]
 pub enum AppStoreKey {
@@ -465,15 +473,15 @@ fn to_query(ret: FvmQueryRet, block_height: u64) -> response::Query {
     // Although at this point I don't have access to the input like the CID looked up,
     // but I assume the query sender has. Rather than repeat everything, I'll add the key
     // where it gives some extra information, like the actor ID, just to keep this option visible.
-    let key = match &ret {
-        FvmQueryRet::ActorState(Some((id, _))) => fvm_ipld_encoding::to_vec(id).unwrap(),
-        _ => Vec::new(),
-    };
-
-    let value = match ret {
-        FvmQueryRet::Ipld(None) | FvmQueryRet::ActorState(None) => Vec::new(),
-        FvmQueryRet::Ipld(Some(bz)) => bz,
-        FvmQueryRet::ActorState(Some((_, st))) => fvm_ipld_encoding::to_vec(&st).unwrap(),
+    let (key, value) = match ret {
+        FvmQueryRet::Ipld(None) | FvmQueryRet::ActorState(None) => (Vec::new(), Vec::new()),
+        FvmQueryRet::Ipld(Some(bz)) => (Vec::new(), bz),
+        FvmQueryRet::ActorState(Some(x)) => {
+            let (id, st) = *x;
+            let k = must_encode!(id);
+            let v = must_encode!(st);
+            (k, v)
+        }
     };
 
     // The height here is the height of the block that was committed, not in which the app hash appeared,

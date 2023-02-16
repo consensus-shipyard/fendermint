@@ -27,7 +27,7 @@ pub enum FvmQueryRet {
     /// Bytes from the IPLD store retult, if found.
     Ipld(Option<Vec<u8>>),
     /// The full state of an actor, if found.
-    ActorState(Option<(ActorID, ActorState)>),
+    ActorState(Option<Box<(ActorID, ActorState)>>),
 }
 
 #[async_trait]
@@ -46,7 +46,9 @@ where
     ) -> anyhow::Result<(Self::State, Self::Output)> {
         let res = match qry {
             FvmQuery::Ipld(cid) => FvmQueryRet::Ipld(state.store_get(&cid)?),
-            FvmQuery::ActorState(addr) => FvmQueryRet::ActorState(state.actor_state(&addr)?),
+            FvmQuery::ActorState(addr) => {
+                FvmQueryRet::ActorState(state.actor_state(&addr)?.map(Box::new))
+            }
         };
         Ok((state, res))
     }
