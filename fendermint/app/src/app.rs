@@ -27,6 +27,7 @@ use fvm_shared::version::NetworkVersion;
 use serde::{Deserialize, Serialize};
 use tendermint::abci::request::CheckTxKind;
 use tendermint::abci::{request, response, Code, Event, EventAttribute};
+use tendermint::block::Height;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -189,6 +190,28 @@ where
         self.put_exec_state(state);
         Ok(ret)
     }
+
+    /// Look up a past state hash at a particular height Tendermint Core is looking for,
+    /// which will be +1 shifted from what we saved. If the height is zero, it means it
+    /// wants the latest height.
+    ///
+    /// Returns the CID and the height of the block which committed it.
+    fn state_root_at_height(&self, height: Height) -> (Cid, BlockHeight) {
+        if height.value() > 0 {
+            let h = height.value() - 1;
+            let tx = self.db.read();
+            let sh = self
+                .state_hist
+                .get(&tx, &h)
+                .expect("error looking up history");
+
+            if let Some(cid) = sh {
+                return (cid, h);
+            }
+        }
+        let state = self.committed_state();
+        (state.state_root, state.block_height)
+    }
 }
 
 // NOTE: The `Application` interface doesn't allow failures at the moment. The protobuf
@@ -247,10 +270,8 @@ where
     /// Query the application for data at the current or past height.
     async fn query(&self, request: request::Query) -> response::Query {
         let db = self.clone_db();
-        // TODO: Store the state for each height, or the last N heights, then use `request.height`.
-        let state = self.committed_state();
-        let block_height = state.block_height;
-        let state = FvmQueryState::new(db, state.state_root).expect("error creating query state");
+        let (state_root, block_height) = self.state_root_at_height(request.height);
+        let state = FvmQueryState::new(db, state_root).expect("error creating query state");
         let qry = (request.path, request.data.to_vec());
 
         let (_, result) = self
@@ -508,7 +529,7 @@ fn to_events(kind: &str, stamped_events: Vec<StampedEvent>) -> Vec<Event> {
 }
 
 /// Map to query results.
-fn to_query(ret: FvmQueryRet, block_height: u64) -> response::Query {
+fn to_query(ret: FvmQueryRet, block_height: BlockHeight) -> response::Query {
     let exit_code = match ret {
         FvmQueryRet::Ipld(None) | FvmQueryRet::ActorState(None) => ExitCode::USR_NOT_FOUND,
         FvmQueryRet::Ipld(_) | FvmQueryRet::ActorState(_) => ExitCode::OK,
