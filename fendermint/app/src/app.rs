@@ -7,7 +7,9 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use cid::Cid;
 use fendermint_abci::Application;
-use fendermint_storage::{Codec, Encode, KVRead, KVReadable, KVStore, KVWritable, KVWrite};
+use fendermint_storage::{
+    Codec, Encode, KVCollection, KVRead, KVReadable, KVStore, KVWritable, KVWrite,
+};
 use fendermint_vm_interpreter::bytes::{
     BytesMessageApplyRet, BytesMessageCheckRet, BytesMessageQuery, BytesMessageQueryRet,
 };
@@ -36,6 +38,9 @@ macro_rules! must_encode {
     };
 }
 
+// Different type from `ChainEpoch` just because we might use epoch in a more traditional sense for checkpointing.
+pub type BlockHeight = u64;
+
 #[derive(Serialize)]
 #[repr(u8)]
 pub enum AppStoreKey {
@@ -55,8 +60,12 @@ enum AppError {
 
 #[derive(Serialize, Deserialize)]
 pub struct AppState {
-    block_height: u64,
-    state_root: Cid, // TODO: Use TCid
+    /// Last committed block height.
+    block_height: BlockHeight,
+    /// Last committed state hash.
+    state_root: Cid,
+    /// Oldest state hash height.
+    oldest_state_height: BlockHeight,
     network_version: NetworkVersion,
     base_fee: TokenAmount,
     circ_supply: TokenAmount,
@@ -72,33 +81,51 @@ where
     db: Arc<DB>,
     /// Namespace to store app state.
     namespace: S::Namespace,
+    /// Collection of past state hashes.
+    ///
+    /// We store the state hash for the height of the block where it was committed,
+    /// which is different from how Tendermint Core will refer to it in queries,
+    /// shifte by one, because Tendermint Core will use the height where the hash
+    /// *appeared*, which is in the block *after* the one which was committed.
+    state_hist: KVCollection<S, BlockHeight, Cid>,
     /// Interpreter for block lifecycle events.
     interpreter: Arc<I>,
     /// State accumulating changes during block execution.
     exec_state: Arc<Mutex<Option<FvmState<DB>>>>,
     /// Projected partial state accumulating during transaction checks.
     check_state: Arc<tokio::sync::Mutex<Option<FvmCheckState<DB>>>>,
+    /// How much history to keep.
+    ///
+    /// Zero means unlimited.
+    state_hist_size: u64,
 }
 
 impl<DB, S, I> App<DB, S, I>
 where
-    S: KVStore + Codec<AppState> + Encode<AppStoreKey>,
+    S: KVStore + Codec<AppState> + Encode<AppStoreKey> + Encode<BlockHeight> + Codec<Cid>,
     DB: Blockstore + KVWritable<S> + KVReadable<S> + Clone + 'static,
 {
-    pub fn new(db: DB, namespace: S::Namespace, interpreter: I) -> Self {
+    pub fn new(
+        db: DB,
+        app_namespace: S::Namespace,
+        hist_namespace: S::Namespace,
+        interpreter: I,
+    ) -> Self {
         Self {
             db: Arc::new(db),
-            namespace,
+            namespace: app_namespace,
+            state_hist: KVCollection::new(hist_namespace),
             interpreter: Arc::new(interpreter),
             exec_state: Arc::new(Mutex::new(None)),
             check_state: Arc::new(tokio::sync::Mutex::new(None)),
+            state_hist_size: 24 * 60 * 60,
         }
     }
 }
 
 impl<DB, S, I> App<DB, S, I>
 where
-    S: KVStore + Codec<AppState> + Encode<AppStoreKey>,
+    S: KVStore + Codec<AppState> + Encode<AppStoreKey> + Encode<BlockHeight> + Codec<Cid>,
     DB: Blockstore + KVWritable<S> + KVReadable<S> + 'static + Clone,
 {
     /// Get an owned clone of the database.
@@ -114,9 +141,27 @@ where
     }
 
     /// Set the last committed state.
-    fn set_committed_state(&self, state: AppState) {
+    fn set_committed_state(&self, mut state: AppState) {
         self.db
-            .with_write(|tx| tx.put(&self.namespace, &AppStoreKey::State, &state))
+            .with_write(|tx| {
+                // Insert latest state history point.
+                self.state_hist
+                    .put(tx, &state.block_height, &state.state_root)?;
+
+                // Prune state history.
+                if self.state_hist_size > 0 && state.block_height >= self.state_hist_size {
+                    let prune_height = state.block_height.saturating_sub(self.state_hist_size);
+                    while state.oldest_state_height <= prune_height {
+                        self.state_hist.delete(tx, &state.oldest_state_height)?;
+                        state.oldest_state_height += 1;
+                    }
+                }
+
+                // Update the application state.
+                tx.put(&self.namespace, &AppStoreKey::State, &state)?;
+
+                Ok(())
+            })
             .expect("commit failed");
     }
 
@@ -154,7 +199,7 @@ where
 #[async_trait]
 impl<DB, S, I> Application for App<DB, S, I>
 where
-    S: KVStore + Codec<AppState> + Encode<AppStoreKey>,
+    S: KVStore + Codec<AppState> + Encode<AppStoreKey> + Encode<BlockHeight> + Codec<Cid>,
     S::Namespace: Sync + Send,
     DB: Blockstore + KVWritable<S> + KVReadable<S> + Clone + Send + Sync + 'static,
     I: Interpreter<
