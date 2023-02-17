@@ -10,6 +10,8 @@ mod state;
 
 pub use check::FvmCheckRet;
 pub use exec::FvmApplyRet;
+pub use fendermint_vm_message::query::FvmQuery;
+pub use query::FvmQueryRet;
 pub use state::{FvmCheckState, FvmQueryState, FvmState};
 
 pub type FvmMessage = fvm_shared::message::Message;

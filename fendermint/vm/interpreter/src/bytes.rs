@@ -4,10 +4,10 @@ use async_trait::async_trait;
 
 use cid::Cid;
 use fendermint_vm_message::chain::ChainMessage;
-use fendermint_vm_message::query::{FvmQuery, FvmQueryRet};
 
 use crate::{
     chain::{ChainMessageApplyRet, ChainMessageCheckRet},
+    fvm::{FvmQuery, FvmQueryRet},
     CheckInterpreter, Interpreter, QueryInterpreter,
 };
 
