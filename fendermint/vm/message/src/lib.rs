@@ -7,6 +7,7 @@ use serde::Serialize;
 #[cfg(feature = "arb")]
 mod arb_cid;
 pub mod chain;
+pub mod query;
 pub mod signed;
 
 /// Calculate the CID using Blake2b256 digest and DAG_CBOR.

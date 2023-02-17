@@ -6,12 +6,13 @@ use std::cell::RefCell;
 use anyhow::{anyhow, Context};
 
 use cid::Cid;
+use fendermint_vm_message::query::ActorState;
 use fvm::{
     call_manager::DefaultCallManager,
     engine::{EngineConfig, EnginePool},
     executor::{ApplyKind, ApplyRet, DefaultExecutor, Executor},
     machine::{DefaultMachine, Machine, NetworkConfig},
-    state_tree::{ActorState, StateTree},
+    state_tree::StateTree,
     DefaultKernel,
 };
 use fvm_ipld_blockstore::Blockstore;
@@ -206,7 +207,16 @@ where
     pub fn actor_state(&self, addr: &Address) -> anyhow::Result<Option<(ActorID, ActorState)>> {
         self.with_state_tree(|state_tree| {
             if let Some(id) = state_tree.lookup_id(addr)? {
-                Ok(state_tree.get_actor(id)?.map(|st| (id, st)))
+                Ok(state_tree.get_actor(id)?.map(|st| {
+                    let st = ActorState {
+                        code: st.code,
+                        state: st.state,
+                        sequence: st.sequence,
+                        balance: st.balance,
+                        delegated_address: st.delegated_address,
+                    };
+                    (id, st)
+                }))
             } else {
                 Ok(None)
             }

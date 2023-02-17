@@ -13,10 +13,11 @@ use fendermint_vm_interpreter::bytes::{
 };
 use fendermint_vm_interpreter::chain::{ChainMessageApplyRet, IllegalMessage};
 use fendermint_vm_interpreter::fvm::{
-    FvmApplyRet, FvmCheckRet, FvmCheckState, FvmQueryRet, FvmQueryState, FvmState,
+    FvmApplyRet, FvmCheckRet, FvmCheckState, FvmQueryState, FvmState,
 };
 use fendermint_vm_interpreter::signed::InvalidSignature;
 use fendermint_vm_interpreter::{CheckInterpreter, Interpreter, QueryInterpreter, Timestamp};
+use fendermint_vm_message::query::FvmQueryRet;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;

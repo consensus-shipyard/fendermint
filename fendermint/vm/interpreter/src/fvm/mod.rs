@@ -10,7 +10,6 @@ mod state;
 
 pub use check::FvmCheckRet;
 pub use exec::FvmApplyRet;
-pub use query::{FvmQuery, FvmQueryRet};
 pub use state::{FvmCheckState, FvmQueryState, FvmState};
 
 pub type FvmMessage = fvm_shared::message::Message;
