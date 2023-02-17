@@ -48,6 +48,13 @@ fn read_or_create<T>(
 /// comparing to a debug string (which should at least be readable enough to show what changed).
 ///
 /// If the golden file doesn't exist, create one now.
+///
+/// Note that the CBOR files will be encoded as hexadecimal strings.
+/// To view them in something like https://cbor.dev/ you can use for example `xxd`:
+///
+/// ```text
+/// cat example.cbor | xxd -r -p > example.cbor.bin
+/// ```
 fn test_cbor_txt<T: Serialize + DeserializeOwned + Debug>(
     prefix: &str,
     name: &str,

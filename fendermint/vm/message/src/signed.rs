@@ -19,7 +19,11 @@ pub enum SignedMessageError {
 
 /// Represents a wrapped message with signature bytes.
 ///
-/// This is the message
+/// This is the message that the client needs to send, but only the `message`
+/// part is signed over.
+///
+/// Tuple serialization is used because it might result in a more compact data structure for storage,
+/// and because the `Message` is already serialized as a tuple.
 #[derive(PartialEq, Clone, Debug, Serialize_tuple, Deserialize_tuple, Hash, Eq)]
 pub struct SignedMessage {
     pub message: Message,
