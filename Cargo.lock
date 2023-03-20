@@ -1219,6 +1219,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fendermint_vm_genesis"
+version = "0.1.0"
+dependencies = [
+ "fvm_shared",
+ "libsecp256k1",
+]
+
+[[package]]
 name = "fendermint_vm_interpreter"
 version = "0.1.0"
 dependencies = [

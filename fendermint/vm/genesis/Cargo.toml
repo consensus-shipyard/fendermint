@@ -1,0 +1,13 @@
+[package]
+name = "fendermint_vm_genesis"
+description = "Genesis data used to initialize the FVM state when the chain is created"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+fvm_shared = { workspace = true }
+libsecp256k1 = { workspace = true }
