@@ -1204,9 +1204,12 @@ dependencies = [
  "arbitrary",
  "arbtest",
  "cid",
+ "fendermint_testing",
  "fvm_ipld_encoding",
+ "fvm_shared",
  "hex",
  "quickcheck 1.0.3",
+ "rand 0.8.5",
  "serde",
 ]
 

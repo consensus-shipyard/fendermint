@@ -15,6 +15,8 @@ libsecp256k1 = { workspace = true }
 arbitrary = { workspace = true, optional = true }
 quickcheck = { workspace = true, optional = true }
 
+fendermint_testing = { path = "../../testing", optional = true }
+
 [dev-dependencies]
 quickcheck = { workspace = true }
 quickcheck_macros = { workspace = true }
@@ -26,4 +28,4 @@ fendermint_testing = { path = "../../testing" }
 
 [features]
 default = []
-arb = ["arbitrary", "quickcheck", "fvm_shared/arb"]
+arb = ["arbitrary", "quickcheck", "fvm_shared/arb", "fendermint_testing/arb"]
