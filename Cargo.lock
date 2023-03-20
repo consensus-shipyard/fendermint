@@ -1222,8 +1222,14 @@ dependencies = [
 name = "fendermint_vm_genesis"
 version = "0.1.0"
 dependencies = [
+ "arbitrary",
+ "fendermint_testing",
+ "fendermint_vm_genesis",
  "fvm_shared",
+ "hex",
  "libsecp256k1",
+ "quickcheck 1.0.3",
+ "quickcheck_macros",
 ]
 
 [[package]]

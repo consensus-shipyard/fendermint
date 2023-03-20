@@ -11,3 +11,19 @@ license.workspace = true
 [dependencies]
 fvm_shared = { workspace = true }
 libsecp256k1 = { workspace = true }
+
+arbitrary = { workspace = true, optional = true }
+quickcheck = { workspace = true, optional = true }
+
+[dev-dependencies]
+quickcheck = { workspace = true }
+quickcheck_macros = { workspace = true }
+hex = { workspace = true }
+
+# Enable arb on self for tests.
+fendermint_vm_genesis = { path = ".", features = ["arb"] }
+fendermint_testing = { path = "../../testing" }
+
+[features]
+default = []
+arb = ["arbitrary", "quickcheck", "fvm_shared/arb"]
