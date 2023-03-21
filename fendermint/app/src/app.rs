@@ -27,10 +27,6 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::event::StampedEvent;
 use fvm_shared::version::NetworkVersion;
-use k256::ecdsa::VerifyingKey;
-use k256::elliptic_curve::AffinePoint;
-use k256::pkcs8::DecodePublicKey;
-use k256::Secp256k1;
 use serde::{Deserialize, Serialize};
 use tendermint::abci::request::CheckTxKind;
 use tendermint::abci::{request, response, Code, Event, EventAttribute};
@@ -286,7 +282,7 @@ where
             state_root: Default::default(),
             oldest_state_height: height,
             network_version: genesis.network_version,
-            base_fee: genesis.base_fee,
+            base_fee: genesis.base_fee.clone(),
             circ_supply: genesis.circ_supply(),
         };
 
@@ -616,14 +612,14 @@ fn try_parse_genesis_json(bytes: &[u8]) -> anyhow::Result<Genesis> {
 }
 
 fn try_parse_genesis_cbor(bytes: &[u8]) -> anyhow::Result<Genesis> {
-    let genesis = fvm_ipld_encoding::from_slice(&bytes)?;
+    let genesis = fvm_ipld_encoding::from_slice(bytes)?;
     Ok(genesis)
 }
 
 /// Project Genesis validators to Tendermint.
 fn genesis_validators(genesis: &Genesis) -> anyhow::Result<Vec<tendermint::validator::Update>> {
     let mut updates = vec![];
-    for v in genesis.validators {
+    for v in genesis.validators.iter() {
         let bz = v.public_key.0.serialize();
         let key = k256::ecdsa::VerifyingKey::from_sec1_bytes(&bz)?;
         updates.push(tendermint::validator::Update {

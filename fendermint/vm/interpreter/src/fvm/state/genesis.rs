@@ -27,7 +27,7 @@ where
     }
 
     /// Initialize actor states from the Genesis spec.
-    pub fn create_genesis_actors(&mut self, genesis: &Genesis) {
+    pub fn create_genesis_actors(&mut self, _genesis: &Genesis) {
         todo!()
     }
 

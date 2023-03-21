@@ -6,16 +6,20 @@
 use std::str::FromStr;
 
 use fvm_shared::bigint::BigInt;
+use fvm_shared::version::NetworkVersion;
 use fvm_shared::{address::Address, econ::TokenAmount};
 use libsecp256k1::curve::Affine;
 use libsecp256k1::PublicKey;
-use num_traits::Num;
+use num_traits::{Num, Zero};
 use serde::de::Error;
 use serde::{de, Deserialize, Serialize, Serializer};
 
 /// Wrapper around [`Address`] to provide human readable serialization in JSON format.
 ///
 /// An alternative would be the `serde_with` crate.
+///
+/// TODO: This is based on [Lotus](https://github.com/filecoin-project/lotus/blob/v1.20.4/genesis/types.go).
+///       Not sure if anything but public key addresses make sense here. Consider using `PublicKey` instead of `Address`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActorAddr(pub Address);
 
@@ -149,14 +153,29 @@ pub struct Validator {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Genesis {
+    pub network_version: NetworkVersion,
+    #[serde(
+        serialize_with = "serialize_tokens",
+        deserialize_with = "deserialize_tokens"
+    )]
+    pub base_fee: TokenAmount,
     pub validators: Vec<Validator>,
     pub accounts: Vec<Actor>,
+}
+
+impl Genesis {
+    pub fn circ_supply(&self) -> TokenAmount {
+        self.accounts
+            .iter()
+            .fold(TokenAmount::zero(), |s, a| s + a.balance.clone())
+    }
 }
 
 #[cfg(feature = "arb")]
 mod arb {
     use crate::{Actor, ActorAddr, ActorMeta, Genesis, Power, Validator, ValidatorKey};
     use fendermint_testing::arb::{ArbAddress, ArbTokenAmount};
+    use fvm_shared::version::NetworkVersion;
     use quickcheck::{Arbitrary, Gen};
     use rand::{rngs::StdRng, SeedableRng};
 
@@ -167,7 +186,7 @@ mod arb {
                     owner: ActorAddr(ArbAddress::arbitrary(g).0),
                 }
             } else {
-                let n = usize::arbitrary(g) % 5 + 1;
+                let n = usize::arbitrary(g) % 4 + 2;
                 let signers = (0..n)
                     .map(|_| ActorAddr(ArbAddress::arbitrary(g).0))
                     .collect();
@@ -208,6 +227,8 @@ mod arb {
             let nv = usize::arbitrary(g) % 10 + 1;
             let na = usize::arbitrary(g) % 10;
             Self {
+                network_version: NetworkVersion::new(*g.choose(&[18u32]).unwrap()),
+                base_fee: ArbTokenAmount::arbitrary(g).0,
                 validators: (0..nv).map(|_| Arbitrary::arbitrary(g)).collect(),
                 accounts: (0..na).map(|_| Arbitrary::arbitrary(g)).collect(),
             }
