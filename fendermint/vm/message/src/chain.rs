@@ -57,7 +57,7 @@ mod tests {
     use quickcheck_macros::quickcheck;
 
     #[quickcheck]
-    fn chain_message(value0: ChainMessage) {
+    fn chain_message_encoding(value0: ChainMessage) {
         let repr = fvm_ipld_encoding::to_vec(&value0).expect("failed to encode");
         let value1: ChainMessage =
             fvm_ipld_encoding::from_slice(repr.as_ref()).expect("failed to decode");

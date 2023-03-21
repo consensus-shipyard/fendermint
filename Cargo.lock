@@ -1233,6 +1233,7 @@ dependencies = [
  "libsecp256k1",
  "quickcheck 1.0.3",
  "quickcheck_macros",
+ "rand 0.8.5",
 ]
 
 [[package]]
