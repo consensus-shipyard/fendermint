@@ -1231,9 +1231,12 @@ dependencies = [
  "fvm_shared",
  "hex",
  "libsecp256k1",
+ "num-traits",
  "quickcheck 1.0.3",
  "quickcheck_macros",
  "rand 0.8.5",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

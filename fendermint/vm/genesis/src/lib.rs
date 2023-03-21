@@ -3,29 +3,109 @@
 //! A Genesis data structure similar to [genesis.Template](https://github.com/filecoin-project/lotus/blob/v1.20.4/genesis/types.go)
 //! in Lotus, which is used to [initialize](https://github.com/filecoin-project/lotus/blob/v1.20.4/chain/gen/genesis/genesis.go) the state tree.
 
-use fvm_shared::{address::Address, econ::TokenAmount};
+use std::str::FromStr;
 
-#[derive(Clone, Debug)]
+use fvm_shared::bigint::BigInt;
+use fvm_shared::{address::Address, econ::TokenAmount};
+use num_traits::Num;
+use serde::de::Error;
+use serde::{de, Deserialize, Serialize, Serializer};
+
+/// Wrapper around [`Address`] to provide human readable serialization in JSON format.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ActorAddr(pub Address);
+
+impl Serialize for ActorAddr {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            self.0.to_string().serialize(serializer)
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ActorAddr {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            match Address::from_str(&s) {
+                Ok(a) => Ok(Self(a)),
+                Err(e) => Err(D::Error::custom(format!(
+                    "error deserializing address: {}",
+                    e
+                ))),
+            }
+        } else {
+            Address::deserialize(deserializer).map(Self)
+        }
+    }
+}
+
+/// Wrapper around [`TokenAmount`] to provide human readable serialization in JSON format.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ActorBalance(pub TokenAmount);
+
+impl Serialize for ActorBalance {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            self.0.atto().to_str_radix(10).serialize(serializer)
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ActorBalance {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            match BigInt::from_str_radix(&s, 10) {
+                Ok(a) => Ok(Self(TokenAmount::from_atto(a))),
+                Err(e) => Err(D::Error::custom(format!(
+                    "error deserializing balance: {}",
+                    e
+                ))),
+            }
+        } else {
+            TokenAmount::deserialize(deserializer).map(Self)
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ActorMeta {
     Account {
-        owner: Address,
+        owner: ActorAddr,
     },
     MultiSig {
-        signers: Vec<Address>,
+        signers: Vec<ActorAddr>,
         threshold: usize,
         vesting_duration: u64,
         vesting_start: u64,
     },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Actor {
     pub meta: ActorMeta,
-    pub balance: TokenAmount,
+    pub balance: ActorBalance,
 }
 
 /// Total stake delegated to this validator.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Power(u64);
 
 /// A genesis validator with their initial power.
@@ -40,13 +120,13 @@ pub struct Power(u64);
 /// don't know how to turn into an [`Address`]. This way leaves
 /// less room for error, and we can pass all the data to the FVM
 /// in one go.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Validator {
     pub public_key: libsecp256k1::PublicKey,
     pub power: Power,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Genesis {
     pub validators: Vec<Validator>,
     pub accounts: Vec<Actor>,
@@ -54,7 +134,7 @@ pub struct Genesis {
 
 #[cfg(feature = "arb")]
 mod arb {
-    use crate::{Actor, ActorMeta, Genesis, Power, Validator};
+    use crate::{Actor, ActorAddr, ActorBalance, ActorMeta, Genesis, Power, Validator};
     use fendermint_testing::arb::{ArbAddress, ArbTokenAmount};
     use quickcheck::{Arbitrary, Gen};
     use rand::{rngs::StdRng, SeedableRng};
@@ -63,11 +143,13 @@ mod arb {
         fn arbitrary(g: &mut Gen) -> Self {
             if bool::arbitrary(g) {
                 ActorMeta::Account {
-                    owner: ArbAddress::arbitrary(g).0,
+                    owner: ActorAddr(ArbAddress::arbitrary(g).0),
                 }
             } else {
                 let n = usize::arbitrary(g) % 5 + 1;
-                let signers = (0..n).map(|_| ArbAddress::arbitrary(g).0).collect();
+                let signers = (0..n)
+                    .map(|_| ActorAddr(ArbAddress::arbitrary(g).0))
+                    .collect();
                 let threshold = usize::arbitrary(g) % n + 1;
                 ActorMeta::MultiSig {
                     signers,
@@ -83,7 +165,7 @@ mod arb {
         fn arbitrary(g: &mut Gen) -> Self {
             Self {
                 meta: ActorMeta::arbitrary(g),
-                balance: ArbTokenAmount::arbitrary(g).0,
+                balance: ActorBalance(ArbTokenAmount::arbitrary(g).0),
             }
         }
     }
@@ -102,10 +184,27 @@ mod arb {
 
     impl Arbitrary for Genesis {
         fn arbitrary(g: &mut Gen) -> Self {
+            let nv = usize::arbitrary(g) % 10 + 1;
+            let na = usize::arbitrary(g) % 10;
             Self {
-                validators: Arbitrary::arbitrary(g),
-                accounts: Arbitrary::arbitrary(g),
+                validators: (0..nv).map(|_| Arbitrary::arbitrary(g)).collect(),
+                accounts: (0..na).map(|_| Arbitrary::arbitrary(g)).collect(),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use quickcheck_macros::quickcheck;
+
+    use crate::Genesis;
+
+    #[quickcheck]
+    fn genesis_json(value0: Genesis) {
+        let repr = serde_json::to_string(&value0).expect("failed to encode");
+        let value1: Genesis = serde_json::from_str(&repr).expect("failed to decode");
+
+        assert_eq!(value1, value0)
     }
 }
