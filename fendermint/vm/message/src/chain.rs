@@ -1,6 +1,6 @@
-use cid::Cid;
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
+use cid::Cid;
 use serde::{Deserialize, Serialize};
 
 use crate::signed::SignedMessage;

@@ -7,6 +7,8 @@ use std::str::FromStr;
 
 use fvm_shared::bigint::BigInt;
 use fvm_shared::{address::Address, econ::TokenAmount};
+use libsecp256k1::curve::Affine;
+use libsecp256k1::PublicKey;
 use num_traits::Num;
 use serde::de::Error;
 use serde::{de, Deserialize, Serialize, Serializer};
@@ -108,6 +110,26 @@ pub struct Actor {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Power(u64);
 
+/// Secp256k1 public key of the validators.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ValidatorKey(PublicKey);
+
+impl ValidatorKey {
+    /// Create a new key and make sure the wrapped public key is normalized,
+    /// which is to ensure the results look the same after a serialization roundtrip.
+    pub fn new(key: PublicKey) -> Self {
+        let mut aff: Affine = key.into();
+        aff.x.normalize();
+        aff.y.normalize();
+        let key = PublicKey::try_from(aff).unwrap();
+        Self(key)
+    }
+
+    pub fn public_key(&self) -> &PublicKey {
+        &self.0
+    }
+}
+
 /// A genesis validator with their initial power.
 ///
 /// An [`Address`] would be enough to validate signatures, however
@@ -122,7 +144,7 @@ pub struct Power(u64);
 /// in one go.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Validator {
-    pub public_key: libsecp256k1::PublicKey,
+    pub public_key: ValidatorKey,
     pub power: Power,
 }
 
@@ -134,7 +156,9 @@ pub struct Genesis {
 
 #[cfg(feature = "arb")]
 mod arb {
-    use crate::{Actor, ActorAddr, ActorBalance, ActorMeta, Genesis, Power, Validator};
+    use crate::{
+        Actor, ActorAddr, ActorBalance, ActorMeta, Genesis, Power, Validator, ValidatorKey,
+    };
     use fendermint_testing::arb::{ArbAddress, ArbTokenAmount};
     use quickcheck::{Arbitrary, Gen};
     use rand::{rngs::StdRng, SeedableRng};
@@ -176,7 +200,7 @@ mod arb {
             let sk = libsecp256k1::SecretKey::random(&mut rng);
             let pk = libsecp256k1::PublicKey::from_secret_key(&sk);
             Self {
-                public_key: pk,
+                public_key: ValidatorKey::new(pk),
                 power: Power(u64::arbitrary(g)),
             }
         }
