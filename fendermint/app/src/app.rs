@@ -17,7 +17,7 @@ use fendermint_vm_interpreter::bytes::{
 };
 use fendermint_vm_interpreter::chain::{ChainMessageApplyRet, IllegalMessage};
 use fendermint_vm_interpreter::fvm::{
-    FvmApplyRet, FvmCheckRet, FvmCheckState, FvmQueryRet, FvmQueryState, FvmState,
+    FvmApplyRet, FvmCheckRet, FvmCheckState, FvmExecState, FvmQueryRet, FvmQueryState,
 };
 use fendermint_vm_interpreter::signed::InvalidSignature;
 use fendermint_vm_interpreter::{CheckInterpreter, Interpreter, QueryInterpreter, Timestamp};
@@ -94,7 +94,7 @@ where
     /// Interpreter for block lifecycle events.
     interpreter: Arc<I>,
     /// State accumulating changes during block execution.
-    exec_state: Arc<Mutex<Option<FvmState<DB>>>>,
+    exec_state: Arc<Mutex<Option<FvmExecState<DB>>>>,
     /// Projected partial state accumulating during transaction checks.
     check_state: Arc<tokio::sync::Mutex<Option<FvmCheckState<DB>>>>,
     /// How much history to keep.
@@ -169,14 +169,14 @@ where
     }
 
     /// Put the execution state during block execution. Has to be empty.
-    fn put_exec_state(&self, state: FvmState<DB>) {
+    fn put_exec_state(&self, state: FvmExecState<DB>) {
         let mut guard = self.exec_state.lock().expect("mutex poisoned");
         assert!(guard.is_some(), "exec state not empty");
         *guard = Some(state);
     }
 
     /// Take the execution state during block execution. Has to be non-empty.
-    fn take_exec_state(&self) -> FvmState<DB> {
+    fn take_exec_state(&self) -> FvmExecState<DB> {
         let mut guard = self.exec_state.lock().expect("mutex poisoned");
         guard.take().expect("exec state empty")
     }
@@ -184,8 +184,8 @@ where
     /// Take the execution state, update it, put it back, return the output.
     async fn modify_exec_state<T, F, R>(&self, f: F) -> anyhow::Result<T>
     where
-        F: FnOnce(FvmState<DB>) -> R,
-        R: Future<Output = anyhow::Result<(FvmState<DB>, T)>>,
+        F: FnOnce(FvmExecState<DB>) -> R,
+        R: Future<Output = anyhow::Result<(FvmExecState<DB>, T)>>,
     {
         let state = self.take_exec_state();
         let (state, ret) = f(state).await?;
@@ -228,7 +228,7 @@ where
     S::Namespace: Sync + Send,
     DB: Blockstore + KVWritable<S> + KVReadable<S> + Clone + Send + Sync + 'static,
     I: Interpreter<
-        State = FvmState<DB>,
+        State = FvmExecState<DB>,
         Message = Vec<u8>,
         BeginOutput = FvmApplyRet,
         DeliverOutput = BytesMessageApplyRet,
@@ -341,7 +341,7 @@ where
                 .expect("negative timestamp"),
         );
 
-        let state = FvmState::new(
+        let state = FvmExecState::new(
             db,
             height,
             timestamp,
