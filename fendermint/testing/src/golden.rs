@@ -124,7 +124,7 @@ pub fn test_json_txt<T: Serialize + DeserializeOwned + Debug>(
         arb_data,
         "json",
         |d| serde_json::to_string_pretty(d).expect("failed to serialize"),
-        |s| serde_json::from_str(&s).map_err(|e| format!("failed to decode JSON: {e}")),
+        |s| serde_json::from_str(s).map_err(|e| format!("failed to decode JSON: {e}")),
     )
 }
 
