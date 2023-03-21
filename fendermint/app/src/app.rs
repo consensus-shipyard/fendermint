@@ -17,7 +17,8 @@ use fendermint_vm_interpreter::bytes::{
 };
 use fendermint_vm_interpreter::chain::{ChainMessageApplyRet, IllegalMessage};
 use fendermint_vm_interpreter::fvm::{
-    FvmApplyRet, FvmCheckRet, FvmCheckState, FvmExecState, FvmQueryRet, FvmQueryState,
+    FvmApplyRet, FvmCheckRet, FvmCheckState, FvmExecState, FvmGenesisState, FvmQueryRet,
+    FvmQueryState,
 };
 use fendermint_vm_interpreter::signed::InvalidSignature;
 use fendermint_vm_interpreter::{CheckInterpreter, Interpreter, QueryInterpreter, Timestamp};
@@ -26,6 +27,10 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::event::StampedEvent;
 use fvm_shared::version::NetworkVersion;
+use k256::ecdsa::VerifyingKey;
+use k256::elliptic_curve::AffinePoint;
+use k256::pkcs8::DecodePublicKey;
+use k256::Secp256k1;
 use serde::{Deserialize, Serialize};
 use tendermint::abci::request::CheckTxKind;
 use tendermint::abci::{request, response, Code, Event, EventAttribute};
@@ -72,6 +77,13 @@ pub struct AppState {
     network_version: NetworkVersion,
     base_fee: TokenAmount,
     circ_supply: TokenAmount,
+}
+
+impl AppState {
+    pub fn app_hash(&self) -> tendermint::hash::AppHash {
+        tendermint::hash::AppHash::try_from(self.state_root.to_bytes())
+            .expect("hash can be wrapped")
+    }
 }
 
 /// Handle ABCI requests.
@@ -252,24 +264,45 @@ where
         let height =
             tendermint::block::Height::try_from(state.block_height).expect("height too big");
 
-        let app_hash = tendermint::hash::AppHash::try_from(state.state_root.to_bytes())
-            .expect("hash can be wrapped");
-
         response::Info {
             data: "fendermint".to_string(),
             version: VERSION.to_owned(),
             app_version: 1,
             last_block_height: height,
-            last_block_app_hash: app_hash,
+            last_block_app_hash: state.app_hash(),
         }
     }
 
     /// Called once upon genesis.
     async fn init_chain(&self, request: request::InitChain) -> response::InitChain {
         // TODO (IPC-44): Use the serialized application state instead of `Genesis`.
-        let _genesis: Genesis =
+        let genesis: Genesis =
             parse_genesis(&request.app_state_bytes).expect("failed to parse genesis");
-        todo!()
+
+        let height = request.initial_height.into();
+
+        let mut app_state = AppState {
+            block_height: height,
+            state_root: Default::default(),
+            oldest_state_height: height,
+            network_version: genesis.network_version,
+            base_fee: genesis.base_fee,
+            circ_supply: genesis.circ_supply(),
+        };
+
+        let mut state = FvmGenesisState::new(self.clone_db()).expect("error creating state");
+        state.create_genesis_actors(&genesis);
+        app_state.state_root = state.commit().expect("error committing state");
+
+        let response = response::InitChain {
+            consensus_params: None,
+            validators: genesis_validators(&genesis).expect("error projecting validators"),
+            app_hash: app_state.app_hash(),
+        };
+
+        self.set_committed_state(app_state);
+
+        response
     }
 
     /// Query the application for data at the current or past height.
@@ -585,4 +618,18 @@ fn try_parse_genesis_json(bytes: &[u8]) -> anyhow::Result<Genesis> {
 fn try_parse_genesis_cbor(bytes: &[u8]) -> anyhow::Result<Genesis> {
     let genesis = fvm_ipld_encoding::from_slice(&bytes)?;
     Ok(genesis)
+}
+
+/// Project Genesis validators to Tendermint.
+fn genesis_validators(genesis: &Genesis) -> anyhow::Result<Vec<tendermint::validator::Update>> {
+    let mut updates = vec![];
+    for v in genesis.validators {
+        let bz = v.public_key.0.serialize();
+        let key = k256::ecdsa::VerifyingKey::from_sec1_bytes(&bz)?;
+        updates.push(tendermint::validator::Update {
+            pub_key: tendermint::public_key::PublicKey::Secp256k1(key),
+            power: tendermint::vote::Power::try_from(v.power.0)?,
+        });
+    }
+    Ok(updates)
 }

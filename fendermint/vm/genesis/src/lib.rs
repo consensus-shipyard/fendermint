@@ -108,11 +108,11 @@ pub struct Actor {
 
 /// Total stake delegated to this validator.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Power(u64);
+pub struct Power(pub u64);
 
 /// Secp256k1 public key of the validators.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ValidatorKey(PublicKey);
+pub struct ValidatorKey(pub PublicKey);
 
 impl ValidatorKey {
     /// Create a new key and make sure the wrapped public key is normalized,

@@ -14,6 +14,7 @@ tendermint = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 hex = { workspace = true }
+k256 = { workspace = true }
 
 fendermint_abci = { path = "../abci" }
 fendermint_storage = { path = "../storage" }
