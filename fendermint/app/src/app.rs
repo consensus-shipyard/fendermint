@@ -4,12 +4,14 @@ use std::future::Future;
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 
+use anyhow::anyhow;
 use async_trait::async_trait;
 use cid::Cid;
 use fendermint_abci::Application;
 use fendermint_storage::{
     Codec, Encode, KVCollection, KVRead, KVReadable, KVStore, KVWritable, KVWrite,
 };
+use fendermint_vm_genesis::Genesis;
 use fendermint_vm_interpreter::bytes::{
     BytesMessageApplyRet, BytesMessageCheckRet, BytesMessageQuery, BytesMessageQueryRet,
 };
@@ -263,8 +265,11 @@ where
     }
 
     /// Called once upon genesis.
-    async fn init_chain(&self, _request: request::InitChain) -> response::InitChain {
-        Default::default()
+    async fn init_chain(&self, request: request::InitChain) -> response::InitChain {
+        // TODO (IPC-44): Use the serialized application state instead of `Genesis`.
+        let _genesis: Genesis =
+            parse_genesis(&request.app_state_bytes).expect("failed to parse genesis");
+        todo!()
     }
 
     /// Query the application for data at the current or past height.
@@ -561,4 +566,23 @@ fn to_query(ret: FvmQueryRet, block_height: BlockHeight) -> response::Query {
         height,
         ..Default::default()
     }
+}
+
+/// Parse the initial genesis either as JSON or CBOR.
+fn parse_genesis(bytes: &[u8]) -> anyhow::Result<Genesis> {
+    try_parse_genesis_json(bytes).or_else(|e1| {
+        try_parse_genesis_cbor(bytes)
+            .map_err(|e2| anyhow!("failed to deserialize genesis as JSON or CBOR: {e1}; {e2}"))
+    })
+}
+
+fn try_parse_genesis_json(bytes: &[u8]) -> anyhow::Result<Genesis> {
+    let json = String::from_utf8(bytes.to_vec())?;
+    let genesis = serde_json::from_str(&json)?;
+    Ok(genesis)
+}
+
+fn try_parse_genesis_cbor(bytes: &[u8]) -> anyhow::Result<Genesis> {
+    let genesis = fvm_ipld_encoding::from_slice(&bytes)?;
+    Ok(genesis)
 }

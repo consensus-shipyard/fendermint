@@ -12,6 +12,7 @@ async-trait = { workspace = true }
 tokio = { workspace = true }
 tendermint = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 hex = { workspace = true }
 
 fendermint_abci = { path = "../abci" }
@@ -19,6 +20,7 @@ fendermint_storage = { path = "../storage" }
 fendermint_rocksdb = { path = "../rocksdb" }
 fendermint_vm_interpreter = { path = "../vm/interpreter" }
 fendermint_vm_message = { path = "../vm/message" }
+fendermint_vm_genesis = { path = "../vm/genesis" }
 
 cid = { workspace = true }
 fvm = { workspace = true }
