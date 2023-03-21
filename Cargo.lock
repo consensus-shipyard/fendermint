@@ -1229,6 +1229,7 @@ dependencies = [
  "arbitrary",
  "fendermint_testing",
  "fendermint_vm_genesis",
+ "fvm_ipld_encoding",
  "fvm_shared",
  "hex",
  "libsecp256k1",

@@ -231,4 +231,12 @@ mod tests {
 
         assert_eq!(value1, value0)
     }
+
+    #[quickcheck]
+    fn genesis_cbor(value0: Genesis) {
+        let repr = fvm_ipld_encoding::to_vec(&value0).expect("failed to encode");
+        let value1: Genesis = fvm_ipld_encoding::from_slice(&repr).expect("failed to decode");
+
+        assert_eq!(value1, value0)
+    }
 }
