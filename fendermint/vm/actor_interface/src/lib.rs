@@ -17,13 +17,14 @@
 macro_rules! define_singleton {
     ($name:ident { id: $id:literal, code_id: $code_id:literal }) => {
         paste::paste! {
-            pub const [<$name _ID>]: fvm_shared::ActorID = $id;
-            pub const [<$name _ADDR>]: fvm_shared::address::Address = fvm_shared::address::Address::new_id([<$name _ID>]);
+            pub const [<$name _ACTOR_ID>]: fvm_shared::ActorID = $id;
+            pub const [<$name _ACTOR_ADDR>]: fvm_shared::address::Address = fvm_shared::address::Address::new_id([<$name _ACTOR_ID>]);
             /// Position of the actor in the builtin actor bundle manifest.
-            pub const [<$name _CODE_ID>]: u32 = $code_id;
+            pub const [<$name _ACTOR_CODE_ID>]: u32 = $code_id;
         }
     };
 }
 
 pub mod cron;
+pub mod init;
 pub mod system;

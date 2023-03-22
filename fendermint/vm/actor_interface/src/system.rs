@@ -3,7 +3,7 @@
 use cid::Cid;
 use fvm_ipld_encoding::tuple::*;
 
-define_singleton!(SYSTEM_ACTOR { id: 0, code_id: 1 });
+define_singleton!(SYSTEM { id: 0, code_id: 1 });
 
 /// System actor state.
 #[derive(Default, Deserialize_tuple, Serialize_tuple, Debug, Clone)]

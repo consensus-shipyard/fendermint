@@ -3,7 +3,7 @@
 
 use anyhow::{anyhow, Context};
 use cid::{multihash::Code, Cid};
-use fendermint_vm_actor_interface::system;
+use fendermint_vm_actor_interface::{init, system};
 use fendermint_vm_genesis::Genesis;
 use fvm::{
     machine::Manifest,
@@ -81,14 +81,24 @@ where
     /// * burnt funds?
     /// * faucet?
     /// * IPC
-    pub fn create_genesis_actors(&mut self, _genesis: &Genesis) -> anyhow::Result<()> {
+    pub fn create_genesis_actors(&mut self, genesis: &Genesis) -> anyhow::Result<()> {
         // System actor
+        let system_state = system::State {
+            builtin_actors: self.manifest_data_cid,
+        };
         self.create_singleton_actor(
             system::SYSTEM_ACTOR_CODE_ID,
             system::SYSTEM_ACTOR_ID,
-            &system::State {
-                builtin_actors: self.manifest_data_cid,
-            },
+            &system_state,
+            TokenAmount::zero(),
+        )?;
+
+        // Init actor
+        let init_state = init::State::new(self.state_tree.store(), genesis.network_name.clone())?;
+        self.create_singleton_actor(
+            init::INIT_ACTOR_CODE_ID,
+            init::INIT_ACTOR_ID,
+            &init_state,
             TokenAmount::zero(),
         )?;
 
