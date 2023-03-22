@@ -10,4 +10,8 @@ license.workspace = true
 
 [dependencies]
 paste = { workspace = true }
+serde = { workspace = true }
+
+cid = { workspace = true }
 fvm_shared = { workspace = true }
+fvm_ipld_encoding = { workspace = true }
