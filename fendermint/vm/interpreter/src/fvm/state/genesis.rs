@@ -3,7 +3,7 @@
 
 use anyhow::{anyhow, Context};
 use cid::{multihash::Code, Cid};
-use fendermint_vm_actor_interface::{init, system};
+use fendermint_vm_actor_interface::{cron, init, system};
 use fendermint_vm_genesis::Genesis;
 use fvm::{
     machine::Manifest,
@@ -99,6 +99,17 @@ where
             init::INIT_ACTOR_CODE_ID,
             init::INIT_ACTOR_ID,
             &init_state,
+            TokenAmount::zero(),
+        )?;
+
+        // Cron actor
+        let cron_state = cron::State {
+            entries: vec![], // TODO: Maybe with the IPC.
+        };
+        self.create_singleton_actor(
+            cron::CRON_ACTOR_CODE_ID,
+            cron::CRON_ACTOR_ID,
+            &cron_state,
             TokenAmount::zero(),
         )?;
 
