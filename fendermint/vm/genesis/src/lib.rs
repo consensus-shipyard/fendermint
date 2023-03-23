@@ -94,7 +94,7 @@ pub struct Account {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Multisig {
     pub signers: Vec<ActorAddr>,
-    pub threshold: usize,
+    pub threshold: u64,
     pub vesting_duration: u64,
     pub vesting_start: u64,
 }
@@ -195,11 +195,11 @@ mod arb {
                     owner: ActorAddr(ArbAddress::arbitrary(g).0),
                 })
             } else {
-                let n = usize::arbitrary(g) % 4 + 2;
+                let n = u64::arbitrary(g) % 4 + 2;
                 let signers = (0..n)
                     .map(|_| ActorAddr(ArbAddress::arbitrary(g).0))
                     .collect();
-                let threshold = usize::arbitrary(g) % n + 1;
+                let threshold = u64::arbitrary(g) % n + 1;
                 ActorMeta::MultiSig(Multisig {
                     signers,
                     threshold,

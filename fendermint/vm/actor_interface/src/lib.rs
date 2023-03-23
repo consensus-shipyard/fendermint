@@ -37,4 +37,5 @@ pub mod account;
 pub mod cron;
 pub mod eam;
 pub mod init;
+pub mod multisig;
 pub mod system;
