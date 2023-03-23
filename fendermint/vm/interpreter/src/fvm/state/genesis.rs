@@ -3,8 +3,8 @@
 
 use anyhow::{anyhow, Context};
 use cid::{multihash::Code, Cid};
-use fendermint_vm_actor_interface::{cron, eam, init, system};
-use fendermint_vm_genesis::Genesis;
+use fendermint_vm_actor_interface::{account, cron, eam, init, system};
+use fendermint_vm_genesis::{Actor, ActorMeta, Genesis};
 use fvm::{
     machine::Manifest,
     state_tree::{ActorState, StateTree},
@@ -97,7 +97,11 @@ where
         )?;
 
         // Init actor
-        let init_state = init::State::new(self.state_tree.store(), genesis.network_name.clone())?;
+        let (init_state, addr_to_id) = init::State::new(
+            self.state_tree.store(),
+            genesis.network_name.clone(),
+            &genesis.accounts,
+        )?;
         self.create_singleton_actor(
             init::INIT_ACTOR_CODE_ID,
             init::INIT_ACTOR_ID,
@@ -124,6 +128,11 @@ where
             &eam_state,
             TokenAmount::zero(),
         )?;
+
+        // Create accounts
+        for a in genesis.accounts.iter() {
+            self.create_account_actor(a, &addr_to_id)?;
+        }
 
         Ok(())
     }
@@ -166,6 +175,44 @@ where
         self.state_tree.set_actor(id, actor_state);
 
         Ok(())
+    }
+
+    fn create_account_actor(
+        &mut self,
+        actor: &Actor,
+        ids: &init::AddressMap,
+    ) -> anyhow::Result<()> {
+        let code_cid = self.manifest.get_account_code();
+        match actor.meta {
+            ActorMeta::Account { ref owner } => {
+                let address = owner.0;
+                let state = account::State { address };
+
+                let id = ids
+                    .get(&address)
+                    .ok_or_else(|| anyhow!("can't find ID for {address}"))?;
+
+                let state_cid = self
+                    .state_tree
+                    .store()
+                    .put_cbor(&state, Code::Blake2b256)
+                    .context("failed to put actor state while installing")?;
+
+                let actor_state = ActorState {
+                    code: *code_cid,
+                    state: state_cid,
+                    sequence: 0,
+                    balance: actor.balance.clone(),
+                    delegated_address: None,
+                };
+
+                self.state_tree.set_actor(*id, actor_state);
+
+                Ok(())
+            }
+
+            ActorMeta::MultiSig { .. } => todo!(),
+        }
     }
 }
 
