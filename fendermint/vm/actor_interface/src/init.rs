@@ -56,6 +56,16 @@ impl State {
             next_id += 1;
         }
 
+        // We will need to allocate an ID for each multisig account, however,
+        // these do not have to be recorded in the map, because their addr->ID
+        // mapping is trivial (it's an ID type address). To avoid the init actor
+        // using the same ID for something else, give it a higher ID to use next.
+        for a in accounts.iter() {
+            if let ActorMeta::MultiSig { .. } = a.meta {
+                next_id += 1;
+            }
+        }
+
         #[cfg(feature = "m2-native")]
         let installed_actors = store.put_cbor(&Vec::<Cid>::new(), Code::Blake2b256)?;
 
