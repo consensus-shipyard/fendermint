@@ -3,7 +3,7 @@
 
 use anyhow::{anyhow, Context};
 use cid::{multihash::Code, Cid};
-use fendermint_vm_actor_interface::{cron, init, system};
+use fendermint_vm_actor_interface::{cron, eam, init, system};
 use fendermint_vm_genesis::Genesis;
 use fvm::{
     machine::Manifest,
@@ -81,6 +81,9 @@ where
     /// * burnt funds?
     /// * faucet?
     /// * IPC
+    ///
+    /// See [Lotus](https://github.com/filecoin-project/lotus/blob/v1.20.4/chain/gen/genesis/genesis.go) for reference
+    /// and the [ref-fvm tester](https://github.com/filecoin-project/ref-fvm/blob/fvm%40v3.1.0/testing/integration/src/tester.rs#L99-L103).
     pub fn create_genesis_actors(&mut self, genesis: &Genesis) -> anyhow::Result<()> {
         // System actor
         let system_state = system::State {
@@ -110,6 +113,15 @@ where
             cron::CRON_ACTOR_CODE_ID,
             cron::CRON_ACTOR_ID,
             &cron_state,
+            TokenAmount::zero(),
+        )?;
+
+        // Ethereum Account Manager (EAM) actor
+        let eam_state = [(); 0];
+        self.create_singleton_actor(
+            eam::EAM_ACTOR_CODE_ID,
+            eam::EAM_ACTOR_ID,
+            &eam_state,
             TokenAmount::zero(),
         )?;
 
