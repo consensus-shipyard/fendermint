@@ -19,7 +19,7 @@ use serde::Serialize;
 /// A state we create for the execution of genesis initialisation.
 pub struct FvmGenesisState<DB>
 where
-    DB: Blockstore + 'static,
+    DB: Blockstore,
 {
     manifest_data_cid: Cid,
     manifest: Manifest,
@@ -28,7 +28,7 @@ where
 
 impl<DB> FvmGenesisState<DB>
 where
-    DB: Blockstore + 'static,
+    DB: Blockstore,
 {
     pub async fn new(store: DB, bundle: &[u8]) -> anyhow::Result<Self> {
         // Load the actor bundle.
@@ -117,7 +117,7 @@ where
         )?;
 
         // Ethereum Account Manager (EAM) actor
-        let eam_state = [(); 0];
+        let eam_state = [(); 0]; // Based on how it's done in `Tester`.
         self.create_singleton_actor(
             eam::EAM_ACTOR_CODE_ID,
             eam::EAM_ACTOR_ID,
@@ -166,5 +166,34 @@ where
         self.state_tree.set_actor(id, actor_state);
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use fendermint_vm_genesis::Genesis;
+    use fvm_ipld_blockstore::MemoryBlockstore;
+    use quickcheck::Arbitrary;
+
+    use crate::fvm::bundle::bundle_path;
+
+    use super::FvmGenesisState;
+
+    #[tokio::test]
+    async fn load_genesis() {
+        let mut g = quickcheck::Gen::new(5);
+        let genesis = Genesis::arbitrary(&mut g);
+        let bundle = std::fs::read(bundle_path()).expect("failed to read bundle");
+        let store = MemoryBlockstore::new();
+
+        let mut state = FvmGenesisState::new(&store, &bundle)
+            .await
+            .expect("failed to create state");
+
+        state
+            .create_genesis_actors(&genesis)
+            .expect("failed to create actors");
+
+        let _state_root = state.commit().expect("failed to commit");
     }
 }

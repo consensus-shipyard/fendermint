@@ -2,7 +2,7 @@
 
 BUILTIN_ACTORS_DIR:=../builtin-actors
 BUILTIN_ACTORS_CODE:=$(shell find $(BUILTIN_ACTORS_DIR) -type f -name "*.rs")
-BUILTIN_ACTORS_BUNDLE:=../builtin-actors/output/bundle.car
+BUILTIN_ACTORS_BUNDLE:=$(shell pwd)/../builtin-actors/output/bundle.car
 
 all: test build
 
