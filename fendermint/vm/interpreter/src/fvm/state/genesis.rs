@@ -4,7 +4,7 @@
 use anyhow::{anyhow, Context};
 use cid::{multihash::Code, Cid};
 use fendermint_vm_actor_interface::{account, cron, eam, init, system};
-use fendermint_vm_genesis::{Actor, ActorMeta, Genesis};
+use fendermint_vm_genesis::{Account, ActorMeta, Genesis, Multisig};
 use fvm::{
     machine::Manifest,
     state_tree::{ActorState, StateTree},
@@ -12,7 +12,7 @@ use fvm::{
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_car::load_car_unchecked;
 use fvm_ipld_encoding::CborStore;
-use fvm_shared::{address::Address, econ::TokenAmount, state::StateTreeVersion, ActorID};
+use fvm_shared::{econ::TokenAmount, state::StateTreeVersion, ActorID};
 use num_traits::Zero;
 use serde::Serialize;
 
@@ -84,7 +84,7 @@ where
     ///
     /// See [Lotus](https://github.com/filecoin-project/lotus/blob/v1.20.4/chain/gen/genesis/genesis.go) for reference
     /// and the [ref-fvm tester](https://github.com/filecoin-project/ref-fvm/blob/fvm%40v3.1.0/testing/integration/src/tester.rs#L99-L103).
-    pub fn create_genesis_actors(&mut self, genesis: &Genesis) -> anyhow::Result<()> {
+    pub fn create_genesis_actors(&mut self, genesis: Genesis) -> anyhow::Result<()> {
         // System actor
         let system_state = system::State {
             builtin_actors: self.manifest_data_cid,
@@ -130,19 +130,16 @@ where
         )?;
 
         // Create accounts
-        let next_id = init::FIRST_NON_SINGLETON_ADDR + addr_to_id.len() as u64;
-        for a in genesis.accounts.iter() {
-            match &a.meta {
-                ActorMeta::Account { owner } => {
-                    self.create_account_actor(owner.0, a.balance.clone(), &addr_to_id)?;
+        let mut next_id = init::FIRST_NON_SINGLETON_ADDR + addr_to_id.len() as u64;
+        for a in genesis.accounts {
+            let balance = a.balance;
+            match a.meta {
+                ActorMeta::Account(acct) => {
+                    self.create_account_actor(acct, balance, &addr_to_id)?;
                 }
-                ActorMeta::MultiSig {
-                    signers,
-                    threshold,
-                    vesting_duration,
-                    vesting_start,
-                } => {
-                    todo!();
+                ActorMeta::MultiSig(ms) => {
+                    self.create_multisig_actor(ms, balance, &addr_to_id, next_id)?;
+                    next_id += 1;
                 }
             }
         }
@@ -192,11 +189,12 @@ where
 
     fn create_account_actor(
         &mut self,
-        owner: Address,
+        acct: Account,
         balance: TokenAmount,
         ids: &init::AddressMap,
     ) -> anyhow::Result<()> {
         let code_cid = self.manifest.get_account_code();
+        let owner = acct.owner.0.clone();
         let state = account::State { address: owner };
 
         let id = ids
@@ -220,6 +218,16 @@ where
         self.state_tree.set_actor(*id, actor_state);
 
         Ok(())
+    }
+
+    fn create_multisig_actor(
+        &mut self,
+        ms: Multisig,
+        balance: TokenAmount,
+        ids: &init::AddressMap,
+        next_id: ActorID,
+    ) -> anyhow::Result<()> {
+        todo!()
     }
 }
 
@@ -245,7 +253,7 @@ mod tests {
             .expect("failed to create state");
 
         state
-            .create_genesis_actors(&genesis)
+            .create_genesis_actors(genesis)
             .expect("failed to create actors");
 
         let _state_root = state.commit().expect("failed to commit");

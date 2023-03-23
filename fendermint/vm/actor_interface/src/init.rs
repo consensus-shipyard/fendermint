@@ -37,11 +37,11 @@ impl State {
         let mut allocated_ids = AddressMap::new();
         let mut address_map = Hamt::<_, ActorID>::new_with_bit_width(store, HAMT_BIT_WIDTH);
 
-        let addresses = accounts.iter().flat_map(|a| match a.meta {
-            ActorMeta::Account { ref owner } => {
-                vec![owner.0]
+        let addresses = accounts.iter().flat_map(|a| match &a.meta {
+            ActorMeta::Account(acc) => {
+                vec![acc.owner.0]
             }
-            ActorMeta::MultiSig { ref signers, .. } => signers.iter().map(|a| a.0).collect(),
+            ActorMeta::MultiSig(ms) => ms.signers.iter().map(|a| a.0).collect(),
         });
 
         let mut next_id = FIRST_NON_SINGLETON_ADDR;
