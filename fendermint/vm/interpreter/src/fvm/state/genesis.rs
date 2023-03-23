@@ -12,7 +12,7 @@ use fvm::{
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_car::load_car_unchecked;
 use fvm_ipld_encoding::CborStore;
-use fvm_shared::{econ::TokenAmount, state::StateTreeVersion, ActorID};
+use fvm_shared::{address::Address, econ::TokenAmount, state::StateTreeVersion, ActorID};
 use num_traits::Zero;
 use serde::Serialize;
 
@@ -130,8 +130,21 @@ where
         )?;
 
         // Create accounts
+        let next_id = init::FIRST_NON_SINGLETON_ADDR + addr_to_id.len() as u64;
         for a in genesis.accounts.iter() {
-            self.create_account_actor(a, &addr_to_id)?;
+            match &a.meta {
+                ActorMeta::Account { owner } => {
+                    self.create_account_actor(owner.0, a.balance.clone(), &addr_to_id)?;
+                }
+                ActorMeta::MultiSig {
+                    signers,
+                    threshold,
+                    vesting_duration,
+                    vesting_start,
+                } => {
+                    todo!();
+                }
+            }
         }
 
         Ok(())
@@ -179,42 +192,34 @@ where
 
     fn create_account_actor(
         &mut self,
-        actor: &Actor,
+        owner: Address,
+        balance: TokenAmount,
         ids: &init::AddressMap,
     ) -> anyhow::Result<()> {
         let code_cid = self.manifest.get_account_code();
-        match actor.meta {
-            ActorMeta::Account { ref owner } => {
-                let address = owner.0;
-                let state = account::State { address };
+        let state = account::State { address: owner };
 
-                let id = ids
-                    .get(&address)
-                    .ok_or_else(|| anyhow!("can't find ID for {address}"))?;
+        let id = ids
+            .get(&owner)
+            .ok_or_else(|| anyhow!("can't find ID for {owner}"))?;
 
-                let state_cid = self
-                    .state_tree
-                    .store()
-                    .put_cbor(&state, Code::Blake2b256)
-                    .context("failed to put actor state while installing")?;
+        let state_cid = self
+            .state_tree
+            .store()
+            .put_cbor(&state, Code::Blake2b256)
+            .context("failed to put actor state while installing")?;
 
-                let actor_state = ActorState {
-                    code: *code_cid,
-                    state: state_cid,
-                    sequence: 0,
-                    balance: actor.balance.clone(),
-                    delegated_address: None,
-                };
+        let actor_state = ActorState {
+            code: *code_cid,
+            state: state_cid,
+            sequence: 0,
+            balance: balance,
+            delegated_address: None,
+        };
 
-                self.state_tree.set_actor(*id, actor_state);
+        self.state_tree.set_actor(*id, actor_state);
 
-                Ok(())
-            }
-
-            ActorMeta::MultiSig { .. } => {
-                todo!()
-            }
-        }
+        Ok(())
     }
 }
 
