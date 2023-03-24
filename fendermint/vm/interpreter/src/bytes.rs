@@ -8,7 +8,7 @@ use fendermint_vm_message::chain::ChainMessage;
 use crate::{
     chain::{ChainMessageApplyRet, ChainMessageCheckRet},
     fvm::{FvmQuery, FvmQueryRet},
-    CheckInterpreter, Interpreter, QueryInterpreter,
+    CheckInterpreter, ExecInterpreter, QueryInterpreter,
 };
 
 pub type BytesMessageApplyRet = Result<ChainMessageApplyRet, fvm_ipld_encoding::Error>;
@@ -31,9 +31,9 @@ impl<I> BytesMessageInterpreter<I> {
 }
 
 #[async_trait]
-impl<I> Interpreter for BytesMessageInterpreter<I>
+impl<I> ExecInterpreter for BytesMessageInterpreter<I>
 where
-    I: Interpreter<Message = ChainMessage, DeliverOutput = ChainMessageApplyRet>,
+    I: ExecInterpreter<Message = ChainMessage, DeliverOutput = ChainMessageApplyRet>,
 {
     type State = I::State;
     type Message = Vec<u8>;

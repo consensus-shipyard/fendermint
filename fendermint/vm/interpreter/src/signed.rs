@@ -7,7 +7,7 @@ use fendermint_vm_message::signed::{SignedMessage, SignedMessageError};
 
 use crate::{
     fvm::{FvmApplyRet, FvmCheckRet, FvmMessage},
-    CheckInterpreter, Interpreter, QueryInterpreter,
+    CheckInterpreter, ExecInterpreter, QueryInterpreter,
 };
 
 /// Message validation failed due to an invalid signature.
@@ -30,9 +30,9 @@ impl<I> SignedMessageInterpreter<I> {
 }
 
 #[async_trait]
-impl<I> Interpreter for SignedMessageInterpreter<I>
+impl<I> ExecInterpreter for SignedMessageInterpreter<I>
 where
-    I: Interpreter<Message = FvmMessage, DeliverOutput = FvmApplyRet>,
+    I: ExecInterpreter<Message = FvmMessage, DeliverOutput = FvmApplyRet>,
 {
     type State = I::State;
     type Message = SignedMessage;

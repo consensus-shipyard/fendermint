@@ -7,7 +7,7 @@ use fendermint_vm_message::{chain::ChainMessage, signed::SignedMessage};
 
 use crate::{
     signed::{SignedMessageApplyRet, SignedMessageCheckRet},
-    CheckInterpreter, Interpreter, QueryInterpreter,
+    CheckInterpreter, ExecInterpreter, QueryInterpreter,
 };
 
 /// A message a user is not supposed to send.
@@ -35,9 +35,9 @@ impl<I> ChainMessageInterpreter<I> {
 }
 
 #[async_trait]
-impl<I> Interpreter for ChainMessageInterpreter<I>
+impl<I> ExecInterpreter for ChainMessageInterpreter<I>
 where
-    I: Interpreter<Message = SignedMessage, DeliverOutput = SignedMessageApplyRet>,
+    I: ExecInterpreter<Message = SignedMessage, DeliverOutput = SignedMessageApplyRet>,
 {
     type State = I::State;
     type Message = ChainMessage;

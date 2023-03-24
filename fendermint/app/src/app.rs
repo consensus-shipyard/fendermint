@@ -19,7 +19,7 @@ use fendermint_vm_interpreter::fvm::{
     FvmApplyRet, FvmCheckState, FvmExecState, FvmGenesisState, FvmQueryState,
 };
 use fendermint_vm_interpreter::signed::InvalidSignature;
-use fendermint_vm_interpreter::{CheckInterpreter, Interpreter, QueryInterpreter};
+use fendermint_vm_interpreter::{CheckInterpreter, ExecInterpreter, QueryInterpreter};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::version::NetworkVersion;
@@ -226,7 +226,7 @@ where
     S: KVStore + Codec<AppState> + Encode<AppStoreKey> + Encode<BlockHeight> + Codec<Cid>,
     S::Namespace: Sync + Send,
     DB: Blockstore + KVWritable<S> + KVReadable<S> + Clone + Send + Sync + 'static,
-    I: Interpreter<
+    I: ExecInterpreter<
         State = FvmExecState<DB>,
         Message = Vec<u8>,
         BeginOutput = FvmApplyRet,
