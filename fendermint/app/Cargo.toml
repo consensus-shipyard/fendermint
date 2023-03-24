@@ -9,6 +9,8 @@ license.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }
+clap = { workspace = true }
+config = { workspace = true }
 tokio = { workspace = true }
 tendermint = { workspace = true }
 serde = { workspace = true }

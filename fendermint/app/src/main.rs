@@ -4,7 +4,7 @@
 use std::{path::PathBuf, str::FromStr};
 
 use fendermint_abci::ApplicationService;
-use fendermint_app::{app, store::AppStore};
+use fendermint_app::{App, AppStore};
 use fendermint_rocksdb::RocksDb;
 use fendermint_vm_interpreter::{
     bytes::BytesMessageInterpreter, chain::ChainMessageInterpreter, fvm::FvmMessageInterpreter,
@@ -23,7 +23,7 @@ async fn main() {
     let bundle_path = bundle_path();
     let app_ns = db.new_cf_handle("app").unwrap();
     let state_hist_ns = db.new_cf_handle("state_hist").unwrap();
-    let app = app::App::<_, AppStore, _>::new(db, bundle_path, app_ns, state_hist_ns, interpreter);
+    let app = App::<_, AppStore, _>::new(db, bundle_path, app_ns, state_hist_ns, interpreter);
     let _service = ApplicationService(app);
 }
 
