@@ -1306,6 +1306,7 @@ dependencies = [
  "tempfile",
  "tendermint",
  "tokio",
+ "tower-abci",
  "tracing",
  "tracing-subscriber",
 ]

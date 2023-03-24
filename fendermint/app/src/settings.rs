@@ -6,9 +6,24 @@ use serde::Deserialize;
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
+pub struct AbciServer {
+    pub host: String,
+    pub port: u32,
+    /// Queue size for each ABCI component.
+    pub bound: usize,
+}
+
+impl AbciServer {
+    pub fn listen_addr(&self) -> String {
+        format!("{}:{}", self.host, self.port)
+    }
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Settings {
     pub data_dir: PathBuf,
     pub builtin_actor_bundle: PathBuf,
+    pub abci_server: AbciServer,
 }
 
 impl Settings {

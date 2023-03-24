@@ -53,7 +53,26 @@ async fn main() {
             interpreter,
         );
 
-        let _service = ApplicationService(app);
+        let service = ApplicationService(app);
+
+        // Split it into components.
+        let (consensus, mempool, snapshot, info) =
+            tower_abci::split::service(service, settings.abci_server.bound);
+
+        // Hand those components to the ABCI server. This is where tower layers could be added.
+        let server = tower_abci::Server::builder()
+            .consensus(consensus)
+            .snapshot(snapshot)
+            .mempool(mempool)
+            .info(info)
+            .finish()
+            .expect("error creating ABCI server");
+
+        // Run the ABCI server.
+        server
+            .listen(settings.abci_server.listen_addr())
+            .await
+            .expect("error listening to ABCI requests");
     }
 }
 
