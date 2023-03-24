@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use tracing::Level;
 
 #[derive(Parser)]
 #[command(version)]
@@ -35,6 +36,16 @@ impl Options {
             }
         }
         return None;
+    }
+
+    pub fn tracing_level(&self) -> Level {
+        match self.debug {
+            0 => Level::ERROR,
+            1 => Level::WARN,
+            2 => Level::INFO,
+            3 => Level::DEBUG,
+            _ => Level::TRACE,
+        }
     }
 }
 

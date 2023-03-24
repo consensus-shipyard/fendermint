@@ -15,10 +15,18 @@ use fendermint_vm_interpreter::{
     bytes::BytesMessageInterpreter, chain::ChainMessageInterpreter, fvm::FvmMessageInterpreter,
     signed::SignedMessageInterpreter,
 };
+use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]
 async fn main() {
     let opts = Options::parse();
+
+    // Log events to stdout.
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(opts.tracing_level())
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     match opts.command {
         Some(Command::Run { ref mode }) => {
