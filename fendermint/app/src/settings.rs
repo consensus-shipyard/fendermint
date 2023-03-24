@@ -6,13 +6,9 @@ use serde::Deserialize;
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
-pub struct Database {
-    pub path: PathBuf,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct Settings {
-    pub db: Database,
+    pub data_dir: PathBuf,
+    pub builtin_actor_bundle: PathBuf,
 }
 
 impl Settings {
@@ -27,7 +23,7 @@ impl Settings {
             // Optional local overrides, not checked into git.
             .add_source(File::from(config_dir.join("local")).required(false))
             // Add in settings from the environment (with a prefix of FM)
-            // e.g. `FM_DB_PATH=./foo/bar ./target/app` would set the database location.
+            // e.g. `FM_DB_DATA_DIR=./foo/bar ./target/app` would set the database location.
             .add_source(Environment::with_prefix("fm"))
             .build()?;
 

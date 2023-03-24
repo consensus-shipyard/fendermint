@@ -29,13 +29,13 @@ impl Options {
         if let Some(config_dir) = &self.config_dir {
             return Some(config_dir.clone());
         }
-        for d in vec!["./config", "~/.fendermint/config"] {
+        for d in &["./config", "~/.fendermint/config"] {
             let p = PathBuf::from(d);
             if p.is_dir() {
                 return Some(p);
             }
         }
-        return None;
+        None
     }
 
     pub fn tracing_level(&self) -> Level {
