@@ -3,8 +3,13 @@
 
 use std::{path::PathBuf, str::FromStr};
 
+use clap::Parser;
 use fendermint_abci::ApplicationService;
-use fendermint_app::{App, AppStore};
+use fendermint_app::{
+    options::{Command, Options},
+    settings::Settings,
+    App, AppStore,
+};
 use fendermint_rocksdb::RocksDb;
 use fendermint_vm_interpreter::{
     bytes::BytesMessageInterpreter, chain::ChainMessageInterpreter, fvm::FvmMessageInterpreter,
@@ -13,18 +18,35 @@ use fendermint_vm_interpreter::{
 
 #[tokio::main]
 async fn main() {
-    let interpreter = FvmMessageInterpreter::<RocksDb>::new();
-    let interpreter = SignedMessageInterpreter::new(interpreter);
-    let interpreter = ChainMessageInterpreter::new(interpreter);
-    let interpreter = BytesMessageInterpreter::new(interpreter);
+    let opts = Options::parse();
 
-    let db = open_db();
-    // TODO: Read the bundle path from config.
-    let bundle_path = bundle_path();
-    let app_ns = db.new_cf_handle("app").unwrap();
-    let state_hist_ns = db.new_cf_handle("state_hist").unwrap();
-    let app = App::<_, AppStore, _>::new(db, bundle_path, app_ns, state_hist_ns, interpreter);
-    let _service = ApplicationService(app);
+    match opts.command {
+        Some(Command::Run { ref mode }) => {
+            let config_dir = match opts.config_dir() {
+                Some(d) if d.is_dir() => d,
+                Some(d) if d.exists() => panic!("config '{d:?}' is a not a directory"),
+                Some(d) => panic!("config '{d:?}' does not exist"),
+                None => panic!("could not find a config directory to use"),
+            };
+
+            let _settings = Settings::new(config_dir, mode).expect("error parsing settings");
+
+            let interpreter = FvmMessageInterpreter::<RocksDb>::new();
+            let interpreter = SignedMessageInterpreter::new(interpreter);
+            let interpreter = ChainMessageInterpreter::new(interpreter);
+            let interpreter = BytesMessageInterpreter::new(interpreter);
+
+            let db = open_db();
+            // TODO: Read the bundle path from config.
+            let bundle_path = bundle_path();
+            let app_ns = db.new_cf_handle("app").unwrap();
+            let state_hist_ns = db.new_cf_handle("state_hist").unwrap();
+            let app =
+                App::<_, AppStore, _>::new(db, bundle_path, app_ns, state_hist_ns, interpreter);
+            let _service = ApplicationService(app);
+        }
+        None => {}
+    }
 }
 
 fn open_db() -> RocksDb {
