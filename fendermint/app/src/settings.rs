@@ -6,14 +6,14 @@ use serde::Deserialize;
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
-pub struct AbciServer {
+pub struct AbciSettings {
     pub host: String,
     pub port: u32,
     /// Queue size for each ABCI component.
     pub bound: usize,
 }
 
-impl AbciServer {
+impl AbciSettings {
     pub fn listen_addr(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
@@ -22,8 +22,8 @@ impl AbciServer {
 #[derive(Debug, Deserialize)]
 pub struct Settings {
     pub data_dir: PathBuf,
-    pub builtin_actor_bundle: PathBuf,
-    pub abci_server: AbciServer,
+    pub builtin_actors_bundle: PathBuf,
+    pub abci: AbciSettings,
 }
 
 impl Settings {
@@ -44,5 +44,18 @@ impl Settings {
 
         // You can deserialize (and thus freeze) the entire configuration as
         s.try_deserialize()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::Settings;
+
+    #[test]
+    fn parse_default() {
+        let default_dir = PathBuf::from("config");
+        Settings::new(default_dir, "test").unwrap();
     }
 }

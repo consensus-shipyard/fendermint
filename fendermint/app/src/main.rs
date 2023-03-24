@@ -47,7 +47,7 @@ async fn main() {
 
         let app = App::<_, AppStore, _>::new(
             db,
-            settings.builtin_actor_bundle,
+            settings.builtin_actors_bundle,
             app_ns,
             state_hist_ns,
             interpreter,
@@ -57,7 +57,7 @@ async fn main() {
 
         // Split it into components.
         let (consensus, mempool, snapshot, info) =
-            tower_abci::split::service(service, settings.abci_server.bound);
+            tower_abci::split::service(service, settings.abci.bound);
 
         // Hand those components to the ABCI server. This is where tower layers could be added.
         let server = tower_abci::Server::builder()
@@ -70,7 +70,7 @@ async fn main() {
 
         // Run the ABCI server.
         server
-            .listen(settings.abci_server.listen_addr())
+            .listen(settings.abci.listen_addr())
             .await
             .expect("error listening to ABCI requests");
     }
