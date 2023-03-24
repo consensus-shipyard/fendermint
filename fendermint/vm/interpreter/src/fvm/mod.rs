@@ -5,15 +5,20 @@ use std::marker::PhantomData;
 mod check;
 mod exec;
 mod externs;
+mod genesis;
 mod query;
 mod state;
 
 #[cfg(any(test, feature = "bundle"))]
 pub mod bundle;
 
+#[cfg(test)]
+mod memory;
+
 pub use check::FvmCheckRet;
 pub use exec::FvmApplyRet;
 pub use fendermint_vm_message::query::FvmQuery;
+pub use genesis::FvmGenesisOutput;
 pub use query::FvmQueryRet;
 pub use state::{FvmCheckState, FvmExecState, FvmGenesisState, FvmQueryState};
 

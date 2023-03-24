@@ -122,3 +122,20 @@ pub trait QueryInterpreter: Sync + Send {
         qry: Self::Query,
     ) -> anyhow::Result<(Self::State, Self::Output)>;
 }
+
+/// Initialize the chain state.
+///
+/// This could be from the original genesis file, or perhaps a checkpointed snapshot.
+#[async_trait]
+pub trait GenesisInterpreter: Sync + Send {
+    type State: Send;
+    type Genesis: Send;
+    type Output;
+
+    /// Initialize the chain.
+    async fn init(
+        &self,
+        state: Self::State,
+        genesis: Self::Genesis,
+    ) -> anyhow::Result<(Self::State, Self::Output)>;
+}

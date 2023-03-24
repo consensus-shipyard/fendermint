@@ -7,7 +7,7 @@ use fendermint_vm_message::{chain::ChainMessage, signed::SignedMessage};
 
 use crate::{
     signed::{SignedMessageApplyRet, SignedMessageCheckRet},
-    CheckInterpreter, ExecInterpreter, QueryInterpreter,
+    CheckInterpreter, ExecInterpreter, GenesisInterpreter, QueryInterpreter,
 };
 
 /// A message a user is not supposed to send.
@@ -118,5 +118,23 @@ where
         qry: Self::Query,
     ) -> anyhow::Result<(Self::State, Self::Output)> {
         self.inner.query(state, qry).await
+    }
+}
+
+#[async_trait]
+impl<I> GenesisInterpreter for ChainMessageInterpreter<I>
+where
+    I: GenesisInterpreter,
+{
+    type State = I::State;
+    type Genesis = I::Genesis;
+    type Output = I::Output;
+
+    async fn init(
+        &self,
+        state: Self::State,
+        genesis: Self::Genesis,
+    ) -> anyhow::Result<(Self::State, Self::Output)> {
+        self.inner.init(state, genesis).await
     }
 }
