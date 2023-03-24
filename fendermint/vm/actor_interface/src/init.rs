@@ -32,7 +32,7 @@ impl State {
     pub fn new<BS: Blockstore>(
         store: &BS,
         network_name: String,
-        accounts: &Vec<Actor>,
+        accounts: &[Actor],
     ) -> anyhow::Result<(Self, AddressMap)> {
         let mut allocated_ids = AddressMap::new();
         let mut address_map = Hamt::<_, ActorID>::new_with_bit_width(store, HAMT_BIT_WIDTH);

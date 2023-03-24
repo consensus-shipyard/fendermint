@@ -167,7 +167,7 @@ where
             .code_by_id(code_id)
             .ok_or_else(|| anyhow!("can't find {code_id} in the manifest"))?;
 
-        let state_cid = self.put_state(&state)?;
+        let state_cid = self.put_state(state)?;
 
         let actor_state = ActorState {
             code: code_cid,
@@ -188,7 +188,7 @@ where
         balance: TokenAmount,
         ids: &init::AddressMap,
     ) -> anyhow::Result<()> {
-        let owner = acct.owner.0.clone();
+        let owner = acct.owner.0;
         let state = account::State { address: owner };
 
         let id = ids
