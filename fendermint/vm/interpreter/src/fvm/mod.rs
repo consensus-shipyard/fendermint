@@ -8,12 +8,10 @@ mod externs;
 mod genesis;
 mod query;
 mod state;
+mod store;
 
 #[cfg(any(test, feature = "bundle"))]
 pub mod bundle;
-
-#[cfg(test)]
-mod memory;
 
 pub use check::FvmCheckRet;
 pub use exec::FvmApplyRet;

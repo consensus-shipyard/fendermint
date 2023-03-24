@@ -47,7 +47,7 @@ where
     /// * IPC
     ///
     /// See [Lotus](https://github.com/filecoin-project/lotus/blob/v1.20.4/chain/gen/genesis/genesis.go) for reference
-    /// and the [ref-fvm tester](https://g
+    /// and the [ref-fvm tester](https://github.com/filecoin-project/ref-fvm/blob/fvm%40v3.1.0/testing/integration/src/tester.rs#L99-L103).
     async fn init(
         &self,
         mut state: Self::State,
@@ -138,7 +138,7 @@ mod tests {
     use quickcheck::Arbitrary;
 
     use crate::{
-        fvm::{bundle::bundle_path, memory::MemoryBlockstore, FvmMessageInterpreter},
+        fvm::{bundle::bundle_path, store::memory::MemoryBlockstore, FvmMessageInterpreter},
         GenesisInterpreter,
     };
 
