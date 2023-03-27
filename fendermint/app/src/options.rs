@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand};
 use tracing::Level;
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[command(version)]
 pub struct Options {
     /// Set a custom directory for configuration files.
