@@ -44,7 +44,7 @@ macro_rules! cmd {
 
     // A command which works on the full `Settings`.
     ($name:ident($self:ident, $settings:ident) $exec:expr) => {
-        cmd!($name($self, _settings: $crate::settings::Settings) $exec);
+        cmd!($name($self, $settings: $crate::settings::Settings) $exec);
     };
 
     // A command which is self-contained and doesn't need any settings.

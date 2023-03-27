@@ -13,7 +13,7 @@ use fendermint_vm_interpreter::{
 use crate::{cmd, options::RunArgs, settings::Settings};
 
 cmd! {
-  RunArgs(self, settings: Settings) {
+  RunArgs(self, settings) {
         let interpreter = FvmMessageInterpreter::<RocksDb>::new();
         let interpreter = SignedMessageInterpreter::new(interpreter);
         let interpreter = ChainMessageInterpreter::new(interpreter);
