@@ -43,6 +43,9 @@ tempfile = { workspace = true }
 quickcheck = { workspace = true }
 quickcheck_macros = { workspace = true }
 
+fendermint_vm_genesis = { path = "../vm/genesis", features = ["arb"] }
+
+
 # Load the same built-in actor bundle as the ref-fvm integration tests. We'll probably need built-in actors,
 # for example to deploy Solidity code. We can compile Wasm actors and deploy them too, but certain functions
 # in `ref-fvm` like looking up actor addresses depend on built-in actors like the `InitActor` maintaining state.

@@ -43,3 +43,20 @@ fn export(output_dir: &PathBuf, name: &str, ext: &str, b64: &str) -> anyhow::Res
     write!(&mut output, "{}", b64)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use fendermint_vm_genesis::ValidatorKey;
+    use libsecp256k1::PublicKey;
+    use quickcheck_macros::quickcheck;
+
+    use super::public_to_b64;
+
+    #[quickcheck]
+    fn prop_public_key_deserialize_to_genesis(vk: ValidatorKey) {
+        let b64 = public_to_b64(&vk.0);
+        let json = serde_json::json!(b64);
+        let pk: PublicKey = serde_json::from_value(json).unwrap();
+        assert_eq!(pk, vk.0)
+    }
+}
