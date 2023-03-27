@@ -69,7 +69,7 @@ pub struct KeygenArgs {
     /// Name used to distinguish the files from other exported keys.
     #[arg(short, long)]
     pub name: String,
-    /// Directory to export the key files to.
-    #[arg(short, long)]
-    pub out_dir: Option<PathBuf>,
+    /// Directory to export the key files to; it must exist.
+    #[arg(short, long, default_value = ".")]
+    pub out_dir: PathBuf,
 }
