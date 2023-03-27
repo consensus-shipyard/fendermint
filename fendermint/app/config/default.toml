@@ -1,5 +1,5 @@
-data_dir = "/home/aakoshh/.fendermint/data"
-builtin_actors_bundle = "/home/aakoshh/.fendermint/bundle.car"
+data_dir = "~/.fendermint/data"
+builtin_actors_bundle = "~/.fendermint/bundle.car"
 
 [abci]
 host = "127.0.0.1"

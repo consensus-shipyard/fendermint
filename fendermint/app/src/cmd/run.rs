@@ -9,7 +9,7 @@ use fendermint_vm_interpreter::{
     bytes::BytesMessageInterpreter, chain::ChainMessageInterpreter, fvm::FvmMessageInterpreter,
     signed::SignedMessageInterpreter,
 };
-use tracing::debug;
+use tracing::info;
 
 use crate::{cmd, options::RunArgs, settings::Settings};
 
@@ -25,7 +25,7 @@ cmd! {
 
         let app = App::<_, AppStore, _>::new(
             db,
-            settings.builtin_actors_bundle,
+            settings.builtin_actors_bundle(),
             ns.app,
             ns.state_hist,
             interpreter,
@@ -64,8 +64,8 @@ namespaces! {
 }
 
 fn open_db(settings: &Settings, ns: &Namespaces) -> anyhow::Result<RocksDb> {
-    let path = settings.data_dir.join("rocksdb");
-    debug!(
+    let path = settings.data_dir().join("rocksdb");
+    info!(
         path = path.to_string_lossy().into_owned(),
         "opening database"
     );
