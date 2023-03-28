@@ -56,8 +56,10 @@ pub enum Commands {
 pub enum GenesisCommands {
     /// Create a new Genesis file, with accounts and validators to be added later.
     New(GenesisNewArgs),
-    /// Add an account to the genesis file with an initial balance.
+    /// Add an account to the genesis file.
     AddAccount(GenesisAddAccountArgs),
+    /// Add a multi-sig account to the genesis file.
+    AddMultisig(GenesisAddMultisigArgs),
 }
 
 #[derive(Args, Debug)]
@@ -104,6 +106,25 @@ pub struct GenesisAddAccountArgs {
     /// Initial balance in atto.
     #[arg(short, long, value_parser = parse_token_amount)]
     pub balance: TokenAmount,
+}
+
+#[derive(Args, Debug)]
+pub struct GenesisAddMultisigArgs {
+    /// Path to the Secp256k1 public key exported in base64 format, one for each signatory.
+    #[arg(short, long)]
+    pub public_key: Vec<PathBuf>,
+    /// Initial balance in atto.
+    #[arg(short, long, value_parser = parse_token_amount)]
+    pub balance: TokenAmount,
+    /// Number of signatures required.
+    #[arg(long)]
+    pub threshold: u64,
+    /// Linear unlock duration in block heights.
+    #[arg(long)]
+    pub vesting_duration: u64,
+    /// Linear unlock start block height.
+    #[arg(long)]
+    pub vesting_start: u64,
 }
 
 fn parse_network_version(s: &str) -> Result<NetworkVersion, String> {

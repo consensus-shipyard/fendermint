@@ -88,3 +88,33 @@ $ cat test-network/genesis.json | jq .accounts
 ```
 
 The `owner` we see is an `f1` type address with the hash of the public key.
+
+Let's add an example of the other possible account type, a multi-sig account:
+
+```shell
+cargo run -p fendermint_app -- \
+        genesis --genesis-file test-network/genesis.json \
+        add-multisig --public-key test-network/keys/bob.pk --public-key test-network/keys/charlie.pk --public-key test-network/keys/dave.pk \
+          --threshold 2 --vesting-start 0 --vesting-duration 1000000 --balance 3000000000000000000
+```
+
+Check that all three of the signatories have been added:
+
+```console
+cat test-network/genesis.json | jq .accounts[1]
+{
+  "meta": {
+    "Multisig": {
+      "signers": [
+        "f1kgtzp5nuob3gdccagivcgns7e25be2c2rqozilq",
+        "f1bvdmcbct6vwoh3rvkhoth2fe66p6prpbsziqbfi",
+        "f1hgeqjtadqmyabmy2kij2smn5jiiud75kva6bzny"
+      ],
+      "threshold": 2,
+      "vesting_duration": 1000000,
+      "vesting_start": 0
+    }
+  },
+  "balance": "3000000000000000000"
+}
+```

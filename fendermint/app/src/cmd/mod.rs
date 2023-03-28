@@ -62,10 +62,11 @@ pub async fn exec(opts: &Options) -> anyhow::Result<()> {
         Commands::Run(args) => args.exec(settings(opts)?),
         Commands::Keygen(args) => args.exec(()),
         Commands::Genesis(gargs) => {
-            let genesis_path = gargs.genesis_file.clone();
+            let genesis_file = gargs.genesis_file.clone();
             match &gargs.command {
-                GenesisCommands::New(args) => args.exec(genesis_path),
-                GenesisCommands::AddAccount(args) => args.exec(genesis_path),
+                GenesisCommands::New(args) => args.exec(genesis_file),
+                GenesisCommands::AddAccount(args) => args.exec(genesis_file),
+                GenesisCommands::AddMultisig(args) => args.exec(genesis_file),
             }
         }
     };
