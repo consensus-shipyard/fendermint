@@ -3,19 +3,17 @@
 //! A Genesis data structure similar to [genesis.Template](https://github.com/filecoin-project/lotus/blob/v1.20.4/genesis/types.go)
 //! in Lotus, which is used to [initialize](https://github.com/filecoin-project/lotus/blob/v1.20.4/chain/gen/genesis/genesis.go) the state tree.
 
-use std::str::FromStr;
-
-use fvm_shared::bigint::BigInt;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{address::Address, econ::TokenAmount};
 use libsecp256k1::curve::Affine;
 use libsecp256k1::PublicKey;
-use num_traits::Num;
-use serde::de::Error;
-use serde::{de, Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "arb")]
 mod arb;
+mod encoding;
+
+use encoding::{deserialize_tokens, serialize_tokens};
 
 /// Wrapper around [`Address`] to provide human readable serialization in JSON format.
 ///
@@ -25,69 +23,6 @@ mod arb;
 ///       Not sure if anything but public key addresses make sense here. Consider using `PublicKey` instead of `Address`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActorAddr(pub Address);
-
-impl Serialize for ActorAddr {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        if serializer.is_human_readable() {
-            self.0.to_string().serialize(serializer)
-        } else {
-            self.0.serialize(serializer)
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for ActorAddr {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: de::Deserializer<'de>,
-    {
-        if deserializer.is_human_readable() {
-            let s = String::deserialize(deserializer)?;
-            match Address::from_str(&s) {
-                Ok(a) => Ok(Self(a)),
-                Err(e) => Err(D::Error::custom(format!(
-                    "error deserializing address: {}",
-                    e
-                ))),
-            }
-        } else {
-            Address::deserialize(deserializer).map(Self)
-        }
-    }
-}
-
-/// Serialize tokens as human readable string.
-fn serialize_tokens<S>(tokens: &TokenAmount, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    if serializer.is_human_readable() {
-        tokens.atto().to_str_radix(10).serialize(serializer)
-    } else {
-        tokens.serialize(serializer)
-    }
-}
-
-fn deserialize_tokens<'de, D>(deserializer: D) -> Result<TokenAmount, D::Error>
-where
-    D: de::Deserializer<'de>,
-{
-    if deserializer.is_human_readable() {
-        let s = String::deserialize(deserializer)?;
-        match BigInt::from_str_radix(&s, 10) {
-            Ok(a) => Ok(TokenAmount::from_atto(a)),
-            Err(e) => Err(D::Error::custom(format!(
-                "error deserializing tokens: {}",
-                e
-            ))),
-        }
-    } else {
-        TokenAmount::deserialize(deserializer)
-    }
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Account {
