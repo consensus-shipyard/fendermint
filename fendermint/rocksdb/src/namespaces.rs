@@ -6,7 +6,13 @@
 /// # Example
 ///
 /// ```
-/// namespaces!(MySpace { foo, bar })
+/// use fendermint_rocksdb::namespaces;
+///
+/// namespaces!(MySpace { foo, bar });
+///
+/// let ms = MySpace::default();
+/// let nss = ms.values();
+/// let ns_foo = &ms.foo;
 /// ```
 #[macro_export]
 macro_rules! namespaces {
