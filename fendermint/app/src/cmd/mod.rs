@@ -60,6 +60,7 @@ pub async fn exec(opts: &Options) -> anyhow::Result<()> {
     match &opts.command {
         Commands::Run(args) => args.exec(settings(opts)?).await,
         Commands::Keygen(args) => args.exec(()).await,
+        Commands::Genesis(args) => todo!(),
     }
 }
 
