@@ -32,13 +32,13 @@ cmd! {
 
 cmd! {
   GenesisAddAccountArgs(self, genesis_file: PathBuf) {
-    add_account(&genesis_file, &self)
+    add_account(&genesis_file, self)
   }
 }
 
 cmd! {
   GenesisAddMultisigArgs(self, genesis_file: PathBuf) {
-    add_multisig(&genesis_file, &self)
+    add_multisig(&genesis_file, self)
   }
 }
 
@@ -102,7 +102,7 @@ fn add_multisig(genesis_file: &PathBuf, args: &GenesisAddMultisigArgs) -> anyhow
 }
 
 fn read_public_key(public_key: &PathBuf) -> anyhow::Result<PublicKey> {
-    let b64 = std::fs::read_to_string(&public_key).context("failed to read public key")?;
+    let b64 = std::fs::read_to_string(public_key).context("failed to read public key")?;
     let pk = b64_to_public(&b64).context("public key from base64")?;
     Ok(pk)
 }
