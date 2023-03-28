@@ -60,3 +60,31 @@ alice.pk  alice.sk  bob.pk  bob.sk  charlie.pk  charlie.sk  dave.pk  dave.sk
 $ cat test-network/keys/alice.pk
 Ak5Juk793ZAg/7Ojj4bzOmIFGpwLhET1vg2ROihUJFkq
 ```
+
+### Add accounts to the Genesis file
+
+Add one of the keys we created to the Genesis file as a stand-alone account:
+
+```shell
+ cargo run -p fendermint_app -- \
+        genesis --genesis-file test-network/genesis.json \
+        add-account --public-key test-network/keys/alice.pk --balance 1000000000000000000
+```
+
+Check that the balance is correct:
+
+```console
+$ cat test-network/genesis.json | jq .accounts
+[
+  {
+    "meta": {
+      "Account": {
+        "owner": "f1jqqlnr5b56rnmc34ywp7p7i2lg37ty23s2bmg4y"
+      }
+    },
+    "balance": "1000000000000000000"
+  }
+]
+```
+
+The `owner` we see is an `f1` type address with the hash of the public key.

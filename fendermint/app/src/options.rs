@@ -56,6 +56,8 @@ pub enum Commands {
 pub enum GenesisCommands {
     /// Create a new Genesis file, with accounts and validators to be added later.
     New(GenesisNewArgs),
+    /// Add an account to the genesis file with an initial balance.
+    AddAccount(GenesisAddAccountArgs),
 }
 
 #[derive(Args, Debug)]
@@ -89,9 +91,19 @@ pub struct GenesisNewArgs {
     /// Network version, governs which set of built-in actors to use.
     #[arg(long, default_value = "18", value_parser = parse_network_version)]
     pub network_version: NetworkVersion,
-    /// Base fee for running transactions.
+    /// Base fee for running transactions in atto.
     #[arg(long, value_parser = parse_token_amount)]
     pub base_fee: TokenAmount,
+}
+
+#[derive(Args, Debug)]
+pub struct GenesisAddAccountArgs {
+    /// Path to the Secp256k1 public key exported in base64 format.
+    #[arg(short, long)]
+    pub public_key: PathBuf,
+    /// Initial balance in atto.
+    #[arg(short, long, value_parser = parse_token_amount)]
+    pub balance: TokenAmount,
 }
 
 fn parse_network_version(s: &str) -> Result<NetworkVersion, String> {
