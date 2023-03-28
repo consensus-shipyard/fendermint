@@ -108,5 +108,5 @@ fn parse_network_version(s: &str) -> Result<NetworkVersion, String> {
 fn parse_token_amount(s: &str) -> Result<TokenAmount, String> {
     BigInt::from_str_radix(s, 10)
         .map_err(|e| format!("not a token amount: {e}"))
-        .map(|i| TokenAmount::from_atto(i))
+        .map(TokenAmount::from_atto)
 }
