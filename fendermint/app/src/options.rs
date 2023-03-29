@@ -8,6 +8,8 @@ use num_traits::Num;
 
 use fvm_shared::{bigint::BigInt, econ::TokenAmount, version::NetworkVersion};
 
+use crate::settings::expand_tilde;
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 pub enum LogLevel {
     Off,
@@ -21,11 +23,9 @@ pub enum LogLevel {
 #[derive(Parser, Debug)]
 #[command(version)]
 pub struct Options {
-    /// Set a custom directory for configuration files.
-    ///
-    /// By default the application will try to find where the config directory is.
-    #[arg(short, long, value_name = "DIR")]
-    pub config_dir: Option<PathBuf>,
+    /// Set a custom directory for data and configuration files.
+    #[arg(short = 'd', long, default_value = "~/.fendermint")]
+    pub home_dir: PathBuf,
 
     /// Optionally override the default configuration.
     #[arg(short, long, default_value = "dev")]
@@ -50,6 +50,10 @@ impl Options {
             LogLevel::Debug => Some(tracing::Level::DEBUG),
             LogLevel::Trace => Some(tracing::Level::TRACE),
         }
+    }
+
+    pub fn config_dir(&self) -> PathBuf {
+        expand_tilde(self.home_dir.join("config"))
     }
 }
 
