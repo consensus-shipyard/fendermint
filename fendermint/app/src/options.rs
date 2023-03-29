@@ -3,11 +3,20 @@
 
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use num_traits::Num;
-use tracing::Level;
 
 use fvm_shared::{bigint::BigInt, econ::TokenAmount, version::NetworkVersion};
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum LogLevel {
+    Off,
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
 
 #[derive(Parser, Debug)]
 #[command(version)]
@@ -22,22 +31,24 @@ pub struct Options {
     #[arg(short, long, default_value = "dev")]
     pub mode: String,
 
-    /// Turn debugging information on.
-    #[arg(short, long, action = clap::ArgAction::Count)]
-    pub debug: u8,
+    /// Set the logging level.
+    #[arg(short, long, default_value = "info", value_enum)]
+    pub log_level: LogLevel,
 
     #[command(subcommand)]
     pub command: Commands,
 }
 
 impl Options {
-    pub fn tracing_level(&self) -> Level {
-        match self.debug {
-            0 => Level::ERROR,
-            1 => Level::WARN,
-            2 => Level::INFO,
-            3 => Level::DEBUG,
-            _ => Level::TRACE,
+    /// Tracing level, unless it's turned off.
+    pub fn tracing_level(&self) -> Option<tracing::Level> {
+        match self.log_level {
+            LogLevel::Off => None,
+            LogLevel::Error => Some(tracing::Level::ERROR),
+            LogLevel::Warn => Some(tracing::Level::WARN),
+            LogLevel::Info => Some(tracing::Level::INFO),
+            LogLevel::Debug => Some(tracing::Level::DEBUG),
+            LogLevel::Trace => Some(tracing::Level::TRACE),
         }
     }
 }

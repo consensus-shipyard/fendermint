@@ -83,6 +83,10 @@ fn settings(opts: &Options) -> anyhow::Result<Settings> {
         None => return Err(anyhow!("could not find a config directory to use")),
     };
 
+    tracing::info!(
+        path = config_dir.to_string_lossy().into_owned(),
+        "reading configuration"
+    );
     let settings = Settings::new(config_dir, &opts.mode).context("error parsing settings")?;
 
     Ok(settings)
