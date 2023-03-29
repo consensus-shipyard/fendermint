@@ -32,11 +32,7 @@ impl Settings {
     /// Load the default configuration from a directory,
     /// then potential overrides specific to the run mode,
     /// then overrides from the local environment.
-    pub fn new(
-        config_dir: &PathBuf,
-        home_dir: &PathBuf,
-        run_mode: &str,
-    ) -> Result<Self, ConfigError> {
+    pub fn new(config_dir: &Path, home_dir: &Path, run_mode: &str) -> Result<Self, ConfigError> {
         let c = Config::builder()
             .add_source(File::from(config_dir.join("default")))
             // Optional mode specific overrides, checked into git.
