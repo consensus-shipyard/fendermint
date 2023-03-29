@@ -18,7 +18,7 @@ use crate::options::{
     GenesisIntoTendermintArgs, GenesisNewArgs,
 };
 
-use super::keygen::b64_to_public;
+use super::key::b64_to_public;
 
 cmd! {
   GenesisNewArgs(self, genesis_file: PathBuf) {

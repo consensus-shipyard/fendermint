@@ -61,10 +61,16 @@ impl Options {
 pub enum Commands {
     /// Run the [`App`], listening to ABCI requests from Tendermint.
     Run(RunArgs),
-    /// Generate a new Secp256k1 key pair and export them to files in base64 format.
-    Keygen(KeygenArgs),
+    /// Subcommands related to the construction of signing keys.
+    Key(KeyArgs),
     /// Subcommands related to the construction of Genesis files.
     Genesis(GenesisArgs),
+}
+
+#[derive(Subcommand, Debug)]
+pub enum KeyCommands {
+    /// Generate a new Secp256k1 key pair and export them to files in base64 format.
+    Gen(KeyGenArgs),
 }
 
 #[derive(Subcommand, Debug)]
@@ -85,7 +91,13 @@ pub enum GenesisCommands {
 pub struct RunArgs;
 
 #[derive(Args, Debug)]
-pub struct KeygenArgs {
+pub struct KeyArgs {
+    #[command(subcommand)]
+    pub command: KeyCommands,
+}
+
+#[derive(Args, Debug)]
+pub struct KeyGenArgs {
     /// Name used to distinguish the files from other exported keys.
     #[arg(long, short)]
     pub name: String,

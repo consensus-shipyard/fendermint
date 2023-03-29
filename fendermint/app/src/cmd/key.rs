@@ -7,10 +7,10 @@ use base64::Engine;
 use libsecp256k1::{PublicKey, SecretKey};
 use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
 
-use crate::{cmd, options::KeygenArgs};
+use crate::{cmd, options::KeyGenArgs};
 
 cmd! {
-  KeygenArgs(self) {
+  KeyGenArgs(self) {
     let mut rng = ChaCha20Rng::from_entropy();
     let sk = SecretKey::random(&mut rng);
     let pk = PublicKey::from_secret_key(&sk);
@@ -52,7 +52,7 @@ mod tests {
     use fendermint_vm_genesis::ValidatorKey;
     use quickcheck_macros::quickcheck;
 
-    use crate::cmd::keygen::b64_to_public;
+    use crate::cmd::key::b64_to_public;
 
     use super::public_to_b64;
 
