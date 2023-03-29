@@ -60,6 +60,7 @@ pub async fn exec(opts: &Options) -> anyhow::Result<()> {
         Commands::Run(args) => args.exec(settings(opts)?),
         Commands::Key(sub) => match &sub.command {
             KeyCommands::Gen(args) => args.exec(()),
+            KeyCommands::IntoTendermint(args) => args.exec(()),
         },
         Commands::Genesis(sub) => {
             let genesis_file = sub.genesis_file.clone();

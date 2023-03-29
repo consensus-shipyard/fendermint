@@ -1,13 +1,18 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::path::Path;
-
+use anyhow::Context;
+use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::Engine;
 use libsecp256k1::{PublicKey, SecretKey};
 use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
+use serde_json::json;
+use std::path::{Path, PathBuf};
 
-use crate::{cmd, options::KeyGenArgs};
+use crate::{
+    cmd,
+    options::{KeyGenArgs, KeyIntoTendermintArgs},
+};
 
 cmd! {
   KeyGenArgs(self) {
@@ -22,9 +27,37 @@ cmd! {
   }
 }
 
+cmd! {
+  KeyIntoTendermintArgs(self) {
+    let sk = read_secret_key(&self.secret_key)?;
+    let pk = PublicKey::from_secret_key(&sk);
+    let vk = k256::ecdsa::VerifyingKey::from_sec1_bytes(&pk.serialize())?;
+    let pub_key = tendermint::PublicKey::Secp256k1(vk);
+    let address = tendermint::account::Id::from(pub_key);
+
+    // tendermint-rs doesn't seem to handle Secp256k1 private keys;
+    // if it did, we could use tendermint_config::PrivateValidatorKey
+    // to encode the data structure. Tendermint should be okay with it
+    // though, as long as we match the expected keys in the JSON.
+    let priv_validator_key = json! ({
+        "address": address,
+        "pub_key": pub_key,
+        "priv_key": {
+            "type": "tendermint/PrivKeySecp256k1",
+            "value": secret_to_b64(&sk)
+        }
+    });
+    let json = serde_json::to_string_pretty(&priv_validator_key)?;
+
+    std::fs::write(&self.out, json)?;
+
+    Ok(())
+  }
+}
+
 /// Encode bytes in a format that the Genesis deserializer can handle.
 fn to_b64(bz: &[u8]) -> String {
-    base64::engine::general_purpose::STANDARD_NO_PAD.encode(bz)
+    STANDARD_NO_PAD.encode(bz)
 }
 
 fn secret_to_b64(sk: &SecretKey) -> String {
@@ -35,10 +68,28 @@ fn public_to_b64(pk: &PublicKey) -> String {
     to_b64(&pk.serialize_compressed())
 }
 
-pub fn b64_to_public(b64: &str) -> anyhow::Result<PublicKey> {
+fn b64_to_public(b64: &str) -> anyhow::Result<PublicKey> {
     let json = serde_json::json!(b64);
     let pk: PublicKey = serde_json::from_value(json)?;
     Ok(pk)
+}
+
+fn b64_to_secret(b64: &str) -> anyhow::Result<SecretKey> {
+    let bz = STANDARD_NO_PAD.decode(b64)?;
+    let sk = SecretKey::parse_slice(&bz)?;
+    Ok(sk)
+}
+
+pub fn read_public_key(public_key: &PathBuf) -> anyhow::Result<PublicKey> {
+    let b64 = std::fs::read_to_string(public_key).context("failed to read public key")?;
+    let pk = b64_to_public(&b64).context("failed to parse public key")?;
+    Ok(pk)
+}
+
+pub fn read_secret_key(secret_key: &PathBuf) -> anyhow::Result<SecretKey> {
+    let b64 = std::fs::read_to_string(secret_key).context("failed to read secret key")?;
+    let sk = b64_to_secret(&b64).context("failed to parse secret key")?;
+    Ok(sk)
 }
 
 fn export(output_dir: &Path, name: &str, ext: &str, b64: &str) -> anyhow::Result<()> {
