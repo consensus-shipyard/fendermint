@@ -4,7 +4,7 @@
 use cid::Cid;
 use fvm::{
     call_manager::DefaultCallManager,
-    engine::{EngineConfig, EnginePool},
+    engine::MultiEngine,
     executor::{ApplyKind, ApplyRet, DefaultExecutor, Executor},
     machine::{DefaultMachine, Machine, NetworkConfig},
     DefaultKernel,
@@ -30,6 +30,7 @@ where
 {
     pub fn new(
         blockstore: DB,
+        multi_engine: &MultiEngine,
         block_height: ChainEpoch,
         block_timestamp: Timestamp,
         network_version: NetworkVersion,
@@ -46,8 +47,11 @@ where
         mc.set_base_fee(base_fee);
         mc.set_circulating_supply(circ_supply);
 
-        let ec = EngineConfig::from(&nc);
-        let engine = EnginePool::new_default(ec)?;
+        // Creating a new machine every time is prohibitively slow.
+        // let ec = EngineConfig::from(&nc);
+        // let engine = EnginePool::new_default(ec)?;
+
+        let engine = multi_engine.get(&nc)?;
         let machine = DefaultMachine::new(&mc, blockstore, FendermintExterns)?;
         let executor = DefaultExecutor::new(engine, machine)?;
 

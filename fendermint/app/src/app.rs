@@ -22,6 +22,7 @@ use fendermint_vm_interpreter::signed::InvalidSignature;
 use fendermint_vm_interpreter::{
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, QueryInterpreter,
 };
+use fvm::engine::MultiEngine;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::version::NetworkVersion;
@@ -79,6 +80,11 @@ where
     S: KVStore,
 {
     db: Arc<DB>,
+    /// Wasm engine cache.
+    multi_engine: Arc<MultiEngine>,
+    /// Path to the Wasm bundle.
+    ///
+    /// Only loaded once during genesis; later comes from the [`StateTree`].
     actor_bundle_path: PathBuf,
     /// Namespace to store app state.
     namespace: S::Namespace,
@@ -116,6 +122,7 @@ where
     ) -> Self {
         let app = Self {
             db: Arc::new(db),
+            multi_engine: Arc::new(MultiEngine::new(1)),
             actor_bundle_path,
             namespace: app_namespace,
             state_hist: KVCollection::new(state_hist_namespace),
@@ -405,6 +412,7 @@ where
 
         let state = FvmExecState::new(
             db,
+            self.multi_engine.as_ref(),
             height,
             timestamp,
             state.network_version,
