@@ -173,7 +173,7 @@ cp ../builtin-actors/output/bundle.car ~/.fendermint/bundle.car
 Now, start the application.
 
 ```shell
-cargo run -p fendermint_app -- run
+cargo run -p fendermint_app --release -- run
 ```
 
 With the default `--log-level info` we can see that the application is listening:

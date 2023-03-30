@@ -15,7 +15,8 @@ use fendermint_vm_interpreter::bytes::{
 };
 use fendermint_vm_interpreter::chain::{ChainMessageApplyRet, IllegalMessage};
 use fendermint_vm_interpreter::fvm::{
-    FvmApplyRet, FvmCheckState, FvmExecState, FvmGenesisOutput, FvmGenesisState, FvmQueryState,
+    empty_state_tree, FvmApplyRet, FvmCheckState, FvmExecState, FvmGenesisOutput, FvmGenesisState,
+    FvmQueryState,
 };
 use fendermint_vm_interpreter::signed::InvalidSignature;
 use fendermint_vm_interpreter::{
@@ -24,6 +25,7 @@ use fendermint_vm_interpreter::{
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::version::NetworkVersion;
+use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use tendermint::abci::request::CheckTxKind;
 use tendermint::abci::{request, response};
@@ -112,7 +114,7 @@ where
         state_hist_size: u64,
         interpreter: I,
     ) -> Self {
-        Self {
+        let app = Self {
             db: Arc::new(db),
             actor_bundle_path,
             namespace: app_namespace,
@@ -121,7 +123,9 @@ where
             interpreter: Arc::new(interpreter),
             exec_state: Arc::new(Mutex::new(None)),
             check_state: Arc::new(tokio::sync::Mutex::new(None)),
-        }
+        };
+        app.init_committed_state();
+        app
     }
 }
 
@@ -135,12 +139,34 @@ where
         self.db.as_ref().clone()
     }
 
-    /// Get the last committed state.
-    fn committed_state(&self) -> AppState {
+    /// Ensure the store has some initial state.
+    fn init_committed_state(&self) {
+        if self.get_committed_state().is_none() {
+            let mut state_tree =
+                empty_state_tree(self.clone_db()).expect("failed to create empty state tree");
+            let state_root = state_tree.flush().expect("failed to flush state tree");
+            let state = AppState {
+                block_height: 0,
+                state_root,
+                oldest_state_height: 0,
+                network_version: NetworkVersion::MAX,
+                base_fee: TokenAmount::zero(),
+                circ_supply: TokenAmount::zero(),
+            };
+            self.set_committed_state(state);
+        }
+    }
+
+    /// Get the last committed state, if exists.
+    fn get_committed_state(&self) -> Option<AppState> {
         let tx = self.db.read();
         tx.get(&self.namespace, &AppStoreKey::State)
             .expect("get failed")
-            .expect("app state not found") // TODO: Init during setup.
+    }
+
+    /// Get the last committed state; panic if it doesn't exist.
+    fn committed_state(&self) -> AppState {
+        self.get_committed_state().expect("app state not found")
     }
 
     /// Set the last committed state.
@@ -301,6 +327,12 @@ where
             validators,
             app_hash: app_state.app_hash(),
         };
+
+        tracing::info!(
+            state_root = format!("{}", app_state.state_root),
+            app_hash = format!("{}", app_state.app_hash()),
+            "init chain"
+        );
 
         self.set_committed_state(app_state);
 

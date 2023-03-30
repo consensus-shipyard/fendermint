@@ -18,6 +18,7 @@ pub use exec::FvmApplyRet;
 pub use fendermint_vm_message::query::FvmQuery;
 pub use genesis::FvmGenesisOutput;
 pub use query::FvmQueryRet;
+pub use state::empty_state_tree;
 pub use state::{FvmCheckState, FvmExecState, FvmGenesisState, FvmQueryState};
 
 pub type FvmMessage = fvm_shared::message::Message;
