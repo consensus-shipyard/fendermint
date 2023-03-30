@@ -176,6 +176,9 @@ Now, start the application.
 cargo run -p fendermint_app --release -- run
 ```
 
+It is important to use the `--release` option, otherwise it will take too long to load the Wasm actor modules and
+Tendermint will issue a timeout (by default we have 3 seconds to execute requests).
+
 With the default `--log-level info` we can see that the application is listening:
 
 ```console
@@ -183,6 +186,12 @@ With the default `--log-level info` we can see that the application is listening
 2023-03-29T09:17:28.549700Z  INFO fendermint::cmd::run: opening database path="/home/aakoshh/.fendermint/data/rocksdb"
 2023-03-29T09:17:28.879916Z  INFO tower_abci::server: starting ABCI server addr="127.0.0.1:26658"
 2023-03-29T09:17:28.880023Z  INFO tower_abci::server: bound tcp listener local_addr=127.0.0.1:26658
+```
+
+If we need to restart the application from scratch, we can do so by erasing all RocksDB state:
+
+```shell
+rm -rf ~/.fendermint/data/rocksdb
 ```
 
 ### Run Tendermint
@@ -333,4 +342,10 @@ Now we are ready to start Tendermint and let it connect to the Fendermint Applic
 
 ```shell
 tendermint start
+```
+
+If we need to restart the application from scratch, we can erase all Tendermint state like so:
+
+```shell
+tendermint unsafe-reset-all
 ```

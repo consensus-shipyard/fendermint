@@ -197,7 +197,7 @@ where
     /// Put the execution state during block execution. Has to be empty.
     fn put_exec_state(&self, state: FvmExecState<DB>) {
         let mut guard = self.exec_state.lock().expect("mutex poisoned");
-        assert!(guard.is_some(), "exec state not empty");
+        assert!(guard.is_none(), "exec state not empty");
         *guard = Some(state);
     }
 
@@ -401,6 +401,8 @@ where
         let height = request.header.height.into();
         let timestamp = to_timestamp(request.header.time);
 
+        tracing::debug!(height, "begin block");
+
         let state = FvmExecState::new(
             db,
             height,
@@ -411,6 +413,8 @@ where
             state.circ_supply,
         )
         .expect("error creating new state");
+
+        tracing::debug!("initialized exec state");
 
         self.put_exec_state(state);
 
@@ -442,7 +446,9 @@ where
     }
 
     /// Signals the end of a block.
-    async fn end_block(&self, _request: request::EndBlock) -> response::EndBlock {
+    async fn end_block(&self, request: request::EndBlock) -> response::EndBlock {
+        tracing::debug!(height = request.height, "end block");
+
         // TODO: Return events from epoch transitions.
         let ret = self
             .modify_exec_state(|s| self.interpreter.end(s))
@@ -458,6 +464,8 @@ where
         let block_height = exec_state.block_height();
         let state_root = exec_state.commit().expect("failed to commit FVM");
 
+        tracing::debug!(state_root = format!("{}", state_root), "commit state");
+
         let mut state = self.committed_state();
         state.state_root = state_root;
         state.block_height = block_height.try_into().expect("negative height");
@@ -466,6 +474,8 @@ where
         // Reset check state.
         let mut guard = self.check_state.lock().await;
         *guard = None;
+
+        tracing::debug!("committed state");
 
         response::Commit {
             data: state_root.to_bytes().into(),
