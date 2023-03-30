@@ -108,18 +108,19 @@ where
         db: DB,
         actor_bundle_path: PathBuf,
         app_namespace: S::Namespace,
-        hist_namespace: S::Namespace,
+        state_hist_namespace: S::Namespace,
+        state_hist_size: u64,
         interpreter: I,
     ) -> Self {
         Self {
             db: Arc::new(db),
             actor_bundle_path,
             namespace: app_namespace,
-            state_hist: KVCollection::new(hist_namespace),
+            state_hist: KVCollection::new(state_hist_namespace),
+            state_hist_size,
             interpreter: Arc::new(interpreter),
             exec_state: Arc::new(Mutex::new(None)),
             check_state: Arc::new(tokio::sync::Mutex::new(None)),
-            state_hist_size: 24 * 60 * 60,
         }
     }
 }
@@ -133,6 +134,7 @@ where
     fn clone_db(&self) -> DB {
         self.db.as_ref().clone()
     }
+
     /// Get the last committed state.
     fn committed_state(&self) -> AppState {
         let tx = self.db.read();

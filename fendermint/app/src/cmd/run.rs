@@ -28,6 +28,7 @@ cmd! {
             settings.builtin_actors_bundle(),
             ns.app,
             ns.state_hist,
+            settings.db.state_hist_size,
             interpreter,
         );
 
