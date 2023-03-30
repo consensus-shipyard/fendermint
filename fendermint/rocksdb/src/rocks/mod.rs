@@ -127,7 +127,7 @@ impl RocksDb {
     }
 
     /// Check if a column family exists
-    pub fn has_cf_handle<'a>(&self, name: &'a str) -> bool {
+    pub fn has_cf_handle(&self, name: &str) -> bool {
         self.db.cf_handle(name).is_some()
     }
 

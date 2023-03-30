@@ -14,10 +14,10 @@ use fendermint_vm_interpreter::bytes::{
     BytesMessageApplyRet, BytesMessageCheckRet, BytesMessageQuery, BytesMessageQueryRet,
 };
 use fendermint_vm_interpreter::chain::{ChainMessageApplyRet, IllegalMessage};
-use fendermint_vm_interpreter::fvm::{
-    empty_state_tree, FvmApplyRet, FvmCheckState, FvmExecState, FvmGenesisOutput, FvmGenesisState,
-    FvmQueryState,
+use fendermint_vm_interpreter::fvm::state::{
+    empty_state_tree, FvmCheckState, FvmExecState, FvmGenesisState, FvmQueryState, FvmStateParams,
 };
+use fendermint_vm_interpreter::fvm::{FvmApplyRet, FvmGenesisOutput};
 use fendermint_vm_interpreter::signed::InvalidSignature;
 use fendermint_vm_interpreter::{
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, QueryInterpreter,
@@ -56,18 +56,18 @@ pub enum AppError {
 pub struct AppState {
     /// Last committed block height.
     block_height: BlockHeight,
-    /// Last committed state hash.
-    state_root: Cid,
     /// Oldest state hash height.
     oldest_state_height: BlockHeight,
-    network_version: NetworkVersion,
-    base_fee: TokenAmount,
-    circ_supply: TokenAmount,
+    /// Last committed version of the evolving state of the FVM.
+    state_params: FvmStateParams,
 }
 
 impl AppState {
+    pub fn state_root(&self) -> Cid {
+        self.state_params.state_root
+    }
     pub fn app_hash(&self) -> tendermint::hash::AppHash {
-        tendermint::hash::AppHash::try_from(self.state_root.to_bytes())
+        tendermint::hash::AppHash::try_from(self.state_root().to_bytes())
             .expect("hash can be wrapped")
     }
 }
@@ -154,11 +154,13 @@ where
             let state_root = state_tree.flush().expect("failed to flush state tree");
             let state = AppState {
                 block_height: 0,
-                state_root,
                 oldest_state_height: 0,
-                network_version: NetworkVersion::MAX,
-                base_fee: TokenAmount::zero(),
-                circ_supply: TokenAmount::zero(),
+                state_params: FvmStateParams {
+                    state_root,
+                    network_version: NetworkVersion::MAX,
+                    base_fee: TokenAmount::zero(),
+                    circ_supply: TokenAmount::zero(),
+                },
             };
             self.set_committed_state(state);
         }
@@ -182,7 +184,7 @@ where
             .with_write(|tx| {
                 // Insert latest state history point.
                 self.state_hist
-                    .put(tx, &state.block_height, &state.state_root)?;
+                    .put(tx, &state.block_height, &state.state_root())?;
 
                 // Prune state history.
                 if self.state_hist_size > 0 && state.block_height >= self.state_hist_size {
@@ -245,7 +247,7 @@ where
             }
         }
         let state = self.committed_state();
-        (state.state_root, state.block_height)
+        (state.state_root(), state.block_height)
     }
 }
 
@@ -322,11 +324,13 @@ where
 
         let app_state = AppState {
             block_height: height,
-            state_root,
             oldest_state_height: height,
-            network_version: out.network_version,
-            base_fee: out.base_fee,
-            circ_supply: out.circ_supply,
+            state_params: FvmStateParams {
+                state_root,
+                network_version: out.network_version,
+                base_fee: out.base_fee,
+                circ_supply: out.circ_supply,
+            },
         };
 
         let response = response::InitChain {
@@ -336,7 +340,7 @@ where
         };
 
         tracing::info!(
-            state_root = format!("{}", app_state.state_root),
+            state_root = format!("{}", app_state.state_root()),
             app_hash = format!("{}", app_state.app_hash()),
             "init chain"
         );
@@ -373,7 +377,7 @@ where
         let state = guard.take().unwrap_or_else(|| {
             let db = self.clone_db();
             let state = self.committed_state();
-            FvmCheckState::new(db, state.state_root).expect("error creating check state")
+            FvmCheckState::new(db, state.state_root()).expect("error creating check state")
         });
 
         let (state, result) = self
@@ -415,10 +419,7 @@ where
             self.multi_engine.as_ref(),
             height,
             timestamp,
-            state.network_version,
-            state.state_root,
-            state.base_fee,
-            state.circ_supply,
+            state.state_params,
         )
         .expect("error creating new state");
 
@@ -475,7 +476,7 @@ where
         tracing::debug!(state_root = format!("{}", state_root), "commit state");
 
         let mut state = self.committed_state();
-        state.state_root = state_root;
+        state.state_params.state_root = state_root;
         state.block_height = block_height.try_into().expect("negative height");
         self.set_committed_state(state);
 
