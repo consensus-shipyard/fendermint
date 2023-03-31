@@ -1483,6 +1483,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_shared",
  "hex",
+ "num-traits",
  "quickcheck 1.0.3",
  "quickcheck_macros",
  "rand 0.8.5",
