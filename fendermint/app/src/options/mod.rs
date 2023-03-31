@@ -11,6 +11,7 @@ use self::{genesis::GenesisArgs, key::KeyArgs, run::RunArgs};
 
 pub mod genesis;
 pub mod key;
+pub mod rpc;
 pub mod run;
 
 mod parse;
@@ -70,4 +71,6 @@ pub enum Commands {
     Key(KeyArgs),
     /// Subcommands related to the construction of Genesis files.
     Genesis(GenesisArgs),
+    /// Subcommands related to sending JSON-RPC commands/queries to Tendermint.
+    Rpc(RpcArgs),
 }

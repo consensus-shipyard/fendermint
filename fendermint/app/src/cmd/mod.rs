@@ -12,6 +12,7 @@ use async_trait::async_trait;
 
 pub mod genesis;
 pub mod key;
+pub mod rpc;
 pub mod run;
 
 #[async_trait]
@@ -72,6 +73,7 @@ pub async fn exec(opts: &Options) -> anyhow::Result<()> {
                 GenesisCommands::IntoTendermint(args) => args.exec(genesis_file),
             }
         }
+        Commands::Rpc(args) => args.exec(()),
     };
     fut.await
 }
