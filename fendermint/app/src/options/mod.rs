@@ -63,6 +63,7 @@ impl Options {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Run the [`App`], listening to ABCI requests from Tendermint.

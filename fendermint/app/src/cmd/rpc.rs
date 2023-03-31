@@ -1,30 +1,83 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fendermint_vm_interpreter::fvm::{FvmQuery, FvmQueryRet};
-use tendermint_rpc::{HttpClient, Scheme, Url};
+use fendermint_vm_interpreter::fvm::FvmQuery;
+use fvm::state_tree::ActorState;
+use fvm_shared::ActorID;
+use serde_json::json;
+use tendermint::block::Height;
+use tendermint_rpc::{endpoint::abci_query::AbciQuery, v0_37::Client, HttpClient, Scheme, Url};
 
+use crate::cmd;
 use crate::{
-    cmd,
-    options::rpc::{RpcArgs, RpcCommands},
+    cmd::to_b64,
+    options::rpc::{RpcArgs, RpcCommands, RpcQueryCommands},
 };
 use anyhow::anyhow;
+
+// TODO: We should probably make a client interface for the operations we commonly do.
 
 cmd! {
   RpcArgs(self) {
     let client = http_client(self.url.clone(), self.proxy_url.clone())?;
-    exec(client, &self.command).await
+    match &self.command {
+      RpcCommands::Query { height, command } => {
+        let height = Height::try_from(*height)?;
+        query(client, height, command).await
+      }
+    }
   }
 }
 
-async fn exec(client: HttpClient, command: &RpcCommands) -> anyhow::Result<()> {
-    // TODO: We should probably make a client interface for the operations we commonly do.
+async fn query(
+    client: HttpClient,
+    height: Height,
+    command: &RpcQueryCommands,
+) -> anyhow::Result<()> {
+    match command {
+        RpcQueryCommands::Ipld { cid } => {
+            abci_query_print(client, height, FvmQuery::Ipld(*cid), |res| {
+                Ok(to_b64(&res.value))
+            })
+            .await?;
+        }
+        RpcQueryCommands::ActorState { address } => {
+            abci_query_print(client, height, FvmQuery::ActorState(*address), |res| {
+                let state: ActorState = fvm_ipld_encoding::from_slice(&res.value)?;
+                let id: ActorID = fvm_ipld_encoding::from_slice(&res.key)?;
+                let out = json! ({
+                  "id": id,
+                  "state": state,
+                });
+                let json = serde_json::to_string(&out)?;
+                Ok(json)
+            })
+            .await?;
+            todo!()
+        }
+    }
     todo!()
 }
 
-async fn query(client: HttpClient, query: FvmQuery) -> anyhow::Result<FvmQueryRet> {
+/// Fetch the query result from the server and print something to STDOUT.
+async fn abci_query_print<F>(
+    client: HttpClient,
+    height: Height,
+    query: FvmQuery,
+    render: F,
+) -> anyhow::Result<()>
+where
+    F: FnOnce(AbciQuery) -> anyhow::Result<String>,
+{
     let data = fvm_ipld_encoding::to_vec(&query)?;
-    todo!()
+    let res: AbciQuery = client.abci_query(None, data, Some(height), false).await?;
+    if res.code.is_ok() {
+        let output = render(res)?;
+        println!("{}", output);
+    } else {
+        eprintln!("query returned non-zero exit code: {}", res.code.value());
+    }
+    Ok(())
 }
 
 // Retrieve the proxy URL with precedence:
