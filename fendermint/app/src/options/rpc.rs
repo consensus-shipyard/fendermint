@@ -6,7 +6,7 @@ use clap::{Args, Subcommand};
 use fvm_shared::address::Address;
 use tendermint_rpc::Url;
 
-use super::parse::*;
+use super::parse::{parse_address, parse_cid};
 
 #[derive(Args, Debug)]
 pub struct RpcArgs {
@@ -17,12 +17,12 @@ pub struct RpcArgs {
         default_value = "http://127.0.0.1:26657",
         env = "TENDERMINT_RPC_URL"
     )]
-    url: Url,
+    pub url: Url,
 
     /// An optional HTTP/S proxy through which to submit requests to the
     /// Tendermint node's RPC endpoint.
     #[arg(long)]
-    proxy_url: Option<Url>,
+    pub proxy_url: Option<Url>,
 
     #[command(subcommand)]
     pub command: RpcCommands,

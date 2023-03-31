@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::settings::expand_tilde;
 
-use self::{genesis::GenesisArgs, key::KeyArgs, run::RunArgs};
+use self::{genesis::GenesisArgs, key::KeyArgs, rpc::RpcArgs, run::RunArgs};
 
 pub mod genesis;
 pub mod key;
