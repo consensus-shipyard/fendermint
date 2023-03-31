@@ -1,8 +1,9 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use anyhow::Context;
 use fendermint_vm_interpreter::fvm::FvmQuery;
-use fvm::state_tree::ActorState;
+use fendermint_vm_message::query::ActorState;
 use fvm_shared::ActorID;
 use serde_json::json;
 use tendermint::block::Height;
@@ -39,24 +40,28 @@ async fn query(
             abci_query_print(client, height, FvmQuery::Ipld(*cid), |res| {
                 Ok(to_b64(&res.value))
             })
-            .await?;
+            .await
         }
         RpcQueryCommands::ActorState { address } => {
             abci_query_print(client, height, FvmQuery::ActorState(*address), |res| {
-                let state: ActorState = fvm_ipld_encoding::from_slice(&res.value)?;
-                let id: ActorID = fvm_ipld_encoding::from_slice(&res.key)?;
+                let state: ActorState =
+                    fvm_ipld_encoding::from_slice(&res.value).context("failed to decode state")?;
+                let id: ActorID =
+                    fvm_ipld_encoding::from_slice(&res.key).context("failed to decode ID")?;
+
                 let out = json! ({
                   "id": id,
                   "state": state,
                 });
+
+                // Print JSON as a single line - we can display it nicer with `jq` if needed.
                 let json = serde_json::to_string(&out)?;
+
                 Ok(json)
             })
-            .await?;
-            todo!()
+            .await
         }
     }
-    todo!()
 }
 
 /// Fetch the query result from the server and print something to STDOUT.
@@ -69,7 +74,7 @@ async fn abci_query_print<F>(
 where
     F: FnOnce(AbciQuery) -> anyhow::Result<String>,
 {
-    let data = fvm_ipld_encoding::to_vec(&query)?;
+    let data = fvm_ipld_encoding::to_vec(&query).context("failed to encode query")?;
     let res: AbciQuery = client.abci_query(None, data, Some(height), false).await?;
     if res.code.is_ok() {
         let output = render(res)?;
