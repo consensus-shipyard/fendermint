@@ -33,7 +33,7 @@ pub enum RpcCommands {
     /// Get raw IPLD content; print it as base64 string.
     Query {
         /// Block height to query; 0 means latest.
-        #[arg(long, short, default_value_t = 0)]
+        #[arg(long, short = 'b', default_value_t = 0)]
         height: u64,
         #[command(subcommand)]
         command: RpcQueryCommands,
@@ -44,7 +44,7 @@ pub enum RpcCommands {
 pub enum RpcQueryCommands {
     /// Get raw IPLD content; print it as base64 string.
     Ipld {
-        /// Initial balance in atto.
+        /// CID key of the IPLD content to retrieve.
         #[arg(long, short, value_parser = parse_cid)]
         cid: Cid,
     },
