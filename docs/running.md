@@ -448,7 +448,7 @@ The state is printed to STDOUT as JSON:
 }
 ```
 
-What we see here is the general `ActorState` which contains the balance, the nonce, the Wasm code CID, and the state root hash of the
+What we see here is the general [ActorState](https://github.com/filecoin-project/builtin-actors/blob/v10.0.0/actors/account/src/state.rs) which contains the balance, the nonce, the Wasm code CID, and the state root hash of the
 actual actor implementation, which in this case is an `Account` actor.
 
 We can retrieve the raw state of the account with the `ipld` command:
@@ -459,8 +459,18 @@ cargo run -p fendermint_app --release -- \
 ```
 
 The binary contents are printed with Base64 encoding, which we could pipe to a file. It would be more useful to run this query
-programmatically and parse it to the appropriate data structure from the `builtin-actors` library.
+programmatically and parse it to the appropriate data structure from [builtin-actors](https://github.com/filecoin-project/builtin-actors).
 
 ```console
 gVUBTCC2x6HvotYLfMWf9/0aWbf541s=
+```
+
+## Transfer tokens
+
+The simplest transaction we can do is to transfer tokens from one account to another.
+
+For example we can send 1000 tokens from Alice to Bob:
+
+```shell
+BOB_ADDR=$(cargo run -p fendermint_app -- key address --public-key test-network/keys/bob.pk)
 ```
