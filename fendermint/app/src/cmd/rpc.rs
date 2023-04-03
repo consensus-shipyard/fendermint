@@ -11,12 +11,13 @@ use fvm_shared::crypto::signature::SECP_SIG_LEN;
 use fvm_shared::crypto::signature::{Signature, SignatureType};
 use fvm_shared::{ActorID, METHOD_SEND};
 use libsecp256k1::PublicKey;
+use serde::Serialize;
 use serde_json::json;
 use tendermint::block::Height;
 use tendermint_rpc::{endpoint::abci_query::AbciQuery, v0_37::Client, HttpClient, Scheme, Url};
 
 use crate::cmd;
-use crate::options::rpc::TransArgs;
+use crate::options::rpc::{BroadcastMode, TransArgs};
 use crate::{
     cmd::to_b64,
     options::rpc::{RpcArgs, RpcCommands, RpcQueryCommands},
@@ -79,9 +80,26 @@ async fn query(
 /// Execute token transfer through RPC and print the response to STDOUT as JSON.
 async fn transfer(client: HttpClient, args: &TransArgs) -> anyhow::Result<()> {
     let data = transfer_payload(args)?;
-    // TODO: Should we add a parameter to tell which method to use?
-    let res = client.broadcast_tx_commit(data).await?;
-    let json = serde_json::to_string(&res)?;
+    broadcast_and_print(client, data, args.broadcast_mode).await
+}
+
+/// Broadcast a transaction to tendermint and print the results to STDOUT as JSON.
+async fn broadcast_and_print(
+    client: HttpClient,
+    data: Vec<u8>,
+    mode: BroadcastMode,
+) -> anyhow::Result<()> {
+    match mode {
+        BroadcastMode::Async => print_json(client.broadcast_tx_async(data).await?),
+        BroadcastMode::Sync => print_json(client.broadcast_tx_async(data).await?),
+        BroadcastMode::Commit => print_json(client.broadcast_tx_commit(data).await?),
+    }
+}
+
+/// Display some value as JSON.
+fn print_json<T: Serialize>(value: T) -> anyhow::Result<()> {
+    // Using "jsonline"; use `jq` to format.
+    let json = serde_json::to_string(&value)?;
     println!("{}", json);
     Ok(())
 }

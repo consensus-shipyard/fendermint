@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use cid::Cid;
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use fvm_shared::{address::Address, econ::TokenAmount};
 use tendermint_rpc::Url;
 
@@ -90,4 +90,17 @@ pub struct TransArgs {
     /// Gas premium.
     #[arg(long, value_parser = parse_token_amount, default_value = "0")]
     pub gas_premium: TokenAmount,
+    /// Whether to wait for the results from Tendermint or not.
+    #[arg(long, short, default_value = "commit")]
+    pub broadcast_mode: BroadcastMode,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum BroadcastMode {
+    /// Do no wait for the results.
+    Async,
+    /// Wait for the result of `check_tx`.
+    Sync,
+    /// Wait for the result of `deliver_tx`.
+    Commit,
 }
