@@ -3,6 +3,7 @@
 
 use anyhow::Context;
 use fendermint_vm_interpreter::fvm::{FvmMessage, FvmQuery};
+use fendermint_vm_message::chain::ChainMessage;
 use fendermint_vm_message::query::ActorState;
 use fendermint_vm_message::signed::SignedMessage;
 use fvm_shared::address::Address;
@@ -117,7 +118,8 @@ fn transaction_payload(
         bytes: secp_sign(&sk, &cid.to_bytes()).to_vec(),
     };
     let signed = SignedMessage { message, signature };
-    let data = fvm_ipld_encoding::to_vec(&signed)?;
+    let chain = ChainMessage::Signed(Box::new(signed));
+    let data = fvm_ipld_encoding::to_vec(&chain)?;
     Ok(data)
 }
 

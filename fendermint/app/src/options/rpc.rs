@@ -79,11 +79,11 @@ pub struct TransArgs {
     #[arg(long, short = 'n')]
     pub sequence: u64,
     /// Maximum amount of gas that can be charged.
-    #[arg(long, default_value_t = 10_000_000_000)]
+    #[arg(long, default_value_t = 10_000_000_000)] // Default from ref-fvm testkit.
     pub gas_limit: u64,
     /// Price of gas.
     ///
-    /// Aany discrepancy between this and the base fee is paid for
+    /// Any discrepancy between this and the base fee is paid for
     /// by the validator who puts the transaction into the block.
     #[arg(long, value_parser = parse_token_amount, default_value = "0")]
     pub gas_fee_cap: TokenAmount,

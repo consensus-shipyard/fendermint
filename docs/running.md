@@ -485,15 +485,15 @@ $ cargo run -p fendermint_app -- rpc transfer --secret-key test-network/keys/ali
      Running `target/debug/fendermint rpc transfer --secret-key test-network/keys/alice.sk --to f1kgtzp5nuob3gdccagivcgns7e25be2c2rqozilq --sequence 0 --value 1000`
 {
   "check_tx": {
-    "code": 51,
+    "code": 0,
     "data": null,
     "log": "",
-    "info": "TypeMismatch { name: \"enum\", byte: 130 }",
-    "gas_wanted": "0",
+    "info": "",
+    "gas_wanted": "10000000000",
     "gas_used": "0",
     "events": [],
     "codespace": "",
-    "sender": "",
+    "sender": "f1jqqlnr5b56rnmc34ywp7p7i2lg37ty23s2bmg4y",
     "priority": "0",
     "mempool_error": ""
   },
@@ -502,12 +502,27 @@ $ cargo run -p fendermint_app -- rpc transfer --secret-key test-network/keys/ali
     "data": null,
     "log": "",
     "info": "",
-    "gas_wanted": "0",
-    "gas_used": "0",
+    "gas_wanted": "10000000000",
+    "gas_used": "1124863",
     "events": [],
     "codespace": ""
   },
-  "hash": "494A86D4024451B8C180513FF59D0589AFEC63117AABA2541D1EA8B7610BAFC2",
-  "height": "0"
+  "hash": "01828E0A350445ED3E8028D045EE99B5547B6834DB7296B799B95707EB546EC2",
+  "height": "1107"
 }
 ```
+
+The `code: 0` parts indicate that both check and delivery were successful. Let's check the resulting states:
+
+```
+$ target/release/fendermint rpc query actor-state --address $BOB_ADDR | jq .state.balance
+"1000"
+
+$ target/release/fendermint rpc query actor-state --address $(target/release/fendermint key address --public-key test-network/keys/alice.pk) | jq "{balance: .state.balance, sequence: .state.sequence}"
+{
+  "balance": "999999999999999000",
+  "sequence": 1
+}
+```
+
+Great, Alice's nonce was correctly increased as well.
