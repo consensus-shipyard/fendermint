@@ -76,7 +76,7 @@ pub struct TransArgs {
     #[arg(long, short, value_parser = parse_token_amount, default_value = "0")]
     pub value: TokenAmount,
     /// Sender account nonce.
-    #[arg(long, short)]
+    #[arg(long, short = 'n')]
     pub sequence: u64,
     /// Maximum amount of gas that can be charged.
     #[arg(long, default_value_t = 10_000_000_000)]

@@ -1356,7 +1356,6 @@ dependencies = [
  "hex",
  "k256",
  "libsecp256k1",
- "multihash",
  "num-traits",
  "quickcheck 1.0.3",
  "quickcheck_macros",

@@ -2,18 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::Context;
-use cid::Cid;
 use fendermint_vm_interpreter::fvm::{FvmMessage, FvmQuery};
 use fendermint_vm_message::query::ActorState;
 use fendermint_vm_message::signed::SignedMessage;
-use fvm_ipld_encoding::DAG_CBOR;
 use fvm_shared::address::Address;
 use fvm_shared::crypto::signature::SECP_SIG_LEN;
 use fvm_shared::crypto::signature::{Signature, SignatureType};
 use fvm_shared::{ActorID, METHOD_SEND};
 use libsecp256k1::PublicKey;
-use multihash::MultihashDigest;
-use serde::Serialize;
 use serde_json::json;
 use tendermint::block::Height;
 use tendermint_rpc::{endpoint::abci_query::AbciQuery, v0_37::Client, HttpClient, Scheme, Url};
@@ -39,7 +35,7 @@ cmd! {
         query(client, height, command).await
       },
       RpcCommands::Transfer { args } => {
-        transfer(client, &args).await
+        transfer(client, args).await
       }
     }
   }
@@ -79,10 +75,14 @@ async fn query(
     }
 }
 
-/// Execute token transfer through RPC.
+/// Execute token transfer through RPC and print the response to STDOUT as JSON.
 async fn transfer(client: HttpClient, args: &TransArgs) -> anyhow::Result<()> {
     let data = transfer_payload(args)?;
-    todo!()
+    // TODO: Should we add a parameter to tell which method to use?
+    let res = client.broadcast_tx_commit(data).await?;
+    let json = serde_json::to_string(&res)?;
+    println!("{}", json);
+    Ok(())
 }
 
 /// Construct transfer payload.
@@ -205,14 +205,4 @@ fn secp_sign(sk: &libsecp256k1::SecretKey, data: &[u8]) -> [u8; SECP_SIG_LEN] {
     signature[..64].copy_from_slice(&sig.serialize());
     signature[64] = recovery_id.serialize();
     signature
-}
-
-/// Calculate the CID using Blake2b256 digest and DAG_CBOR.
-///
-/// This used to be part of the `Cbor` trait, which is deprecated.
-fn cid<T: Serialize>(value: &T) -> anyhow::Result<Cid> {
-    let bz = fvm_ipld_encoding::to_vec(value)?;
-    let digest = multihash::Code::Blake2b256.digest(&bz);
-    let cid = Cid::new_v1(DAG_CBOR, digest);
-    Ok(cid)
 }

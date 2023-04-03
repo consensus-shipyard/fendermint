@@ -473,4 +473,41 @@ For example we can send 1000 tokens from Alice to Bob:
 
 ```shell
 BOB_ADDR=$(cargo run -p fendermint_app -- key address --public-key test-network/keys/bob.pk)
+cargo run -p fendermint_app -- \
+  rpc transfer --secret-key test-network/keys/alice.sk --to $BOB_ADDR --sequence 0 --value 1000 | jq
+```
+
+The `transfer` command waits for the commit results of the transaction:
+
+```console
+$ cargo run -p fendermint_app -- rpc transfer --secret-key test-network/keys/alice.sk --to $BOB_ADDR --sequence 0 --value 1000 | jq
+    Finished dev [unoptimized + debuginfo] target(s) in 0.40s
+     Running `target/debug/fendermint rpc transfer --secret-key test-network/keys/alice.sk --to f1kgtzp5nuob3gdccagivcgns7e25be2c2rqozilq --sequence 0 --value 1000`
+{
+  "check_tx": {
+    "code": 51,
+    "data": null,
+    "log": "",
+    "info": "TypeMismatch { name: \"enum\", byte: 130 }",
+    "gas_wanted": "0",
+    "gas_used": "0",
+    "events": [],
+    "codespace": "",
+    "sender": "",
+    "priority": "0",
+    "mempool_error": ""
+  },
+  "deliver_tx": {
+    "code": 0,
+    "data": null,
+    "log": "",
+    "info": "",
+    "gas_wanted": "0",
+    "gas_used": "0",
+    "events": [],
+    "codespace": ""
+  },
+  "hash": "494A86D4024451B8C180513FF59D0589AFEC63117AABA2541D1EA8B7610BAFC2",
+  "height": "0"
+}
 ```
