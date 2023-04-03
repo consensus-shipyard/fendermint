@@ -2,19 +2,31 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::Context;
-use fendermint_vm_interpreter::fvm::FvmQuery;
+use cid::Cid;
+use fendermint_vm_interpreter::fvm::{FvmMessage, FvmQuery};
 use fendermint_vm_message::query::ActorState;
-use fvm_shared::ActorID;
+use fendermint_vm_message::signed::SignedMessage;
+use fvm_ipld_encoding::DAG_CBOR;
+use fvm_shared::address::Address;
+use fvm_shared::crypto::signature::SECP_SIG_LEN;
+use fvm_shared::crypto::signature::{Signature, SignatureType};
+use fvm_shared::{ActorID, METHOD_SEND};
+use libsecp256k1::PublicKey;
+use multihash::MultihashDigest;
+use serde::Serialize;
 use serde_json::json;
 use tendermint::block::Height;
 use tendermint_rpc::{endpoint::abci_query::AbciQuery, v0_37::Client, HttpClient, Scheme, Url};
 
 use crate::cmd;
+use crate::options::rpc::TransArgs;
 use crate::{
     cmd::to_b64,
     options::rpc::{RpcArgs, RpcCommands, RpcQueryCommands},
 };
 use anyhow::anyhow;
+
+use super::key::read_secret_key;
 
 // TODO: We should probably make a client interface for the operations we commonly do.
 
@@ -25,6 +37,9 @@ cmd! {
       RpcCommands::Query { height, command } => {
         let height = Height::try_from(*height)?;
         query(client, height, command).await
+      },
+      RpcCommands::Transfer { args } => {
+        transfer(client, &args).await
       }
     }
   }
@@ -62,6 +77,48 @@ async fn query(
             .await
         }
     }
+}
+
+/// Execute token transfer through RPC.
+async fn transfer(client: HttpClient, args: &TransArgs) -> anyhow::Result<()> {
+    let data = transfer_payload(args)?;
+    todo!()
+}
+
+/// Construct transfer payload.
+fn transfer_payload(args: &TransArgs) -> anyhow::Result<Vec<u8>> {
+    transaction_payload(args, METHOD_SEND, Default::default())
+}
+
+/// Construct transaction payload.
+fn transaction_payload(
+    args: &TransArgs,
+    method_num: u64,
+    params: fvm_ipld_encoding::RawBytes,
+) -> anyhow::Result<Vec<u8>> {
+    let sk = read_secret_key(&args.secret_key)?;
+    let pk = PublicKey::from_secret_key(&sk);
+    let from = Address::new_secp256k1(&pk.serialize())?;
+    let message = FvmMessage {
+        version: Default::default(), // TODO: What does this do?
+        from,
+        to: args.to,
+        sequence: args.sequence,
+        value: args.value.clone(),
+        method_num,
+        params,
+        gas_limit: args.gas_limit,
+        gas_fee_cap: args.gas_fee_cap.clone(),
+        gas_premium: args.gas_premium.clone(),
+    };
+    let cid = SignedMessage::cid(&message)?;
+    let signature = Signature {
+        sig_type: SignatureType::Secp256k1,
+        bytes: secp_sign(&sk, &cid.to_bytes()).to_vec(),
+    };
+    let signed = SignedMessage { message, signature };
+    let data = fvm_ipld_encoding::to_vec(&signed)?;
+    Ok(data)
 }
 
 /// Fetch the query result from the server and print something to STDOUT.
@@ -130,4 +187,32 @@ fn http_client(url: Url, proxy_url: Option<Url>) -> anyhow::Result<HttpClient> {
         }
     };
     Ok(client)
+}
+
+fn secp_sign(sk: &libsecp256k1::SecretKey, data: &[u8]) -> [u8; SECP_SIG_LEN] {
+    let hash: [u8; 32] = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(data)
+        .finalize()
+        .as_bytes()
+        .try_into()
+        .unwrap();
+
+    let (sig, recovery_id) = libsecp256k1::sign(&libsecp256k1::Message::parse(&hash), sk);
+
+    let mut signature = [0u8; SECP_SIG_LEN];
+    signature[..64].copy_from_slice(&sig.serialize());
+    signature[64] = recovery_id.serialize();
+    signature
+}
+
+/// Calculate the CID using Blake2b256 digest and DAG_CBOR.
+///
+/// This used to be part of the `Cbor` trait, which is deprecated.
+fn cid<T: Serialize>(value: &T) -> anyhow::Result<Cid> {
+    let bz = fvm_ipld_encoding::to_vec(value)?;
+    let digest = multihash::Code::Blake2b256.digest(&bz);
+    let cid = Cid::new_v1(DAG_CBOR, digest);
+    Ok(cid)
 }
