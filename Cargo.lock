@@ -1502,6 +1502,7 @@ dependencies = [
  "fvm_shared",
  "paste",
  "serde",
+ "serde_tuple",
 ]
 
 [[package]]

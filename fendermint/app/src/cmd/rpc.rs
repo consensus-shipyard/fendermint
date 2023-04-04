@@ -16,6 +16,7 @@ use libsecp256k1::PublicKey;
 use serde::Serialize;
 use serde_json::json;
 use tendermint::block::Height;
+use tendermint_rpc::endpoint::broadcast;
 use tendermint_rpc::{endpoint::abci_query::AbciQuery, v0_37::Client, HttpClient, Scheme, Url};
 
 use crate::cmd;
@@ -90,7 +91,7 @@ async fn query(
 /// Execute token transfer through RPC and print the response to STDOUT as JSON.
 async fn transfer(client: HttpClient, args: &TransArgs, to: &Address) -> anyhow::Result<()> {
     let data = transfer_payload(args, to)?;
-    broadcast_and_print(client, data, args.broadcast_mode).await
+    broadcast_and_print(client, data, args.broadcast_mode, |_| None).await
 }
 
 /// Execute a transaction through RPC and print the response to STDOUT as JSON.
@@ -102,7 +103,7 @@ async fn transact(
     params: RawBytes,
 ) -> anyhow::Result<()> {
     let data = transaction_payload(args, to, method_num, params)?;
-    broadcast_and_print(client, data, args.broadcast_mode).await
+    broadcast_and_print(client, data, args.broadcast_mode, |_| None).await
 }
 
 /// Deploy an EVM contract through RPC and print the response to STDOUT as JSON.
@@ -122,26 +123,84 @@ async fn fevm_create(
         eam::Method::CreateExternal as u64,
         initcode,
     )?;
-    broadcast_and_print(client, data, args.broadcast_mode).await
+    broadcast_and_print(
+        client,
+        data,
+        args.broadcast_mode,
+        |bz| match fvm_ipld_encoding::from_slice::<eam::CreateReturn>(bz) {
+            Ok(ret) => {
+                // Print all the various addresses we can use to refer to an EVM contract.
+                // The only reference I can point to about how to use them are the integration tests:
+                // https://github.com/filecoin-project/ref-fvm/pull/1507
+                // IIRC to call the contract we need to use the `actor_address` or the `delegated_address` in `to`.
+                let json = json!({
+                    "actor_id": ret.actor_id,
+                    "actor_address": Address::new_id(ret.actor_id).to_string(),
+                    "actor_id_as_eth": hex::encode(eam::EthAddress::from_id(ret.actor_id).0),
+                    "eth_address": hex::encode(ret.eth_address.0),
+                    "delegated_address": Address::new_delegated(eam::EAM_ACTOR_ID, &ret.eth_address.0).ok(),
+                    "robust_address": ret.robust_address.map(|a| a.to_string())
+                });
+                Some(Ok(json))
+            }
+            Err(e) => Some(Err(anyhow!("error parsing as CreateReturn: {e}"))),
+        },
+    )
+    .await
 }
 
 /// Broadcast a transaction to tendermint and print the results to STDOUT as JSON.
-async fn broadcast_and_print(
+async fn broadcast_and_print<F>(
     client: HttpClient,
     data: Vec<u8>,
     mode: BroadcastMode,
-) -> anyhow::Result<()> {
+    parse_data: F,
+) -> anyhow::Result<()>
+where
+    F: FnOnce(&[u8]) -> Option<anyhow::Result<serde_json::Value>>,
+{
     match mode {
-        BroadcastMode::Async => print_json(client.broadcast_tx_async(data).await?),
-        BroadcastMode::Sync => print_json(client.broadcast_tx_async(data).await?),
-        BroadcastMode::Commit => print_json(client.broadcast_tx_commit(data).await?),
+        BroadcastMode::Async => {
+            print_json(client.broadcast_tx_async(data).await?, |_| None, parse_data)
+        }
+        BroadcastMode::Sync => {
+            print_json(client.broadcast_tx_async(data).await?, |_| None, parse_data)
+        }
+        BroadcastMode::Commit => print_json(
+            client.broadcast_tx_commit(data).await?,
+            |r: &broadcast::tx_commit::Response| Some(r.deliver_tx.data.as_ref()),
+            parse_data,
+        ),
     }
 }
 
 /// Display some value as JSON.
-fn print_json<T: Serialize>(value: T) -> anyhow::Result<()> {
+fn print_json<T, G, F>(value: T, get_data: G, parse_data: F) -> anyhow::Result<()>
+where
+    T: Serialize,
+    G: FnOnce(&T) -> Option<&[u8]>,
+    F: FnOnce(&[u8]) -> Option<anyhow::Result<serde_json::Value>>,
+{
+    let response = serde_json::to_value(&value)?;
+    let output = {
+        let return_data = match get_data(&value) {
+            None => None,
+            Some(bz) if bz.is_empty() => None,
+            Some(bz) => match parse_data(bz) {
+                None => None,
+                Some(Ok(return_json)) => Some(return_json),
+                Some(Err(e)) => Some(json!({
+                    "error": format!("error parsing return data: {e}")
+                })),
+            },
+        };
+        match return_data {
+            Some(return_data) => json!({"response": response, "return_data": return_data}),
+            None => json!({ "response": response }),
+        }
+    };
     // Using "jsonline"; use `jq` to format.
-    let json = serde_json::to_string(&value)?;
+    let json = serde_json::to_string(&output)?;
     println!("{}", json);
     Ok(())
 }
