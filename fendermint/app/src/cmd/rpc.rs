@@ -1,7 +1,10 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::path::PathBuf;
+
 use anyhow::Context;
+use fendermint_vm_actor_interface::eam;
 use fendermint_vm_interpreter::fvm::{FvmMessage, FvmQuery};
 use fendermint_vm_message::chain::ChainMessage;
 use fendermint_vm_message::query::ActorState;
@@ -16,7 +19,7 @@ use tendermint::block::Height;
 use tendermint_rpc::{endpoint::abci_query::AbciQuery, v0_37::Client, HttpClient, Scheme, Url};
 
 use crate::cmd;
-use crate::options::rpc::{BroadcastMode, TransArgs};
+use crate::options::rpc::{BroadcastMode, RpcFevmCommands, TransArgs};
 use crate::{
     cmd::to_b64,
     options::rpc::{RpcArgs, RpcCommands, RpcQueryCommands},
@@ -35,11 +38,16 @@ cmd! {
         let height = Height::try_from(*height)?;
         query(client, height, command).await
       },
-      RpcCommands::Transfer { args } => {
-        transfer(client, args).await
+      RpcCommands::Transfer { args, to } => {
+        transfer(client, args, to).await
       },
-      RpcCommands::Transact { args, method_number, params } => {
-        transact(client, args, *method_number, params.clone()).await
+      RpcCommands::Transact { args, to, method_number, params } => {
+        transact(client, args, to, *method_number, params.clone()).await
+      },
+      RpcCommands::Fevm { args, command } => match command {
+        RpcFevmCommands::Create { contract, constructor_args } => {
+            fevm_create(client, args, contract, constructor_args).await
+        }
       }
     }
   }
@@ -80,8 +88,8 @@ async fn query(
 }
 
 /// Execute token transfer through RPC and print the response to STDOUT as JSON.
-async fn transfer(client: HttpClient, args: &TransArgs) -> anyhow::Result<()> {
-    let data = transfer_payload(args)?;
+async fn transfer(client: HttpClient, args: &TransArgs, to: &Address) -> anyhow::Result<()> {
+    let data = transfer_payload(args, to)?;
     broadcast_and_print(client, data, args.broadcast_mode).await
 }
 
@@ -89,10 +97,31 @@ async fn transfer(client: HttpClient, args: &TransArgs) -> anyhow::Result<()> {
 async fn transact(
     client: HttpClient,
     args: &TransArgs,
+    to: &Address,
     method_num: MethodNum,
     params: RawBytes,
 ) -> anyhow::Result<()> {
-    let data = transaction_payload(args, method_num, params)?;
+    let data = transaction_payload(args, to, method_num, params)?;
+    broadcast_and_print(client, data, args.broadcast_mode).await
+}
+
+/// Deploy an EVM contract through RPC and print the response to STDOUT as JSON.
+async fn fevm_create(
+    client: HttpClient,
+    args: &TransArgs,
+    contract: &PathBuf,
+    constructor_args: &RawBytes,
+) -> anyhow::Result<()> {
+    let contract_hex = std::fs::read_to_string(contract).context("failed to read contract")?;
+    let contract_bytes = hex::decode(contract_hex).context("failed to parse contract from hex")?;
+    let initcode = [contract_bytes, constructor_args.to_vec()].concat();
+    let initcode = RawBytes::serialize(initcode)?;
+    let data = transaction_payload(
+        args,
+        &eam::EAM_ACTOR_ADDR,
+        eam::Method::CreateExternal as u64,
+        initcode,
+    )?;
     broadcast_and_print(client, data, args.broadcast_mode).await
 }
 
@@ -118,13 +147,14 @@ fn print_json<T: Serialize>(value: T) -> anyhow::Result<()> {
 }
 
 /// Construct transfer payload.
-fn transfer_payload(args: &TransArgs) -> anyhow::Result<Vec<u8>> {
-    transaction_payload(args, METHOD_SEND, Default::default())
+fn transfer_payload(args: &TransArgs, to: &Address) -> anyhow::Result<Vec<u8>> {
+    transaction_payload(args, to, METHOD_SEND, Default::default())
 }
 
 /// Construct transaction payload.
 fn transaction_payload(
     args: &TransArgs,
+    to: &Address,
     method_num: MethodNum,
     params: fvm_ipld_encoding::RawBytes,
 ) -> anyhow::Result<Vec<u8>> {
@@ -134,7 +164,7 @@ fn transaction_payload(
     let message = FvmMessage {
         version: Default::default(), // TODO: What does this do?
         from,
-        to: args.to,
+        to: to.clone(),
         sequence: args.sequence,
         value: args.value.clone(),
         method_num,

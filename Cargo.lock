@@ -1416,6 +1416,7 @@ dependencies = [
  "fendermint_abci",
  "fendermint_rocksdb",
  "fendermint_storage",
+ "fendermint_vm_actor_interface",
  "fendermint_vm_genesis",
  "fendermint_vm_interpreter",
  "fendermint_vm_message",
