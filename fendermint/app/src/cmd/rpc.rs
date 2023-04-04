@@ -4,12 +4,14 @@
 use std::path::PathBuf;
 
 use anyhow::Context;
-use fendermint_vm_actor_interface::eam;
+use base64::Engine;
+use bytes::Bytes;
+use fendermint_vm_actor_interface::eam::{self, CreateReturn};
 use fendermint_vm_interpreter::fvm::{FvmMessage, FvmQuery};
 use fendermint_vm_message::chain::ChainMessage;
 use fendermint_vm_message::query::ActorState;
 use fendermint_vm_message::signed::SignedMessage;
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::{BytesSer, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::{ActorID, MethodNum, METHOD_SEND};
 use libsecp256k1::PublicKey;
@@ -116,36 +118,20 @@ async fn fevm_create(
     let contract_hex = std::fs::read_to_string(contract).context("failed to read contract")?;
     let contract_bytes = hex::decode(contract_hex).context("failed to parse contract from hex")?;
     let initcode = [contract_bytes, constructor_args.to_vec()].concat();
-    let initcode = RawBytes::serialize(initcode)?;
+    let initcode = RawBytes::serialize(BytesSer(&initcode))?;
     let data = transaction_payload(
         args,
         &eam::EAM_ACTOR_ADDR,
         eam::Method::CreateExternal as u64,
         initcode,
     )?;
-    broadcast_and_print(
-        client,
-        data,
-        args.broadcast_mode,
-        |bz| match fvm_ipld_encoding::from_slice::<eam::CreateReturn>(bz) {
-            Ok(ret) => {
-                // Print all the various addresses we can use to refer to an EVM contract.
-                // The only reference I can point to about how to use them are the integration tests:
-                // https://github.com/filecoin-project/ref-fvm/pull/1507
-                // IIRC to call the contract we need to use the `actor_address` or the `delegated_address` in `to`.
-                let json = json!({
-                    "actor_id": ret.actor_id,
-                    "actor_address": Address::new_id(ret.actor_id).to_string(),
-                    "actor_id_as_eth": hex::encode(eam::EthAddress::from_id(ret.actor_id).0),
-                    "eth_address": hex::encode(ret.eth_address.0),
-                    "delegated_address": Address::new_delegated(eam::EAM_ACTOR_ID, &ret.eth_address.0).ok(),
-                    "robust_address": ret.robust_address.map(|a| a.to_string())
-                });
-                Some(Ok(json))
-            }
-            Err(e) => Some(Err(anyhow!("error parsing as CreateReturn: {e}"))),
-        },
-    )
+    broadcast_and_print(client, data, args.broadcast_mode, |data| {
+        Some(
+            parse_data(data)
+                .and_then(parse_create_return)
+                .map(create_return_to_json),
+        )
+    })
     .await
 }
 
@@ -157,7 +143,7 @@ async fn broadcast_and_print<F>(
     parse_data: F,
 ) -> anyhow::Result<()>
 where
-    F: FnOnce(&[u8]) -> Option<anyhow::Result<serde_json::Value>>,
+    F: FnOnce(&Bytes) -> Option<anyhow::Result<serde_json::Value>>,
 {
     match mode {
         BroadcastMode::Async => {
@@ -168,7 +154,7 @@ where
         }
         BroadcastMode::Commit => print_json(
             client.broadcast_tx_commit(data).await?,
-            |r: &broadcast::tx_commit::Response| Some(r.deliver_tx.data.as_ref()),
+            |r: &broadcast::tx_commit::Response| Some(&r.deliver_tx.data),
             parse_data,
         ),
     }
@@ -178,8 +164,8 @@ where
 fn print_json<T, G, F>(value: T, get_data: G, parse_data: F) -> anyhow::Result<()>
 where
     T: Serialize,
-    G: FnOnce(&T) -> Option<&[u8]>,
-    F: FnOnce(&[u8]) -> Option<anyhow::Result<serde_json::Value>>,
+    G: FnOnce(&T) -> Option<&Bytes>,
+    F: FnOnce(&Bytes) -> Option<anyhow::Result<serde_json::Value>>,
 {
     let response = serde_json::to_value(&value)?;
     let output = {
@@ -223,7 +209,7 @@ fn transaction_payload(
     let message = FvmMessage {
         version: Default::default(), // TODO: What does this do?
         from,
-        to: to.clone(),
+        to: *to,
         sequence: args.sequence,
         value: args.value.clone(),
         method_num,
@@ -304,4 +290,35 @@ fn http_client(url: Url, proxy_url: Option<Url>) -> anyhow::Result<HttpClient> {
         }
     };
     Ok(client)
+}
+
+/// Parse what Tendermint returns in the `data` field of [`DeliverTx`] into bytes.
+/// It looks like somewhere along the way it replaces them with the bytes of a Base64 encoded string.
+fn parse_data(data: &Bytes) -> anyhow::Result<Vec<u8>> {
+    let b64 = String::from_utf8(data.to_vec()).context("error parsing data as base64 string")?;
+    let data = base64::engine::general_purpose::STANDARD
+        .decode(&b64)
+        .context("error parsing base64 to bytes")?;
+    Ok(data)
+}
+
+/// Parse what Tendermint returns in the `data` field of `DeliverTx` as `CreateReturn`.
+fn parse_create_return(data: Vec<u8>) -> anyhow::Result<CreateReturn> {
+    fvm_ipld_encoding::from_slice::<eam::CreateReturn>(&data)
+        .map_err(|e| anyhow!("error parsing as CreateReturn: {e}"))
+}
+
+fn create_return_to_json(ret: CreateReturn) -> serde_json::Value {
+    // Print all the various addresses we can use to refer to an EVM contract.
+    // The only reference I can point to about how to use them are the integration tests:
+    // https://github.com/filecoin-project/ref-fvm/pull/1507
+    // IIRC to call the contract we need to use the `actor_address` or the `delegated_address` in `to`.
+    json!({
+        "actor_id": ret.actor_id,
+        "actor_address": Address::new_id(ret.actor_id).to_string(),
+        "actor_id_as_eth_address": hex::encode(eam::EthAddress::from_id(ret.actor_id).0),
+        "eth_address": hex::encode(ret.eth_address.0),
+        "delegated_address": Address::new_delegated(eam::EAM_ACTOR_ID, &ret.eth_address.0).ok().map(|a| a.to_string()),
+        "robust_address": ret.robust_address.map(|a| a.to_string())
+    })
 }

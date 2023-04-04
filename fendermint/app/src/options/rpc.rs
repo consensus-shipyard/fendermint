@@ -43,16 +43,14 @@ pub enum RpcCommands {
     },
     /// Transfer tokens between accounts.
     Transfer {
-        #[command(flatten)]
-        args: TransArgs,
         /// Address of the actor to send the message to.
         #[arg(long, short, value_parser = parse_address)]
         to: Address,
+        #[command(flatten)]
+        args: TransArgs,
     },
     /// Send a message (a.k.a. transaction) to an actor.
     Transact {
-        #[command(flatten)]
-        args: TransArgs,
         /// Address of the actor to send the message to.
         #[arg(long, short, value_parser = parse_address)]
         to: Address,
@@ -62,13 +60,15 @@ pub enum RpcCommands {
         /// Raw IPLD byte parameters to pass to the method, in hexadecimal format.
         #[arg(long, short, value_parser = parse_raw_bytes)]
         params: RawBytes,
+        #[command(flatten)]
+        args: TransArgs,
     },
     /// Subcommands related to FEVM.
     Fevm {
-        #[command(flatten)]
-        args: TransArgs,
         #[command(subcommand)]
         command: RpcFevmCommands,
+        #[command(flatten)]
+        args: TransArgs,
     },
 }
 

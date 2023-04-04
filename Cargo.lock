@@ -1409,6 +1409,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.21.0",
+ "bytes",
  "cid",
  "clap 4.2.1",
  "config 0.13.3",
