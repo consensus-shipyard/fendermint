@@ -1416,6 +1416,7 @@ dependencies = [
  "dirs",
  "fendermint_abci",
  "fendermint_rocksdb",
+ "fendermint_rpc",
  "fendermint_storage",
  "fendermint_vm_actor_interface",
  "fendermint_vm_genesis",
@@ -1459,6 +1460,22 @@ dependencies = [
  "serde",
  "tempfile",
  "thiserror",
+]
+
+[[package]]
+name = "fendermint_rpc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "cid",
+ "fendermint_vm_actor_interface",
+ "fendermint_vm_message",
+ "fvm_ipld_encoding",
+ "fvm_shared",
+ "tendermint",
+ "tendermint-rpc",
+ "tracing",
 ]
 
 [[package]]
