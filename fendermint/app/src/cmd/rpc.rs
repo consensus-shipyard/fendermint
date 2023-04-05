@@ -246,7 +246,7 @@ impl fendermint_rpc::tx::BroadcastMode for BroadcastMode {
 }
 
 struct TransClient {
-    inner: BoundFendermintClient<FendermintClient<HttpClient>, HttpClient>,
+    inner: BoundFendermintClient<HttpClient>,
     broadcast_mode: BroadcastMode,
 }
 
