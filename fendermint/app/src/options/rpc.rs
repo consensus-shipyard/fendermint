@@ -50,7 +50,7 @@ pub enum RpcCommands {
         args: TransArgs,
     },
     /// Send a message (a.k.a. transaction) to an actor.
-    Transact {
+    Transaction {
         /// Address of the actor to send the message to.
         #[arg(long, short, value_parser = parse_address)]
         to: Address,

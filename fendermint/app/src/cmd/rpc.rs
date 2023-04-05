@@ -45,7 +45,7 @@ cmd! {
       RpcCommands::Transfer { args, to } => {
         transfer(client, args, to).await
       },
-      RpcCommands::Transact { args, to, method_number, params } => {
+      RpcCommands::Transaction { args, to, method_number, params } => {
         transact(client, args, to, method_number, params.clone()).await
       },
       RpcCommands::Fevm { args, command } => match command {
