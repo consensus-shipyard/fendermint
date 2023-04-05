@@ -1476,7 +1476,6 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_shared",
  "libsecp256k1",
- "serde",
  "tendermint",
  "tendermint-rpc",
  "tracing",

@@ -8,7 +8,6 @@ use fendermint_vm_actor_interface::eam::CreateReturn;
 use fendermint_vm_message::chain::ChainMessage;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::econ::TokenAmount;
-use serde::Serialize;
 use tendermint::abci::response::DeliverTx;
 
 use fvm_shared::address::Address;
@@ -95,28 +94,25 @@ pub trait TxClient<M: BroadcastMode>: BoundClient {
     async fn perform<F, T>(&self, msg: ChainMessage, f: F) -> anyhow::Result<M::Response<T>>
     where
         F: FnOnce(&DeliverTx) -> anyhow::Result<T> + Sync + Send,
-        T: Serialize;
+        T: Sync + Send;
 }
 
 pub struct TxAsync;
 pub struct TxSync;
 pub struct TxCommit;
 
-#[derive(Serialize, Debug)]
 pub struct AsyncResponse<T> {
     /// Response from Tendermint.
     pub response: tx_async::Response,
     pub return_data: PhantomData<T>,
 }
 
-#[derive(Serialize, Debug)]
 pub struct SyncResponse<T> {
     /// Response from Tendermint.
     pub response: tx_sync::Response,
     pub return_data: PhantomData<T>,
 }
 
-#[derive(Serialize, Debug)]
 pub struct CommitResponse<T> {
     /// Response from Tendermint.
     pub response: tx_commit::Response,
