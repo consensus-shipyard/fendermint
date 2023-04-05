@@ -1471,15 +1471,17 @@ dependencies = [
  "base64 0.21.0",
  "bytes",
  "cid",
+ "clap 4.2.1",
  "fendermint_vm_actor_interface",
  "fendermint_vm_message",
  "fvm_ipld_encoding",
  "fvm_shared",
- "hex",
  "libsecp256k1",
  "tendermint",
  "tendermint-rpc",
+ "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

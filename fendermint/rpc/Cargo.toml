@@ -22,3 +22,9 @@ fvm_shared = { workspace = true }
 
 fendermint_vm_actor_interface = { path = "../vm/actor_interface" }
 fendermint_vm_message = { path = "../vm/message", features = ["secp256k1"] }
+
+[dev-dependencies]
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { workspace = true }

@@ -29,7 +29,7 @@ pub trait BoundClient {
 
 /// Fendermint client for submitting transactions.
 #[async_trait]
-pub trait TxClient<M: BroadcastMode>: BoundClient {
+pub trait TxClient<M: BroadcastMode = TxCommit>: BoundClient {
     /// Transfer tokens to another account.
     async fn transfer(
         &mut self,
@@ -97,8 +97,11 @@ pub trait TxClient<M: BroadcastMode>: BoundClient {
         T: Sync + Send;
 }
 
+/// Return immediately after the transaction is broadcasted without waiting for check results.
 pub struct TxAsync;
+/// Wait for the check results before returning from broadcast.
 pub struct TxSync;
+/// Wait for the delivery results before returning from broadcast.
 pub struct TxCommit;
 
 pub struct AsyncResponse<T> {
