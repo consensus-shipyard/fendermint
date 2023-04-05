@@ -6,23 +6,20 @@ use std::path::PathBuf;
 use anyhow::Context;
 use base64::Engine;
 use bytes::Bytes;
-use fendermint_rpc::query::QueryClient;
-use fvm_ipld_encoding::{BytesDe, BytesSer, RawBytes};
+use fendermint_vm_message::chain::ChainMessage;
+use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
-use fvm_shared::{MethodNum, METHOD_SEND};
-use libsecp256k1::PublicKey;
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::MethodNum;
 use serde::Serialize;
 use serde_json::json;
 use tendermint::block::Height;
 use tendermint_rpc::endpoint::broadcast;
-use tendermint_rpc::{v0_37::Client, HttpClient};
+use tendermint_rpc::v0_37::Client;
 
-use fendermint_rpc::client::{http_client, FendermintClient};
+use fendermint_rpc::message::{GasParams, MessageFactory};
+use fendermint_rpc::{client::FendermintClient, query::QueryClient};
 use fendermint_vm_actor_interface::eam::{self, CreateReturn};
-use fendermint_vm_actor_interface::evm;
-use fendermint_vm_interpreter::fvm::FvmMessage;
-use fendermint_vm_message::chain::ChainMessage;
-use fendermint_vm_message::signed::SignedMessage;
 
 use crate::cmd;
 use crate::options::rpc::{BroadcastMode, RpcFevmCommands, TransArgs};
@@ -36,11 +33,10 @@ use super::key::read_secret_key;
 
 cmd! {
   RpcArgs(self) {
-    let client = http_client(self.url.clone(), self.proxy_url.clone())?;
+    let client = FendermintClient::new(self.url.clone(), self.proxy_url.clone())?;
     match &self.command {
       RpcCommands::Query { height, command } => {
         let height = Height::try_from(*height)?;
-        let client = FendermintClient::new(client);
         query(client, height, command).await
       },
       RpcCommands::Transfer { args, to } => {
@@ -95,40 +91,40 @@ async fn query(
 }
 
 /// Execute token transfer through RPC and print the response to STDOUT as JSON.
-async fn transfer(client: HttpClient, args: &TransArgs, to: &Address) -> anyhow::Result<()> {
-    let data = transfer_payload(args, to)?;
+async fn transfer(client: FendermintClient, args: &TransArgs, to: &Address) -> anyhow::Result<()> {
+    let data = message_payload(args, |mf, v, g| mf.transfer(*to, v, g))?;
     broadcast_and_print(client, data, args.broadcast_mode, |_| None).await
 }
 
 /// Execute a transaction through RPC and print the response to STDOUT as JSON.
 async fn transact(
-    client: HttpClient,
+    client: FendermintClient,
     args: &TransArgs,
     to: &Address,
     method_num: MethodNum,
     params: RawBytes,
 ) -> anyhow::Result<()> {
-    let data = transaction_payload(args, to, method_num, params)?;
+    let data = message_payload(args, |mf, v, g| {
+        mf.transaction(*to, method_num, params, v, g)
+    })?;
     broadcast_and_print(client, data, args.broadcast_mode, |_| None).await
 }
 
 /// Deploy an EVM contract through RPC and print the response to STDOUT as JSON.
 async fn fevm_create(
-    client: HttpClient,
+    client: FendermintClient,
     args: &TransArgs,
     contract: &PathBuf,
     constructor_args: &RawBytes,
 ) -> anyhow::Result<()> {
     let contract_hex = std::fs::read_to_string(contract).context("failed to read contract")?;
     let contract_bytes = hex::decode(contract_hex).context("failed to parse contract from hex")?;
-    let initcode = [contract_bytes, constructor_args.to_vec()].concat();
-    let initcode = RawBytes::serialize(BytesSer(&initcode))?;
-    let data = transaction_payload(
-        args,
-        &eam::EAM_ACTOR_ADDR,
-        eam::Method::CreateExternal as u64,
-        initcode,
-    )?;
+    let contract_bytes = RawBytes::from(contract_bytes);
+
+    let data = message_payload(args, |mf, v, g| {
+        mf.fevm_create(contract_bytes, constructor_args.clone(), v, g)
+    })?;
+
     broadcast_and_print(client, data, args.broadcast_mode, |data| {
         Some(
             parse_data(data)
@@ -141,15 +137,16 @@ async fn fevm_create(
 
 /// Deploy an EVM contract through RPC and print the response to STDOUT as JSON.
 async fn fevm_invoke(
-    client: HttpClient,
+    client: FendermintClient,
     args: &TransArgs,
     contract: &Address,
     method: &RawBytes,
     method_args: &RawBytes,
 ) -> anyhow::Result<()> {
-    let calldata = [method.to_vec(), method_args.to_vec()].concat();
-    let calldata = RawBytes::serialize(BytesSer(&calldata))?;
-    let data = transaction_payload(args, contract, evm::Method::InvokeContract as u64, calldata)?;
+    let data = message_payload(args, |mf, v, g| {
+        mf.fevm_invoke(*contract, method.clone(), method_args.clone(), v, g)
+    })?;
+
     broadcast_and_print(client, data, args.broadcast_mode, |data| {
         Some(
             parse_data(data)
@@ -166,7 +163,7 @@ async fn fevm_invoke(
 
 /// Broadcast a transaction to tendermint and print the results to STDOUT as JSON.
 async fn broadcast_and_print<F>(
-    client: HttpClient,
+    client: FendermintClient,
     data: Vec<u8>,
     mode: BroadcastMode,
     parse_data: F,
@@ -175,14 +172,18 @@ where
     F: FnOnce(&Bytes) -> Option<anyhow::Result<serde_json::Value>>,
 {
     match mode {
-        BroadcastMode::Async => {
-            print_json(client.broadcast_tx_async(data).await?, |_| None, parse_data)
-        }
-        BroadcastMode::Sync => {
-            print_json(client.broadcast_tx_async(data).await?, |_| None, parse_data)
-        }
+        BroadcastMode::Async => print_json(
+            client.inner().broadcast_tx_async(data).await?,
+            |_| None,
+            parse_data,
+        ),
+        BroadcastMode::Sync => print_json(
+            client.inner().broadcast_tx_sync(data).await?,
+            |_| None,
+            parse_data,
+        ),
         BroadcastMode::Commit => print_json(
-            client.broadcast_tx_commit(data).await?,
+            client.inner().broadcast_tx_commit(data).await?,
             |r: &broadcast::tx_commit::Response| Some(&r.deliver_tx.data),
             parse_data,
         ),
@@ -220,36 +221,19 @@ where
     Ok(())
 }
 
-/// Construct transfer payload.
-fn transfer_payload(args: &TransArgs, to: &Address) -> anyhow::Result<Vec<u8>> {
-    transaction_payload(args, to, METHOD_SEND, Default::default())
-}
-
-/// Construct transaction payload.
-fn transaction_payload(
-    args: &TransArgs,
-    to: &Address,
-    method_num: MethodNum,
-    params: fvm_ipld_encoding::RawBytes,
-) -> anyhow::Result<Vec<u8>> {
+fn message_payload<F>(args: &TransArgs, f: F) -> anyhow::Result<Vec<u8>>
+where
+    F: FnOnce(&mut MessageFactory, TokenAmount, GasParams) -> anyhow::Result<ChainMessage>,
+{
     let sk = read_secret_key(&args.secret_key)?;
-    let pk = PublicKey::from_secret_key(&sk);
-    let from = Address::new_secp256k1(&pk.serialize())?;
-    let message = FvmMessage {
-        version: Default::default(), // TODO: What does this do?
-        from,
-        to: *to,
-        sequence: args.sequence,
-        value: args.value.clone(),
-        method_num,
-        params,
-        gas_limit: args.gas_limit,
+    let mut mf = MessageFactory::new(sk, args.sequence)?;
+    let gas_params = GasParams {
         gas_fee_cap: args.gas_fee_cap.clone(),
+        gas_limit: args.gas_limit,
         gas_premium: args.gas_premium.clone(),
     };
-    let signed = SignedMessage::new_secp256k1(message, &sk)?;
-    let chain = ChainMessage::Signed(Box::new(signed));
-    let data = fvm_ipld_encoding::to_vec(&chain)?;
+    let message = f(&mut mf, args.value.clone(), gas_params)?;
+    let data = MessageFactory::serialize(&message)?;
     Ok(data)
 }
 

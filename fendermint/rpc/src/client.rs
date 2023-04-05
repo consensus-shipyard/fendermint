@@ -40,7 +40,7 @@ fn get_http_proxy_url(url_scheme: Scheme, proxy_url: Option<Url>) -> anyhow::Res
 }
 
 /// Create a Tendermint HTTP client.
-pub fn http_client(url: Url, proxy_url: Option<Url>) -> anyhow::Result<HttpClient> {
+fn http_client(url: Url, proxy_url: Option<Url>) -> anyhow::Result<HttpClient> {
     let proxy_url = get_http_proxy_url(url.scheme(), proxy_url)?;
     let client = match proxy_url {
         Some(proxy_url) => {
@@ -65,8 +65,13 @@ pub struct FendermintClient {
 }
 
 impl FendermintClient {
-    pub fn new(inner: HttpClient) -> Self {
-        Self { inner }
+    pub fn new(url: Url, proxy_url: Option<Url>) -> anyhow::Result<Self> {
+        let inner = http_client(url, proxy_url)?;
+        Ok(Self { inner })
+    }
+
+    pub fn inner(&self) -> &HttpClient {
+        &self.inner
     }
 }
 
