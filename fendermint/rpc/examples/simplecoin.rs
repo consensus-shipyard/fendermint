@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use clap::Parser;
-use fendermint_rpc::client::FendermintClient;
+use fendermint_rpc::client::{FendermintClient, TendermintClient};
 use fendermint_rpc::tx::{TxClient, TxCommit};
 use tendermint_rpc::Url;
 use tracing::Level;

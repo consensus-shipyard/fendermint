@@ -76,9 +76,6 @@ impl<C: Client> FendermintClient<C> {
     pub fn new(inner: C) -> Self {
         Self { inner }
     }
-    pub fn inner(&self) -> &C {
-        &self.inner
-    }
 
     /// Attach a message factory to the client.
     pub fn bind(self, message_factory: MessageFactory) -> BoundFendermintClient<C> {
@@ -93,6 +90,18 @@ impl FendermintClient<HttpClient> {
     pub fn new_http(url: Url, proxy_url: Option<Url>) -> anyhow::Result<Self> {
         let inner = http_client(url, proxy_url)?;
         Ok(Self { inner })
+    }
+}
+
+/// Get to the underlying Tendermint client if necessary, for example to query the state of transactions.
+pub trait TendermintClient<C: Client> {
+    /// The underlying Tendermint client.
+    fn underlying(&self) -> &C;
+}
+
+impl<C: Client> TendermintClient<C> for FendermintClient<C> {
+    fn underlying(&self) -> &C {
+        &self.inner
     }
 }
 
@@ -119,6 +128,12 @@ pub struct BoundFendermintClient<C: Client> {
 impl<C: Client> BoundClient for BoundFendermintClient<C> {
     fn message_factory_mut(&mut self) -> &mut MessageFactory {
         &mut self.message_factory
+    }
+}
+
+impl<C: Client> TendermintClient<C> for BoundFendermintClient<C> {
+    fn underlying(&self) -> &C {
+        self.inner.underlying()
     }
 }
 
