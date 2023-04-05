@@ -1475,6 +1475,7 @@ dependencies = [
  "fendermint_vm_message",
  "fvm_ipld_encoding",
  "fvm_shared",
+ "hex",
  "libsecp256k1",
  "tendermint",
  "tendermint-rpc",

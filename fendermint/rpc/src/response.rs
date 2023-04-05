@@ -32,8 +32,12 @@ pub fn decode_fevm_create(deliver_tx: &DeliverTx) -> anyhow::Result<CreateReturn
 
 /// Parse what Tendermint returns in the `data` field of [`DeliverTx`] as raw ABI return value.
 pub fn decode_fevm_invoke(deliver_tx: &DeliverTx) -> anyhow::Result<Vec<u8>> {
+    if deliver_tx.data.is_empty() {
+        // I'm not sure when it happens that the code indicates success but the data is empty, but it does.
+        return Ok(Vec::new());
+    }
     let data = decode_data(&deliver_tx.data)?;
     fvm_ipld_encoding::from_slice::<BytesDe>(&data)
         .map(|bz| bz.0)
-        .map_err(|e| anyhow!("failed to deserialize bytes: {e}"))
+        .map_err(|e| anyhow!("failed to deserialize bytes returned by FEVM: {e}"))
 }
