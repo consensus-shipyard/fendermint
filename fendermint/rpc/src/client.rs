@@ -78,11 +78,8 @@ impl<C: Client> FendermintClient<C> {
     }
 
     /// Attach a message factory to the client.
-    pub fn bind(self, message_factory: MessageFactory) -> BoundFendermintClient<C> {
-        BoundFendermintClient {
-            inner: self,
-            message_factory,
-        }
+    pub fn bind(self, message_factory: MessageFactory) -> BoundFendermintClient<Self, C> {
+        BoundFendermintClient::new(self, message_factory)
     }
 }
 
@@ -120,27 +117,47 @@ where
 }
 
 /// Fendermint client capable of signing transactions.
-pub struct BoundFendermintClient<C: Client> {
-    inner: FendermintClient<C>,
+pub struct BoundFendermintClient<I, C> {
+    inner: I,
     message_factory: MessageFactory,
+    client: PhantomData<C>,
 }
 
-impl<C: Client> BoundClient for BoundFendermintClient<C> {
+impl<I, C> BoundFendermintClient<I, C>
+where
+    I: TendermintClient<C>,
+    C: Client,
+{
+    pub fn new(inner: I, message_factory: MessageFactory) -> Self {
+        Self {
+            inner,
+            message_factory,
+            client: PhantomData,
+        }
+    }
+}
+
+impl<I, C> BoundClient for BoundFendermintClient<I, C> {
     fn message_factory_mut(&mut self) -> &mut MessageFactory {
         &mut self.message_factory
     }
 }
 
-impl<C: Client> TendermintClient<C> for BoundFendermintClient<C> {
+impl<I, C> TendermintClient<C> for BoundFendermintClient<I, C>
+where
+    I: TendermintClient<C>,
+    C: Client,
+{
     fn underlying(&self) -> &C {
-        self.inner.underlying()
+        &self.inner.underlying()
     }
 }
 
 #[async_trait]
-impl<C> QueryClient for BoundFendermintClient<C>
+impl<I, C> QueryClient for BoundFendermintClient<I, C>
 where
-    C: Client + Sync + Send,
+    I: QueryClient + Sync + Send,
+    C: Sync + Send,
 {
     async fn perform(&self, query: FvmQuery, height: Option<Height>) -> anyhow::Result<AbciQuery> {
         self.inner.perform(query, height).await
@@ -148,8 +165,9 @@ where
 }
 
 #[async_trait]
-impl<C> TxClient<TxAsync> for BoundFendermintClient<C>
+impl<I, C> TxClient<TxAsync> for BoundFendermintClient<I, C>
 where
+    I: TendermintClient<C> + Sync + Send,
     C: Client + Sync + Send,
 {
     async fn perform<F, T>(&self, msg: ChainMessage, _f: F) -> anyhow::Result<AsyncResponse<T>>
@@ -157,7 +175,7 @@ where
         F: FnOnce(&DeliverTx) -> anyhow::Result<T> + Sync + Send,
     {
         let data = MessageFactory::serialize(&msg)?;
-        let response = self.inner.inner.broadcast_tx_async(data).await?;
+        let response = self.underlying().broadcast_tx_async(data).await?;
         let response = AsyncResponse {
             response,
             return_data: PhantomData,
@@ -167,8 +185,9 @@ where
 }
 
 #[async_trait]
-impl<C> TxClient<TxSync> for BoundFendermintClient<C>
+impl<I, C> TxClient<TxSync> for BoundFendermintClient<I, C>
 where
+    I: TendermintClient<C> + Sync + Send,
     C: Client + Sync + Send,
 {
     async fn perform<F, T>(
@@ -180,7 +199,7 @@ where
         F: FnOnce(&DeliverTx) -> anyhow::Result<T> + Sync + Send,
     {
         let data = MessageFactory::serialize(&msg)?;
-        let response = self.inner.inner.broadcast_tx_sync(data).await?;
+        let response = self.underlying().broadcast_tx_sync(data).await?;
         let response = SyncResponse {
             response,
             return_data: PhantomData,
@@ -190,8 +209,9 @@ where
 }
 
 #[async_trait]
-impl<C> TxClient<TxCommit> for BoundFendermintClient<C>
+impl<I, C> TxClient<TxCommit> for BoundFendermintClient<I, C>
 where
+    I: TendermintClient<C> + Sync + Send,
     C: Client + Sync + Send,
 {
     async fn perform<F, T>(
@@ -203,7 +223,7 @@ where
         F: FnOnce(&DeliverTx) -> anyhow::Result<T> + Sync + Send,
     {
         let data = MessageFactory::serialize(&msg)?;
-        let response = self.inner.inner.broadcast_tx_commit(data).await?;
+        let response = self.underlying().broadcast_tx_commit(data).await?;
         let return_data = if response.deliver_tx.code.is_err() {
             None
         } else {
