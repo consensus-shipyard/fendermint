@@ -4,7 +4,10 @@
 use std::path::PathBuf;
 
 use anyhow::Context;
+use async_trait::async_trait;
+use fendermint_rpc::client::BoundFendermintClient;
 use fendermint_rpc::response::{decode_fevm_create, decode_fevm_invoke};
+use fendermint_rpc::tx::{BoundClient, TxAsync, TxClient, TxCommit, TxSync};
 use fendermint_vm_message::chain::ChainMessage;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -15,6 +18,7 @@ use serde_json::json;
 use tendermint::abci::response::DeliverTx;
 use tendermint::block::Height;
 use tendermint_rpc::v0_37::Client;
+use tendermint_rpc::HttpClient;
 
 use fendermint_rpc::message::{GasParams, MessageFactory};
 use fendermint_rpc::{client::FendermintClient, query::QueryClient};
@@ -236,4 +240,59 @@ fn create_return_to_json(ret: CreateReturn) -> serde_json::Value {
         "delegated_address": Address::new_delegated(eam::EAM_ACTOR_ID, &ret.eth_address.0).ok().map(|a| a.to_string()),
         "robust_address": ret.robust_address.map(|a| a.to_string())
     })
+}
+
+impl fendermint_rpc::tx::BroadcastMode for BroadcastMode {
+    type Response<T> = serde_json::Value;
+}
+
+struct TransClient {
+    inner: BoundFendermintClient<HttpClient>,
+    broadcast_mode: BroadcastMode,
+}
+
+impl TransClient {
+    pub fn new(client: FendermintClient, args: &TransArgs) -> anyhow::Result<Self> {
+        let sk = read_secret_key(&args.secret_key)?;
+        let mf = MessageFactory::new(sk, args.sequence)?;
+        let client = client.bind(mf);
+        let client = Self {
+            inner: client,
+            broadcast_mode: args.broadcast_mode,
+        };
+        Ok(client)
+    }
+}
+
+impl BoundClient for TransClient {
+    fn message_factory_mut(&mut self) -> &mut MessageFactory {
+        self.inner.message_factory_mut()
+    }
+}
+
+#[async_trait]
+impl TxClient<BroadcastMode> for TransClient {
+    async fn perform<F, T>(&self, msg: ChainMessage, f: F) -> anyhow::Result<serde_json::Value>
+    where
+        F: FnOnce(&DeliverTx) -> anyhow::Result<T> + Sync + Send,
+        T: Serialize,
+    {
+        match self.broadcast_mode {
+            BroadcastMode::Async => {
+                let res = TxClient::<TxAsync>::perform(&self.inner, msg, f).await?;
+                let json = serde_json::to_value(res)?;
+                Ok(json)
+            }
+            BroadcastMode::Sync => {
+                let res = TxClient::<TxSync>::perform(&self.inner, msg, f).await?;
+                let json = serde_json::to_value(res)?;
+                Ok(json)
+            }
+            BroadcastMode::Commit => {
+                let res = TxClient::<TxCommit>::perform(&self.inner, msg, f).await?;
+                let json = serde_json::to_value(res)?;
+                Ok(json)
+            }
+        }
+    }
 }
