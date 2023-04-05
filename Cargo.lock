@@ -1468,6 +1468,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64 0.21.0",
+ "bytes",
  "cid",
  "fendermint_vm_actor_interface",
  "fendermint_vm_message",
