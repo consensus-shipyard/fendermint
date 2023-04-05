@@ -31,7 +31,7 @@ use super::key::read_secret_key;
 
 cmd! {
   RpcArgs(self) {
-    let client = FendermintClient::new(self.url.clone(), self.proxy_url.clone())?;
+    let client = FendermintClient::new_http(self.url.clone(), self.proxy_url.clone())?;
     match &self.command {
       RpcCommands::Query { height, command } => {
         let height = Height::try_from(*height)?;

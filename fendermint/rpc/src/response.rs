@@ -18,6 +18,11 @@ pub fn decode_data(data: &Bytes) -> anyhow::Result<Vec<u8>> {
     Ok(data)
 }
 
+/// Parse what Tendermint returns in the `data` field of [`DeliverTx`] as raw bytes.
+pub fn decode_bytes(deliver_tx: &DeliverTx) -> anyhow::Result<Vec<u8>> {
+    decode_data(&deliver_tx.data)
+}
+
 /// Parse what Tendermint returns in the `data` field of [`DeliverTx`] as [`CreateReturn`].
 pub fn decode_fevm_create(deliver_tx: &DeliverTx) -> anyhow::Result<CreateReturn> {
     let data = decode_data(&deliver_tx.data)?;

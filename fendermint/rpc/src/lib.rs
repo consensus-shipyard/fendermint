@@ -5,3 +5,4 @@ pub mod client;
 pub mod message;
 pub mod query;
 pub mod response;
+pub mod tx;
