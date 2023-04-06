@@ -579,3 +579,12 @@ $ cargo run -p fendermint_app --release -- \
 ```
 
 To avoid having to come up with ABI encoded arguments in hexadecimal format, we can use the RPC client in combination with [ethers](https://docs.rs/crate/ethers/latest) excellent `abigen` functionality. Here's an [example](../fendermint/rpc/examples/simplecoin.rs) of doing that with the `SimpleCoin` contract.
+
+```console
+$ cargo run -p fendermint_rpc --release --example simplecoin -- --secret-key test-network/keys/alice.sk --verbose
+2023-04-06T11:00:18.287411Z DEBUG fendermint_rpc::client: Using HTTP client to submit request to: http://127.0.0.1:26657/
+...
+2023-04-06T11:00:18.586419Z  INFO simplecoin: contract deployed contract_address="f410fiv7rempf2cfdykbfl5xzrjnilgwb3jcgrelnvki" actor_id=107
+...
+2023-04-06T11:00:19.581317Z  INFO simplecoin: owner balance balance="10000" owner_eth_addr="ff00000000000000000000000000000000000064"
+```
