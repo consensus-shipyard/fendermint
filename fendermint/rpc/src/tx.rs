@@ -29,7 +29,7 @@ pub trait BoundClient {
     fn message_factory_mut(&mut self) -> &mut MessageFactory;
 
     fn address(&mut self) -> Address {
-        self.message_factory_mut().address().clone()
+        *self.message_factory_mut().address()
     }
 }
 

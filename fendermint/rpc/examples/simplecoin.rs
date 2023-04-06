@@ -16,6 +16,7 @@ use std::path::PathBuf;
 use anyhow::{anyhow, Context};
 use bytes::Bytes;
 use clap::Parser;
+use ethers::abi::Tokenizable;
 use ethers::prelude::{abigen, decode_function_data};
 use ethers::types::H160;
 use fendermint_rpc::query::QueryClient;
@@ -31,6 +32,9 @@ use fvm_shared::econ::TokenAmount;
 use fendermint_rpc::client::FendermintClient;
 use fendermint_rpc::message::{GasParams, MessageFactory};
 use fendermint_rpc::tx::{TxClient, TxCommit};
+
+type MockProvider = ethers::providers::Provider<ethers::providers::MockProvider>;
+type MockContractCall<T> = ethers::prelude::ContractCall<MockProvider, T>;
 
 const CONTRACT_HEX: &'static str =
     include_str!("../../../../builtin-actors/actors/evm/tests/contracts/SimpleCoin.bin");
@@ -186,14 +190,19 @@ async fn coin_balance(
     contract_eth_addr: &EthAddress,
     owner_eth_addr: &EthAddress,
 ) -> anyhow::Result<ethers::types::U256> {
-    // A dummy client that we don't intend to use to call the contract or send transactions.
-    let (eclient, _mock) = ethers::providers::Provider::mocked();
-    let contract_h160_addr = eth_addr_to_h160(contract_eth_addr);
-    let contract = SimpleCoin::new(contract_h160_addr, std::sync::Arc::new(eclient));
-
+    let contract = coin_contract(contract_eth_addr);
     let owner_h160_addr = eth_addr_to_h160(owner_eth_addr);
     let call = contract.get_balance(owner_h160_addr);
+    let balance = call_contract(client, contract_eth_addr, call).await?;
+    Ok(balance)
+}
 
+/// Call FEVM through Tendermint with the calldata encoded by ethers, decoding the result into the expected type.
+async fn call_contract<T: Tokenizable>(
+    client: &mut impl TxClient<TxCommit>,
+    contract_eth_addr: &EthAddress,
+    call: MockContractCall<T>,
+) -> anyhow::Result<T> {
     let calldata: ethers::types::Bytes = call
         .calldata()
         .expect("calldata should contain function and parameters");
@@ -213,10 +222,18 @@ async fn coin_balance(
         .return_data
         .ok_or(anyhow!("the contract did not return any data"))?;
 
-    let balance = decode_function_data(&call.function, ret, false)
+    let res = decode_function_data(&call.function, ret, false)
         .context("error deserializing return data")?;
 
-    Ok(balance)
+    Ok(res)
+}
+
+fn coin_contract(contract_eth_addr: &EthAddress) -> SimpleCoin<MockProvider> {
+    // A dummy client that we don't intend to use to call the contract or send transactions.
+    let (client, _mock) = ethers::providers::Provider::mocked();
+    let contract_h160_addr = eth_addr_to_h160(contract_eth_addr);
+    let contract = SimpleCoin::new(contract_h160_addr, std::sync::Arc::new(client));
+    contract
 }
 
 fn eth_addr_to_h160(eth_addr: &EthAddress) -> H160 {
