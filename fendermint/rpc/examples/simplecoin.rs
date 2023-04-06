@@ -8,7 +8,7 @@
 //!
 //! # Usage
 //! ```text
-//! cargo run -p fendermint_rpc --release --example simplecoin -- --secret-key test-network/keys/alice.sk --sequence 0
+//! cargo run -p fendermint_rpc --release --example simplecoin -- --secret-key test-network/keys/alice.sk --verbose
 //! ```
 
 use std::path::PathBuf;
@@ -16,8 +16,11 @@ use std::path::PathBuf;
 use anyhow::{anyhow, Context};
 use clap::Parser;
 use ethers::prelude::abigen;
+use fendermint_rpc::query::QueryClient;
 use fendermint_vm_actor_interface::eam::CreateReturn;
+use fvm_shared::address::Address;
 use lazy_static::lazy_static;
+use libsecp256k1::{PublicKey, SecretKey};
 use tendermint_rpc::Url;
 use tracing::Level;
 
@@ -77,10 +80,6 @@ pub struct Options {
     /// Path to the secret key to deploy with, expected to be in Base64 format.
     #[arg(long, short)]
     pub secret_key: PathBuf,
-
-    /// Next nonce of the account.
-    #[arg(long, short = 'n', default_value = "0")]
-    pub sequence: u64,
 }
 
 impl Options {
@@ -102,15 +101,23 @@ async fn main() {
         .with_max_level(opts.log_level())
         .init();
 
-    let mf = MessageFactory::from_file(&opts.secret_key, opts.sequence)
-        .expect("error creating message factor");
     let client = FendermintClient::new_http(opts.url, None).expect("error creating client");
-    let client = client.bind(mf);
-    run(client).await.unwrap();
+
+    let sk = MessageFactory::read_secret_key(&opts.secret_key).expect("error reading secret key");
+
+    let sn = sequence(&client, &sk)
+        .await
+        .expect("error getting sequence");
+
+    let mf = MessageFactory::new(sk, sn).unwrap();
+
+    let mut client = client.bind(mf);
+
+    run(&mut client).await.unwrap();
 }
 
-async fn run(mut client: impl TxClient<TxCommit> + Send + Sync) -> anyhow::Result<()> {
-    let create_return = deploy(&mut client).await?;
+async fn run(client: &mut (impl TxClient<TxCommit> + Send + Sync)) -> anyhow::Result<()> {
+    let create_return = deploy(client).await?;
 
     tracing::debug!(
         create_return = format!("{create_return:?}"),
@@ -120,6 +127,21 @@ async fn run(mut client: impl TxClient<TxCommit> + Send + Sync) -> anyhow::Resul
     Ok(())
 }
 
+/// Get the next sequence number (nonce) of an account.
+async fn sequence(
+    client: &(impl QueryClient + Send + Sync),
+    sk: &SecretKey,
+) -> anyhow::Result<u64> {
+    let pk = PublicKey::from_secret_key(sk);
+    let address = Address::new_secp256k1(&pk.serialize()).unwrap();
+    let state = client.actor_state(&address, None).await?;
+    match state {
+        Some((_id, state)) => Ok(state.sequence),
+        None => Err(anyhow!("cannot find sequence for {address}")),
+    }
+}
+
+/// Deploy SimpleCoin.
 async fn deploy(
     client: &mut (impl TxClient<TxCommit> + Send + Sync),
 ) -> anyhow::Result<CreateReturn> {

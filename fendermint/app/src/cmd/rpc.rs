@@ -72,7 +72,7 @@ async fn query(
             None => eprintln!("CID not found"),
         },
         RpcQueryCommands::ActorState { address } => {
-            match client.actor_state(&address, height).await? {
+            match client.actor_state(&address, Some(height)).await? {
                 Some((id, state)) => {
                     let out = json! ({
                       "id": id,

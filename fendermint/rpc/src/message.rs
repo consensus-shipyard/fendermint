@@ -28,16 +28,16 @@ impl MessageFactory {
     }
 
     /// Convenience method to read the secret key from a file, expected to be in Base64 format.
-    pub fn from_file(sk: &Path, sequence: u64) -> anyhow::Result<Self> {
+    pub fn read_secret_key(sk: &Path) -> anyhow::Result<SecretKey> {
         let b64 = std::fs::read_to_string(sk).context("failed to read secret key")?;
         let bz: Vec<u8> = B64_ENGINE
             .decode(&b64)
             .context("failed to parse base64 string")?;
         let sk = SecretKey::parse_slice(&bz)?;
-        Self::new(sk, sequence)
+        Ok(sk)
     }
 
-    /// Serialize a [`ChainMessage`] for inclusion in a Tendermint transaction.
+    /// Convenience method to serialize a [`ChainMessage`] for inclusion in a Tendermint transaction.
     pub fn serialize(message: &ChainMessage) -> anyhow::Result<Vec<u8>> {
         Ok(fvm_ipld_encoding::to_vec(message)?)
     }

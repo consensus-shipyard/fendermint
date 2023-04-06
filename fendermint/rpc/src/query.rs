@@ -25,11 +25,9 @@ pub trait QueryClient {
     async fn actor_state(
         &self,
         address: &Address,
-        height: Height,
+        height: Option<Height>,
     ) -> anyhow::Result<Option<(ActorID, ActorState)>> {
-        let res = self
-            .perform(FvmQuery::ActorState(*address), Some(height))
-            .await?;
+        let res = self.perform(FvmQuery::ActorState(*address), height).await?;
 
         extract(res, |res| {
             let state: ActorState =
