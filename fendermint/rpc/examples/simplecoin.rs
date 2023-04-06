@@ -14,17 +14,18 @@
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Context};
+use bytes::Bytes;
 use clap::Parser;
-use ethers::prelude::abigen;
+use ethers::prelude::{abigen, decode_function_data};
+use ethers::types::H160;
 use fendermint_rpc::query::QueryClient;
-use fendermint_vm_actor_interface::eam::CreateReturn;
+use fendermint_vm_actor_interface::eam::{self, CreateReturn, EthAddress};
 use fvm_shared::address::Address;
 use lazy_static::lazy_static;
 use libsecp256k1::{PublicKey, SecretKey};
 use tendermint_rpc::Url;
 use tracing::Level;
 
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::econ::TokenAmount;
 
 use fendermint_rpc::client::FendermintClient;
@@ -116,12 +117,26 @@ async fn main() {
     run(&mut client).await.unwrap();
 }
 
-async fn run(client: &mut impl TxClient<TxCommit>) -> anyhow::Result<()> {
-    let create_return = deploy(client).await?;
+async fn run(client: &mut (impl TxClient<TxCommit> + QueryClient)) -> anyhow::Result<()> {
+    let create_return = coin_deploy(client).await?;
+    let contract_addr = create_return.delegated_address();
 
-    tracing::debug!(
-        create_return = format!("{create_return:?}"),
+    tracing::info!(
+        contract_address = contract_addr.to_string(),
+        actor_id = create_return.actor_id,
         "contract deployed"
+    );
+
+    let owner_addr = client.address();
+    let owner_id = actor_id(client, &owner_addr).await?;
+    let owner_eth_addr = EthAddress::from_id(owner_id);
+
+    let balance = coin_balance(client, &create_return.eth_address, &owner_eth_addr).await?;
+
+    tracing::info!(
+        balance = format!("{}", balance),
+        owner_eth_addr = hex::encode(&owner_eth_addr.0),
+        "owner balance"
     );
 
     Ok(())
@@ -130,22 +145,30 @@ async fn run(client: &mut impl TxClient<TxCommit>) -> anyhow::Result<()> {
 /// Get the next sequence number (nonce) of an account.
 async fn sequence(client: &impl QueryClient, sk: &SecretKey) -> anyhow::Result<u64> {
     let pk = PublicKey::from_secret_key(sk);
-    let address = Address::new_secp256k1(&pk.serialize()).unwrap();
-    let state = client.actor_state(&address, None).await?;
+    let addr = Address::new_secp256k1(&pk.serialize()).unwrap();
+    let state = client.actor_state(&addr, None).await?;
     match state {
         Some((_id, state)) => Ok(state.sequence),
-        None => Err(anyhow!("cannot find sequence for {address}")),
+        None => Err(anyhow!("cannot find actor {addr}")),
+    }
+}
+
+async fn actor_id(client: &impl QueryClient, addr: &Address) -> anyhow::Result<u64> {
+    let state = client.actor_state(addr, None).await?;
+    match state {
+        Some((id, _state)) => Ok(id),
+        None => Err(anyhow!("cannot find actor {addr}")),
     }
 }
 
 /// Deploy SimpleCoin.
-async fn deploy(client: &mut impl TxClient<TxCommit>) -> anyhow::Result<CreateReturn> {
+async fn coin_deploy(client: &mut impl TxClient<TxCommit>) -> anyhow::Result<CreateReturn> {
     let contract = hex::decode(&CONTRACT_HEX).context("error parsing contract")?;
 
     let res = client
         .fevm_create(
-            RawBytes::from(contract),
-            RawBytes::default(),
+            Bytes::from(contract),
+            Bytes::default(),
             TokenAmount::default(),
             GAS_PARAMS.clone(),
         )
@@ -155,4 +178,52 @@ async fn deploy(client: &mut impl TxClient<TxCommit>) -> anyhow::Result<CreateRe
     let ret = res.return_data.ok_or(anyhow!("no CreateReturn data"))?;
 
     Ok(ret)
+}
+
+/// Call SimpleCoin to query the balance of an account.
+async fn coin_balance(
+    client: &mut impl TxClient<TxCommit>,
+    contract_eth_addr: &EthAddress,
+    owner_eth_addr: &EthAddress,
+) -> anyhow::Result<ethers::types::U256> {
+    // A dummy client that we don't intend to use to call the contract or send transactions.
+    let (eclient, _mock) = ethers::providers::Provider::mocked();
+    let contract_h160_addr = eth_addr_to_h160(contract_eth_addr);
+    let contract = SimpleCoin::new(contract_h160_addr, std::sync::Arc::new(eclient));
+
+    let owner_h160_addr = eth_addr_to_h160(owner_eth_addr);
+    let call = contract.get_balance(owner_h160_addr);
+
+    let calldata: ethers::types::Bytes = call
+        .calldata()
+        .expect("calldata should contain function and parameters");
+
+    let contract_addr = eth_addr_to_eam(contract_eth_addr);
+
+    let res = client
+        .fevm_invoke(
+            contract_addr,
+            calldata.0,
+            TokenAmount::default(),
+            GAS_PARAMS.clone(),
+        )
+        .await?;
+
+    let ret = res
+        .return_data
+        .ok_or(anyhow!("the contract did not return any data"))?;
+
+    let balance = decode_function_data(&call.function, ret, false)
+        .context("error deserializing return data")?;
+
+    Ok(balance)
+}
+
+fn eth_addr_to_h160(eth_addr: &EthAddress) -> H160 {
+    ethers::core::types::Address::from_slice(&eth_addr.0)
+}
+
+fn eth_addr_to_eam(eth_addr: &EthAddress) -> Address {
+    Address::new_delegated(eam::EAM_ACTOR_ID, &eth_addr.0)
+        .expect("ETH address to delegated should work")
 }

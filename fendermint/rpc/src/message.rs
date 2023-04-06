@@ -5,6 +5,7 @@ use std::path::Path;
 
 use anyhow::Context;
 use base64::Engine;
+use bytes::Bytes;
 use fendermint_vm_actor_interface::{eam, evm};
 use fendermint_vm_message::{chain::ChainMessage, signed::SignedMessage};
 use fvm_ipld_encoding::{BytesSer, RawBytes};
@@ -40,6 +41,11 @@ impl MessageFactory {
     /// Convenience method to serialize a [`ChainMessage`] for inclusion in a Tendermint transaction.
     pub fn serialize(message: &ChainMessage) -> anyhow::Result<Vec<u8>> {
         Ok(fvm_ipld_encoding::to_vec(message)?)
+    }
+
+    /// Actor address.
+    pub fn address(&self) -> &Address {
+        &self.addr
     }
 
     /// Transfer tokens to another account.
@@ -82,8 +88,8 @@ impl MessageFactory {
     /// Deploy a FEVM contract.
     pub fn fevm_create(
         &mut self,
-        contract: RawBytes,
-        constructor_args: RawBytes,
+        contract: Bytes,
+        constructor_args: Bytes,
         value: TokenAmount,
         gas_params: GasParams,
     ) -> anyhow::Result<ChainMessage> {
@@ -103,12 +109,10 @@ impl MessageFactory {
     pub fn fevm_invoke(
         &mut self,
         contract: Address,
-        method: RawBytes,
-        method_args: RawBytes,
+        calldata: Bytes,
         value: TokenAmount,
         gas_params: GasParams,
     ) -> anyhow::Result<ChainMessage> {
-        let calldata = [method.to_vec(), method_args.to_vec()].concat();
         let calldata = RawBytes::serialize(BytesSer(&calldata))?;
         let message = self.transaction(
             contract,

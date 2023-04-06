@@ -43,3 +43,10 @@ pub struct CreateReturn {
     pub robust_address: Option<Address>,
     pub eth_address: EthAddress,
 }
+
+impl CreateReturn {
+    /// Delegated EAM address of the EVM actor, which can be used to invoke the contract.
+    pub fn delegated_address(&self) -> Address {
+        Address::new_delegated(EAM_ACTOR_ID, &self.eth_address.0).expect("ETH address should work")
+    }
+}
