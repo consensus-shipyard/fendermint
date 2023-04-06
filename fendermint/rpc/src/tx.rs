@@ -29,7 +29,7 @@ pub trait BoundClient {
 
 /// Fendermint client for submitting transactions.
 #[async_trait]
-pub trait TxClient<M: BroadcastMode = TxCommit>: BoundClient {
+pub trait TxClient<M: BroadcastMode = TxCommit>: BoundClient + Send + Sync {
     /// Transfer tokens to another account.
     async fn transfer(
         &mut self,

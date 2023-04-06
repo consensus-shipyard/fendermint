@@ -200,7 +200,7 @@ where
 #[async_trait]
 impl<C> TxClient<TxCommit> for BoundFendermintClient<C>
 where
-    C: Client + Sync + Send + Sync + Send,
+    C: Client + Sync + Send,
 {
     async fn perform<F, T>(
         &self,

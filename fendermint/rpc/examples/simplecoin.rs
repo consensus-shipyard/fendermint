@@ -116,7 +116,7 @@ async fn main() {
     run(&mut client).await.unwrap();
 }
 
-async fn run(client: &mut (impl TxClient<TxCommit> + Send + Sync)) -> anyhow::Result<()> {
+async fn run(client: &mut impl TxClient<TxCommit>) -> anyhow::Result<()> {
     let create_return = deploy(client).await?;
 
     tracing::debug!(
@@ -128,10 +128,7 @@ async fn run(client: &mut (impl TxClient<TxCommit> + Send + Sync)) -> anyhow::Re
 }
 
 /// Get the next sequence number (nonce) of an account.
-async fn sequence(
-    client: &(impl QueryClient + Send + Sync),
-    sk: &SecretKey,
-) -> anyhow::Result<u64> {
+async fn sequence(client: &impl QueryClient, sk: &SecretKey) -> anyhow::Result<u64> {
     let pk = PublicKey::from_secret_key(sk);
     let address = Address::new_secp256k1(&pk.serialize()).unwrap();
     let state = client.actor_state(&address, None).await?;
@@ -142,9 +139,7 @@ async fn sequence(
 }
 
 /// Deploy SimpleCoin.
-async fn deploy(
-    client: &mut (impl TxClient<TxCommit> + Send + Sync),
-) -> anyhow::Result<CreateReturn> {
+async fn deploy(client: &mut impl TxClient<TxCommit>) -> anyhow::Result<CreateReturn> {
     let contract = hex::decode(&CONTRACT_HEX).context("error parsing contract")?;
 
     let res = client
