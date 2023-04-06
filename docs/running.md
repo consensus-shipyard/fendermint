@@ -567,7 +567,7 @@ $ cargo run -p fendermint_app --release -- \
 
 ## Invoke FEVM Contract
 
-Now taht we have a contract deployed, we can call it. The following is just based on on the example in [fvm-bench](https://github.com/filecoin-project/fvm-bench). Normally we'd try to
+Now that we have a contract deployed, we can call it. The arguments in the followign example are taken from [fvm-bench](https://github.com/filecoin-project/fvm-bench).
 
 ```console
 $ cargo run -p fendermint_app --release -- \
@@ -577,3 +577,5 @@ $ cargo run -p fendermint_app --release -- \
           | jq .return_data
 "0000000000000000000000000000000000000000000000000000000000002710"
 ```
+
+To avoid having to come up with ABI encoded arguments in hexadecimal format, we can use the RPC client in combination with [ethers](https://docs.rs/crate/ethers/latest) excellent `abigen` functionality. Here's an [example](../fendermint/rpc/examples/simplecoin.rs) of doing that with the `SimpleCoin` contract.

@@ -1,11 +1,17 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::path::Path;
+
+use anyhow::Context;
+use base64::Engine;
 use fendermint_vm_actor_interface::{eam, evm};
 use fendermint_vm_message::{chain::ChainMessage, signed::SignedMessage};
 use fvm_ipld_encoding::{BytesSer, RawBytes};
 use fvm_shared::{address::Address, econ::TokenAmount, MethodNum, METHOD_SEND};
 use libsecp256k1::{PublicKey, SecretKey};
+
+use crate::B64_ENGINE;
 
 /// Factory methods for signed transaction payload construction.
 pub struct MessageFactory {
@@ -19,6 +25,16 @@ impl MessageFactory {
         let pk = PublicKey::from_secret_key(&sk);
         let addr = Address::new_secp256k1(&pk.serialize())?;
         Ok(Self { sk, addr, sequence })
+    }
+
+    /// Convenience method to read the secret key from a file, expected to be in Base64 format.
+    pub fn from_file(sk: &Path, sequence: u64) -> anyhow::Result<Self> {
+        let b64 = std::fs::read_to_string(sk).context("failed to read secret key")?;
+        let bz: Vec<u8> = B64_ENGINE
+            .decode(&b64)
+            .context("failed to parse base64 string")?;
+        let sk = SecretKey::parse_slice(&bz)?;
+        Self::new(sk, sequence)
     }
 
     /// Serialize a [`ChainMessage`] for inclusion in a Tendermint transaction.
@@ -105,6 +121,7 @@ impl MessageFactory {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct GasParams {
     /// Maximum amount of gas that can be charged.
     pub gas_limit: u64,
