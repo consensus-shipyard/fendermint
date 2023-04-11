@@ -2378,6 +2378,7 @@ version = "0.1.0"
 dependencies = [
  "arbitrary",
  "fendermint_testing",
+ "fendermint_vm_encoding",
  "fendermint_vm_genesis",
  "fvm_ipld_encoding",
  "fvm_shared",
@@ -2389,6 +2390,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
+ "serde_with",
 ]
 
 [[package]]
