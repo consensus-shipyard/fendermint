@@ -3,39 +3,40 @@
 use fvm_shared::address::Address;
 use serde::de::Error;
 use serde::{de, Deserialize, Serialize, Serializer};
+use serde_with::{DeserializeAs, SerializeAs};
 use std::str::FromStr;
 
-use crate::query::ActorAddr;
+pub struct IsHumanReadable;
 
-impl Serialize for ActorAddr {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+impl SerializeAs<Address> for IsHumanReadable {
+    fn serialize_as<S>(source: &Address, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         if serializer.is_human_readable() {
-            self.0.to_string().serialize(serializer)
+            source.to_string().serialize(serializer)
         } else {
-            self.0.serialize(serializer)
+            source.serialize(serializer)
         }
     }
 }
 
-impl<'de> Deserialize<'de> for ActorAddr {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+impl<'de> DeserializeAs<'de, Address> for IsHumanReadable {
+    fn deserialize_as<D>(deserializer: D) -> Result<Address, D::Error>
     where
         D: de::Deserializer<'de>,
     {
         if deserializer.is_human_readable() {
             let s = String::deserialize(deserializer)?;
             match Address::from_str(&s) {
-                Ok(a) => Ok(Self(a)),
+                Ok(a) => Ok(a),
                 Err(e) => Err(D::Error::custom(format!(
                     "error deserializing address: {}",
                     e
                 ))),
             }
         } else {
-            Address::deserialize(deserializer).map(Self)
+            Address::deserialize(deserializer)
         }
     }
 }
