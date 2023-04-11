@@ -4,7 +4,7 @@ use cid::Cid;
 use fvm_shared::{address::Address, econ::TokenAmount};
 use serde::{Deserialize, Serialize};
 
-use crate::encoding::{deserialize_cid, deserialize_tokens, serialize_cid, serialize_tokens};
+use crate::encoding::{cid_encoding, token_encoding};
 
 // TODO: Use `serde_with` to get rid of `ActorAddr`.
 
@@ -42,18 +42,15 @@ pub enum FvmQuery {
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct ActorState {
     /// Link to code for the actor.
-    #[serde(serialize_with = "serialize_cid", deserialize_with = "deserialize_cid")]
+    #[serde(with = "cid_encoding")]
     pub code: Cid,
     /// Link to the state of the actor.
-    #[serde(serialize_with = "serialize_cid", deserialize_with = "deserialize_cid")]
+    #[serde(with = "cid_encoding")]
     pub state: Cid,
     /// Sequence of the actor.
     pub sequence: u64,
     /// Tokens available to the actor.
-    #[serde(
-        serialize_with = "serialize_tokens",
-        deserialize_with = "deserialize_tokens"
-    )]
+    #[serde(with = "token_encoding")]
     pub balance: TokenAmount,
     /// The actor's "delegated" address, if assigned.
     ///

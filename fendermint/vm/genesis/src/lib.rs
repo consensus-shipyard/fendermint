@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 mod arb;
 mod encoding;
 
-use encoding::{deserialize_tokens, serialize_tokens};
+use encoding::token_encoding;
 
 /// Unix timestamp (in seconds).
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -56,10 +56,7 @@ pub enum ActorMeta {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Actor {
     pub meta: ActorMeta,
-    #[serde(
-        serialize_with = "serialize_tokens",
-        deserialize_with = "deserialize_tokens"
-    )]
+    #[serde(with = "token_encoding")]
     pub balance: TokenAmount,
 }
 
@@ -110,10 +107,7 @@ pub struct Genesis {
     pub timestamp: Timestamp,
     pub network_name: String,
     pub network_version: NetworkVersion,
-    #[serde(
-        serialize_with = "serialize_tokens",
-        deserialize_with = "deserialize_tokens"
-    )]
+    #[serde(with = "token_encoding")]
     pub base_fee: TokenAmount,
     pub validators: Vec<Validator>,
     pub accounts: Vec<Actor>,
