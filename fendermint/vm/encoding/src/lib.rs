@@ -63,6 +63,9 @@ where
     }
 }
 
+/// Create [`SerializeAs`] and [`DeserializeAs`] instances for `IsHumanReadable` for the
+/// given type assuming it implements [`ToString`] and [`FromStr`].
+#[macro_export]
 macro_rules! human_readable_str {
     ($typ: ty) => {
         impl SerializeAs<$typ> for IsHumanReadable {
