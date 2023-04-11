@@ -2362,6 +2362,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fendermint_vm_encoding"
+version = "0.1.0"
+dependencies = [
+ "cid",
+ "fvm_shared",
+ "num-traits",
+ "serde",
+ "serde_with",
+]
+
+[[package]]
 name = "fendermint_vm_genesis"
 version = "0.1.0"
 dependencies = [
@@ -2410,6 +2421,7 @@ dependencies = [
  "blake2b_simd",
  "cid",
  "fendermint_testing",
+ "fendermint_vm_encoding",
  "fendermint_vm_message",
  "fvm_ipld_encoding",
  "fvm_shared",

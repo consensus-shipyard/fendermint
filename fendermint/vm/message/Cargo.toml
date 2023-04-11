@@ -24,6 +24,7 @@ arbitrary = { workspace = true, optional = true }
 quickcheck = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 
+fendermint_vm_encoding = { path = "../encoding" }
 fendermint_testing = { path = "../../testing", optional = true }
 
 [dev-dependencies]

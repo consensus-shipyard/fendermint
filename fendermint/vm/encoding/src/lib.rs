@@ -1,10 +1,15 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 use fvm_shared::address::Address;
+use fvm_shared::bigint::BigInt;
+use fvm_shared::econ::TokenAmount;
+use num_traits::Num;
 use serde::de::Error;
 use serde::{de, Deserialize, Serialize, Serializer};
 use serde_with::{DeserializeAs, SerializeAs};
 use std::str::FromStr;
+
+use cid::Cid;
 
 pub struct IsHumanReadable;
 
@@ -41,15 +46,9 @@ impl<'de> DeserializeAs<'de, Address> for IsHumanReadable {
     }
 }
 
-pub mod token_encoding {
-    use fvm_shared::bigint::BigInt;
-    use fvm_shared::econ::TokenAmount;
-    use num_traits::Num;
-    use serde::de::Error;
-    use serde::{de, Deserialize, Serialize, Serializer};
-
+impl SerializeAs<TokenAmount> for IsHumanReadable {
     /// Serialize tokens as human readable string.
-    pub fn serialize<S>(tokens: &TokenAmount, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize_as<S>(tokens: &TokenAmount, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -59,9 +58,11 @@ pub mod token_encoding {
             tokens.serialize(serializer)
         }
     }
+}
 
+impl<'de> DeserializeAs<'de, TokenAmount> for IsHumanReadable {
     /// Deserialize tokens from human readable decimal format.
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<TokenAmount, D::Error>
+    fn deserialize_as<D>(deserializer: D) -> Result<TokenAmount, D::Error>
     where
         D: de::Deserializer<'de>,
     {
@@ -80,15 +81,9 @@ pub mod token_encoding {
     }
 }
 
-pub mod cid_encoding {
-    use std::str::FromStr;
-
-    use cid::Cid;
-    use serde::de::Error;
-    use serde::{de, Deserialize, Serialize, Serializer};
-
+impl SerializeAs<Cid> for IsHumanReadable {
     /// Serialize tokens as human readable string.
-    pub fn serialize<S>(cid: &Cid, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize_as<S>(cid: &Cid, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -98,9 +93,11 @@ pub mod cid_encoding {
             cid.serialize(serializer)
         }
     }
+}
 
-    /// Deserialize tokens from human readable decimal format.
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Cid, D::Error>
+impl<'de> DeserializeAs<'de, Cid> for IsHumanReadable {
+    /// Deserialize CID from human readable string.
+    fn deserialize_as<D>(deserializer: D) -> Result<Cid, D::Error>
     where
         D: de::Deserializer<'de>,
     {

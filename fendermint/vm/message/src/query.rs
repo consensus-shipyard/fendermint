@@ -5,7 +5,7 @@ use fvm_shared::{address::Address, econ::TokenAmount};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::encoding::{cid_encoding, token_encoding, IsHumanReadable};
+use fendermint_vm_encoding::IsHumanReadable;
 
 /// Queries over the IPLD blockstore or the state tree.
 ///
@@ -35,15 +35,15 @@ pub enum FvmQuery {
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct ActorState {
     /// Link to code for the actor.
-    #[serde(with = "cid_encoding")]
+    #[serde_as(as = "IsHumanReadable")]
     pub code: Cid,
     /// Link to the state of the actor.
-    #[serde(with = "cid_encoding")]
+    #[serde_as(as = "IsHumanReadable")]
     pub state: Cid,
     /// Sequence of the actor.
     pub sequence: u64,
     /// Tokens available to the actor.
-    #[serde(with = "token_encoding")]
+    #[serde_as(as = "IsHumanReadable")]
     pub balance: TokenAmount,
     /// The actor's "delegated" address, if assigned.
     ///
