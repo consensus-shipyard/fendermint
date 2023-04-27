@@ -33,7 +33,7 @@ check-fmt:
 check-clippy:
 	cargo clippy --all --tests -- -D clippy::all
 
-docker-image: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE)
+docker-build: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE)
 	cp $(BUILTIN_ACTORS_BUNDLE) ./bundle.car
 	docker build \
 		--build-arg BUILTIN_ACTORS_BUNDLE=bundle.car \
