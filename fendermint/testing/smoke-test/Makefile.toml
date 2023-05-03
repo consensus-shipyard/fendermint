@@ -1,0 +1,104 @@
+[env]
+TM_CONTAINER_NAME = "smoke-tendermint"
+TM_DOCKER_IMAGE = "tendermint/tendermint:v0.37.0-rc2"
+FM_DOCKER_IMAGE = "fendermint:latest"
+TEST_DATA_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/fendermint/testing/smoke-test/test-data"
+HOST_RPC_PORT = 26657
+CARGO_MAKE_WAIT_MILLISECONDS = 3500
+
+# smoke-test infrastructure:
+# cargo install cargo-make     - install `cargo make`
+
+[tasks.probe]
+env = { "CONTAINER_NAME" = "${TM_CONTAINER_NAME}" }
+script = """
+UID=$(id -u)
+echo $UID $CONTAINER_NAME
+echo ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}
+"""
+
+
+[tasks.default]
+clear = true
+dependencies = ["tendermint-init", "wait", "tendermint-stop", "tendermint-rm"]
+
+
+[tasks.test-data-dir]
+script = """
+mkdir -p ${TEST_DATA_DIR}/fendermint;
+mkdir -p ${TEST_DATA_DIR}/tendermint;
+"""
+
+
+[tasks.tendermint-pull]
+command = "docker"
+args = ["pull", "${TM_DOCKER_IMAGE}"]
+
+
+[tasks.tendermint-init]
+extend = "tendermint-run"
+env = { "CMD" = "init", "FLAGS" = "-it" }
+
+
+[tasks.tendermint-start]
+env = { "CMD" = "start", "FLAGS" = "-d" }
+dependencies = ["docker-up-stop-old", "docker-up-rm-old"]
+
+
+[tasks.tendermint-run]
+script = """
+docker run \
+  ${FLAGS} \
+  --rm \
+  --name ${TM_CONTAINER_NAME} \
+  --user $(id -u) \
+  --publish 26657:${HOST_RPC_PORT} \
+  --volume ${TEST_DATA_DIR}/tendermint:/tendermint ${TM_DOCKER_IMAGE} \
+  ${CMD}
+"""
+dependencies = ["tendermint-pull", "test-data-dir"]
+
+
+[tasks.fendermint-new-genesis]
+extend = "fendermint-run"
+env = { "CMD" = "genesis --genesis-file /data/fendermint/genesis.json new --network-name smoke --base-fee 1000  --timestamp 1680101412", "FLAGS" = "-it" }
+
+
+[tasks.fendermint-run]
+script = """
+docker run \
+  ${FLAGS} \
+  --rm \
+  --name ${TM_CONTAINER_NAME} \
+  --user $(id -u) \
+  --volume ${TEST_DATA_DIR}:/data ${FM_DOCKER_IMAGE} \
+  ${CMD}
+"""
+
+
+[tasks.test]
+args = ["run", "--all-features", "--", "-v"]
+
+
+[tasks.tendermint-rm]
+extend = "docker-rm"
+env = { "CONTAINER_NAME" = "${TM_CONTAINER_NAME}" }
+
+
+[tasks.tendermint-stop]
+extend = "docker-stop"
+env = { "CONTAINER_NAME" = "${TM_CONTAINER_NAME}" }
+
+
+[tasks.docker-stop]
+command = "docker"
+args = ["stop", "${CONTAINER_NAME}"]
+ignore_errors = true
+private = true
+
+
+[tasks.docker-rm]
+command = "docker"
+args = ["rm", "--force", "${CONTAINER_NAME}"]
+ignore_errors = true
+private = true
