@@ -42,6 +42,8 @@ jobs:
             task: lint
           - name: Test
             task: test
+          - name: End-to-End
+            task: e2e
         exclude:
           - rust: nightly
             make:
