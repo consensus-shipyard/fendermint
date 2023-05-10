@@ -25,17 +25,20 @@ RUN --mount=type=cache,target=$RUSTUP_HOME,from=rust,source=$RUSTUP_HOME \
 # Runner
 FROM debian:bullseye-slim
 
-WORKDIR /app
-ENV HOME=/app
+ENV FM_HOME_DIR=/fendermint
+ENV HOME=$FM_HOME_DIR
+WORKDIR $FM_HOME_DIR
 
-ENV FM_ABCI__HOST=0.0.0.0
-
-ARG BUILTIN_ACTORS_BUNDLE
-COPY ${BUILTIN_ACTORS_BUNDLE} $HOME/.fendermint/bundle.car
-COPY --from=builder /app/fendermint/app/config $HOME/.fendermint/config
-COPY --from=builder /app/output/bin/fendermint /usr/local/bin/fendermint
+EXPOSE 26658
 
 ENTRYPOINT ["fendermint"]
 CMD ["run"]
 
-EXPOSE 26658
+STOPSIGNAL SIGTERM
+
+ENV FM_ABCI__HOST=0.0.0.0
+
+ARG BUILTIN_ACTORS_BUNDLE
+COPY ${BUILTIN_ACTORS_BUNDLE} $FM_HOME_DIR/bundle.car
+COPY --from=builder /app/fendermint/app/config $FM_HOME_DIR/config
+COPY --from=builder /app/output/bin/fendermint /usr/local/bin/fendermint

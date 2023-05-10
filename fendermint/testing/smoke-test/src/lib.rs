@@ -2,7 +2,7 @@
 //!
 //! Example:
 //!
-//! ```
+//! ```text
 //! cd fendermint/testing/smoke-test
 //! cargo make
 //! ```
