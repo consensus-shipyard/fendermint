@@ -3,14 +3,9 @@
 # Builder
 FROM rust:1.68 as builder
 
-RUN <<EOF
-    set -e
-
-    apt-get update
-    apt-get install -y build-essential clang cmake
-
-    rm -rf /var/lib/apt/lists/*
-EOF
+RUN apt-get update && \
+  apt-get install -y build-essential clang cmake && \
+  rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
