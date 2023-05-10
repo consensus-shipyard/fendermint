@@ -74,7 +74,7 @@ args = ["pull", "${TM_DOCKER_IMAGE}"]
 
 [tasks.tendermint-init]
 extend = "tendermint-run"
-env = { "CMD" = "init", "FLAGS" = "-it" }
+env = { "CMD" = "init", "FLAGS" = "-a STDOUT -a STDERR" }
 
 [tasks.tendermint-start]
 extend = "tendermint-run"
@@ -100,7 +100,7 @@ dependencies = ["tendermint-pull", "test-data-dir", "network-create"]
 
 [tasks.fendermint-init]
 extend = "fendermint-run"
-env = { "ENTRY" = "/scripts/init.sh", "FLAGS" = "-it" }
+env = { "ENTRY" = "/scripts/init.sh", "FLAGS" = "-a STDOUT -a STDERR" }
 
 [tasks.fendermint-start]
 extend = "fendermint-run"
