@@ -48,6 +48,9 @@ jobs:
           - rust: nightly
             make:
               name: Lint
+          - rust: nightly
+            make:
+              name: End-to-end
 
     env:
       RUST_BACKTRACE: full
