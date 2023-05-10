@@ -38,6 +38,7 @@ check-clippy:
 
 docker-build: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE)
 	cp $(BUILTIN_ACTORS_BUNDLE) ./bundle.car
+	DOCKER_BUILDKIT=1 \
 	docker build \
 		--build-arg BUILTIN_ACTORS_BUNDLE=bundle.car \
 		-t fendermint:latest .
