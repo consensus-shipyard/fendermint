@@ -3,7 +3,12 @@
 # This file assumes that we use `make build` to build the binary,
 # rather than the builder-runner pattern.
 
-FROM debian:bullseye-slim
+# Matching base image as the CI runner `runs-on` so the outside build is usable in the container.
+FROM ubuntu:latest
+
+RUN apt-get update && \
+  apt-get install -y libstdc++6 && \
+  rm -rf /var/lib/apt/lists/*
 
 ENV FM_HOME_DIR=/fendermint
 ENV HOME=$FM_HOME_DIR
