@@ -3,6 +3,7 @@
 
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
+use fvm_ipld_encoding::serde::Serialize;
 use fvm_shared::message::Message;
 use tendermint::block::Height;
 use tendermint::v0_37::abci::response;
@@ -16,6 +17,7 @@ use fendermint_vm_message::query::{ActorState, FvmQuery};
 
 use crate::response::encode_data;
 
+#[derive(Serialize, Debug, Clone)]
 /// The parsed value from a query, along with the height at which the query was performed.
 pub struct QueryResponse<T> {
     pub height: Height,
