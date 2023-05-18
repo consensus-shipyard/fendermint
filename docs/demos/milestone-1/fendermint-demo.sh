@@ -99,8 +99,8 @@ fendermint rpc transfer --secret-key test-network/keys/alice.sk --to $BOB_ADDR -
 fendermint rpc query actor-state --address $BOB_ADDR | jq .state.balance
 
 #24
-fendermint --log-level debug \
-  rpc fevm --secret-key test-network/keys/alice.sk --sequence 0 \
+fendermint \
+  rpc fevm --secret-key test-network/keys/alice.sk --sequence 1 \
     create --contract ../builtin-actors/actors/evm/tests/contracts/SimpleCoin.bin
 
 #25
