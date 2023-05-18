@@ -41,7 +41,7 @@ cmd! {
   KeyIntoTendermintArgs(self) {
     let sk = read_secret_key(&self.secret_key)?;
     let pk = PublicKey::from_secret_key(&sk);
-    let vk = k256::ecdsa::VerifyingKey::from_sec1_bytes(&pk.serialize())?;
+    let vk = tendermint::crypto::default::ecdsa_secp256k1::VerifyingKey::from_sec1_bytes(&pk.serialize())?;
     let pub_key = tendermint::PublicKey::Secp256k1(vk);
     let address = tendermint::account::Id::from(pub_key);
 
