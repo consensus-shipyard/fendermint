@@ -198,7 +198,10 @@ pub fn to_validator_updates(
     let mut updates = vec![];
     for v in validators {
         let bz = v.public_key.0.serialize();
-        let key = tendermint::crypto::default::ecdsa_secp256k1::VerifyingKey::from_sec1_bytes(&bz)?;
+
+        let key = tendermint::crypto::default::ecdsa_secp256k1::VerifyingKey::from_sec1_bytes(&bz)
+            .map_err(|e| anyhow!("failed to convert public key: {e}"))?;
+
         updates.push(tendermint::validator::Update {
             pub_key: tendermint::public_key::PublicKey::Secp256k1(key),
             power: tendermint::vote::Power::try_from(v.power.0)?,
