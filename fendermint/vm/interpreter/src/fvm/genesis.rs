@@ -3,7 +3,8 @@
 
 use async_trait::async_trait;
 use fendermint_vm_actor_interface::{cron, eam, init, system};
-use fendermint_vm_genesis::{ActorMeta, Genesis, Timestamp, Validator};
+use fendermint_vm_core::Timestamp;
+use fendermint_vm_genesis::{ActorMeta, Genesis, Validator};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::version::NetworkVersion;

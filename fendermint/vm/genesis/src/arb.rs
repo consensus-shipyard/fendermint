@@ -1,10 +1,10 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 use crate::{
-    Account, Actor, ActorMeta, Genesis, Multisig, Power, SignerAddr, Timestamp, Validator,
-    ValidatorKey,
+    Account, Actor, ActorMeta, Genesis, Multisig, Power, SignerAddr, Validator, ValidatorKey,
 };
 use fendermint_testing::arb::{ArbAddress, ArbTokenAmount};
+use fendermint_vm_core::Timestamp;
 use fvm_shared::version::NetworkVersion;
 use quickcheck::{Arbitrary, Gen};
 use rand::{rngs::StdRng, SeedableRng};

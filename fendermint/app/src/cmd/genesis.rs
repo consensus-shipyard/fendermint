@@ -6,9 +6,9 @@ use fendermint_app::APP_VERSION;
 use fvm_shared::address::Address;
 use std::path::PathBuf;
 
+use fendermint_vm_core::Timestamp;
 use fendermint_vm_genesis::{
-    Account, Actor, ActorMeta, Genesis, Multisig, Power, SignerAddr, Timestamp, Validator,
-    ValidatorKey,
+    Account, Actor, ActorMeta, Genesis, Multisig, Power, SignerAddr, Validator, ValidatorKey,
 };
 
 use crate::cmd;

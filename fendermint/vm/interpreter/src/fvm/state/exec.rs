@@ -14,7 +14,7 @@ use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, message::Message, version
 use serde::{Deserialize, Serialize};
 
 use crate::fvm::externs::FendermintExterns;
-use crate::Timestamp;
+use fendermint_vm_core::Timestamp;
 
 /// Parts of the state which evolve during the lifetime of the chain.
 #[derive(Serialize, Deserialize, Debug, Clone)]
