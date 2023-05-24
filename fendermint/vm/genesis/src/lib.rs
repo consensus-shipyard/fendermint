@@ -98,8 +98,12 @@ pub struct Validator {
 #[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Genesis {
+    /// The name of the blockchain.
+    ///
+    /// It will be used to derive a chain ID as well as being
+    /// the network name in the `InitActor`
+    pub chain_name: String,
     pub timestamp: Timestamp,
-    pub network_name: String,
     pub network_version: NetworkVersion,
     #[serde_as(as = "IsHumanReadable")]
     pub base_fee: TokenAmount,

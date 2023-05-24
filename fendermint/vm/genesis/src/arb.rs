@@ -65,7 +65,7 @@ impl Arbitrary for Genesis {
         let na = usize::arbitrary(g) % 10;
         Self {
             timestamp: Timestamp(u64::arbitrary(g)),
-            network_name: String::arbitrary(g),
+            chain_name: String::arbitrary(g),
             network_version: NetworkVersion::new(*g.choose(&[18u32]).unwrap()),
             base_fee: ArbTokenAmount::arbitrary(g).0,
             validators: (0..nv).map(|_| Arbitrary::arbitrary(g)).collect(),

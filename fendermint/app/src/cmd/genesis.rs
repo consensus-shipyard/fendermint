@@ -36,7 +36,7 @@ cmd! {
   GenesisNewArgs(self, genesis_file: PathBuf) {
     let genesis = Genesis {
       timestamp: Timestamp(self.timestamp),
-      network_name: self.network_name.clone(),
+      chain_name: self.chain_name.clone(),
       network_version: self.network_version,
       base_fee: self.base_fee.clone(),
       validators: Vec::new(),
@@ -171,7 +171,7 @@ fn into_tendermint(genesis_file: &PathBuf, args: &GenesisIntoTendermintArgs) -> 
     let genesis_json = serde_json::to_value(&genesis)?;
     let tmg = tendermint::Genesis {
         genesis_time: tendermint::time::Time::from_unix_timestamp(genesis.timestamp.as_secs(), 0)?,
-        chain_id: tendermint::chain::Id::try_from(genesis.network_name)?,
+        chain_id: tendermint::chain::Id::try_from(genesis.chain_name)?,
         initial_height: 0,
         // Values are based on the default produced by `tendermint init`
         consensus_params: tendermint::consensus::Params {

@@ -37,6 +37,9 @@ pub enum ChainIDError {
 
 /// Hash the name of the chain and reduce it to a number within the acceptable range.
 pub fn from_str_hashed(name: &str) -> Result<ChainID, ChainIDError> {
+    if name.is_empty() {
+        return Ok(ChainID::from(0));
+    }
     let bz = name.as_bytes();
     let digest = multihash::Code::Blake2b256.digest(bz);
 
@@ -55,9 +58,15 @@ pub fn from_str_hashed(name: &str) -> Result<ChainID, ChainIDError> {
     }
 }
 
+/// Anything that has a [`ChainID`].
+pub trait HasChainID {
+    fn chain_id(&self) -> &ChainID;
+}
+
 #[cfg(test)]
 mod tests {
 
+    use fvm_shared::chainid::ChainID;
     use quickcheck_macros::quickcheck;
 
     use super::{from_str_hashed, MAX_CHAIN_ID};
@@ -88,5 +97,10 @@ mod tests {
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn chain_id_of_empty_is_zero() {
+        assert_eq!(from_str_hashed("").unwrap(), ChainID::from(0))
     }
 }
