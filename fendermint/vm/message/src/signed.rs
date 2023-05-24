@@ -180,3 +180,38 @@ mod arb {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use fvm_shared::{address::Address, chainid::ChainID};
+    use quickcheck_macros::quickcheck;
+    use rand::{rngs::StdRng, SeedableRng};
+
+    use super::SignedMessage;
+
+    #[quickcheck]
+    fn chain_id_in_signature(msg: SignedMessage, chain_id: u64, seed: u64) -> Result<(), String> {
+        let mut rng = StdRng::seed_from_u64(seed);
+        let sk = libsecp256k1::SecretKey::random(&mut rng);
+        let pk = libsecp256k1::PublicKey::from_secret_key(&sk);
+
+        let chain_id0 = ChainID::from(chain_id);
+        let chain_id1 = ChainID::from(chain_id.overflowing_add(1).0);
+
+        let mut msg = msg.into_message();
+        msg.from = Address::new_secp256k1(&pk.serialize())
+            .map_err(|e| format!("failed to conver to address: {e}"))?;
+
+        let signed = SignedMessage::new_secp256k1(msg, &sk, &chain_id0)
+            .map_err(|e| format!("signing failed: {e}"))?;
+
+        signed
+            .verify(&chain_id0)
+            .map_err(|e| format!("verifying failed: {e}"))?;
+
+        if signed.verify(&chain_id1).is_ok() {
+            return Err("verifying with a different chain ID should fail".into());
+        }
+        Ok(())
+    }
+}
