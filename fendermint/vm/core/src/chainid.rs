@@ -1,3 +1,5 @@
+// Copyright 2022-2023 Protocol Labs
+// SPDX-License-Identifier: Apache-2.0, MIT
 use std::collections::HashMap;
 
 use cid::{multihash, multihash::MultihashDigest};
