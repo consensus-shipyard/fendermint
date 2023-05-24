@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use cid::{multihash, multihash::MultihashDigest};
 use fvm_shared::bigint::{BigInt, Integer, Sign};
@@ -11,15 +11,18 @@ lazy_static! {
     ///
     /// See all EVM chain IDs at this repo: https://github.com/ethereum-lists/chains/pull/1567
     /// For now I thought it would be enough to enumerate the Filecoin ones.
-    static ref KNOWN_CHAIN_IDS: HashSet<u64> = HashSet::from_iter(vec![
-      0,        // Used as a default
-      314,      // Filecoin
-      3141,     // Hyperspace
-      31415,    // Wallaby
-      3141592,  // Butterlfynet
-      314159,   // Calibnet
-      31415926, // Devnet
+    static ref KNOWN_CHAIN_IDS: HashMap<u64, &'static str> = HashMap::from([
+      (0,        ""), // Used as a default
+      (314,      "filecoin"),
+      (3141,     "hyperspace"),
+      (31415,    "wallaby"),
+      (3141592,  "butterlfynet"),
+      (314159,   "calibnet"),
+      (31415926, "devnet"),
     ]);
+
+    /// Reverse index over the chain IDs.
+    static ref KNOWN_CHAIN_NAMES: HashMap<&'static str, u64> = KNOWN_CHAIN_IDS.iter().map(|(k, v)| (*v, *k)).collect();
 }
 
 /// Maximum value that MetaMask and other Ethereum JS tools can safely handle.
@@ -36,10 +39,13 @@ pub enum ChainIDError {
 }
 
 /// Hash the name of the chain and reduce it to a number within the acceptable range.
+///
+/// If the name is one of the well known ones, return that name as is.
 pub fn from_str_hashed(name: &str) -> Result<ChainID, ChainIDError> {
-    if name.is_empty() {
-        return Ok(ChainID::from(0));
+    if let Some(chain_id) = KNOWN_CHAIN_NAMES.get(name) {
+        return Ok(ChainID::from(*chain_id));
     }
+
     let bz = name.as_bytes();
     let digest = multihash::Code::Blake2b256.digest(bz);
 
@@ -51,7 +57,7 @@ pub fn from_str_hashed(name: &str) -> Result<ChainID, ChainIDError> {
         .try_into()
         .expect("modulo should be safe to convert to u64");
 
-    if KNOWN_CHAIN_IDS.contains(&chain_id) {
+    if KNOWN_CHAIN_IDS.contains_key(&chain_id) {
         Err(ChainIDError::IllegalName(name.to_owned(), chain_id))
     } else {
         Ok(ChainID::from(chain_id))
@@ -68,6 +74,8 @@ mod tests {
 
     use fvm_shared::chainid::ChainID;
     use quickcheck_macros::quickcheck;
+
+    use crate::chainid::KNOWN_CHAIN_NAMES;
 
     use super::{from_str_hashed, MAX_CHAIN_ID};
 
@@ -102,5 +110,12 @@ mod tests {
     #[test]
     fn chain_id_of_empty_is_zero() {
         assert_eq!(from_str_hashed("").unwrap(), ChainID::from(0))
+    }
+
+    #[test]
+    fn chain_id_of_known() {
+        for (name, id) in KNOWN_CHAIN_NAMES.iter() {
+            assert_eq!(from_str_hashed(*name).unwrap(), ChainID::from(*id))
+        }
     }
 }
