@@ -57,9 +57,12 @@ where
         mut state: Self::State,
         genesis: Self::Genesis,
     ) -> anyhow::Result<(Self::State, Self::Output)> {
-        // TODO: We can consider adding the chain ID to the interpreter
-        //       and rejecting genesis if it doesn't match the expectation.
+        // NOTE: We could consider adding the chain ID to the interpreter
+        //       and rejecting genesis if it doesn't match the expectation,
+        //       but the Tendermint genesis file also has this field, and
+        //       presumably Tendermint checks that its peers have the same.
         let chain_id = chainid::from_str_hashed(&genesis.chain_name)?;
+
         // Currently we just pass them back as they are, but later we should
         // store them in the IPC actors; or in case of a snapshot restore them
         // from the state.

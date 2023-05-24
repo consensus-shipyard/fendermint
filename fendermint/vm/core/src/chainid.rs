@@ -108,12 +108,19 @@ mod tests {
 
     #[test]
     fn chain_id_ok() -> Result<(), String> {
-        for name in vec!["test", "/root/foo/bar"] {
+        for name in ["test", "/root/foo/bar"] {
             if let Err(e) = from_str_hashed(name) {
                 return Err(format!("failed: {name} - {e}"));
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn chain_id_different() {
+        let id1 = from_str_hashed("foo").unwrap();
+        let id2 = from_str_hashed("bar").unwrap();
+        assert_ne!(id1, id2)
     }
 
     #[test]
@@ -124,7 +131,7 @@ mod tests {
     #[test]
     fn chain_id_of_known() {
         for (name, id) in KNOWN_CHAIN_NAMES.iter() {
-            assert_eq!(from_str_hashed(*name).unwrap(), ChainID::from(*id))
+            assert_eq!(from_str_hashed(name).unwrap(), ChainID::from(*id))
         }
     }
 }

@@ -140,7 +140,7 @@ pub struct FevmArgs {
 /// Arguments common to transactions and transfers.
 #[derive(Args, Debug, Clone)]
 pub struct TransArgs {
-    /// Name of the for which the message will be signed.
+    /// Name of chain the for which the message will be signed.
     #[arg(long, short, env = "FM_CHAIN_NAME")]
     pub chain_name: String,
     /// Amount of tokens to send, in atto.
