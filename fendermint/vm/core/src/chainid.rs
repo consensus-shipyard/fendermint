@@ -16,7 +16,7 @@ lazy_static! {
       (314,      "filecoin"),
       (3141,     "hyperspace"),
       (31415,    "wallaby"),
-      (3141592,  "butterlfynet"),
+      (3141592,  "butterflynet"),
       (314159,   "calibnet"),
       (31415926, "devnet"),
     ]);
@@ -42,6 +42,13 @@ pub enum ChainIDError {
 ///
 /// If the name is one of the well known ones, return that name as is.
 pub fn from_str_hashed(name: &str) -> Result<ChainID, ChainIDError> {
+    // TODO: If we want to use the subnet ID (e.g. "/root/foo/bar")
+    // as the chain name, we should change it so the "/root" part is
+    // not common to all chain, but rather be like "/filecoin/foo/bar".
+    // And if someone is looking for the ID of "/filecoin" without
+    // any further path (ie. the root) then we should strip the "/"
+    // when looking up if it's a well known network ID.
+
     if let Some(chain_id) = KNOWN_CHAIN_NAMES.get(name) {
         return Ok(ChainID::from(*chain_id));
     }
