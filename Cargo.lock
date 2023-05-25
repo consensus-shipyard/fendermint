@@ -2218,6 +2218,9 @@ dependencies = [
  "anyhow",
  "axum",
  "jsonrpc-v2",
+ "paste",
+ "serde_json",
+ "tendermint-rpc",
  "tracing",
 ]
 

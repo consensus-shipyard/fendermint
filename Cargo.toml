@@ -2,13 +2,13 @@
 members = [
   "fendermint/abci",
   "fendermint/app",
+  "fendermint/eth/api",
   "fendermint/rocksdb",
   "fendermint/rpc",
   "fendermint/storage",
   "fendermint/testing",
   "fendermint/testing/*-test",
   "fendermint/vm/*",
-  "fendermint/eth/*",
 ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
