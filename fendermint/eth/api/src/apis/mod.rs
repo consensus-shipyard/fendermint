@@ -8,6 +8,8 @@ use paste::paste;
 
 mod eth;
 
+type JsonRpcResult<T> = Result<T, jsonrpc_v2::Error>;
+
 macro_rules! with_methods {
     ($server:ident, $module:ident, { $($method:ident),* }) => {
         paste!{
@@ -21,13 +23,11 @@ macro_rules! with_methods {
 }
 
 pub fn register_methods(server: ServerBuilder<MapRouter>) -> ServerBuilder<MapRouter> {
-    let server = with_methods!(server, eth, {
+    with_methods!(server, eth, {
         accounts,
         blockNumber,
         getBlockTransactionCountByNumber
-    });
-
-    server
+    })
 }
 
 /*

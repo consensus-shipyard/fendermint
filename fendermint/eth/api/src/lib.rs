@@ -10,13 +10,17 @@ use tendermint_rpc::HttpClient;
 mod apis;
 mod rpc_http_handler;
 
+pub struct JsonRpcState {
+    pub client: HttpClient,
+}
+
 type JsonRpcServer = Arc<jsonrpc_v2::Server<jsonrpc_v2::MapRouter>>;
-type JsonRpcState = Arc<HttpClient>;
 
 /// Start listening to JSON-RPC requests.
 pub async fn listen<A: ToSocketAddrs>(listen_addr: A, client: HttpClient) -> anyhow::Result<()> {
     if let Some(listen_addr) = listen_addr.to_socket_addrs()?.next() {
-        let server = make_server(Arc::new(client));
+        let state = JsonRpcState { client };
+        let server = make_server(state);
         let router = make_router(server);
         let server = axum::Server::try_bind(&listen_addr)?.serve(router.into_make_service());
 
@@ -30,7 +34,7 @@ pub async fn listen<A: ToSocketAddrs>(listen_addr: A, client: HttpClient) -> any
 
 /// Register method handlers with the JSON-RPC server construct.
 fn make_server(state: JsonRpcState) -> JsonRpcServer {
-    let server = jsonrpc_v2::Server::new().with_data(Data(state));
+    let server = jsonrpc_v2::Server::new().with_data(Data(Arc::new(state)));
     let server = apis::register_methods(server);
     server.finish()
 }

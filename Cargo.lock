@@ -2217,6 +2217,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "ethers-core",
  "jsonrpc-v2",
  "paste",
  "serde_json",
