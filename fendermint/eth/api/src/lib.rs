@@ -10,11 +10,17 @@ use tendermint_rpc::HttpClient;
 mod apis;
 mod rpc_http_handler;
 
-pub struct JsonRpcState {
-    pub client: HttpClient,
+// Made generic in the client type so we can mock it if we want to test API
+// methods without having to spin up a server. In those tests the methods
+// below would not be used, so those aren't generic; we'd directly invoke
+// e.g. `fendermint_eth_api::apis::eth::accounts` with some mock client.
+pub struct JsonRpcState<C> {
+    pub client: C,
 }
 
+type JsonRpcData<C> = Data<JsonRpcState<C>>;
 type JsonRpcServer = Arc<jsonrpc_v2::Server<jsonrpc_v2::MapRouter>>;
+type JsonRpcResult<T> = Result<T, jsonrpc_v2::Error>;
 
 /// Start listening to JSON-RPC requests.
 pub async fn listen<A: ToSocketAddrs>(listen_addr: A, client: HttpClient) -> anyhow::Result<()> {
@@ -33,7 +39,7 @@ pub async fn listen<A: ToSocketAddrs>(listen_addr: A, client: HttpClient) -> any
 }
 
 /// Register method handlers with the JSON-RPC server construct.
-fn make_server(state: JsonRpcState) -> JsonRpcServer {
+fn make_server(state: JsonRpcState<HttpClient>) -> JsonRpcServer {
     let server = jsonrpc_v2::Server::new().with_data(Data(Arc::new(state)));
     let server = apis::register_methods(server);
     server.finish()

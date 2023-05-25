@@ -5,10 +5,9 @@
 
 use jsonrpc_v2::{MapRouter, ServerBuilder};
 use paste::paste;
+use tendermint_rpc::HttpClient;
 
 mod eth;
-
-type JsonRpcResult<T> = Result<T, jsonrpc_v2::Error>;
 
 macro_rules! with_methods {
     ($server:ident, $module:ident, { $($method:ident),* }) => {
@@ -16,7 +15,7 @@ macro_rules! with_methods {
             $server
                 $(.with_method(
                     stringify!([< $module _ $method >]),
-                    $module :: [< $method:snake >]
+                    $module :: [< $method:snake >] ::<HttpClient>
                 ))*
         }
     };
