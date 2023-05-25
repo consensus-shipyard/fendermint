@@ -14,4 +14,5 @@ jsonrpc-v2 = { workspace = true, features = ["easy-errors"] }
 paste = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+tendermint = { workspace = true }
 tendermint-rpc = { workspace = true }

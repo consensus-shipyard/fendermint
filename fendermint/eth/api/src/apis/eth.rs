@@ -7,7 +7,8 @@
 
 use ethers_core::types as ethtypes;
 use jsonrpc_v2::Params;
-use tendermint_rpc::{endpoint, Client};
+use tendermint::block::Height;
+use tendermint_rpc::{endpoint::block, Client};
 
 use crate::{JsonRpcData, JsonRpcResult};
 
@@ -23,18 +24,39 @@ pub async fn block_number<C>(data: JsonRpcData<C>) -> JsonRpcResult<ethtypes::U6
 where
     C: Client + Sync,
 {
-    let res: endpoint::block::Response = data.client.latest_block().await?;
+    let res: block::Response = data.client.latest_block().await?;
     let height = res.block.header.height;
-    let height = ethtypes::U64::from(height.value());
-    Ok(height)
+    Ok(ethtypes::U64::from(height.value()))
 }
 
 /// Returns the number of transactions in a block matching the given block number.
 ///
 /// QUANTITY|TAG - integer of a block number, or the string "earliest", "latest" or "pending", as in the default block parameter.
 pub async fn get_block_transaction_count_by_number<C: Client>(
-    _data: JsonRpcData<C>,
-    Params(_params): Params<ethtypes::BlockNumber>,
-) -> JsonRpcResult<ethtypes::U64> {
-    todo!()
+    data: JsonRpcData<C>,
+    Params(params): Params<ethtypes::BlockNumber>,
+) -> JsonRpcResult<ethtypes::U64>
+where
+    C: Client + Sync,
+{
+    let block = match params {
+        ethtypes::BlockNumber::Number(height) => {
+            let height = Height::try_from(height.as_u64())?;
+            let res: block::Response = data.client.block(height).await?;
+            res.block
+        }
+        ethtypes::BlockNumber::Finalized
+        | ethtypes::BlockNumber::Latest
+        | ethtypes::BlockNumber::Safe
+        | ethtypes::BlockNumber::Pending => {
+            let res: block::Response = data.client.latest_block().await?;
+            res.block
+        }
+        ethtypes::BlockNumber::Earliest => {
+            let res: block::Response = data.client.block(Height::from(1u32)).await?;
+            res.block
+        }
+    };
+
+    Ok(ethtypes::U64::from(block.data.len()))
 }

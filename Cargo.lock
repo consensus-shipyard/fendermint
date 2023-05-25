@@ -2221,6 +2221,7 @@ dependencies = [
  "jsonrpc-v2",
  "paste",
  "serde_json",
+ "tendermint",
  "tendermint-rpc",
  "tracing",
 ]
