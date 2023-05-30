@@ -20,13 +20,18 @@ pub async fn handle(
 
     // NOTE: Any authorization can come here.
 
+    let method = request.method_ref().to_owned();
+
     match call_rpc_str(server.clone(), request).await {
-        Ok(result) => (StatusCode::OK, response_headers, result),
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            response_headers,
-            err.to_string(),
-        ),
+        Ok(result) => {
+            tracing::debug!(method, "RPC call success");
+            (StatusCode::OK, response_headers, result)
+        }
+        Err(err) => {
+            let msg = err.to_string();
+            tracing::error!(method, msg, "RPC call failure");
+            (StatusCode::INTERNAL_SERVER_ERROR, response_headers, msg)
+        }
     }
 }
 

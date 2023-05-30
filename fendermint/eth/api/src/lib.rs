@@ -48,7 +48,7 @@ fn make_server(state: JsonRpcState<HttpClient>) -> JsonRpcServer {
 /// Register routes in the `axum` router to handle JSON-RPC and WebSocket calls.
 fn make_router(server: JsonRpcServer) -> axum::Router {
     axum::Router::new()
-        //.route("/rpc/v0", get(rpc_ws_handler::handle))
-        .route("/rpc/v0", post(rpc_http_handler::handle))
+        //.route("/", get(rpc_ws_handler::handle))
+        .route("/", post(rpc_http_handler::handle))
         .with_state(server)
 }

@@ -12,6 +12,15 @@
 //! ```text
 //! cargo run -p fendermint_eth_api --release --example ethers --
 //! ```
+//!
+//! A method can also be called directly with `curl`:
+//!
+//! ```text
+//! curl -X POST -i \
+//!      -H 'Content-Type: application/json' \
+//!      -d '{"jsonrpc":"2.0","id":"id","method":"eth_blockNumber","params":[]}' \
+//!      http://localhost:8545
+//! ```
 
 use std::fmt::Debug;
 
@@ -132,7 +141,7 @@ impl CheckResult for bool {
         if *self {
             Ok(())
         } else {
-            Err(anyhow!("condition failed"))
+            Err(anyhow!("expected true; got false"))
         }
     }
 }
@@ -146,7 +155,7 @@ where
     match res {
         Ok(value) => match check(&value).check_result() {
             Ok(()) => Ok(value),
-            Err(e) => Err(anyhow!("failed to check {method} ({value:?}): {e}")),
+            Err(e) => Err(anyhow!("failed to check {method}: {e}:\n{value:?}")),
         },
         Err(e) => Err(anyhow!("failed to call {method}: {e}")),
     }
@@ -158,7 +167,7 @@ async fn run(provider: Provider<Http>) -> anyhow::Result<()> {
     })?;
 
     request("eth_accounts", provider.get_accounts().await, |acnts| {
-        acnts.len() > 0
+        acnts.is_empty()
     })?;
 
     Ok(())
