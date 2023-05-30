@@ -10,6 +10,7 @@ use tendermint_rpc::HttpClient;
 
 mod apis;
 mod rpc_http_handler;
+mod tm;
 
 // Made generic in the client type so we can mock it if we want to test API
 // methods without having to spin up a server. In those tests the methods
