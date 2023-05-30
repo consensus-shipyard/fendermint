@@ -3,6 +3,7 @@
 
 use anyhow::anyhow;
 use axum::routing::post;
+use fendermint_rpc::client::FendermintClient;
 use jsonrpc_v2::Data;
 use std::{net::ToSocketAddrs, sync::Arc};
 use tendermint_rpc::HttpClient;
@@ -15,7 +16,7 @@ mod rpc_http_handler;
 // below would not be used, so those aren't generic; we'd directly invoke
 // e.g. `fendermint_eth_api::apis::eth::accounts` with some mock client.
 pub struct JsonRpcState<C> {
-    pub client: C,
+    pub client: FendermintClient<C>,
 }
 
 type JsonRpcData<C> = Data<JsonRpcState<C>>;
@@ -25,7 +26,9 @@ type JsonRpcResult<T> = Result<T, jsonrpc_v2::Error>;
 /// Start listening to JSON-RPC requests.
 pub async fn listen<A: ToSocketAddrs>(listen_addr: A, client: HttpClient) -> anyhow::Result<()> {
     if let Some(listen_addr) = listen_addr.to_socket_addrs()?.next() {
-        let state = JsonRpcState { client };
+        let state = JsonRpcState {
+            client: FendermintClient::new(client),
+        };
         let server = make_server(state);
         let router = make_router(server);
         let server = axum::Server::try_bind(&listen_addr)?.serve(router.into_make_service());

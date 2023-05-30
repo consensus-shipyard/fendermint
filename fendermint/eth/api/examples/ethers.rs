@@ -27,6 +27,7 @@ use std::fmt::Debug;
 use anyhow::anyhow;
 use clap::Parser;
 use ethers::providers::{Http, Middleware, Provider, ProviderError};
+use fendermint_vm_actor_interface::eam::EthAddress;
 use tracing::Level;
 
 #[derive(Parser, Debug)]
@@ -38,6 +39,12 @@ pub struct Options {
     /// The port of the Fendermint Ethereum API endpoint.
     #[arg(long, default_value = "8545", env = "FM_ETH__HTTP__PORT")]
     pub http_port: u32,
+
+    /// ID of the actor who is the subject of our enquiries.
+    ///
+    /// Assumed to exist with a non-zero balance.
+    #[arg(long, short)]
+    pub actor_id: u64,
 
     /// Enable DEBUG logs.
     #[arg(long, short)]
@@ -69,7 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let provider = Provider::<Http>::try_from(opts.http_endpoint())?;
 
-    run(provider).await?;
+    run(provider, opts.actor_id).await?;
 
     Ok(())
 }
@@ -161,7 +168,10 @@ where
     }
 }
 
-async fn run(provider: Provider<Http>) -> anyhow::Result<()> {
+async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
+    let addr = EthAddress::from_id(actor_id);
+    let addr = ethers::core::types::Address::from_slice(&addr.0);
+
     request("eth_accounts", provider.get_accounts().await, |acnts| {
         acnts.is_empty()
     })?;
@@ -173,6 +183,12 @@ async fn run(provider: Provider<Http>) -> anyhow::Result<()> {
     request("eth_chainId", provider.get_chainid().await, |id| {
         !id.is_zero()
     })?;
+
+    request(
+        "eth_getBalance",
+        provider.get_balance(addr, None).await,
+        |b| !b.is_zero(),
+    )?;
 
     Ok(())
 }
