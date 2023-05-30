@@ -29,7 +29,7 @@ pub fn register_methods(server: ServerBuilder<MapRouter>) -> ServerBuilder<MapRo
         accounts,
         blockNumber,
         // eth_call
-        // eth_chainId
+        chainId,
         // eth_coinbase
         // eth_compileLLL
         // eth_compileSerpent

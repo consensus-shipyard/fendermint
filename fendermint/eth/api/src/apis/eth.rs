@@ -6,6 +6,7 @@
 // * https://github.com/filecoin-project/lotus/blob/v1.23.1-rc2/api/api_full.go#L783
 
 use ethers_core::types as ethtypes;
+use fendermint_vm_core::chainid;
 use jsonrpc_v2::Params;
 use tendermint::block::Height;
 use tendermint_rpc::{endpoint::block, Client};
@@ -27,6 +28,17 @@ where
     let res: block::Response = data.client.latest_block().await?;
     let height = res.block.header.height;
     Ok(ethtypes::U64::from(height.value()))
+}
+
+/// Returns the chain ID used for signing replay-protected transactions.
+pub async fn chain_id<C>(data: JsonRpcData<C>) -> JsonRpcResult<ethtypes::U64>
+where
+    C: Client + Sync,
+{
+    let genesis: tendermint::Genesis<serde_json::Value> = data.client.genesis().await?;
+    let chain_id = chainid::from_str_hashed(genesis.chain_id.as_str())?;
+    let chain_id: u64 = chain_id.into();
+    Ok(ethtypes::U64::from(chain_id))
 }
 
 /// Returns the number of transactions in a block matching the given block number.

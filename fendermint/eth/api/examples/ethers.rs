@@ -162,12 +162,16 @@ where
 }
 
 async fn run(provider: Provider<Http>) -> anyhow::Result<()> {
+    request("eth_accounts", provider.get_accounts().await, |acnts| {
+        acnts.is_empty()
+    })?;
+
     request("eth_blockNumber", provider.get_block_number().await, |bn| {
         bn.as_u64() > 0
     })?;
 
-    request("eth_accounts", provider.get_accounts().await, |acnts| {
-        acnts.is_empty()
+    request("eth_chainId", provider.get_chainid().await, |id| {
+        !id.is_zero()
     })?;
 
     Ok(())

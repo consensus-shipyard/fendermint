@@ -17,6 +17,8 @@ tracing = { workspace = true }
 tendermint = { workspace = true }
 tendermint-rpc = { workspace = true }
 
+fendermint_vm_core = { path = "../../vm/core" }
+fendermint_vm_genesis = { path = "../../vm/genesis" }
 
 [dev-dependencies]
 clap = { workspace = true }
