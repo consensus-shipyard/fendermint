@@ -27,7 +27,7 @@ use std::fmt::Debug;
 use anyhow::anyhow;
 use clap::Parser;
 use ethers::providers::{Http, Middleware, Provider, ProviderError};
-use ethers_core::types::{BlockId, BlockNumber, H256};
+use ethers_core::types::{BlockId, BlockNumber, H256, U64};
 use fendermint_vm_actor_interface::eam::EthAddress;
 use tracing::Level;
 
@@ -120,10 +120,10 @@ where
 // - eth_getBalance
 // - eth_getUncleCountByBlockHash
 // - eth_getUncleCountByBlockNumber
-//
-// DOING:
 // - eth_getUncleByBlockHashAndIndex
 // - eth_getUncleByBlockNumberAndIndex
+//
+// DOING:
 //
 // TODO:
 // - eth_newBlockFilter
@@ -207,6 +207,22 @@ async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
             .get_uncle_count(BlockId::Number(BlockNumber::Number(bn)))
             .await,
         |uc| uc.is_zero(),
+    )?;
+
+    request(
+        "eth_getUncleByBlockHashAndIndex",
+        provider
+            .get_uncle(BlockId::Hash(H256([0u8; 32])), U64::from(0))
+            .await,
+        |u| u.is_none(),
+    )?;
+
+    request(
+        "eth_getUncleByBlockNumberAndIndex",
+        provider
+            .get_uncle(BlockId::Number(BlockNumber::Number(bn)), U64::from(0))
+            .await,
+        |u| u.is_none(),
     )?;
 
     Ok(())
