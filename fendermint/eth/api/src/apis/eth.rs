@@ -85,7 +85,7 @@ where
 /// 1. QUANTITY|TAG - integer of a block number, or the string "earliest", "latest" or "pending", as in the default block parameter.
 pub async fn get_block_transaction_count_by_number<C: Client>(
     data: JsonRpcData<C>,
-    Params(block_number): Params<ethtypes::BlockNumber>,
+    Params((block_number,)): Params<(ethtypes::BlockNumber,)>,
 ) -> JsonRpcResult<ethtypes::U64>
 where
     C: Client + Sync,
@@ -93,4 +93,24 @@ where
     let block = tm::block_by_height(data.client.underlying(), block_number).await?;
 
     Ok(ethtypes::U64::from(block.data.len()))
+}
+
+/// Returns the number of uncles in a block from a block matching the given block hash.
+///
+/// It will always return 0 since Tendermint doesn't have uncles.
+pub async fn get_uncle_count_by_block_hash<C>(
+    _data: JsonRpcData<C>,
+    _params: Params<(ethtypes::H256,)>,
+) -> JsonRpcResult<ethtypes::U256> {
+    Ok(ethtypes::U256::zero())
+}
+
+/// Returns the number of uncles in a block from a block matching the given block number.
+///
+/// It will always return 0 since Tendermint doesn't have uncles.
+pub async fn get_uncle_count_by_block_number<C>(
+    _data: JsonRpcData<C>,
+    _params: Params<(ethtypes::BlockNumber,)>,
+) -> JsonRpcResult<ethtypes::U256> {
+    Ok(ethtypes::U256::zero())
 }

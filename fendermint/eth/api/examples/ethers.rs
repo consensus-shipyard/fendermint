@@ -18,7 +18,7 @@
 //! ```text
 //! curl -X POST -i \
 //!      -H 'Content-Type: application/json' \
-//!      -d '{"jsonrpc":"2.0","id":"id","method":"eth_blockNumber","params":[]}' \
+//!      -d '{"jsonrpc":"2.0","id":0,"method":"eth_getBlockTransactionCountByNumber","params":["0x1"]}' \
 //!      http://localhost:8545
 //! ```
 
@@ -27,6 +27,7 @@ use std::fmt::Debug;
 use anyhow::anyhow;
 use clap::Parser;
 use ethers::providers::{Http, Middleware, Provider, ProviderError};
+use ethers_core::types::{BlockId, BlockNumber, H256};
 use fendermint_vm_actor_interface::eam::EthAddress;
 use tracing::Level;
 
@@ -81,64 +82,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// The following methods are called by the Provider.
-//
-// OK:
-// - eth_accounts
-// - eth_blockNumber
-//
-// TODO:
-// - eth_newBlockFilter
-// - eth_newBlockFilter
-// - eth_newPendingTransactionFilter
-// - eth_getBlockByHash
-// - eth_getBlockByNumber
-// - eth_call
-// - eth_getUncleCountByBlockHash
-// - eth_getUncleCountByBlockNumber
-// - eth_getUncleByBlockHashAndIndex
-// - eth_getUncleByBlockNumberAndIndex
-// - eth_getTransactionByHash
-// - eth_getTransactionReceipt
-// - eth_getBlockReceipts
-// - eth_gasPrice
-// - eth_getTransactionCount
-// - eth_getBalance
-// - eth_chainId
-// - eth_syncing
-// - eth_call
-// - eth_estimateGas
-// - eth_createAccessList
-// - eth_sendTransaction
-// - eth_sendRawTransaction
-// - eth_sign
-// - eth_sign
-// - eth_getLogs
-// - eth_newBlockFilter
-// - eth_newPendingTransactionFilter
-// - eth_newFilter
-// - eth_uninstallFilter
-// - eth_getFilterChanges
-// - eth_getstorageat
-// - eth_getStorageAt
-// - eth_getCode
-// - eth_getProof
-// - eth_mining
-// - eth_subscribe
-// - eth_unsubscribe
-// - eth_feeHistory
-// - eth_feeHistory
-// - eth_blockNumber
-// - eth_getChainId
-// - eth_estimateGas
-// - geth_admin_nodeinfo
-// - spawn_geth_and_create_provider
-// - spawn_geth_and_create_provider
-// - spawn_geth_instances
-// - spawn_geth_and_create_provider
-// - add_second_geth_peer
-// - spawn_geth_instances
-
 trait CheckResult {
     fn check_result(&self) -> anyhow::Result<()>;
 }
@@ -168,6 +111,66 @@ where
     }
 }
 
+// The following methods are called by the [`Provider`].
+//
+// OK:
+// - eth_accounts
+// - eth_blockNumber
+// - eth_chainId
+// - eth_getBalance
+// - eth_getUncleCountByBlockHash
+// - eth_getUncleCountByBlockNumber
+//
+// DOING:
+// - eth_getUncleByBlockHashAndIndex
+// - eth_getUncleByBlockNumberAndIndex
+//
+// TODO:
+// - eth_newBlockFilter
+// - eth_newBlockFilter
+// - eth_newPendingTransactionFilter
+// - eth_getBlockByHash
+// - eth_getBlockByNumber
+// - eth_call
+// - eth_getTransactionByHash
+// - eth_getTransactionReceipt
+// - eth_getBlockReceipts
+// - eth_gasPrice
+// - eth_getTransactionCount
+// - eth_syncing
+// - eth_call
+// - eth_estimateGas
+// - eth_createAccessList
+// - eth_sendTransaction
+// - eth_sendRawTransaction
+// - eth_sign
+// - eth_sign
+// - eth_getLogs
+// - eth_newBlockFilter
+// - eth_newPendingTransactionFilter
+// - eth_newFilter
+// - eth_uninstallFilter
+// - eth_getFilterChanges
+// - eth_getstorageat
+// - eth_getStorageAt
+// - eth_getCode
+// - eth_getProof
+// - eth_mining
+// - eth_subscribe
+// - eth_unsubscribe
+// - eth_feeHistory
+// - eth_feeHistory
+// - eth_blockNumber
+// - eth_estimateGas
+// - geth_admin_nodeinfo
+// - spawn_geth_and_create_provider
+// - spawn_geth_and_create_provider
+// - spawn_geth_instances
+// - spawn_geth_and_create_provider
+// - add_second_geth_peer
+// - spawn_geth_instances
+
+/// Exercise the above methods, so we know at least the parameters are lined up correctly.
 async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
     let addr = EthAddress::from_id(actor_id);
     let addr = ethers::core::types::Address::from_slice(&addr.0);
@@ -176,7 +179,7 @@ async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
         acnts.is_empty()
     })?;
 
-    request("eth_blockNumber", provider.get_block_number().await, |bn| {
+    let bn = request("eth_blockNumber", provider.get_block_number().await, |bn| {
         bn.as_u64() > 0
     })?;
 
@@ -188,6 +191,22 @@ async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
         "eth_getBalance",
         provider.get_balance(addr, None).await,
         |b| !b.is_zero(),
+    )?;
+
+    request(
+        "eth_getUncleCountByBlockHash",
+        provider
+            .get_uncle_count(BlockId::Hash(H256([0u8; 32])))
+            .await,
+        |uc| uc.is_zero(),
+    )?;
+
+    request(
+        "eth_getUncleCountByBlockNumber",
+        provider
+            .get_uncle_count(BlockId::Number(BlockNumber::Number(bn)))
+            .await,
+        |uc| uc.is_zero(),
     )?;
 
     Ok(())
