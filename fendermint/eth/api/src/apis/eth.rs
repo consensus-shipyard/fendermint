@@ -97,7 +97,7 @@ where
             if full_tx {
                 todo!();
             } else {
-                let block = conv::to_rpc_block(block);
+                let block = conv::to_rpc_block(block)?;
                 let block = conv::map_rpc_block_txs(block, |h| {
                     serde_json::to_value(h).map_err(|e| anyhow!(e))
                 })?;

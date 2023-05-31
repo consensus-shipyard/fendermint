@@ -113,7 +113,7 @@ where
 
 // The following methods are called by the [`Provider`].
 //
-// OK:
+// DONE:
 // - eth_accounts
 // - eth_blockNumber
 // - eth_chainId
@@ -132,17 +132,13 @@ where
 // - eth_newBlockFilter
 // - eth_newPendingTransactionFilter
 // - eth_getBlockByNumber
-// - eth_call
 // - eth_getTransactionByHash
 // - eth_getTransactionReceipt
 // - eth_getBlockReceipts
 // - eth_syncing
-// - eth_call
-// - eth_estimateGas
 // - eth_createAccessList
 // - eth_sendTransaction
 // - eth_sendRawTransaction
-// - eth_sign
 // - eth_sign
 // - eth_getLogs
 // - eth_newBlockFilter
@@ -150,14 +146,17 @@ where
 // - eth_newFilter
 // - eth_uninstallFilter
 // - eth_getFilterChanges
-// - eth_getstorageat
-// - eth_getStorageAt
-// - eth_getCode
 // - eth_getProof
 // - eth_mining
 // - eth_subscribe
 // - eth_unsubscribe
 // - eth_feeHistory
+//
+// BLOCKED:
+// - eth_call
+// - eth_estimateGas
+// - eth_getStorageAt
+// - eth_getCode
 
 /// Exercise the above methods, so we know at least the parameters are lined up correctly.
 async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {

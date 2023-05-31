@@ -6,7 +6,7 @@
 use ethers_core::types::{self as et};
 
 /// Convert a Tendermint block to Ethereum with only the block hashes in the body.
-pub fn to_rpc_block(block: tendermint::Block) -> et::Block<et::H256> {
+pub fn to_rpc_block(block: tendermint::Block) -> anyhow::Result<et::Block<et::H256>> {
     // Based on https://github.com/evmos/ethermint/blob/07cf2bd2b1ce9bdb2e44ec42a39e7239292a14af/rpc/types/utils.go#L113
     //          https://github.com/evmos/ethermint/blob/07cf2bd2b1ce9bdb2e44ec42a39e7239292a14af/rpc/backend/blocks.go#L365
     //          https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#L1883
@@ -19,13 +19,30 @@ pub fn to_rpc_block(block: tendermint::Block) -> et::Block<et::H256> {
         .map(|id| et::H256::from_slice(id.hash.as_bytes()))
         .unwrap_or_default();
 
-    et::Block {
+    // Out app hash is a CID, it needs to be hashed first.
+    let state_root = tendermint::Hash::from_bytes(
+        tendermint::hash::Algorithm::Sha256,
+        block.header().app_hash.as_bytes(),
+    )?;
+    let state_root = et::H256::from_slice(state_root.as_bytes());
+
+    let transactions_root = if block.data.is_empty() {
+        et::H256::default()
+    } else {
+        block
+            .header()
+            .data_hash
+            .map(|h| et::H256::from_slice(h.as_bytes()))
+            .unwrap_or_default()
+    };
+
+    let block = et::Block {
         hash: Some(hash),
         parent_hash,
-        uncles_hash: todo!(),
+        uncles_hash: et::H256::default(),
         author: todo!(),
-        state_root: todo!(),
-        transactions_root: todo!(),
+        state_root,
+        transactions_root,
         receipts_root: todo!(),
         number: todo!(),
         gas_used: todo!(),
@@ -45,7 +62,9 @@ pub fn to_rpc_block(block: tendermint::Block) -> et::Block<et::H256> {
         withdrawals: todo!(),
         transactions: todo!(),
         other: todo!(),
-    }
+    };
+
+    Ok(block)
 }
 
 /// Change the type of transactions in a block by mapping a function over them.
