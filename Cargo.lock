@@ -2222,8 +2222,6 @@ dependencies = [
  "ethers-core",
  "fendermint_rpc",
  "fendermint_vm_actor_interface",
- "fendermint_vm_core",
- "fendermint_vm_genesis",
  "fvm_shared",
  "hex",
  "jsonrpc-v2",

@@ -11,7 +11,6 @@ use ethers_core::types::{self as et, BlockId};
 use fendermint_rpc::client::TendermintClient;
 use fendermint_rpc::query::QueryClient;
 use fendermint_vm_actor_interface::eam::EthAddress;
-use fendermint_vm_core::chainid;
 use fvm_shared::{address::Address, error::ExitCode};
 use jsonrpc_v2::{ErrorLike, Params};
 use tendermint_rpc::{endpoint::block, Client};
@@ -38,13 +37,10 @@ where
 /// Returns the chain ID used for signing replay-protected transactions.
 pub async fn chain_id<C>(data: JsonRpcData<C>) -> JsonRpcResult<et::U64>
 where
-    C: Client + Sync,
+    C: Client + Sync + Send,
 {
-    let genesis: tendermint::Genesis<serde_json::Value> =
-        data.client.underlying().genesis().await?;
-    let chain_id = chainid::from_str_hashed(genesis.chain_id.as_str())?;
-    let chain_id: u64 = chain_id.into();
-    Ok(et::U64::from(chain_id))
+    let res = data.client.state_params(None).await?;
+    Ok(et::U64::from(res.value.chain_id))
 }
 
 /// Returns the balance of the account of given address.
