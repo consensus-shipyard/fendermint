@@ -8,7 +8,7 @@ use fvm_shared::error::ExitCode;
 use jsonrpc_v2::ErrorLike;
 use tendermint::block::Height;
 use tendermint_rpc::{
-    endpoint::{block, commit, header, header_by_hash},
+    endpoint::{block, block_by_hash, commit, header, header_by_hash},
     Client,
 };
 
@@ -72,7 +72,33 @@ where
     Ok(header)
 }
 
-/// Get the Tendermint header by hash
+/// Get a Tendermint block by hash, if it exists.
+pub async fn block_by_hash_opt<C>(
+    client: &C,
+    block_hash: ethtypes::H256,
+) -> JsonRpcResult<Option<tendermint::block::Block>>
+where
+    C: Client + Sync,
+{
+    let hash = tendermint::Hash::Sha256(*block_hash.as_fixed_bytes());
+    let res: block_by_hash::Response = client.block_by_hash(hash).await?;
+    Ok(res.block)
+}
+
+/// Get a Tendermint height by hash, if it exists.
+pub async fn header_by_hash_opt<C>(
+    client: &C,
+    block_hash: ethtypes::H256,
+) -> JsonRpcResult<Option<tendermint::block::Header>>
+where
+    C: Client + Sync,
+{
+    let hash = tendermint::Hash::Sha256(*block_hash.as_fixed_bytes());
+    let res: header_by_hash::Response = client.header_by_hash(hash).await?;
+    Ok(res.header)
+}
+
+/// Get a Tendermint header by hash.
 pub async fn header_by_hash<C>(
     client: &C,
     block_hash: ethtypes::H256,
@@ -80,9 +106,7 @@ pub async fn header_by_hash<C>(
 where
     C: Client + Sync,
 {
-    let hash = tendermint::Hash::Sha256(*block_hash.as_fixed_bytes());
-    let res: header_by_hash::Response = client.header_by_hash(hash).await?;
-    match res.header {
+    match header_by_hash_opt(client, block_hash).await? {
         Some(header) => Ok(header),
         None => Err(jsonrpc_v2::Error::Full {
             code: ExitCode::USR_NOT_FOUND.code(),

@@ -122,14 +122,14 @@ where
 // - eth_getUncleCountByBlockNumber
 // - eth_getUncleByBlockHashAndIndex
 // - eth_getUncleByBlockNumberAndIndex
+// - eth_getTransactionCount
 //
 // DOING:
-// - eth_getTransactionCount
+// - eth_getBlockByHash
 //
 // TODO:
 // - eth_newBlockFilter
 // - eth_newPendingTransactionFilter
-// - eth_getBlockByHash
 // - eth_getBlockByNumber
 // - eth_call
 // - eth_getTransactionByHash
@@ -222,6 +222,22 @@ async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
             .await,
         |u| u.is_zero(),
     )?;
+
+    // request(
+    //     "eth_getBlockByHash",
+    //     provider
+    //         .get_block(BlockId::Number(BlockNumber::Number(bn)))
+    //         .await,
+    //     |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
+    // )?;
+
+    // request(
+    //     "eth_getBlockByHash",
+    //     provider
+    //         .get_block_with_txs(BlockId::Number(BlockNumber::Number(bn)))
+    //         .await,
+    //     |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
+    // )?;
 
     Ok(())
 }

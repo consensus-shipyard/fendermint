@@ -9,6 +9,7 @@ use std::{net::ToSocketAddrs, sync::Arc};
 use tendermint_rpc::HttpClient;
 
 mod apis;
+mod conv;
 mod rpc_http_handler;
 mod tm;
 

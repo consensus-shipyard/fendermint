@@ -4,7 +4,9 @@
 // See the following for inspiration:
 // * https://github.com/evmos/ethermint/blob/ebbe0ffd0d474abd745254dc01e60273ea758dae/rpc/namespaces/ethereum/eth/api.go#L44
 // * https://github.com/filecoin-project/lotus/blob/v1.23.1-rc2/api/api_full.go#L783
+// * https://github.com/filecoin-project/lotus/blob/v1.23.1-rc2/node/impl/full/eth.go
 
+use anyhow::anyhow;
 use ethers_core::types::{self as et, BlockId};
 use fendermint_rpc::client::TendermintClient;
 use fendermint_rpc::query::QueryClient;
@@ -14,7 +16,7 @@ use fvm_shared::{address::Address, error::ExitCode};
 use jsonrpc_v2::{ErrorLike, Params};
 use tendermint_rpc::{endpoint::block, Client};
 
-use crate::{tm, JsonRpcData, JsonRpcResult};
+use crate::{conv, tm, JsonRpcData, JsonRpcResult};
 
 /// Returns a list of addresses owned by client.
 ///
@@ -72,6 +74,30 @@ where
             message: format!("actor {addr} not found"),
             data: None,
         }),
+    }
+}
+
+/// Returns the balance of the account of given address.
+pub async fn get_block_by_hash<C: Client>(
+    data: JsonRpcData<C>,
+    Params((block_hash, full_tx)): Params<(et::H256, bool)>,
+) -> JsonRpcResult<Option<et::Block<serde_json::Value>>>
+where
+    C: Client + Sync + Send,
+{
+    match tm::block_by_hash_opt(data.client.underlying(), block_hash).await? {
+        Some(block) => {
+            if full_tx {
+                todo!();
+            } else {
+                let block = conv::to_rpc_block(block);
+                let block = conv::map_rpc_block_txs(block, |h| {
+                    serde_json::to_value(h).map_err(|e| anyhow!(e))
+                })?;
+                Ok(Some(block))
+            }
+        }
+        None => Ok(None),
     }
 }
 

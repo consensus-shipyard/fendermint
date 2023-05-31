@@ -37,7 +37,7 @@ pub fn register_methods(server: ServerBuilder<MapRouter>) -> ServerBuilder<MapRo
         // eth_estimateGas
         // eth_gasPrice
         getBalance,
-        // eth_getBlockByHash
+        getBlockByHash,
         // eth_getBlockByNumber
         // eth_getBlockTransactionCountByHash
         getBlockTransactionCountByNumber,
