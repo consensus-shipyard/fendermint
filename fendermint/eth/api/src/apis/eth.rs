@@ -46,10 +46,6 @@ where
 }
 
 /// Returns the balance of the account of given address.
-///
-/// ### Parameters
-/// 1. DATA, 20 Bytes - address to check for balance.
-/// 2. QUANTITY|TAG - integer block number, or the string "latest", "earliest" or "pending".
 pub async fn get_balance<C: Client>(
     data: JsonRpcData<C>,
     Params((addr, block_id)): Params<(et::Address, et::BlockId)>,
@@ -62,7 +58,7 @@ where
         BlockId::Hash(h) => tm::header_by_hash(data.client.underlying(), h).await?,
     };
     let height = header.height;
-    let addr = Address::from(&EthAddress(addr.0));
+    let addr = h160_to_fvm_addr(addr);
     let res = data.client.actor_state(&addr, Some(height)).await?;
 
     match res.value {
@@ -80,9 +76,6 @@ where
 }
 
 /// Returns the number of transactions in a block matching the given block number.
-///
-/// ### Parameters
-/// 1. QUANTITY|TAG - integer of a block number, or the string "earliest", "latest" or "pending", as in the default block parameter.
 pub async fn get_block_transaction_count_by_number<C: Client>(
     data: JsonRpcData<C>,
     Params((block_number,)): Params<(et::BlockNumber,)>,
@@ -93,6 +86,35 @@ where
     let block = tm::block_by_height(data.client.underlying(), block_number).await?;
 
     Ok(et::U64::from(block.data.len()))
+}
+
+/// Returns the number of transactions sent from an address, up to a specific block.
+pub async fn get_transaction_count<C: Client>(
+    data: JsonRpcData<C>,
+    Params((addr, block_id)): Params<(et::Address, et::BlockId)>,
+) -> JsonRpcResult<et::U64>
+where
+    C: Client + Sync + Send,
+{
+    let header = match block_id {
+        BlockId::Number(n) => tm::header_by_height(data.client.underlying(), n).await?,
+        BlockId::Hash(h) => tm::header_by_hash(data.client.underlying(), h).await?,
+    };
+    let height = header.height;
+    let addr = h160_to_fvm_addr(addr);
+    let res = data.client.actor_state(&addr, Some(height)).await?;
+
+    match res.value {
+        Some((_, state)) => {
+            let nonce = state.sequence;
+            Ok(et::U64::from(nonce))
+        }
+        None => Err(jsonrpc_v2::Error::Full {
+            code: ExitCode::USR_NOT_FOUND.code(),
+            message: format!("actor {addr} not found"),
+            data: None,
+        }),
+    }
 }
 
 /// Returns the number of uncles in a block from a block matching the given block hash.
@@ -133,4 +155,8 @@ pub async fn get_uncle_by_block_number_and_index<C>(
     _params: Params<(et::BlockNumber, et::U64)>,
 ) -> JsonRpcResult<Option<et::Block<et::H256>>> {
     Ok(None)
+}
+
+fn h160_to_fvm_addr(addr: et::H160) -> fvm_shared::address::Address {
+    Address::from(&EthAddress(addr.0))
 }

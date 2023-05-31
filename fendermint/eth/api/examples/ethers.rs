@@ -124,9 +124,9 @@ where
 // - eth_getUncleByBlockNumberAndIndex
 //
 // DOING:
+// - eth_getTransactionCount
 //
 // TODO:
-// - eth_newBlockFilter
 // - eth_newBlockFilter
 // - eth_newPendingTransactionFilter
 // - eth_getBlockByHash
@@ -136,7 +136,6 @@ where
 // - eth_getTransactionReceipt
 // - eth_getBlockReceipts
 // - eth_gasPrice
-// - eth_getTransactionCount
 // - eth_syncing
 // - eth_call
 // - eth_estimateGas
@@ -159,16 +158,6 @@ where
 // - eth_subscribe
 // - eth_unsubscribe
 // - eth_feeHistory
-// - eth_feeHistory
-// - eth_blockNumber
-// - eth_estimateGas
-// - geth_admin_nodeinfo
-// - spawn_geth_and_create_provider
-// - spawn_geth_and_create_provider
-// - spawn_geth_instances
-// - spawn_geth_and_create_provider
-// - add_second_geth_peer
-// - spawn_geth_instances
 
 /// Exercise the above methods, so we know at least the parameters are lined up correctly.
 async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
@@ -223,6 +212,15 @@ async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
             .get_uncle(BlockId::Number(BlockNumber::Number(bn)), U64::from(0))
             .await,
         |u| u.is_none(),
+    )?;
+
+    // Querying at genesis, so the transaction count should be zero.
+    request(
+        "eth_getTransactionCount",
+        provider
+            .get_transaction_count(addr, Some(BlockId::Number(BlockNumber::Earliest)))
+            .await,
+        |u| u.is_zero(),
     )?;
 
     Ok(())
