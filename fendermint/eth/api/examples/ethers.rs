@@ -123,6 +123,7 @@ where
 // - eth_getUncleByBlockHashAndIndex
 // - eth_getUncleByBlockNumberAndIndex
 // - eth_getTransactionCount
+// - eth_gasPrice
 //
 // DOING:
 // - eth_getBlockByHash
@@ -135,7 +136,6 @@ where
 // - eth_getTransactionByHash
 // - eth_getTransactionReceipt
 // - eth_getBlockReceipts
-// - eth_gasPrice
 // - eth_syncing
 // - eth_call
 // - eth_estimateGas
@@ -238,6 +238,10 @@ async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
     //         .await,
     //     |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
     // )?;
+
+    request("eth_gasPrice", provider.get_gas_price().await, |id| {
+        !id.is_zero()
+    })?;
 
     Ok(())
 }

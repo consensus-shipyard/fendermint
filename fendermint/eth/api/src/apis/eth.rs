@@ -43,6 +43,17 @@ where
     Ok(et::U64::from(res.value.chain_id))
 }
 
+/// Returns the current price per gas in wei.
+pub async fn gas_price<C>(data: JsonRpcData<C>) -> JsonRpcResult<et::U256>
+where
+    C: Client + Sync + Send,
+{
+    let res = data.client.state_params(None).await?;
+    let bz = res.value.base_fee.atto().to_signed_bytes_be();
+    let price = et::U256::from_big_endian(bz.as_ref());
+    Ok(price)
+}
+
 /// Returns the balance of the account of given address.
 pub async fn get_balance<C: Client>(
     data: JsonRpcData<C>,
