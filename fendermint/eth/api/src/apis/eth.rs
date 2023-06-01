@@ -49,8 +49,7 @@ where
     C: Client + Sync + Send,
 {
     let res = data.client.state_params(None).await?;
-    let bz = res.value.base_fee.atto().to_signed_bytes_be();
-    let price = et::U256::from_big_endian(bz.as_ref());
+    let price = conv::tokens_to_u256(&res.value.base_fee)?;
     Ok(price)
 }
 
@@ -71,11 +70,7 @@ where
     let res = data.client.actor_state(&addr, Some(height)).await?;
 
     match res.value {
-        Some((_, state)) => {
-            let balance = state.balance.atto();
-            let balance = et::U256::from_big_endian(balance.to_signed_bytes_be().as_ref());
-            Ok(balance)
-        }
+        Some((_, state)) => Ok(conv::tokens_to_u256(&state.balance)?),
         None => Err(jsonrpc_v2::Error::Full {
             code: ExitCode::USR_NOT_FOUND.code(),
             message: format!("actor {addr} not found"),
@@ -94,10 +89,12 @@ where
 {
     match tm::block_by_hash_opt(data.client.underlying(), block_hash).await? {
         Some(block) => {
+            let height = block.header().height;
+            let base_fee = data.client.state_params(Some(height)).await?.value.base_fee;
             if full_tx {
                 todo!();
             } else {
-                let block = conv::to_rpc_block(block)?;
+                let block = conv::to_rpc_block(block, base_fee)?;
                 let block = conv::map_rpc_block_txs(block, |h| {
                     serde_json::to_value(h).map_err(|e| anyhow!(e))
                 })?;

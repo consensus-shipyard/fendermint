@@ -8,9 +8,11 @@ license.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
-ethers-core = { workspace = true }
 axum = { workspace = true }
+ethers-core = { workspace = true }
+hex = { workspace = true }
 jsonrpc-v2 = { workspace = true, features = ["easy-errors"] }
+lazy_static = { workspace = true }
 paste = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
@@ -30,3 +32,7 @@ lazy_static = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+quickcheck = { workspace = true }
+quickcheck_macros = { workspace = true }
+
+fendermint_testing = { path = "../../testing", features = ["arb"] }
