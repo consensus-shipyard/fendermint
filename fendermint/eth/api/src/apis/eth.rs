@@ -6,14 +6,16 @@
 // * https://github.com/filecoin-project/lotus/blob/v1.23.1-rc2/api/api_full.go#L783
 // * https://github.com/filecoin-project/lotus/blob/v1.23.1-rc2/node/impl/full/eth.go
 
-use anyhow::anyhow;
 use ethers_core::types::{self as et, BlockId};
 use fendermint_rpc::client::TendermintClient;
 use fendermint_rpc::query::QueryClient;
 use fendermint_vm_actor_interface::eam::EthAddress;
-use fvm_shared::{address::Address, error::ExitCode};
+use fvm_shared::{address::Address, chainid::ChainID, error::ExitCode};
 use jsonrpc_v2::{ErrorLike, Params};
-use tendermint_rpc::{endpoint::block, Client};
+use tendermint_rpc::{
+    endpoint::{block, block_results},
+    Client,
+};
 
 use crate::{conv, tm, JsonRpcData, JsonRpcResult};
 
@@ -90,16 +92,23 @@ where
     match tm::block_by_hash_opt(data.client.underlying(), block_hash).await? {
         Some(block) => {
             let height = block.header().height;
-            let base_fee = data.client.state_params(Some(height)).await?.value.base_fee;
-            if full_tx {
-                todo!();
+
+            let state_params = data.client.state_params(Some(height)).await?;
+            let base_fee = state_params.value.base_fee;
+            let chain_id = ChainID::from(state_params.value.chain_id);
+
+            let block_results: block_results::Response =
+                data.client.underlying().block_results(height).await?;
+
+            let block = conv::to_rpc_block(block, block_results, base_fee, chain_id)?;
+
+            let block = if full_tx {
+                conv::map_rpc_block_txs(block, serde_json::to_value)?
             } else {
-                let block = conv::to_rpc_block(block, base_fee)?;
-                let block = conv::map_rpc_block_txs(block, |h| {
-                    serde_json::to_value(h).map_err(|e| anyhow!(e))
-                })?;
-                Ok(Some(block))
-            }
+                conv::map_rpc_block_txs(block, |h| serde_json::to_value(h.hash))?
+            };
+
+            Ok(Some(block))
         }
         None => Ok(None),
     }

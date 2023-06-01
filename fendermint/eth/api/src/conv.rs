@@ -7,8 +7,15 @@ use std::str::FromStr;
 
 use anyhow::anyhow;
 use ethers_core::types::{self as et};
-use fvm_shared::{bigint::BigInt, econ::TokenAmount};
+use fendermint_vm_actor_interface::eam::EthAddress;
+use fendermint_vm_actor_interface::eam::EAM_ACTOR_ID;
+use fendermint_vm_message::{chain::ChainMessage, signed::SignedMessage};
+use fvm_shared::chainid::ChainID;
+use fvm_shared::crypto::signature::SignatureType;
+use fvm_shared::crypto::signature::SECP_SIG_LEN;
+use fvm_shared::{address::Payload, bigint::BigInt, econ::TokenAmount};
 use lazy_static::lazy_static;
+use libsecp256k1::RecoveryId;
 
 // Values taken from https://github.com/filecoin-project/lotus/blob/6e7dc9532abdb3171427347710df4c860f1957a2/chain/types/ethtypes/eth_types.go#L199
 
@@ -38,8 +45,10 @@ lazy_static! {
 /// Convert a Tendermint block to Ethereum with only the block hashes in the body.
 pub fn to_rpc_block(
     block: tendermint::Block,
+    block_results: tendermint_rpc::endpoint::block_results::Response,
     base_fee: TokenAmount,
-) -> anyhow::Result<et::Block<et::H256>> {
+    chain_id: ChainID,
+) -> anyhow::Result<et::Block<et::Transaction>> {
     // Based on https://github.com/evmos/ethermint/blob/07cf2bd2b1ce9bdb2e44ec42a39e7239292a14af/rpc/types/utils.go#L113
     //          https://github.com/evmos/ethermint/blob/07cf2bd2b1ce9bdb2e44ec42a39e7239292a14af/rpc/backend/blocks.go#L365
     //          https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#L1883
@@ -52,12 +61,9 @@ pub fn to_rpc_block(
         .map(|id| et::H256::from_slice(id.hash.as_bytes()))
         .unwrap_or_default();
 
-    // Out app hash is a CID, it needs to be hashed first.
-    let state_root = tendermint::Hash::from_bytes(
-        tendermint::hash::Algorithm::Sha256,
-        block.header().app_hash.as_bytes(),
-    )?;
-    let state_root = et::H256::from_slice(state_root.as_bytes());
+    // Out app hash is a CID. We only need the hash part.
+    let state_root = cid::Cid::try_from(block.header().app_hash.as_bytes())?;
+    let state_root = et::H256::from_slice(state_root.hash().digest());
 
     let transactions_root = if block.data.is_empty() {
         *EMPTY_ROOT_HASH
@@ -66,14 +72,42 @@ pub fn to_rpc_block(
             .header()
             .data_hash
             .map(|h| et::H256::from_slice(h.as_bytes()))
-            .unwrap_or_default()
+            .unwrap_or(*EMPTY_ROOT_HASH)
     };
+
+    // Tendermint's account hash luckily has the same length as Eth.
+    let author = et::H160::from_slice(block.header().proposer_address.as_bytes());
+
+    let transaction_results = block_results.txs_results.unwrap_or_default();
+    let mut transactions = Vec::new();
+    let mut size = et::U256::zero();
+    let mut gas_limit = et::U256::zero();
+    let mut gas_used = et::U256::zero();
+
+    // I'm just going to skip all the future message types here, which are CID based.
+    // To deal with them, we'd have to send IPLD requests via ABCI to resolve them,
+    // potentially through multiple hops. Let's leave that for the future and for now
+    // assume that all we have is signed transactions.
+    for (idx, data) in block.data().iter().enumerate() {
+        size += et::U256::from(data.len());
+        if let Some(result) = transaction_results.get(idx) {
+            gas_used += et::U256::from(result.gas_used);
+            gas_limit += et::U256::from(result.gas_wanted);
+        }
+        let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(data)?;
+        if let ChainMessage::Signed(msg) = msg {
+            let mut tx = to_rpc_transaction(*msg, chain_id)?;
+            tx.transaction_index = Some(et::U64::from(idx));
+            transactions.push(tx);
+        }
+    }
 
     let block = et::Block {
         hash: Some(hash),
         parent_hash,
         number: Some(et::U64::from(block.header().height.value())),
         timestamp: et::U256::from(block.header().time.unix_timestamp()),
+        author: Some(author),
         state_root,
         transactions_root,
         base_fee_per_gas: Some(tokens_to_u256(&base_fee)?),
@@ -83,27 +117,85 @@ pub fn to_rpc_block(
         mix_hash: None,
         uncles: Vec::new(),
         uncles_hash: *EMPTY_UNCLE_HASH,
+        receipts_root: *EMPTY_ROOT_HASH,
         extra_data: et::Bytes::default(),
         logs_bloom: None,
         withdrawals_root: None,
         withdrawals: None,
         seal_fields: Vec::new(),
         other: Default::default(),
-        author: todo!(),
-        transactions: todo!(),
-        receipts_root: todo!(),
-        gas_used: todo!(),
-        gas_limit: todo!(),
-        size: todo!(),
+        transactions,
+        size: Some(size),
+        gas_limit,
+        gas_used,
     };
 
     Ok(block)
 }
 
+pub fn to_rpc_transaction(
+    msg: SignedMessage,
+    chain_id: ChainID,
+) -> anyhow::Result<et::Transaction> {
+    // Based on https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#L2048
+    let sig = msg.signature;
+    let (v, sig) = match sig.sig_type {
+        SignatureType::Secp256k1 => parse_secp256k1(&sig.bytes)?,
+        other => return Err(anyhow!("unexpected signature type: {other:?}")),
+    };
+
+    let msg = msg.message;
+    let cid = SignedMessage::cid(&msg)?;
+    let hash = et::H256::from_slice(cid.hash().digest());
+
+    let from = match msg.from.payload() {
+        Payload::Secp256k1(h) => et::H160::from_slice(h),
+        Payload::Delegated(d) if d.namespace() == EAM_ACTOR_ID && d.subaddress().len() == 20 => {
+            et::H160::from_slice(d.subaddress())
+        }
+        other => return Err(anyhow!("unexpected `from` address payload: {other:?}")),
+    };
+
+    let to = match msg.to.payload() {
+        Payload::Secp256k1(h) => Some(et::H160::from_slice(h)),
+        Payload::Delegated(d) if d.namespace() == EAM_ACTOR_ID && d.subaddress().len() == 20 => {
+            Some(et::H160::from_slice(d.subaddress()))
+        }
+        Payload::Actor(h) => Some(et::H160::from_slice(h)),
+        Payload::ID(id) => Some(et::H160::from_slice(&EthAddress::from_id(*id).0)),
+        _ => None, // BLS or an invalid delegated address. Just move on.
+    };
+
+    let tx = et::Transaction {
+        hash,
+        nonce: et::U256::from(msg.sequence),
+        block_hash: None,
+        block_number: None,
+        transaction_index: None,
+        from,
+        to,
+        value: tokens_to_u256(&msg.value)?,
+        gas: et::U256::from(msg.gas_limit),
+        max_fee_per_gas: Some(tokens_to_u256(&msg.gas_fee_cap)?),
+        max_priority_fee_per_gas: Some(tokens_to_u256(&msg.gas_premium)?),
+        gas_price: None,
+        input: et::Bytes::from(msg.params.bytes().to_vec()),
+        chain_id: Some(et::U256::from(u64::from(chain_id))),
+        v: et::U64::from(v.serialize()),
+        r: et::U256::from_big_endian(sig.r.b32().as_ref()),
+        s: et::U256::from_big_endian(sig.s.b32().as_ref()),
+        transaction_type: None,
+        access_list: None,
+        other: Default::default(),
+    };
+
+    Ok(tx)
+}
+
 /// Change the type of transactions in a block by mapping a function over them.
-pub fn map_rpc_block_txs<F, A, B>(block: et::Block<A>, f: F) -> anyhow::Result<et::Block<B>>
+pub fn map_rpc_block_txs<F, A, B, E>(block: et::Block<A>, f: F) -> Result<et::Block<B>, E>
 where
-    F: Fn(A) -> anyhow::Result<B>,
+    F: Fn(A) -> Result<B, E>,
 {
     let et::Block {
         hash,
@@ -133,7 +225,7 @@ where
         other,
     } = block;
 
-    let transactions: anyhow::Result<Vec<B>> = transactions.into_iter().map(f).collect();
+    let transactions: Result<Vec<B>, E> = transactions.into_iter().map(f).collect();
     let transactions = transactions?;
 
     let block = et::Block {
@@ -174,6 +266,26 @@ pub fn tokens_to_u256(amount: &TokenAmount) -> anyhow::Result<et::U256> {
         let bz = amount.atto().to_signed_bytes_be();
         Ok(et::U256::from_big_endian(&bz))
     }
+}
+
+fn parse_secp256k1(
+    sig: &[u8],
+) -> anyhow::Result<(libsecp256k1::RecoveryId, libsecp256k1::Signature)> {
+    if sig.len() != SECP_SIG_LEN {
+        return Err(anyhow!("unexpected Secp256k1 length: {}", sig.len()));
+    }
+
+    // generate types to recover key from
+    let rec_id = RecoveryId::parse(sig[64])?;
+
+    // Signature value without recovery byte
+    let mut s = [0u8; 64];
+    s.clone_from_slice(&sig[..64]);
+
+    // generate Signature
+    let sig = libsecp256k1::Signature::parse_standard(&s)?;
+
+    Ok((rec_id, sig))
 }
 
 #[cfg(test)]
