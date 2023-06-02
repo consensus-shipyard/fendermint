@@ -271,7 +271,7 @@ pub fn tokens_to_u256(amount: &TokenAmount) -> anyhow::Result<et::U256> {
     if amount.atto() > &MAX_U256 {
         Err(anyhow!("TokenAmount > U256.MAX"))
     } else {
-        let bz = amount.atto().to_signed_bytes_be();
+        let (_sign, bz) = amount.atto().to_bytes_be();
         Ok(et::U256::from_big_endian(&bz))
     }
 }
@@ -299,7 +299,10 @@ fn parse_secp256k1(
 #[cfg(test)]
 mod tests {
 
+    use std::str::FromStr;
+
     use fendermint_testing::arb::ArbTokenAmount;
+    use fvm_shared::{bigint::BigInt, econ::TokenAmount};
     use quickcheck_macros::quickcheck;
 
     use super::tokens_to_u256;
@@ -313,5 +316,17 @@ mod tests {
             return u256_from_str == u256_from_tokens;
         }
         true
+    }
+
+    #[test]
+    fn test_token_amount_to_u256() {
+        let atto = BigInt::from_str(
+            "99191064924191451313862974502415542781658129482631472725645205117646186753315",
+        )
+        .unwrap();
+
+        let tokens = TokenAmount::from_atto(atto);
+
+        tokens_to_u256(&tokens).unwrap();
     }
 }
