@@ -81,7 +81,7 @@ where
     }
 }
 
-/// Returns the balance of the account of given address.
+/// Returns information about a block by hash.
 pub async fn get_block_by_hash<C: Client>(
     data: JsonRpcData<C>,
     Params((block_hash, full_tx)): Params<(et::H256, bool)>,
@@ -90,28 +90,54 @@ where
     C: Client + Sync + Send,
 {
     match tm::block_by_hash_opt(data.client.underlying(), block_hash).await? {
-        Some(block) => {
-            let height = block.header().height;
-
-            let state_params = data.client.state_params(Some(height)).await?;
-            let base_fee = state_params.value.base_fee;
-            let chain_id = ChainID::from(state_params.value.chain_id);
-
-            let block_results: block_results::Response =
-                data.client.underlying().block_results(height).await?;
-
-            let block = conv::to_rpc_block(block, block_results, base_fee, chain_id)?;
-
-            let block = if full_tx {
-                conv::map_rpc_block_txs(block, serde_json::to_value)?
-            } else {
-                conv::map_rpc_block_txs(block, |h| serde_json::to_value(h.hash))?
-            };
-
-            Ok(Some(block))
-        }
+        Some(block) => enrich_block(data, block, full_tx).await.map(Some),
         None => Ok(None),
     }
+}
+
+/// Returns information about a block by block number.
+pub async fn get_block_by_number<C: Client>(
+    data: JsonRpcData<C>,
+    Params((block_number, full_tx)): Params<(et::BlockNumber, bool)>,
+) -> JsonRpcResult<Option<et::Block<serde_json::Value>>>
+where
+    C: Client + Sync + Send,
+{
+    match tm::block_by_height(data.client.underlying(), block_number).await? {
+        block if block.header().height.value() > 0 => {
+            enrich_block(data, block, full_tx).await.map(Some)
+        }
+        _ => Ok(None),
+    }
+}
+
+/// Fetch transaction results to produce the full block.
+async fn enrich_block<C: Client>(
+    data: JsonRpcData<C>,
+    block: tendermint::Block,
+    full_tx: bool,
+) -> JsonRpcResult<et::Block<serde_json::Value>>
+where
+    C: Client + Sync + Send,
+{
+    let height = block.header().height;
+
+    let state_params = data.client.state_params(Some(height)).await?;
+    let base_fee = state_params.value.base_fee;
+    let chain_id = ChainID::from(state_params.value.chain_id);
+
+    let block_results: block_results::Response =
+        data.client.underlying().block_results(height).await?;
+
+    let block = conv::to_rpc_block(block, block_results, base_fee, chain_id)?;
+
+    let block = if full_tx {
+        conv::map_rpc_block_txs(block, serde_json::to_value)?
+    } else {
+        conv::map_rpc_block_txs(block, |h| serde_json::to_value(h.hash))?
+    };
+
+    Ok(block)
 }
 
 /// Returns the number of transactions in a block matching the given block number.

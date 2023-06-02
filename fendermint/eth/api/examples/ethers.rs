@@ -127,11 +127,11 @@ where
 //
 // DOING:
 // - eth_getBlockByHash
+// - eth_getBlockByNumber
 //
 // TODO:
 // - eth_newBlockFilter
 // - eth_newPendingTransactionFilter
-// - eth_getBlockByNumber
 // - eth_getTransactionByHash
 // - eth_getTransactionReceipt
 // - eth_getBlockReceipts
@@ -222,21 +222,37 @@ async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
         |u| u.is_zero(),
     )?;
 
-    // request(
-    //     "eth_getBlockByHash",
-    //     provider
-    //         .get_block(BlockId::Number(BlockNumber::Number(bn)))
-    //         .await,
-    //     |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
-    // )?;
+    let b = request(
+        "eth_getBlockByNumber",
+        provider
+            .get_block(BlockId::Number(BlockNumber::Number(bn)))
+            .await,
+        |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
+    )?;
 
-    // request(
-    //     "eth_getBlockByHash",
-    //     provider
-    //         .get_block_with_txs(BlockId::Number(BlockNumber::Number(bn)))
-    //         .await,
-    //     |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
-    // )?;
+    let bh = b.unwrap().hash.expect("hash should be set");
+
+    request(
+        "eth_getBlockByHash",
+        provider.get_block(BlockId::Hash(bh)).await,
+        |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
+    )?;
+
+    // TODO: Use a block which we know has transactions.
+    request(
+        "eth_getBlockByNumber",
+        provider
+            .get_block_with_txs(BlockId::Number(BlockNumber::Number(bn)))
+            .await,
+        |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
+    )?;
+
+    // TODO: Use a block which we know has transactions.
+    request(
+        "eth_getBlockByHash",
+        provider.get_block_with_txs(BlockId::Hash(bh)).await,
+        |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
+    )?;
 
     request("eth_gasPrice", provider.get_gas_price().await, |id| {
         !id.is_zero()
