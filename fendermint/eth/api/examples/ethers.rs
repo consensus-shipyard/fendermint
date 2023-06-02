@@ -112,6 +112,7 @@ where
 }
 
 // The following methods are called by the [`Provider`].
+// This is not an exhaustive list of JSON-RPC methods that the API implements, just what the client library calls.
 //
 // DONE:
 // - eth_accounts
@@ -124,10 +125,10 @@ where
 // - eth_getUncleByBlockNumberAndIndex
 // - eth_getTransactionCount
 // - eth_gasPrice
-//
-// DOING:
 // - eth_getBlockByHash
 // - eth_getBlockByNumber
+//
+// DOING:
 //
 // TODO:
 // - eth_newBlockFilter

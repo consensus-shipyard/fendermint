@@ -39,7 +39,7 @@ pub fn register_methods(server: ServerBuilder<MapRouter>) -> ServerBuilder<MapRo
         getBalance,
         getBlockByHash,
         getBlockByNumber,
-        // eth_getBlockTransactionCountByHash
+        getBlockTransactionCountByHash,
         getBlockTransactionCountByNumber,
         // eth_getCode
         // eth_getCompilers

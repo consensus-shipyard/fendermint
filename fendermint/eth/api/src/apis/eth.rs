@@ -153,7 +153,24 @@ where
     Ok(et::U64::from(block.data.len()))
 }
 
+/// Returns the number of transactions in a block from a block matching the given block hash.
+pub async fn get_block_transaction_count_by_hash<C: Client>(
+    data: JsonRpcData<C>,
+    Params((block_hash,)): Params<(et::H256,)>,
+) -> JsonRpcResult<et::U64>
+where
+    C: Client + Sync,
+{
+    let block = tm::block_by_hash_opt(data.client.underlying(), block_hash).await?;
+    let count = block
+        .map(|b| et::U64::from(b.data.len()))
+        .unwrap_or_default();
+    Ok(count)
+}
+
 /// Returns the number of transactions sent from an address, up to a specific block.
+///
+/// This is done by looking up the nonce of the account.
 pub async fn get_transaction_count<C: Client>(
     data: JsonRpcData<C>,
     Params((addr, block_id)): Params<(et::Address, et::BlockId)>,
