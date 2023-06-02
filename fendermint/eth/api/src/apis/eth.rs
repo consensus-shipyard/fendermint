@@ -10,10 +10,11 @@ use ethers_core::types::{self as et, BlockId};
 use fendermint_rpc::client::TendermintClient;
 use fendermint_rpc::query::QueryClient;
 use fendermint_vm_actor_interface::eam::EthAddress;
+use fendermint_vm_message::chain::ChainMessage;
 use fvm_shared::{address::Address, chainid::ChainID, error::ExitCode};
 use jsonrpc_v2::{ErrorLike, Params};
 use tendermint_rpc::{
-    endpoint::{block, block_results},
+    endpoint::{block, block_results, header},
     Client,
 };
 
@@ -166,6 +167,44 @@ where
         .map(|b| et::U64::from(b.data.len()))
         .unwrap_or_default();
     Ok(count)
+}
+
+/// Returns the information about a transaction requested by transaction hash.
+pub async fn get_transaction_by_hash<C: Client>(
+    data: JsonRpcData<C>,
+    Params((tx_hash,)): Params<(et::H256,)>,
+) -> JsonRpcResult<Option<et::Transaction>>
+where
+    C: Client + Sync + Send,
+{
+    let hash = tendermint::Hash::try_from(tx_hash.as_bytes().to_vec())?;
+    match data.client.underlying().tx(hash, false).await {
+        Ok(res) => {
+            let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(&res.tx)?;
+            if let ChainMessage::Signed(msg) = msg {
+                let header: header::Response = data.client.underlying().header(res.height).await?;
+                let sp = data.client.state_params(Some(res.height)).await?;
+                let chain_id = ChainID::from(sp.value.chain_id);
+                let mut tx = conv::to_rpc_transaction(hash, *msg, chain_id)?;
+                tx.transaction_index = Some(et::U64::from(res.index));
+                tx.block_hash = Some(et::H256::from_slice(header.header.hash().as_bytes()));
+                tx.block_number = Some(et::U64::from(res.height.value()));
+                Ok(Some(tx))
+            } else {
+                Err(jsonrpc_v2::Error::Full {
+                    code: ExitCode::USR_ILLEGAL_ARGUMENT.code(),
+                    message: "incompatible transaction".into(),
+                    data: None,
+                })
+            }
+        }
+        Err(e) if e.to_string().contains("not found") => Ok(None),
+        Err(e) => Err(jsonrpc_v2::Error::Full {
+            code: ExitCode::USR_UNSPECIFIED.code(),
+            message: e.to_string(),
+            data: None,
+        }),
+    }
 }
 
 /// Returns the number of transactions sent from an address, up to a specific block.

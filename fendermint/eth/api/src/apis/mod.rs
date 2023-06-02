@@ -49,7 +49,7 @@ pub fn register_methods(server: ServerBuilder<MapRouter>) -> ServerBuilder<MapRo
         // eth_getStorageAt
         // eth_getTransactionByBlockHashAndIndex
         // eth_getTransactionByBlockNumberAndIndex
-        // eth_getTransactionByHash
+        getTransactionByHash,
         getTransactionCount,
         // eth_getTransactionReceipt
         getUncleByBlockHashAndIndex,

@@ -96,7 +96,8 @@ pub fn to_rpc_block(
         }
         let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(data)?;
         if let ChainMessage::Signed(msg) = msg {
-            let mut tx = to_rpc_transaction(*msg, chain_id)?;
+            let hash = tendermint::Hash::from_bytes(tendermint::hash::Algorithm::Sha256, data)?;
+            let mut tx = to_rpc_transaction(hash, *msg, chain_id)?;
             tx.transaction_index = Some(et::U64::from(idx));
             transactions.push(tx);
         }
@@ -134,6 +135,7 @@ pub fn to_rpc_block(
 }
 
 pub fn to_rpc_transaction(
+    hash: tendermint::Hash,
     msg: SignedMessage,
     chain_id: ChainID,
 ) -> anyhow::Result<et::Transaction> {
@@ -145,8 +147,14 @@ pub fn to_rpc_transaction(
     };
 
     let msg = msg.message;
-    let cid = SignedMessage::cid(&msg)?;
-    let hash = et::H256::from_slice(cid.hash().digest());
+
+    // The following hash is what we use during signing, however, it would be useless
+    // when trying to look up the transaction in the Tendermint API.
+    // Judging by the parameters of the `tendermint_rpc::Client::tx` method Tendermint
+    // probably uses a SHA256 hash of the data to index transactions.
+    // let cid = SignedMessage::cid(&msg)?;
+    // let hash = et::H256::from_slice(cid.hash().digest());
+    let hash = et::H256::from_slice(hash.as_bytes());
 
     let from = match msg.from.payload() {
         Payload::Secp256k1(h) => et::H160::from_slice(h),

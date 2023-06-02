@@ -127,19 +127,19 @@ where
 // - eth_gasPrice
 // - eth_getBlockByHash
 // - eth_getBlockByNumber
+// - eth_getTransactionByHash
 //
 // DOING:
+// - eth_sendRawTransaction
 //
 // TODO:
 // - eth_newBlockFilter
 // - eth_newPendingTransactionFilter
-// - eth_getTransactionByHash
 // - eth_getTransactionReceipt
 // - eth_getBlockReceipts
 // - eth_syncing
 // - eth_createAccessList
 // - eth_sendTransaction
-// - eth_sendRawTransaction
 // - eth_sign
 // - eth_getLogs
 // - eth_newBlockFilter
@@ -258,6 +258,13 @@ async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
     request("eth_gasPrice", provider.get_gas_price().await, |id| {
         !id.is_zero()
     })?;
+
+    // TODO: Get an existing transaction
+    request(
+        "eth_getTransactionByHash",
+        provider.get_transaction(H256::default()).await,
+        |tx| tx.is_none(),
+    )?;
 
     Ok(())
 }
