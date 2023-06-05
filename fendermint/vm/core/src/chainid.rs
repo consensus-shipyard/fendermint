@@ -1,9 +1,9 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 use std::collections::HashMap;
+use std::hash::Hasher;
 
-use cid::{multihash, multihash::MultihashDigest};
-use fvm_shared::bigint::{BigInt, Integer, Sign};
+use fvm_shared::bigint::Integer;
 use fvm_shared::chainid::ChainID;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -30,7 +30,7 @@ lazy_static! {
     /// Regex for capturing a single root subnet ID.
     ///
     /// See https://github.com/consensus-shipyard/ipc-actors/pull/109
-    static ref ROOT_RE: Regex = Regex::new(r"^/r([1-9]\d*)$").unwrap();
+    static ref ROOT_RE: Regex = Regex::new(r"^/r(0|[1-9]\d*)$").unwrap();
 }
 
 /// Maximum value that MetaMask and other Ethereum JS tools can safely handle.
@@ -60,16 +60,11 @@ pub fn from_str_hashed(name: &str) -> Result<ChainID, ChainIDError> {
         return Ok(ChainID::from(chain_id));
     }
 
-    let bz = name.as_bytes();
-    let digest = multihash::Code::Blake2b256.digest(bz);
+    let mut hasher = fnv::FnvHasher::default();
+    hasher.write(name.as_bytes());
+    let num_digest = hasher.finish();
 
-    let num_digest = BigInt::from_bytes_be(Sign::Plus, digest.digest());
-    let max_chain_id = BigInt::from(MAX_CHAIN_ID);
-
-    let chain_id = num_digest.mod_floor(&max_chain_id);
-    let chain_id: u64 = chain_id
-        .try_into()
-        .expect("modulo should be safe to convert to u64");
+    let chain_id = num_digest.mod_floor(&MAX_CHAIN_ID);
 
     if KNOWN_CHAIN_IDS.contains_key(&chain_id) {
         Err(ChainIDError::IllegalName(name.to_owned(), chain_id))
@@ -150,7 +145,15 @@ mod tests {
 
     #[test]
     fn just_root_id_some() {
+        assert_eq!(just_root_id("/r0"), Some(0));
         assert_eq!(just_root_id("/r123"), Some(123));
+
+        for (_, id) in KNOWN_CHAIN_NAMES.iter() {
+            assert_eq!(
+                from_str_hashed(&format!("/r{id}")).unwrap(),
+                ChainID::from(*id)
+            )
+        }
     }
 
     #[test]
@@ -159,7 +162,6 @@ mod tests {
             "",
             "/",
             "/r",
-            "/r0",
             "/r01",
             "/r1234567890123456789012345678901234567890",
             "123",
