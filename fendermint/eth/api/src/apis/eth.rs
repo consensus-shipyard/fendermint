@@ -57,7 +57,7 @@ where
 }
 
 /// Returns the balance of the account of given address.
-pub async fn get_balance<C: Client>(
+pub async fn get_balance<C>(
     data: JsonRpcData<C>,
     Params((addr, block_id)): Params<(et::Address, et::BlockId)>,
 ) -> JsonRpcResult<et::U256>
@@ -83,7 +83,7 @@ where
 }
 
 /// Returns information about a block by hash.
-pub async fn get_block_by_hash<C: Client>(
+pub async fn get_block_by_hash<C>(
     data: JsonRpcData<C>,
     Params((block_hash, full_tx)): Params<(et::H256, bool)>,
 ) -> JsonRpcResult<Option<et::Block<serde_json::Value>>>
@@ -97,7 +97,7 @@ where
 }
 
 /// Returns information about a block by block number.
-pub async fn get_block_by_number<C: Client>(
+pub async fn get_block_by_number<C>(
     data: JsonRpcData<C>,
     Params((block_number, full_tx)): Params<(et::BlockNumber, bool)>,
 ) -> JsonRpcResult<Option<et::Block<serde_json::Value>>>
@@ -112,37 +112,8 @@ where
     }
 }
 
-/// Fetch transaction results to produce the full block.
-async fn enrich_block<C: Client>(
-    data: JsonRpcData<C>,
-    block: tendermint::Block,
-    full_tx: bool,
-) -> JsonRpcResult<et::Block<serde_json::Value>>
-where
-    C: Client + Sync + Send,
-{
-    let height = block.header().height;
-
-    let state_params = data.client.state_params(Some(height)).await?;
-    let base_fee = state_params.value.base_fee;
-    let chain_id = ChainID::from(state_params.value.chain_id);
-
-    let block_results: block_results::Response =
-        data.client.underlying().block_results(height).await?;
-
-    let block = conv::to_rpc_block(block, block_results, base_fee, chain_id)?;
-
-    let block = if full_tx {
-        conv::map_rpc_block_txs(block, serde_json::to_value)?
-    } else {
-        conv::map_rpc_block_txs(block, |h| serde_json::to_value(h.hash))?
-    };
-
-    Ok(block)
-}
-
 /// Returns the number of transactions in a block matching the given block number.
-pub async fn get_block_transaction_count_by_number<C: Client>(
+pub async fn get_block_transaction_count_by_number<C>(
     data: JsonRpcData<C>,
     Params((block_number,)): Params<(et::BlockNumber,)>,
 ) -> JsonRpcResult<et::U64>
@@ -155,7 +126,7 @@ where
 }
 
 /// Returns the number of transactions in a block from a block matching the given block hash.
-pub async fn get_block_transaction_count_by_hash<C: Client>(
+pub async fn get_block_transaction_count_by_hash<C>(
     data: JsonRpcData<C>,
     Params((block_hash,)): Params<(et::H256,)>,
 ) -> JsonRpcResult<et::U64>
@@ -170,7 +141,34 @@ where
 }
 
 /// Returns the information about a transaction requested by transaction hash.
-pub async fn get_transaction_by_hash<C: Client>(
+pub async fn get_transaction_by_block_hash_and_index<C>(
+    data: JsonRpcData<C>,
+    Params((block_hash, index)): Params<(et::H256, et::U64)>,
+) -> JsonRpcResult<Option<et::Transaction>>
+where
+    C: Client + Sync + Send,
+{
+    if let Some(block) = tm::block_by_hash_opt(data.client.underlying(), block_hash).await? {
+        transaction_by_index(data, block, index).await
+    } else {
+        Ok(None)
+    }
+}
+
+/// Returns the information about a transaction requested by transaction hash.
+pub async fn get_transaction_by_block_number_and_index<C>(
+    data: JsonRpcData<C>,
+    Params((block_number, index)): Params<(et::BlockNumber, et::U64)>,
+) -> JsonRpcResult<Option<et::Transaction>>
+where
+    C: Client + Sync + Send,
+{
+    let block = tm::block_by_height(data.client.underlying(), block_number).await?;
+    transaction_by_index(data, block, index).await
+}
+
+/// Returns the information about a transaction requested by transaction hash.
+pub async fn get_transaction_by_hash<C>(
     data: JsonRpcData<C>,
     Params((tx_hash,)): Params<(et::H256,)>,
 ) -> JsonRpcResult<Option<et::Transaction>>
@@ -210,7 +208,7 @@ where
 /// Returns the number of transactions sent from an address, up to a specific block.
 ///
 /// This is done by looking up the nonce of the account.
-pub async fn get_transaction_count<C: Client>(
+pub async fn get_transaction_count<C>(
     data: JsonRpcData<C>,
     Params((addr, block_id)): Params<(et::Address, et::BlockId)>,
 ) -> JsonRpcResult<et::U64>
@@ -280,4 +278,71 @@ pub async fn get_uncle_by_block_number_and_index<C>(
 
 fn h160_to_fvm_addr(addr: et::H160) -> fvm_shared::address::Address {
     Address::from(&EthAddress(addr.0))
+}
+
+/// Fetch transaction results to produce the full block.
+async fn enrich_block<C>(
+    data: JsonRpcData<C>,
+    block: tendermint::Block,
+    full_tx: bool,
+) -> JsonRpcResult<et::Block<serde_json::Value>>
+where
+    C: Client + Sync + Send,
+{
+    let height = block.header().height;
+
+    let state_params = data.client.state_params(Some(height)).await?;
+    let base_fee = state_params.value.base_fee;
+    let chain_id = ChainID::from(state_params.value.chain_id);
+
+    let block_results: block_results::Response =
+        data.client.underlying().block_results(height).await?;
+
+    let block = conv::to_rpc_block(block, block_results, base_fee, chain_id)?;
+
+    let block = if full_tx {
+        conv::map_rpc_block_txs(block, serde_json::to_value)?
+    } else {
+        conv::map_rpc_block_txs(block, |h| serde_json::to_value(h.hash))?
+    };
+
+    Ok(block)
+}
+
+/// Get a transaction from a block by index.
+async fn transaction_by_index<C>(
+    data: JsonRpcData<C>,
+    block: tendermint::Block,
+    index: et::U64,
+) -> JsonRpcResult<Option<et::Transaction>>
+where
+    C: Client + Sync + Send,
+{
+    if let Some(msg) = block.data().get(index.as_usize()) {
+        let hash = tendermint::hash::Hash::from_bytes(tendermint::hash::Algorithm::Sha256, msg)?;
+
+        let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(msg)?;
+
+        if let ChainMessage::Signed(msg) = msg {
+            let sp = data
+                .client
+                .state_params(Some(block.header().height))
+                .await?;
+
+            let chain_id = ChainID::from(sp.value.chain_id);
+            let mut tx = conv::to_rpc_transaction(hash, *msg, chain_id)?;
+            tx.transaction_index = Some(index);
+            tx.block_hash = Some(et::H256::from_slice(block.header.hash().as_bytes()));
+            tx.block_number = Some(et::U64::from(block.header.height.value()));
+            Ok(Some(tx))
+        } else {
+            Err(jsonrpc_v2::Error::Full {
+                code: ExitCode::USR_ILLEGAL_ARGUMENT.code(),
+                message: "incompatible transaction".into(),
+                data: None,
+            })
+        }
+    } else {
+        Ok(None)
+    }
 }

@@ -130,12 +130,12 @@ where
 // - eth_getTransactionByHash
 //
 // DOING:
-// - eth_sendRawTransaction
 //
 // TODO:
+// - eth_sendRawTransaction
+// - eth_getTransactionReceipt
 // - eth_newBlockFilter
 // - eth_newPendingTransactionFilter
-// - eth_getTransactionReceipt
 // - eth_getBlockReceipts
 // - eth_syncing
 // - eth_createAccessList
