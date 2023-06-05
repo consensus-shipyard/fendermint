@@ -144,6 +144,13 @@ mod tests {
     }
 
     #[test]
+    fn chain_id_examples() {
+        for (name, id) in [("/r123/f0456/f0789", 3911219601699869)] {
+            assert_eq!(u64::from(from_str_hashed(name).unwrap()), id);
+        }
+    }
+
+    #[test]
     fn just_root_id_some() {
         assert_eq!(just_root_id("/r0"), Some(0));
         assert_eq!(just_root_id("/r123"), Some(123));
