@@ -2332,6 +2332,7 @@ dependencies = [
  "lazy_static",
  "quickcheck 1.0.3",
  "quickcheck_macros",
+ "regex",
  "serde",
  "thiserror",
 ]
