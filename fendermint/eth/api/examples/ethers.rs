@@ -128,9 +128,9 @@ where
 // - eth_getBlockByHash
 // - eth_getBlockByNumber
 // - eth_getTransactionByHash
+// - eth_getTransactionReceipt
 //
 // DOING:
-// - eth_getTransactionReceipt
 //
 // TODO:
 // - eth_sendRawTransaction
