@@ -51,7 +51,7 @@ pub fn register_methods(server: ServerBuilder<MapRouter>) -> ServerBuilder<MapRo
         getTransactionByBlockNumberAndIndex,
         getTransactionByHash,
         getTransactionCount,
-        // eth_getTransactionReceipt
+        getTransactionReceipt,
         getUncleByBlockHashAndIndex,
         getUncleByBlockNumberAndIndex,
         getUncleCountByBlockHash,

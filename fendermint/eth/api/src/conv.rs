@@ -13,6 +13,7 @@ use fendermint_vm_message::{chain::ChainMessage, signed::SignedMessage};
 use fvm_shared::chainid::ChainID;
 use fvm_shared::crypto::signature::SignatureType;
 use fvm_shared::crypto::signature::SECP_SIG_LEN;
+use fvm_shared::message::Message;
 use fvm_shared::{address::Payload, bigint::BigInt, econ::TokenAmount};
 use lazy_static::lazy_static;
 use libsecp256k1::RecoveryId;
@@ -61,10 +62,6 @@ pub fn to_rpc_block(
         .map(|id| et::H256::from_slice(id.hash.as_bytes()))
         .unwrap_or_default();
 
-    // Out app hash is a CID. We only need the hash part.
-    let state_root = cid::Cid::try_from(block.header().app_hash.as_bytes())?;
-    let state_root = et::H256::from_slice(state_root.hash().digest());
-
     let transactions_root = if block.data.is_empty() {
         *EMPTY_ROOT_HASH
     } else {
@@ -109,7 +106,7 @@ pub fn to_rpc_block(
         number: Some(et::U64::from(block.header().height.value())),
         timestamp: et::U256::from(block.header().time.unix_timestamp()),
         author: Some(author),
-        state_root,
+        state_root: app_hash_to_root(&block.header().app_hash)?,
         transactions_root,
         base_fee_per_gas: Some(tokens_to_u256(&base_fee)?),
         difficulty: et::U256::zero(),
@@ -146,8 +143,6 @@ pub fn to_rpc_transaction(
         other => return Err(anyhow!("unexpected signature type: {other:?}")),
     };
 
-    let msg = msg.message;
-
     // The following hash is what we use during signing, however, it would be useless
     // when trying to look up the transaction in the Tendermint API.
     // Judging by the parameters of the `tendermint_rpc::Client::tx` method Tendermint
@@ -156,23 +151,7 @@ pub fn to_rpc_transaction(
     // let hash = et::H256::from_slice(cid.hash().digest());
     let hash = et::H256::from_slice(hash.as_bytes());
 
-    let from = match msg.from.payload() {
-        Payload::Secp256k1(h) => et::H160::from_slice(h),
-        Payload::Delegated(d) if d.namespace() == EAM_ACTOR_ID && d.subaddress().len() == 20 => {
-            et::H160::from_slice(d.subaddress())
-        }
-        other => return Err(anyhow!("unexpected `from` address payload: {other:?}")),
-    };
-
-    let to = match msg.to.payload() {
-        Payload::Secp256k1(h) => Some(et::H160::from_slice(h)),
-        Payload::Delegated(d) if d.namespace() == EAM_ACTOR_ID && d.subaddress().len() == 20 => {
-            Some(et::H160::from_slice(d.subaddress()))
-        }
-        Payload::Actor(h) => Some(et::H160::from_slice(h)),
-        Payload::ID(id) => Some(et::H160::from_slice(&EthAddress::from_id(*id).0)),
-        _ => None, // BLS or an invalid delegated address. Just move on.
-    };
+    let msg = msg.message;
 
     let tx = et::Transaction {
         hash,
@@ -180,8 +159,8 @@ pub fn to_rpc_transaction(
         block_hash: None,
         block_number: None,
         transaction_index: None,
-        from,
-        to,
+        from: eth_from_address(&msg)?,
+        to: eth_to_address(&msg),
         value: tokens_to_u256(&msg.value)?,
         gas: et::U256::from(msg.gas_limit),
         max_fee_per_gas: Some(tokens_to_u256(&msg.gas_fee_cap)?),
@@ -198,6 +177,60 @@ pub fn to_rpc_transaction(
     };
 
     Ok(tx)
+}
+
+// https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#L2174
+// https://github.com/evmos/ethermint/blob/07cf2bd2b1ce9bdb2e44ec42a39e7239292a14af/rpc/backend/tx_info.go#L147
+pub fn to_rpc_receipt(
+    msg: SignedMessage,
+    result: tendermint_rpc::endpoint::tx::Response,
+    header: tendermint::block::Header,
+    base_fee: TokenAmount,
+) -> anyhow::Result<et::TransactionReceipt> {
+    let msg = msg.message;
+    // Lotus effective gas price is based on total spend divided by gas used,
+    // for which it recalculates the gas outputs. However, we don't have access
+    // to the VM interpreter here to restore those results, and they are discarded
+    // from the [`ApplyRet`] during the conversion to [`DeliverTx`].
+    // We could put it into the [`DeliverTx::info`] field, or we can calculate
+    // something based on the gas fields of the transaction, like Ethermint.
+    let effective_gas_price =
+        crate::gas::effective_gas_price(&msg, result.tx_result.gas_used, &base_fee);
+
+    // TODO: Look at how events are tranformed
+    // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#LL2240C9-L2240C15
+    let logs = Vec::new();
+
+    // TODO: Look at how the contract address is figured out
+    // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#LL2240C9-L2240C15
+    let contract_address = None;
+
+    // TODO: Sum up gas up to this transaction.
+    let cumulative_gas_used = et::U256::zero();
+
+    let receipt = et::TransactionReceipt {
+        transaction_hash: et::H256::from_slice(result.hash.as_bytes()),
+        transaction_index: et::U64::from(result.index),
+        block_hash: Some(et::H256::from_slice(header.hash().as_bytes())),
+        block_number: Some(et::U64::from(result.height.value())),
+        from: eth_from_address(&msg)?,
+        to: eth_to_address(&msg),
+        cumulative_gas_used,
+        gas_used: Some(et::U256::from(result.tx_result.gas_used)),
+        contract_address,
+        logs,
+        status: Some(et::U64::from(if result.tx_result.code.is_ok() {
+            1
+        } else {
+            0
+        })),
+        root: Some(app_hash_to_root(&header.app_hash)?),
+        logs_bloom: et::Bloom::from_slice(&*EMPTY_ETH_BLOOM),
+        transaction_type: Some(et::U64::from(2)), // Value used by Lotus.
+        effective_gas_price: Some(tokens_to_u256(&effective_gas_price)?),
+        other: Default::default(),
+    };
+    Ok(receipt)
 }
 
 /// Change the type of transactions in a block by mapping a function over them.
@@ -294,6 +327,35 @@ fn parse_secp256k1(
     let sig = libsecp256k1::Signature::parse_standard(&s)?;
 
     Ok((rec_id, sig))
+}
+
+fn app_hash_to_root(app_hash: &tendermint::AppHash) -> anyhow::Result<et::H256> {
+    // Out app hash is a CID. We only need the hash part.
+    let state_root = cid::Cid::try_from(app_hash.as_bytes())?;
+    let state_root = et::H256::from_slice(state_root.hash().digest());
+    Ok(state_root)
+}
+
+fn eth_from_address(msg: &Message) -> anyhow::Result<et::H160> {
+    match msg.from.payload() {
+        Payload::Secp256k1(h) => Ok(et::H160::from_slice(h)),
+        Payload::Delegated(d) if d.namespace() == EAM_ACTOR_ID && d.subaddress().len() == 20 => {
+            Ok(et::H160::from_slice(d.subaddress()))
+        }
+        other => Err(anyhow!("unexpected `from` address payload: {other:?}")),
+    }
+}
+
+fn eth_to_address(msg: &Message) -> Option<et::H160> {
+    match msg.to.payload() {
+        Payload::Secp256k1(h) => Some(et::H160::from_slice(h)),
+        Payload::Delegated(d) if d.namespace() == EAM_ACTOR_ID && d.subaddress().len() == 20 => {
+            Some(et::H160::from_slice(d.subaddress()))
+        }
+        Payload::Actor(h) => Some(et::H160::from_slice(h)),
+        Payload::ID(id) => Some(et::H160::from_slice(&EthAddress::from_id(*id).0)),
+        _ => None, // BLS or an invalid delegated address. Just move on.
+    }
 }
 
 #[cfg(test)]

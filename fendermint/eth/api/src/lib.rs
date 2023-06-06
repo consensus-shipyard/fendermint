@@ -10,6 +10,7 @@ use tendermint_rpc::HttpClient;
 
 mod apis;
 mod conv;
+mod gas;
 mod rpc_http_handler;
 mod tm;
 

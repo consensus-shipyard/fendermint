@@ -130,10 +130,10 @@ where
 // - eth_getTransactionByHash
 //
 // DOING:
+// - eth_getTransactionReceipt
 //
 // TODO:
 // - eth_sendRawTransaction
-// - eth_getTransactionReceipt
 // - eth_newBlockFilter
 // - eth_newPendingTransactionFilter
 // - eth_getBlockReceipts
@@ -263,6 +263,13 @@ async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
     request(
         "eth_getTransactionByHash",
         provider.get_transaction(H256::default()).await,
+        |tx| tx.is_none(),
+    )?;
+
+    // TODO: Get an existing transaction
+    request(
+        "eth_getTransactionReceipt",
+        provider.get_transaction_receipt(H256::default()).await,
         |tx| tx.is_none(),
     )?;
 

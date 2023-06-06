@@ -236,6 +236,41 @@ where
     }
 }
 
+/// Returns the receipt of a transaction by transaction hash.
+pub async fn get_transaction_receipt<C>(
+    data: JsonRpcData<C>,
+    Params((tx_hash,)): Params<(et::H256,)>,
+) -> JsonRpcResult<Option<et::TransactionReceipt>>
+where
+    C: Client + Sync + Send,
+{
+    let hash = tendermint::Hash::try_from(tx_hash.as_bytes().to_vec())?;
+    match data.client.underlying().tx(hash, false).await {
+        Ok(res) => {
+            let header: header::Response = data.client.underlying().header(res.height).await?;
+            let state_params = data.client.state_params(Some(res.height)).await?;
+            let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(&res.tx)?;
+            if let ChainMessage::Signed(msg) = msg {
+                let receipt =
+                    conv::to_rpc_receipt(*msg, res, header.header, state_params.value.base_fee)?;
+                Ok(Some(receipt))
+            } else {
+                Err(jsonrpc_v2::Error::Full {
+                    code: ExitCode::USR_ILLEGAL_ARGUMENT.code(),
+                    message: "incompatible transaction".into(),
+                    data: None,
+                })
+            }
+        }
+        Err(e) if e.to_string().contains("not found") => Ok(None),
+        Err(e) => Err(jsonrpc_v2::Error::Full {
+            code: ExitCode::USR_UNSPECIFIED.code(),
+            message: e.to_string(),
+            data: None,
+        }),
+    }
+}
+
 /// Returns the number of uncles in a block from a block matching the given block hash.
 ///
 /// It will always return 0 since Tendermint doesn't have uncles.
