@@ -17,6 +17,8 @@ use fvm_shared::message::Message;
 use fvm_shared::{address::Payload, bigint::BigInt, econ::TokenAmount};
 use lazy_static::lazy_static;
 use libsecp256k1::RecoveryId;
+use tendermint::abci::response::DeliverTx;
+use tendermint_rpc::endpoint;
 
 // Values taken from https://github.com/filecoin-project/lotus/blob/6e7dc9532abdb3171427347710df4c860f1957a2/chain/types/ethtypes/eth_types.go#L199
 
@@ -183,7 +185,8 @@ pub fn to_rpc_transaction(
 // https://github.com/evmos/ethermint/blob/07cf2bd2b1ce9bdb2e44ec42a39e7239292a14af/rpc/backend/tx_info.go#L147
 pub fn to_rpc_receipt(
     msg: SignedMessage,
-    result: tendermint_rpc::endpoint::tx::Response,
+    result: endpoint::tx::Response,
+    block_results: endpoint::block_results::Response,
     header: tendermint::block::Header,
     base_fee: TokenAmount,
 ) -> anyhow::Result<et::TransactionReceipt> {
@@ -201,12 +204,24 @@ pub fn to_rpc_receipt(
     // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#LL2240C9-L2240C15
     let logs = Vec::new();
 
-    // TODO: Look at how the contract address is figured out
+    // See if the return value is an Ethereum contract creation.
     // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#LL2240C9-L2240C15
-    let contract_address = None;
+    let contract_address = if result.tx_result.code.is_err() {
+        None
+    } else {
+        maybe_contract_address(&result.tx_result).map(|ca| et::H160::from_slice(&ca.0))
+    };
 
-    // TODO: Sum up gas up to this transaction.
-    let cumulative_gas_used = et::U256::zero();
+    // Sum up gas up to this transaction.
+    let mut cumulative_gas_used = et::U256::zero();
+    for res in block_results
+        .txs_results
+        .unwrap_or_default()
+        .iter()
+        .take(result.index as usize + 1)
+    {
+        cumulative_gas_used += et::U256::from(res.gas_used);
+    }
 
     let receipt = et::TransactionReceipt {
         transaction_hash: et::H256::from_slice(result.hash.as_bytes()),
@@ -356,6 +371,12 @@ fn eth_to_address(msg: &Message) -> Option<et::H160> {
         Payload::ID(id) => Some(et::H160::from_slice(&EthAddress::from_id(*id).0)),
         _ => None, // BLS or an invalid delegated address. Just move on.
     }
+}
+
+fn maybe_contract_address(deliver_tx: &DeliverTx) -> Option<EthAddress> {
+    fendermint_rpc::response::decode_fevm_create(deliver_tx)
+        .ok()
+        .map(|cr| cr.eth_address)
 }
 
 #[cfg(test)]

@@ -248,11 +248,18 @@ where
     match data.client.underlying().tx(hash, false).await {
         Ok(res) => {
             let header: header::Response = data.client.underlying().header(res.height).await?;
+            let block_results: block_results::Response =
+                data.client.underlying().block_results(res.height).await?;
             let state_params = data.client.state_params(Some(res.height)).await?;
             let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(&res.tx)?;
             if let ChainMessage::Signed(msg) = msg {
-                let receipt =
-                    conv::to_rpc_receipt(*msg, res, header.header, state_params.value.base_fee)?;
+                let receipt = conv::to_rpc_receipt(
+                    *msg,
+                    res,
+                    block_results,
+                    header.header,
+                    state_params.value.base_fee,
+                )?;
                 Ok(Some(receipt))
             } else {
                 Err(jsonrpc_v2::Error::Full {
