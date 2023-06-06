@@ -1,8 +1,6 @@
 // Copyright 2021-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-// Copy of https://github.com/filecoin-project/ref-fvm/blob/fvm%40v3.3.1/fvm/src/gas/outputs.rs
-
 use fvm_shared::econ::TokenAmount;
 
 #[derive(Clone, Default)]

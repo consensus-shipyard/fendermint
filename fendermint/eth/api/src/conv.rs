@@ -18,6 +18,7 @@ use fvm_shared::{address::Payload, bigint::BigInt, econ::TokenAmount};
 use lazy_static::lazy_static;
 use libsecp256k1::RecoveryId;
 use tendermint::abci::response::DeliverTx;
+use tendermint::abci::EventAttribute;
 use tendermint_rpc::endpoint;
 
 // Values taken from https://github.com/filecoin-project/lotus/blob/6e7dc9532abdb3171427347710df4c860f1957a2/chain/types/ethtypes/eth_types.go#L199
@@ -190,6 +191,11 @@ pub fn to_rpc_receipt(
     header: tendermint::block::Header,
     base_fee: TokenAmount,
 ) -> anyhow::Result<et::TransactionReceipt> {
+    let block_hash = et::H256::from_slice(header.hash().as_bytes());
+    let block_number = et::U64::from(result.height.value());
+    let transaction_hash = et::H256::from_slice(result.hash.as_bytes());
+    let transaction_index = et::U64::from(result.index);
+
     let msg = msg.message;
     // Lotus effective gas price is based on total spend divided by gas used,
     // for which it recalculates the gas outputs. However, we don't have access
@@ -200,9 +206,53 @@ pub fn to_rpc_receipt(
     let effective_gas_price =
         crate::gas::effective_gas_price(&msg, result.tx_result.gas_used, &base_fee);
 
-    // TODO: Look at how events are tranformed
-    // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#LL2240C9-L2240C15
-    let logs = Vec::new();
+    // Sum up gas up to this transaction.
+    let mut cumulative_gas_used = et::U256::zero();
+    let mut cumulative_event_count = 0usize;
+    for res in block_results
+        .txs_results
+        .unwrap_or_default()
+        .iter()
+        .take(result.index as usize + 1)
+    {
+        cumulative_gas_used += et::U256::from(res.gas_used);
+        cumulative_event_count += res.events.len();
+    }
+
+    let log_index_start = cumulative_event_count.saturating_sub(result.tx_result.events.len());
+
+    let mut logs = Vec::new();
+    for (idx, event) in result.tx_result.events.iter().enumerate() {
+        // TODO: Lotus looks up an Ethereum address based on the actor ID:
+        // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#L1987
+        let address = event
+            .attributes
+            .iter()
+            .find(|a| a.key == "emitter")
+            .and_then(|a| a.value.parse::<u64>().ok())
+            .map(EthAddress::from_id)
+            .map(|a| et::H160::from_slice(&a.0))
+            .unwrap_or_default();
+
+        // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#LL2240C9-L2240C15
+        let (topics, data) = to_topics_and_data(&event.attributes)?;
+
+        let log = et::Log {
+            address,
+            topics,
+            data,
+            block_hash: Some(block_hash),
+            block_number: Some(block_number),
+            transaction_hash: Some(transaction_hash),
+            transaction_index: Some(transaction_index),
+            log_index: Some(et::U256::from(idx + log_index_start)),
+            transaction_log_index: Some(et::U256::from(idx)),
+            log_type: Some(event.kind.clone()),
+            removed: Some(false),
+        };
+
+        logs.push(log);
+    }
 
     // See if the return value is an Ethereum contract creation.
     // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#LL2240C9-L2240C15
@@ -212,22 +262,11 @@ pub fn to_rpc_receipt(
         maybe_contract_address(&result.tx_result).map(|ca| et::H160::from_slice(&ca.0))
     };
 
-    // Sum up gas up to this transaction.
-    let mut cumulative_gas_used = et::U256::zero();
-    for res in block_results
-        .txs_results
-        .unwrap_or_default()
-        .iter()
-        .take(result.index as usize + 1)
-    {
-        cumulative_gas_used += et::U256::from(res.gas_used);
-    }
-
     let receipt = et::TransactionReceipt {
-        transaction_hash: et::H256::from_slice(result.hash.as_bytes()),
-        transaction_index: et::U64::from(result.index),
-        block_hash: Some(et::H256::from_slice(header.hash().as_bytes())),
-        block_number: Some(et::U64::from(result.height.value())),
+        transaction_hash,
+        transaction_index,
+        block_hash: Some(block_hash),
+        block_number: Some(block_number),
         from: eth_from_address(&msg)?,
         to: eth_to_address(&msg),
         cumulative_gas_used,
@@ -377,6 +416,34 @@ fn maybe_contract_address(deliver_tx: &DeliverTx) -> Option<EthAddress> {
     fendermint_rpc::response::decode_fevm_create(deliver_tx)
         .ok()
         .map(|cr| cr.eth_address)
+}
+
+// Find the Ethereum topics (up to 4) and the data in the event attributes.
+fn to_topics_and_data(attrs: &Vec<EventAttribute>) -> anyhow::Result<(Vec<et::H256>, et::Bytes)> {
+    // Based on https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#L1534
+    let mut topics = Vec::new();
+    let mut data = None;
+    for attr in attrs {
+        let bz = hex::decode(&attr.value)?;
+        match attr.key.as_str() {
+            "t1" | "t2" | "t3" | "t4" => {
+                if bz.len() != 32 {
+                    return Err(anyhow!("unexpected topic value: {attr:?}"));
+                }
+                let h = et::H256::from_slice(&bz);
+                let i = attr.key[1..].parse::<usize>().unwrap().saturating_sub(1);
+                while topics.len() <= i {
+                    topics.push(et::H256::default())
+                }
+                topics[i] = h;
+            }
+            "d" => {
+                data = Some(et::Bytes::from_iter(bz.iter()));
+            }
+            _ => {}
+        }
+    }
+    Ok((topics, data.unwrap_or_default()))
 }
 
 #[cfg(test)]
