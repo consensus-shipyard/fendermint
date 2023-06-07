@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 // See https://ethereum.org/en/developers/docs/apis/json-rpc/#json-rpc-methods
+// and https://ethereum.github.io/execution-apis/api-documentation/
 
 use jsonrpc_v2::{MapRouter, ServerBuilder};
 use paste::paste;
@@ -35,6 +36,7 @@ pub fn register_methods(server: ServerBuilder<MapRouter>) -> ServerBuilder<MapRo
         // eth_compileSerpent
         // eth_compileSolidity
         // eth_estimateGas
+        feeHistory,
         gasPrice,
         getBalance,
         getBlockByHash,

@@ -204,7 +204,7 @@ pub fn to_rpc_receipt(
     // We could put it into the [`DeliverTx::info`] field, or we can calculate
     // something based on the gas fields of the transaction, like Ethermint.
     let effective_gas_price =
-        crate::gas::effective_gas_price(&msg, result.tx_result.gas_used, &base_fee);
+        crate::gas::effective_gas_price(&msg, &base_fee, result.tx_result.gas_used);
 
     // Sum up gas up to this transaction.
     let mut cumulative_gas_used = et::U256::zero();

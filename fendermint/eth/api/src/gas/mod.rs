@@ -6,7 +6,7 @@ use fvm_shared::{econ::TokenAmount, message::Message};
 mod output;
 
 // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#L2220C41-L2228
-pub fn effective_gas_price(msg: &Message, gas_used: i64, base_fee: &TokenAmount) -> TokenAmount {
+pub fn effective_gas_price(msg: &Message, base_fee: &TokenAmount, gas_used: i64) -> TokenAmount {
     let out = output::GasOutputs::compute(
         gas_used.try_into().expect("gas should be u64 convertible"),
         msg.gas_limit,
@@ -22,4 +22,17 @@ pub fn effective_gas_price(msg: &Message, gas_used: i64, base_fee: &TokenAmount)
     } else {
         TokenAmount::from_atto(0)
     }
+}
+
+// https://github.com/filecoin-project/lotus/blob/9e4f1a4d23ad72ab191754d4f432e4dc754fce1b/chain/types/message.go#L227
+pub fn effective_gas_premium(msg: &Message, base_fee: &TokenAmount) -> TokenAmount {
+    let available = if msg.gas_fee_cap < *base_fee {
+        TokenAmount::from_atto(0)
+    } else {
+        msg.gas_fee_cap.clone() - base_fee
+    };
+    if msg.gas_premium < available {
+        return msg.gas_premium.clone();
+    }
+    available
 }

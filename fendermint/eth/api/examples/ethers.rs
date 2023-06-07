@@ -27,7 +27,7 @@ use std::fmt::Debug;
 use anyhow::anyhow;
 use clap::Parser;
 use ethers::providers::{Http, Middleware, Provider, ProviderError};
-use ethers_core::types::{BlockId, BlockNumber, H256, U64};
+use ethers_core::types::{BlockId, BlockNumber, H256, U256, U64};
 use fendermint_vm_actor_interface::eam::EthAddress;
 use tracing::Level;
 
@@ -129,6 +129,7 @@ where
 // - eth_getBlockByNumber
 // - eth_getTransactionByHash
 // - eth_getTransactionReceipt
+// - eth_feeHistory
 //
 // DOING:
 //
@@ -151,7 +152,6 @@ where
 // - eth_mining
 // - eth_subscribe
 // - eth_unsubscribe
-// - eth_feeHistory
 //
 // BLOCKED:
 // - eth_call
@@ -255,9 +255,24 @@ async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
         |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
     )?;
 
-    request("eth_gasPrice", provider.get_gas_price().await, |id| {
+    let base_fee = request("eth_gasPrice", provider.get_gas_price().await, |id| {
         !id.is_zero()
     })?;
+
+    // TODO: Get the fee history after transactions have been added.
+    request(
+        "eth_feeHistory",
+        provider
+            .fee_history(
+                U256::from(10),
+                BlockNumber::Latest,
+                &[0.25, 0.5, 0.75, 0.95],
+            )
+            .await,
+        |hist| {
+            hist.base_fee_per_gas.len() > 0 && *hist.base_fee_per_gas.last().unwrap() == base_fee
+        },
+    )?;
 
     // TODO: Get an existing transaction
     request(

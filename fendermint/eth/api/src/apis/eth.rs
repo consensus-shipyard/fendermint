@@ -14,11 +14,24 @@ use fendermint_vm_message::chain::ChainMessage;
 use fvm_shared::{address::Address, chainid::ChainID, error::ExitCode};
 use jsonrpc_v2::{ErrorLike, Params};
 use tendermint_rpc::{
-    endpoint::{block, block_results, header},
+    endpoint::{block, block_results, consensus_params, header},
     Client,
 };
 
-use crate::{conv, tm, JsonRpcData, JsonRpcResult};
+use crate::{
+    conv::{self, tokens_to_u256},
+    tm, JsonRpcData, JsonRpcResult,
+};
+
+const MAX_FEE_HIST_SIZE: usize = 1024;
+
+fn error<T>(exit_code: ExitCode, msg: impl ToString) -> JsonRpcResult<T> {
+    Err(jsonrpc_v2::Error::Full {
+        code: exit_code.code(),
+        message: msg.to_string(),
+        data: None,
+    })
+}
 
 /// Returns a list of addresses owned by client.
 ///
@@ -44,6 +57,113 @@ where
 {
     let res = data.client.state_params(None).await?;
     Ok(et::U64::from(res.value.chain_id))
+}
+
+/// Returns transaction base fee per gas and effective priority fee per gas for the requested/supported block range.
+pub async fn fee_history<C>(
+    data: JsonRpcData<C>,
+    Params((block_count, last_block, reward_percentiles)): Params<(
+        et::U256,
+        et::BlockNumber,
+        Vec<f64>,
+    )>,
+) -> JsonRpcResult<et::FeeHistory>
+where
+    C: Client + Sync + Send,
+{
+    if block_count > et::U256::from(MAX_FEE_HIST_SIZE) {
+        return error(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "block_count must be <= 1024",
+        );
+    }
+
+    let mut hist = et::FeeHistory {
+        base_fee_per_gas: Vec::new(),
+        gas_used_ratio: Vec::new(),
+        oldest_block: et::U256::default(),
+        reward: Vec::new(),
+    };
+    let mut block_number = last_block;
+    let mut block_count = block_count.as_usize();
+
+    while block_count > 0 {
+        let block = tm::block_by_height(data.client.underlying(), block_number).await?;
+        let height = block.header().height;
+
+        // Genesis has height 1, but no relevant fees.
+        if height.value() <= 1 {
+            break;
+        }
+
+        hist.oldest_block = et::U256::from(height.value());
+
+        let state_params = data.client.state_params(Some(height)).await?;
+        let base_fee = &state_params.value.base_fee;
+
+        hist.base_fee_per_gas.push(tokens_to_u256(base_fee)?);
+
+        let consensus_params: consensus_params::Response =
+            data.client.underlying().consensus_params(height).await?;
+
+        let block_results: block_results::Response =
+            data.client.underlying().block_results(height).await?;
+
+        let mut block_gas_limit = consensus_params.consensus_params.block.max_gas;
+        if block_gas_limit <= 0 {
+            block_gas_limit =
+                i64::try_from(fvm_shared::BLOCK_GAS_LIMIT).expect("FVM block gas limit not i64")
+        };
+
+        let txs_results = block_results.txs_results.unwrap_or_default();
+
+        let total_gas_used: i64 = txs_results.iter().map(|r| r.gas_used).sum();
+
+        hist.gas_used_ratio
+            .push(total_gas_used as f64 / block_gas_limit as f64);
+
+        let mut premiums = Vec::new();
+        for (tx, txres) in block.data().iter().zip(txs_results) {
+            let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(tx)?;
+            if let ChainMessage::Signed(msg) = msg {
+                let premium = crate::gas::effective_gas_premium(&msg.message, base_fee);
+                premiums.push((premium, txres.gas_used));
+            }
+        }
+        premiums.sort();
+
+        let premium_gas_used: i64 = premiums.iter().map(|(_, gas)| *gas).sum();
+
+        let rewards: Result<Vec<et::U256>, _> = reward_percentiles
+            .iter()
+            .map(|p| {
+                if premiums.is_empty() {
+                    Ok(et::U256::zero())
+                } else {
+                    let threshold_gas_used = (premium_gas_used as f64 * p / 100f64) as i64;
+                    let mut sum_gas_used = 0;
+                    let mut idx = 0;
+                    while sum_gas_used < threshold_gas_used && idx < premiums.len() - 1 {
+                        sum_gas_used += premiums[idx].1;
+                        idx += 1;
+                    }
+                    tokens_to_u256(&premiums[idx].0)
+                }
+            })
+            .collect();
+
+        hist.reward.push(rewards?);
+
+        block_count -= 1;
+        block_number = et::BlockNumber::Number(et::U64::from(height.value()));
+    }
+
+    // Reverse data to be oldest-to-newest.
+    hist.base_fee_per_gas.reverse();
+    hist.gas_used_ratio.reverse();
+    hist.reward.reverse();
+
+    Ok(hist)
 }
 
 /// Returns the current price per gas in wei.
@@ -74,11 +194,7 @@ where
 
     match res.value {
         Some((_, state)) => Ok(conv::tokens_to_u256(&state.balance)?),
-        None => Err(jsonrpc_v2::Error::Full {
-            code: ExitCode::USR_NOT_FOUND.code(),
-            message: format!("actor {addr} not found"),
-            data: None,
-        }),
+        None => error(ExitCode::USR_NOT_FOUND, format!("actor {addr} not found")),
     }
 }
 
@@ -189,19 +305,11 @@ where
                 tx.block_number = Some(et::U64::from(res.height.value()));
                 Ok(Some(tx))
             } else {
-                Err(jsonrpc_v2::Error::Full {
-                    code: ExitCode::USR_ILLEGAL_ARGUMENT.code(),
-                    message: "incompatible transaction".into(),
-                    data: None,
-                })
+                error(ExitCode::USR_ILLEGAL_ARGUMENT, "incompatible transaction")
             }
         }
         Err(e) if e.to_string().contains("not found") => Ok(None),
-        Err(e) => Err(jsonrpc_v2::Error::Full {
-            code: ExitCode::USR_UNSPECIFIED.code(),
-            message: e.to_string(),
-            data: None,
-        }),
+        Err(e) => error(ExitCode::USR_UNSPECIFIED, e),
     }
 }
 
@@ -228,11 +336,7 @@ where
             let nonce = state.sequence;
             Ok(et::U64::from(nonce))
         }
-        None => Err(jsonrpc_v2::Error::Full {
-            code: ExitCode::USR_NOT_FOUND.code(),
-            message: format!("actor {addr} not found"),
-            data: None,
-        }),
+        None => error(ExitCode::USR_NOT_FOUND, format!("actor {addr} not found")),
     }
 }
 
@@ -262,19 +366,11 @@ where
                 )?;
                 Ok(Some(receipt))
             } else {
-                Err(jsonrpc_v2::Error::Full {
-                    code: ExitCode::USR_ILLEGAL_ARGUMENT.code(),
-                    message: "incompatible transaction".into(),
-                    data: None,
-                })
+                error(ExitCode::USR_ILLEGAL_ARGUMENT, "incompatible transaction")
             }
         }
         Err(e) if e.to_string().contains("not found") => Ok(None),
-        Err(e) => Err(jsonrpc_v2::Error::Full {
-            code: ExitCode::USR_UNSPECIFIED.code(),
-            message: e.to_string(),
-            data: None,
-        }),
+        Err(e) => error(ExitCode::USR_UNSPECIFIED, e),
     }
 }
 
@@ -378,11 +474,7 @@ where
             tx.block_number = Some(et::U64::from(block.header.height.value()));
             Ok(Some(tx))
         } else {
-            Err(jsonrpc_v2::Error::Full {
-                code: ExitCode::USR_ILLEGAL_ARGUMENT.code(),
-                message: "incompatible transaction".into(),
-                data: None,
-            })
+            error(ExitCode::USR_ILLEGAL_ARGUMENT, "incompatible transaction")
         }
     } else {
         Ok(None)
