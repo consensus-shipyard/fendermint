@@ -49,6 +49,12 @@ impl From<&EthAddress> for Address {
     }
 }
 
+impl AsRef<[u8]> for EthAddress {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 /// Helper to read return value from contract creation.
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone)]
 pub struct CreateReturn {

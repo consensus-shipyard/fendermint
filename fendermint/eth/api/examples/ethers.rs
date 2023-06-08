@@ -22,14 +22,32 @@
 //!      http://localhost:8545
 //! ```
 
-use std::fmt::Debug;
+// See https://coinsbench.com/ethereum-with-rust-tutorial-part-1-create-simple-transactions-with-rust-26d365a7ea93
+// and https://coinsbench.com/ethereum-with-rust-tutorial-part-2-compile-and-deploy-solidity-contract-with-rust-c3cd16fce8ee
 
-use anyhow::anyhow;
+use std::{fmt::Debug, path::PathBuf};
+
+use anyhow::{anyhow, Context};
+use async_trait::async_trait;
 use clap::Parser;
-use ethers::providers::{Http, Middleware, Provider, ProviderError};
-use ethers_core::types::{BlockId, BlockNumber, H256, U256, U64};
+use ethers::{
+    prelude::SignerMiddleware,
+    providers::{Http, Middleware, Provider, ProviderError},
+    signers::Signer,
+};
+use ethers_core::types::{
+    transaction::eip2718::TypedTransaction, Address, BlockId, BlockNumber,
+    Eip1559TransactionRequest, Signature, TransactionReceipt, H160, H256, U256, U64,
+};
+use fendermint_eth_api::conv::{from_evm, from_fvm::to_rpc_signature};
+use fendermint_rpc::message::MessageFactory;
 use fendermint_vm_actor_interface::eam::EthAddress;
+use fendermint_vm_message::signed::SignedMessage;
+use fvm_shared::{chainid::ChainID, ActorID};
+use libsecp256k1::SecretKey;
 use tracing::Level;
+
+type TestMiddleware = SignerMiddleware<Provider<Http>, FvmSigner>;
 
 #[derive(Parser, Debug)]
 pub struct Options {
@@ -41,11 +59,21 @@ pub struct Options {
     #[arg(long, default_value = "8545", env = "FM_ETH__HTTP__PORT")]
     pub http_port: u32,
 
-    /// ID of the actor who is the subject of our enquiries.
+    /// ID of the actor we send transactions from.
     ///
     /// Assumed to exist with a non-zero balance.
     #[arg(long, short)]
-    pub actor_id: u64,
+    pub actor_id_from: ActorID,
+
+    /// Path to the secret key to deploy with, expected to be in Base64 format.
+    ///
+    /// Assumed to exist with a non-zero balance.
+    #[arg(long, short)]
+    pub secret_key_from: PathBuf,
+
+    /// ID of an actor to send transfers to.
+    #[arg(long, short)]
+    pub actor_id_to: ActorID,
 
     /// Enable DEBUG logs.
     #[arg(long, short)]
@@ -77,7 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let provider = Provider::<Http>::try_from(opts.http_endpoint())?;
 
-    run(provider, opts.actor_id).await?;
+    run(provider, opts).await?;
 
     Ok(())
 }
@@ -132,16 +160,14 @@ where
 // - eth_feeHistory
 //
 // DOING:
+// - eth_sendRawTransaction
 //
 // TODO:
-// - eth_sendRawTransaction
 // - eth_newBlockFilter
 // - eth_newPendingTransactionFilter
 // - eth_getBlockReceipts
 // - eth_syncing
 // - eth_createAccessList
-// - eth_sendTransaction
-// - eth_sign
 // - eth_getLogs
 // - eth_newBlockFilter
 // - eth_newPendingTransactionFilter
@@ -152,17 +178,19 @@ where
 // - eth_mining
 // - eth_subscribe
 // - eth_unsubscribe
-//
-// BLOCKED:
 // - eth_call
 // - eth_estimateGas
 // - eth_getStorageAt
 // - eth_getCode
+//
+// WON'T DO:
+// - eth_sign
+// - eth_sendTransaction
+//
 
 /// Exercise the above methods, so we know at least the parameters are lined up correctly.
-async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
-    let addr = EthAddress::from_id(actor_id);
-    let addr = ethers::core::types::Address::from_slice(&addr.0);
+async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
+    let actor_addr = actor_id_to_eth_addr(opts.actor_id_from);
 
     request("eth_accounts", provider.get_accounts().await, |acnts| {
         acnts.is_empty()
@@ -172,13 +200,15 @@ async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
         bn.as_u64() > 0
     })?;
 
-    request("eth_chainId", provider.get_chainid().await, |id| {
+    let chain_id = request("eth_chainId", provider.get_chainid().await, |id| {
         !id.is_zero()
     })?;
 
+    let mw = make_middleware(provider.clone(), chain_id.as_u64(), &opts)?;
+
     request(
         "eth_getBalance",
-        provider.get_balance(addr, None).await,
+        provider.get_balance(actor_addr, None).await,
         |b| !b.is_zero(),
     )?;
 
@@ -218,11 +248,12 @@ async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
     request(
         "eth_getTransactionCount",
         provider
-            .get_transaction_count(addr, Some(BlockId::Number(BlockNumber::Earliest)))
+            .get_transaction_count(actor_addr, Some(BlockId::Number(BlockNumber::Earliest)))
             .await,
         |u| u.is_zero(),
     )?;
 
+    // Get a block without transactions
     let b = request(
         "eth_getBlockByNumber",
         provider
@@ -233,13 +264,24 @@ async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
 
     let bh = b.unwrap().hash.expect("hash should be set");
 
+    // Get the same block without transactions by hash.
     request(
         "eth_getBlockByHash",
         provider.get_block(BlockId::Hash(bh)).await,
         |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
     )?;
 
-    // TODO: Use a block which we know has transactions.
+    let base_fee = request("eth_gasPrice", provider.get_gas_price().await, |id| {
+        !id.is_zero()
+    })?;
+
+    // Send the transaction and wait for receipt
+    let receipt = example_transfer(mw, opts.actor_id_to).await?;
+    let tx_hash = receipt.transaction_hash;
+    let bn = receipt.block_number.unwrap();
+    let bh = receipt.block_hash.unwrap();
+
+    // Get a block with transactions by number.
     request(
         "eth_getBlockByNumber",
         provider
@@ -248,23 +290,19 @@ async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
         |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
     )?;
 
-    // TODO: Use a block which we know has transactions.
+    // Get the block with transactions by hash.
     request(
         "eth_getBlockByHash",
         provider.get_block_with_txs(BlockId::Hash(bh)).await,
         |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
     )?;
 
-    let base_fee = request("eth_gasPrice", provider.get_gas_price().await, |id| {
-        !id.is_zero()
-    })?;
-
-    // TODO: Get the fee history after transactions have been added.
+    // By now there should be a transaction in a block.
     request(
         "eth_feeHistory",
         provider
             .fee_history(
-                U256::from(10),
+                U256::from(100),
                 BlockNumber::Latest,
                 &[0.25, 0.5, 0.75, 0.95],
             )
@@ -274,19 +312,129 @@ async fn run(provider: Provider<Http>, actor_id: u64) -> anyhow::Result<()> {
         },
     )?;
 
-    // TODO: Get an existing transaction
     request(
         "eth_getTransactionByHash",
-        provider.get_transaction(H256::default()).await,
-        |tx| tx.is_none(),
+        provider.get_transaction(tx_hash).await,
+        |tx| tx.is_some(),
     )?;
 
-    // TODO: Get an existing transaction
     request(
         "eth_getTransactionReceipt",
-        provider.get_transaction_receipt(H256::default()).await,
-        |tx| tx.is_none(),
+        provider.get_transaction_receipt(tx_hash).await,
+        |tx| tx.is_some(),
     )?;
 
     Ok(())
+}
+
+fn actor_id_to_eth_addr(actor_id: ActorID) -> H160 {
+    let actor_addr = EthAddress::from_id(actor_id);
+    ethers::core::types::Address::from_slice(&actor_addr.0)
+}
+
+/// Make an example transfer.
+async fn example_transfer(mw: TestMiddleware, to: ActorID) -> anyhow::Result<TransactionReceipt> {
+    // Create a transaction to transfer 1000 atto.
+    let tx = Eip1559TransactionRequest::new()
+        .to(actor_id_to_eth_addr(to))
+        .value(1000);
+
+    // Set the gas based on the testkit so it doesn't trigger estimation (which isn't implemented yet).
+    let tx = tx
+        .gas(10_000_000_000u64)
+        .max_fee_per_gas(0)
+        .max_priority_fee_per_gas(0);
+
+    // `send_transaction` will fill in the missing fields like `from` and `nonce` (which involves querying the API).
+    let receipt = mw
+        .send_transaction(tx, None)
+        .await?
+        .log_msg("Pending transfer")
+        .await?
+        .context("Missing receipt")?;
+
+    Ok(receipt)
+}
+
+/// Create a middleware that will assign nonces and sign the message.
+fn make_middleware(
+    provider: Provider<Http>,
+    chain_id: u64,
+    opts: &Options,
+) -> anyhow::Result<TestMiddleware> {
+    let secret_key = MessageFactory::read_secret_key(&opts.secret_key_from)?;
+    let address = H160::from_slice(EthAddress::from_id(opts.actor_id_from).as_ref());
+    let signer = FvmSigner {
+        secret_key,
+        address,
+        chain_id,
+    };
+    Ok(SignerMiddleware::new(provider, signer))
+}
+
+/// For now we sign the transaction by turning it into an FVM message first and signing the CID and chain ID.
+///
+/// This will change in https://github.com/consensus-shipyard/fendermint/issues/114 which introduces
+/// EVM specific delegated signatures.
+#[derive(Debug)]
+struct FvmSigner {
+    secret_key: SecretKey,
+    address: Address,
+    chain_id: u64,
+}
+
+#[async_trait]
+impl Signer for FvmSigner {
+    type Error = FvmSignerError;
+
+    async fn sign_message<S: Send + Sync + AsRef<[u8]>>(
+        &self,
+        _message: S,
+    ) -> Result<Signature, Self::Error> {
+        unimplemented!()
+    }
+
+    async fn sign_transaction(&self, message: &TypedTransaction) -> Result<Signature, Self::Error> {
+        match message {
+            TypedTransaction::Eip1559(tx) => {
+                let msg = from_evm::to_fvm_message(tx);
+                let msg = SignedMessage::new_secp256k1(
+                    msg,
+                    &self.secret_key,
+                    &ChainID::from(self.chain_id),
+                )?;
+                let sig = to_rpc_signature(msg.signature())?;
+                Ok(sig)
+            }
+            other => panic!("unexpected transaction type: {other:?}"),
+        }
+    }
+
+    async fn sign_typed_data<T: ethers_core::types::transaction::eip712::Eip712 + Send + Sync>(
+        &self,
+        _payload: &T,
+    ) -> Result<Signature, Self::Error> {
+        unimplemented!()
+    }
+
+    fn address(&self) -> ethers_core::types::Address {
+        self.address
+    }
+
+    fn chain_id(&self) -> u64 {
+        self.chain_id
+    }
+
+    fn with_chain_id<T: Into<u64>>(mut self, chain_id: T) -> Self {
+        self.chain_id = chain_id.into();
+        self
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum FvmSignerError {
+    #[error("message cannot be serialized")]
+    Ipld(#[from] fvm_ipld_encoding::Error),
+    #[error("arbitrary error")]
+    Anyhow(#[from] anyhow::Error),
 }

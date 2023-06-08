@@ -29,6 +29,7 @@ fendermint_vm_actor_interface = { path = "../../vm/actor_interface" }
 fendermint_vm_message = { path = "../../vm/message" }
 
 [dev-dependencies]
+async-trait = { workspace = true }
 clap = { workspace = true }
 ethers = { workspace = true, features = ["abigen"] }
 hex = { workspace = true }
@@ -38,5 +39,6 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 quickcheck = { workspace = true }
 quickcheck_macros = { workspace = true }
+thiserror = { workspace = true }
 
 fendermint_testing = { path = "../../testing", features = ["arb"] }

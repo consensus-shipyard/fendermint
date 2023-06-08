@@ -73,7 +73,9 @@ cargo run -p fendermint_rpc --release --example simplecoin -- \
 script = """
 cd ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}
 cargo run -p fendermint_eth_api --release --example ethers -- \
-  --actor-id 100
+  --secret-key fendermint/testing/smoke-test/test-data/fendermint/keys/alice.sk \
+  --actor-id-from 100 \
+  --actor-id-to 101
 """
 
 

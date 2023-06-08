@@ -18,7 +18,10 @@ use tendermint_rpc::{
 };
 
 use crate::{
-    conv::{self, tokens_to_u256},
+    conv::{
+        from_fvm::tokens_to_u256,
+        from_tm::{map_rpc_block_txs, to_rpc_block, to_rpc_receipt, to_rpc_transaction},
+    },
     JsonRpcData, JsonRpcResult,
 };
 
@@ -170,7 +173,7 @@ where
     C: Client + Sync + Send,
 {
     let res = data.client.state_params(None).await?;
-    let price = conv::tokens_to_u256(&res.value.base_fee)?;
+    let price = tokens_to_u256(&res.value.base_fee)?;
     Ok(price)
 }
 
@@ -191,7 +194,7 @@ where
     let res = data.client.actor_state(&addr, Some(height)).await?;
 
     match res.value {
-        Some((_, state)) => Ok(conv::tokens_to_u256(&state.balance)?),
+        Some((_, state)) => Ok(tokens_to_u256(&state.balance)?),
         None => error(ExitCode::USR_NOT_FOUND, format!("actor {addr} not found")),
     }
 }
@@ -297,7 +300,7 @@ where
                 let header: header::Response = data.tm().header(res.height).await?;
                 let sp = data.client.state_params(Some(res.height)).await?;
                 let chain_id = ChainID::from(sp.value.chain_id);
-                let mut tx = conv::to_rpc_transaction(hash, *msg, chain_id)?;
+                let mut tx = to_rpc_transaction(hash, *msg, chain_id)?;
                 tx.transaction_index = Some(et::U64::from(res.index));
                 tx.block_hash = Some(et::H256::from_slice(header.header.hash().as_bytes()));
                 tx.block_number = Some(et::U64::from(res.height.value()));
@@ -355,7 +358,7 @@ where
             let state_params = data.client.state_params(Some(res.height)).await?;
             let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(&res.tx)?;
             if let ChainMessage::Signed(msg) = msg {
-                let receipt = conv::to_rpc_receipt(
+                let receipt = to_rpc_receipt(
                     *msg,
                     res,
                     block_results,
@@ -433,12 +436,12 @@ where
 
     let block_results: block_results::Response = data.tm().block_results(height).await?;
 
-    let block = conv::to_rpc_block(block, block_results, base_fee, chain_id)?;
+    let block = to_rpc_block(block, block_results, base_fee, chain_id)?;
 
     let block = if full_tx {
-        conv::map_rpc_block_txs(block, serde_json::to_value)?
+        map_rpc_block_txs(block, serde_json::to_value)?
     } else {
-        conv::map_rpc_block_txs(block, |h| serde_json::to_value(h.hash))?
+        map_rpc_block_txs(block, |h| serde_json::to_value(h.hash))?
     };
 
     Ok(block)
@@ -465,7 +468,7 @@ where
                 .await?;
 
             let chain_id = ChainID::from(sp.value.chain_id);
-            let mut tx = conv::to_rpc_transaction(hash, *msg, chain_id)?;
+            let mut tx = to_rpc_transaction(hash, *msg, chain_id)?;
             tx.transaction_index = Some(index);
             tx.block_hash = Some(et::H256::from_slice(block.header.hash().as_bytes()));
             tx.block_number = Some(et::U64::from(block.header.height.value()));
