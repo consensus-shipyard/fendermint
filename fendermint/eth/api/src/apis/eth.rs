@@ -7,7 +7,6 @@
 // * https://github.com/filecoin-project/lotus/blob/v1.23.1-rc2/node/impl/full/eth.go
 
 use ethers_core::types::{self as et, BlockId};
-use fendermint_rpc::client::TendermintClient;
 use fendermint_rpc::query::QueryClient;
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_message::chain::ChainMessage;
@@ -20,7 +19,7 @@ use tendermint_rpc::{
 
 use crate::{
     conv::{self, tokens_to_u256},
-    tm, JsonRpcData, JsonRpcResult,
+    JsonRpcData, JsonRpcResult,
 };
 
 const MAX_FEE_HIST_SIZE: usize = 1024;
@@ -45,7 +44,7 @@ pub async fn block_number<C>(data: JsonRpcData<C>) -> JsonRpcResult<et::U64>
 where
     C: Client + Sync,
 {
-    let res: block::Response = data.client.underlying().latest_block().await?;
+    let res: block::Response = data.tm().latest_block().await?;
     let height = res.block.header.height;
     Ok(et::U64::from(height.value()))
 }
@@ -88,7 +87,7 @@ where
     let mut block_count = block_count.as_usize();
 
     while block_count > 0 {
-        let block = tm::block_by_height(data.client.underlying(), block_number).await?;
+        let block = data.block_by_height(block_number).await?;
         let height = block.header().height;
 
         // Genesis has height 1, but no relevant fees.
@@ -104,10 +103,9 @@ where
         hist.base_fee_per_gas.push(tokens_to_u256(base_fee)?);
 
         let consensus_params: consensus_params::Response =
-            data.client.underlying().consensus_params(height).await?;
+            data.tm().consensus_params(height).await?;
 
-        let block_results: block_results::Response =
-            data.client.underlying().block_results(height).await?;
+        let block_results: block_results::Response = data.tm().block_results(height).await?;
 
         let mut block_gas_limit = consensus_params.consensus_params.block.max_gas;
         if block_gas_limit <= 0 {
@@ -185,8 +183,8 @@ where
     C: Client + Sync + Send,
 {
     let header = match block_id {
-        BlockId::Number(n) => tm::header_by_height(data.client.underlying(), n).await?,
-        BlockId::Hash(h) => tm::header_by_hash(data.client.underlying(), h).await?,
+        BlockId::Number(n) => data.header_by_height(n).await?,
+        BlockId::Hash(h) => data.header_by_hash(h).await?,
     };
     let height = header.height;
     let addr = h160_to_fvm_addr(addr);
@@ -206,7 +204,7 @@ pub async fn get_block_by_hash<C>(
 where
     C: Client + Sync + Send,
 {
-    match tm::block_by_hash_opt(data.client.underlying(), block_hash).await? {
+    match data.block_by_hash_opt(block_hash).await? {
         Some(block) => enrich_block(data, block, full_tx).await.map(Some),
         None => Ok(None),
     }
@@ -220,7 +218,7 @@ pub async fn get_block_by_number<C>(
 where
     C: Client + Sync + Send,
 {
-    match tm::block_by_height(data.client.underlying(), block_number).await? {
+    match data.block_by_height(block_number).await? {
         block if block.header().height.value() > 0 => {
             enrich_block(data, block, full_tx).await.map(Some)
         }
@@ -236,7 +234,7 @@ pub async fn get_block_transaction_count_by_number<C>(
 where
     C: Client + Sync,
 {
-    let block = tm::block_by_height(data.client.underlying(), block_number).await?;
+    let block = data.block_by_height(block_number).await?;
 
     Ok(et::U64::from(block.data.len()))
 }
@@ -249,7 +247,7 @@ pub async fn get_block_transaction_count_by_hash<C>(
 where
     C: Client + Sync,
 {
-    let block = tm::block_by_hash_opt(data.client.underlying(), block_hash).await?;
+    let block = data.block_by_hash_opt(block_hash).await?;
     let count = block
         .map(|b| et::U64::from(b.data.len()))
         .unwrap_or_default();
@@ -264,7 +262,7 @@ pub async fn get_transaction_by_block_hash_and_index<C>(
 where
     C: Client + Sync + Send,
 {
-    if let Some(block) = tm::block_by_hash_opt(data.client.underlying(), block_hash).await? {
+    if let Some(block) = data.block_by_hash_opt(block_hash).await? {
         transaction_by_index(data, block, index).await
     } else {
         Ok(None)
@@ -279,7 +277,7 @@ pub async fn get_transaction_by_block_number_and_index<C>(
 where
     C: Client + Sync + Send,
 {
-    let block = tm::block_by_height(data.client.underlying(), block_number).await?;
+    let block = data.block_by_height(block_number).await?;
     transaction_by_index(data, block, index).await
 }
 
@@ -292,11 +290,11 @@ where
     C: Client + Sync + Send,
 {
     let hash = tendermint::Hash::try_from(tx_hash.as_bytes().to_vec())?;
-    match data.client.underlying().tx(hash, false).await {
+    match data.tm().tx(hash, false).await {
         Ok(res) => {
             let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(&res.tx)?;
             if let ChainMessage::Signed(msg) = msg {
-                let header: header::Response = data.client.underlying().header(res.height).await?;
+                let header: header::Response = data.tm().header(res.height).await?;
                 let sp = data.client.state_params(Some(res.height)).await?;
                 let chain_id = ChainID::from(sp.value.chain_id);
                 let mut tx = conv::to_rpc_transaction(hash, *msg, chain_id)?;
@@ -324,8 +322,8 @@ where
     C: Client + Sync + Send,
 {
     let header = match block_id {
-        BlockId::Number(n) => tm::header_by_height(data.client.underlying(), n).await?,
-        BlockId::Hash(h) => tm::header_by_hash(data.client.underlying(), h).await?,
+        BlockId::Number(n) => data.header_by_height(n).await?,
+        BlockId::Hash(h) => data.header_by_hash(h).await?,
     };
     let height = header.height;
     let addr = h160_to_fvm_addr(addr);
@@ -349,11 +347,11 @@ where
     C: Client + Sync + Send,
 {
     let hash = tendermint::Hash::try_from(tx_hash.as_bytes().to_vec())?;
-    match data.client.underlying().tx(hash, false).await {
+    match data.tm().tx(hash, false).await {
         Ok(res) => {
-            let header: header::Response = data.client.underlying().header(res.height).await?;
+            let header: header::Response = data.tm().header(res.height).await?;
             let block_results: block_results::Response =
-                data.client.underlying().block_results(res.height).await?;
+                data.tm().block_results(res.height).await?;
             let state_params = data.client.state_params(Some(res.height)).await?;
             let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(&res.tx)?;
             if let ChainMessage::Signed(msg) = msg {
@@ -433,8 +431,7 @@ where
     let base_fee = state_params.value.base_fee;
     let chain_id = ChainID::from(state_params.value.chain_id);
 
-    let block_results: block_results::Response =
-        data.client.underlying().block_results(height).await?;
+    let block_results: block_results::Response = data.tm().block_results(height).await?;
 
     let block = conv::to_rpc_block(block, block_results, base_fee, chain_id)?;
 
