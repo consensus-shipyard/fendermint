@@ -4,6 +4,7 @@
 use anyhow::anyhow;
 use axum::routing::post;
 use fendermint_rpc::client::FendermintClient;
+use fvm_shared::error::ExitCode;
 use jsonrpc_v2::Data;
 use std::{net::ToSocketAddrs, sync::Arc};
 use tendermint_rpc::HttpClient;
@@ -26,6 +27,14 @@ pub struct JsonRpcState<C> {
 type JsonRpcData<C> = Data<JsonRpcState<C>>;
 type JsonRpcServer = Arc<jsonrpc_v2::Server<jsonrpc_v2::MapRouter>>;
 type JsonRpcResult<T> = Result<T, jsonrpc_v2::Error>;
+
+pub(crate) fn error<T>(exit_code: ExitCode, msg: impl ToString) -> JsonRpcResult<T> {
+    Err(jsonrpc_v2::Error::Full {
+        code: exit_code.value().into(),
+        message: msg.to_string(),
+        data: None,
+    })
+}
 
 /// Start listening to JSON-RPC requests.
 pub async fn listen<A: ToSocketAddrs>(listen_addr: A, client: HttpClient) -> anyhow::Result<()> {
