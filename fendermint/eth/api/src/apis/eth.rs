@@ -8,9 +8,8 @@
 
 use ethers_core::types::{self as et, BlockId};
 use fendermint_rpc::query::QueryClient;
-use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_message::chain::ChainMessage;
-use fvm_shared::{address::Address, chainid::ChainID, error::ExitCode};
+use fvm_shared::{chainid::ChainID, error::ExitCode};
 use jsonrpc_v2::{ErrorLike, Params};
 use tendermint_rpc::{
     endpoint::{block, block_results, consensus_params, header},
@@ -19,8 +18,9 @@ use tendermint_rpc::{
 
 use crate::{
     conv::{
-        from_fvm::tokens_to_u256,
-        from_tm::{map_rpc_block_txs, to_rpc_block, to_rpc_receipt, to_rpc_transaction},
+        from_eth::to_fvm_address,
+        from_fvm::to_eth_tokens,
+        from_tm::{map_rpc_block_txs, to_eth_block, to_eth_receipt, to_eth_transaction},
     },
     JsonRpcData, JsonRpcResult,
 };
@@ -103,7 +103,7 @@ where
         let state_params = data.client.state_params(Some(height)).await?;
         let base_fee = &state_params.value.base_fee;
 
-        hist.base_fee_per_gas.push(tokens_to_u256(base_fee)?);
+        hist.base_fee_per_gas.push(to_eth_tokens(base_fee)?);
 
         let consensus_params: consensus_params::Response =
             data.tm().consensus_params(height).await?;
@@ -148,7 +148,7 @@ where
                         sum_gas_used += premiums[idx].1;
                         idx += 1;
                     }
-                    tokens_to_u256(&premiums[idx].0)
+                    to_eth_tokens(&premiums[idx].0)
                 }
             })
             .collect();
@@ -173,7 +173,7 @@ where
     C: Client + Sync + Send,
 {
     let res = data.client.state_params(None).await?;
-    let price = tokens_to_u256(&res.value.base_fee)?;
+    let price = to_eth_tokens(&res.value.base_fee)?;
     Ok(price)
 }
 
@@ -190,11 +190,11 @@ where
         BlockId::Hash(h) => data.header_by_hash(h).await?,
     };
     let height = header.height;
-    let addr = h160_to_fvm_addr(addr);
+    let addr = to_fvm_address(addr);
     let res = data.client.actor_state(&addr, Some(height)).await?;
 
     match res.value {
-        Some((_, state)) => Ok(tokens_to_u256(&state.balance)?),
+        Some((_, state)) => Ok(to_eth_tokens(&state.balance)?),
         None => error(ExitCode::USR_NOT_FOUND, format!("actor {addr} not found")),
     }
 }
@@ -300,7 +300,7 @@ where
                 let header: header::Response = data.tm().header(res.height).await?;
                 let sp = data.client.state_params(Some(res.height)).await?;
                 let chain_id = ChainID::from(sp.value.chain_id);
-                let mut tx = to_rpc_transaction(hash, *msg, chain_id)?;
+                let mut tx = to_eth_transaction(hash, *msg, chain_id)?;
                 tx.transaction_index = Some(et::U64::from(res.index));
                 tx.block_hash = Some(et::H256::from_slice(header.header.hash().as_bytes()));
                 tx.block_number = Some(et::U64::from(res.height.value()));
@@ -329,7 +329,7 @@ where
         BlockId::Hash(h) => data.header_by_hash(h).await?,
     };
     let height = header.height;
-    let addr = h160_to_fvm_addr(addr);
+    let addr = to_fvm_address(addr);
     let res = data.client.actor_state(&addr, Some(height)).await?;
 
     match res.value {
@@ -358,7 +358,7 @@ where
             let state_params = data.client.state_params(Some(res.height)).await?;
             let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(&res.tx)?;
             if let ChainMessage::Signed(msg) = msg {
-                let receipt = to_rpc_receipt(
+                let receipt = to_eth_receipt(
                     *msg,
                     res,
                     block_results,
@@ -415,8 +415,15 @@ pub async fn get_uncle_by_block_number_and_index<C>(
     Ok(None)
 }
 
-fn h160_to_fvm_addr(addr: et::H160) -> fvm_shared::address::Address {
-    Address::from(EthAddress(addr.0))
+/// Returns the receipt of a transaction by transaction hash.
+pub async fn send_raw_transaction<C>(
+    _data: JsonRpcData<C>,
+    Params((_tx_rlp,)): Params<(et::Bytes,)>,
+) -> JsonRpcResult<et::TxHash>
+where
+    C: Client + Sync + Send,
+{
+    todo!()
 }
 
 /// Fetch transaction results to produce the full block.
@@ -436,7 +443,7 @@ where
 
     let block_results: block_results::Response = data.tm().block_results(height).await?;
 
-    let block = to_rpc_block(block, block_results, base_fee, chain_id)?;
+    let block = to_eth_block(block, block_results, base_fee, chain_id)?;
 
     let block = if full_tx {
         map_rpc_block_txs(block, serde_json::to_value)?
@@ -468,7 +475,7 @@ where
                 .await?;
 
             let chain_id = ChainID::from(sp.value.chain_id);
-            let mut tx = to_rpc_transaction(hash, *msg, chain_id)?;
+            let mut tx = to_eth_transaction(hash, *msg, chain_id)?;
             tx.transaction_index = Some(index);
             tx.block_hash = Some(et::H256::from_slice(block.header.hash().as_bytes()));
             tx.block_number = Some(et::U64::from(block.header.height.value()));

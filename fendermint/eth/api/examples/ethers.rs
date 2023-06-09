@@ -39,7 +39,7 @@ use ethers_core::types::{
     transaction::eip2718::TypedTransaction, Address, BlockId, BlockNumber,
     Eip1559TransactionRequest, Signature, TransactionReceipt, H160, H256, U256, U64,
 };
-use fendermint_eth_api::conv::{from_evm, from_fvm::to_rpc_signature};
+use fendermint_eth_api::conv::{from_eth::to_fvm_message, from_fvm::to_eth_signature};
 use fendermint_rpc::message::MessageFactory;
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_message::signed::SignedMessage;
@@ -397,13 +397,13 @@ impl Signer for FvmSigner {
     async fn sign_transaction(&self, message: &TypedTransaction) -> Result<Signature, Self::Error> {
         match message {
             TypedTransaction::Eip1559(tx) => {
-                let msg = from_evm::to_fvm_message(tx)?;
+                let msg = to_fvm_message(tx)?;
                 let msg = SignedMessage::new_secp256k1(
                     msg,
                     &self.secret_key,
                     &ChainID::from(self.chain_id),
                 )?;
-                let sig = to_rpc_signature(msg.signature())?;
+                let sig = to_eth_signature(msg.signature())?;
                 Ok(sig)
             }
             other => panic!("unexpected transaction type: {other:?}"),

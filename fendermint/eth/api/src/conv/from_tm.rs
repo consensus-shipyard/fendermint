@@ -16,7 +16,7 @@ use tendermint::abci::response::DeliverTx;
 use tendermint::abci::EventAttribute;
 use tendermint_rpc::endpoint;
 
-use super::from_fvm::{to_rpc_from_address, to_rpc_signature, to_rpc_to_address, tokens_to_u256};
+use super::from_fvm::{to_eth_from_address, to_eth_signature, to_eth_to_address, to_eth_tokens};
 
 // Values taken from https://github.com/filecoin-project/lotus/blob/6e7dc9532abdb3171427347710df4c860f1957a2/chain/types/ethtypes/eth_types.go#L199
 
@@ -44,7 +44,7 @@ lazy_static! {
 }
 
 /// Convert a Tendermint block to Ethereum with only the block hashes in the body.
-pub fn to_rpc_block(
+pub fn to_eth_block(
     block: tendermint::Block,
     block_results: tendermint_rpc::endpoint::block_results::Response,
     base_fee: TokenAmount,
@@ -94,7 +94,7 @@ pub fn to_rpc_block(
         let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(data)?;
         if let ChainMessage::Signed(msg) = msg {
             let hash = tendermint::Hash::from_bytes(tendermint::hash::Algorithm::Sha256, data)?;
-            let mut tx = to_rpc_transaction(hash, *msg, chain_id)?;
+            let mut tx = to_eth_transaction(hash, *msg, chain_id)?;
             tx.transaction_index = Some(et::U64::from(idx));
             transactions.push(tx);
         }
@@ -108,7 +108,7 @@ pub fn to_rpc_block(
         author: Some(author),
         state_root: app_hash_to_root(&block.header().app_hash)?,
         transactions_root,
-        base_fee_per_gas: Some(tokens_to_u256(&base_fee)?),
+        base_fee_per_gas: Some(to_eth_tokens(&base_fee)?),
         difficulty: et::U256::zero(),
         total_difficulty: None,
         nonce: None,
@@ -131,13 +131,13 @@ pub fn to_rpc_block(
     Ok(block)
 }
 
-pub fn to_rpc_transaction(
+pub fn to_eth_transaction(
     hash: tendermint::Hash,
     msg: SignedMessage,
     chain_id: ChainID,
 ) -> anyhow::Result<et::Transaction> {
     // Based on https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#L2048
-    let sig = to_rpc_signature(msg.signature())?;
+    let sig = to_eth_signature(msg.signature())?;
 
     // The following hash is what we use during signing, however, it would be useless
     // when trying to look up the transaction in the Tendermint API.
@@ -155,12 +155,12 @@ pub fn to_rpc_transaction(
         block_hash: None,
         block_number: None,
         transaction_index: None,
-        from: to_rpc_from_address(&msg)?,
-        to: to_rpc_to_address(&msg),
-        value: tokens_to_u256(&msg.value)?,
+        from: to_eth_from_address(&msg)?,
+        to: to_eth_to_address(&msg),
+        value: to_eth_tokens(&msg.value)?,
         gas: et::U256::from(msg.gas_limit),
-        max_fee_per_gas: Some(tokens_to_u256(&msg.gas_fee_cap)?),
-        max_priority_fee_per_gas: Some(tokens_to_u256(&msg.gas_premium)?),
+        max_fee_per_gas: Some(to_eth_tokens(&msg.gas_fee_cap)?),
+        max_priority_fee_per_gas: Some(to_eth_tokens(&msg.gas_premium)?),
         gas_price: None,
         input: et::Bytes::from(msg.params.bytes().to_vec()),
         chain_id: Some(et::U256::from(u64::from(chain_id))),
@@ -177,7 +177,7 @@ pub fn to_rpc_transaction(
 
 // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#L2174
 // https://github.com/evmos/ethermint/blob/07cf2bd2b1ce9bdb2e44ec42a39e7239292a14af/rpc/backend/tx_info.go#L147
-pub fn to_rpc_receipt(
+pub fn to_eth_receipt(
     msg: SignedMessage,
     result: endpoint::tx::Response,
     block_results: endpoint::block_results::Response,
@@ -260,8 +260,8 @@ pub fn to_rpc_receipt(
         transaction_index,
         block_hash: Some(block_hash),
         block_number: Some(block_number),
-        from: to_rpc_from_address(&msg)?,
-        to: to_rpc_to_address(&msg),
+        from: to_eth_from_address(&msg)?,
+        to: to_eth_to_address(&msg),
         cumulative_gas_used,
         gas_used: Some(et::U256::from(result.tx_result.gas_used)),
         contract_address,
@@ -274,7 +274,7 @@ pub fn to_rpc_receipt(
         root: Some(app_hash_to_root(&header.app_hash)?),
         logs_bloom: et::Bloom::from_slice(&*EMPTY_ETH_BLOOM),
         transaction_type: Some(et::U64::from(2)), // Value used by Lotus.
-        effective_gas_price: Some(tokens_to_u256(&effective_gas_price)?),
+        effective_gas_price: Some(to_eth_tokens(&effective_gas_price)?),
         other: Default::default(),
     };
     Ok(receipt)

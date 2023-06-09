@@ -54,11 +54,11 @@ pub fn to_fvm_message(tx: &Eip1559TransactionRequest) -> anyhow::Result<Message>
     Ok(msg)
 }
 
-fn to_fvm_address(addr: H160) -> Address {
+pub fn to_fvm_address(addr: H160) -> Address {
     Address::from(EthAddress(addr.0))
 }
 
-fn to_fvm_tokens(value: U256) -> TokenAmount {
+pub fn to_fvm_tokens(value: U256) -> TokenAmount {
     let mut bz = Vec::new();
     value.to_big_endian(&mut bz);
     let atto = BigInt::from_bytes_be(Sign::Plus, &bz);
@@ -70,14 +70,14 @@ mod tests {
     use fendermint_testing::arb::ArbTokenAmount;
     use quickcheck_macros::quickcheck;
 
-    use crate::conv::from_fvm::tokens_to_u256;
+    use crate::conv::from_fvm::to_eth_tokens;
 
     use super::to_fvm_tokens;
 
     #[quickcheck]
     fn prop_to_token_amount(tokens: ArbTokenAmount) -> bool {
         let tokens0 = tokens.0;
-        if let Ok(value) = tokens_to_u256(&tokens0) {
+        if let Ok(value) = to_eth_tokens(&tokens0) {
             let tokens1 = to_fvm_tokens(value);
             return tokens0 == tokens1;
         }
