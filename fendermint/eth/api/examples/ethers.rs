@@ -25,7 +25,7 @@
 // See https://coinsbench.com/ethereum-with-rust-tutorial-part-1-create-simple-transactions-with-rust-26d365a7ea93
 // and https://coinsbench.com/ethereum-with-rust-tutorial-part-2-compile-and-deploy-solidity-contract-with-rust-c3cd16fce8ee
 
-use std::{fmt::Debug, path::PathBuf};
+use std::{fmt::Debug, path::PathBuf, time::Duration};
 
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
@@ -103,7 +103,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_max_level(opts.log_level())
         .init();
 
-    let provider = Provider::<Http>::try_from(opts.http_endpoint())?;
+    let mut provider = Provider::<Http>::try_from(opts.http_endpoint())?;
+
+    // Tendermint block interval is lower.
+    provider.set_interval(Duration::from_secs(2));
 
     run(provider, opts).await?;
 
@@ -350,6 +353,7 @@ async fn example_transfer(mw: TestMiddleware, to: ActorID) -> anyhow::Result<Tra
         .send_transaction(tx, None)
         .await?
         .log_msg("Pending transfer")
+        .retries(5)
         .await?
         .context("Missing receipt")?;
 
