@@ -397,7 +397,7 @@ impl Signer for FvmSigner {
     async fn sign_transaction(&self, message: &TypedTransaction) -> Result<Signature, Self::Error> {
         match message {
             TypedTransaction::Eip1559(tx) => {
-                let msg = from_evm::to_fvm_message(tx);
+                let msg = from_evm::to_fvm_message(tx)?;
                 let msg = SignedMessage::new_secp256k1(
                     msg,
                     &self.secret_key,
