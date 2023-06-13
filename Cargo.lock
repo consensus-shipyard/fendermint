@@ -2235,7 +2235,6 @@ dependencies = [
  "paste",
  "quickcheck 1.0.3",
  "quickcheck_macros",
- "rlp",
  "serde_json",
  "tendermint",
  "tendermint-rpc",

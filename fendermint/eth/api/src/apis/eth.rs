@@ -6,16 +6,22 @@
 // * https://github.com/filecoin-project/lotus/blob/v1.23.1-rc2/api/api_full.go#L783
 // * https://github.com/filecoin-project/lotus/blob/v1.23.1-rc2/node/impl/full/eth.go
 
+use ethers_core::types::transaction::eip2718::TypedTransaction;
 use ethers_core::types::{self as et, BlockId};
+use ethers_core::utils::rlp;
+use fendermint_rpc::message::MessageFactory;
 use fendermint_rpc::query::QueryClient;
 use fendermint_vm_message::chain::ChainMessage;
+use fendermint_vm_message::signed::SignedMessage;
+use fvm_shared::crypto::signature::Signature;
 use fvm_shared::{chainid::ChainID, error::ExitCode};
 use jsonrpc_v2::Params;
 use tendermint_rpc::{
-    endpoint::{block, block_results, consensus_params, header},
+    endpoint::{block, block_results, broadcast::tx_sync, consensus_params, header},
     Client,
 };
 
+use crate::conv::from_eth::to_fvm_message;
 use crate::{
     conv::{
         from_eth::to_fvm_address,
@@ -407,15 +413,38 @@ pub async fn get_uncle_by_block_number_and_index<C>(
     Ok(None)
 }
 
-/// Returns the receipt of a transaction by transaction hash.
+/// Creates new message call transaction or a contract creation for signed transactions.
 pub async fn send_raw_transaction<C>(
-    _data: JsonRpcData<C>,
+    data: JsonRpcData<C>,
     Params((tx,)): Params<(et::Bytes,)>,
 ) -> JsonRpcResult<et::TxHash>
 where
     C: Client + Sync + Send + Send,
 {
-    //let rlp = rlp::Rlp::new(tx.as_ref());
-    //let (tx, sig) = et::transaction::eip2718::TypedTransaction::decode_signed(&rlp)?;
-    todo!()
+    let rlp = rlp::Rlp::new(tx.as_ref());
+    let (tx, sig) = et::transaction::eip2718::TypedTransaction::decode_signed(&rlp)?;
+    let msg = match tx {
+        TypedTransaction::Eip1559(tx) => to_fvm_message(&tx)?,
+        TypedTransaction::Legacy(_) | TypedTransaction::Eip2930(_) => {
+            return error(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                "unexpected transaction type",
+            )
+        }
+    };
+    let msg = SignedMessage {
+        message: msg,
+        signature: Signature::new_secp256k1(sig.to_vec()),
+    };
+    let msg = ChainMessage::Signed(Box::new(msg));
+    let bz: Vec<u8> = MessageFactory::serialize(&msg)?;
+    let res: tx_sync::Response = data.tm().broadcast_tx_sync(bz).await?;
+    if res.code.is_ok() {
+        Ok(et::TxHash::from_slice(res.hash.as_bytes()))
+    } else {
+        error(
+            ExitCode::new(res.code.value()),
+            hex::encode(res.data.as_ref()), // TODO: What is the content?
+        )
+    }
 }
