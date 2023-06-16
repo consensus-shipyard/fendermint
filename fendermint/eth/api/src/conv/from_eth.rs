@@ -42,8 +42,6 @@ pub fn to_fvm_message(tx: &Eip1559TransactionRequest) -> anyhow::Result<Message>
     // to get the signing scheme correct.
     let from = to_fvm_address(tx.from.unwrap_or_default());
 
-    tracing::info!(src = ?tx.from, dst = ?from, "converting ETH to FVM sender address");
-
     let msg = Message {
         version: 0,
         from,

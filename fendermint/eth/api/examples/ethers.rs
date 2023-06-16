@@ -389,6 +389,11 @@ fn make_middleware(
 ///
 /// This will change in https://github.com/consensus-shipyard/fendermint/issues/114 which introduces
 /// EVM specific delegated signatures.
+///
+/// XXX: It turns out that this doesn't work because `from` is not part of the RLP, it's not sent with the message,
+/// and the deserializer assigns it to be the hash of a public key recovered based on the hash of the message and
+/// the signature. That hash is not the same as this one, and because the `from` we use here is lost we have no
+/// way to reconstruct it either. Therefore signature checks are disabled for now.
 #[derive(Debug)]
 struct FvmSigner {
     secret_key: SecretKey,

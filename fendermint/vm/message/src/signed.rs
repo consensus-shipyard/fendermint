@@ -4,6 +4,7 @@
 
 use cid::Cid;
 use fvm_ipld_encoding::tuple::{Deserialize_tuple, Serialize_tuple};
+use fvm_shared::address::Protocol;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::crypto::signature::{Signature, SignatureType};
 use fvm_shared::message::Message;
@@ -78,6 +79,10 @@ impl SignedMessage {
         signature: &Signature,
         chain_id: &ChainID,
     ) -> Result<(), SignedMessageError> {
+        if message.from.protocol() == Protocol::Delegated {
+            // TODO: https://github.com/consensus-shipyard/fendermint/issues/114
+            return Ok(());
+        }
         let data = Self::bytes_to_sign(message, chain_id)?;
 
         signature
