@@ -100,7 +100,7 @@ mod tests {
     use super::to_eth_tokens;
 
     #[quickcheck]
-    fn prop_token_amount_to_u256(tokens: ArbTokenAmount) -> bool {
+    fn prop_to_eth_tokens(tokens: ArbTokenAmount) -> bool {
         let tokens = tokens.0;
         if let Ok(u256_from_tokens) = to_eth_tokens(&tokens) {
             let tokens_as_str = tokens.atto().to_str_radix(10);
@@ -111,7 +111,7 @@ mod tests {
     }
 
     #[test]
-    fn test_token_amount_to_u256() {
+    fn test_to_eth_tokens() {
         let atto = BigInt::from_str(
             "99191064924191451313862974502415542781658129482631472725645205117646186753315",
         )

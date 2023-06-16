@@ -40,15 +40,15 @@ pub fn to_fvm_message(tx: &Eip1559TransactionRequest) -> anyhow::Result<Message>
         from,
         to,
         sequence: tx.nonce.unwrap_or_default().as_u64(),
-        value: to_fvm_tokens(tx.value.unwrap_or_default()),
+        value: to_fvm_tokens(&tx.value.unwrap_or_default()),
         method_num,
         params: RawBytes::new(tx.data.clone().unwrap_or_default().to_vec()),
         gas_limit: tx
             .gas
             .map(|gas| gas.min(U256::from(u64::MAX)).as_u64())
             .unwrap_or_default(),
-        gas_fee_cap: to_fvm_tokens(tx.max_fee_per_gas.unwrap_or_default()),
-        gas_premium: to_fvm_tokens(tx.max_fee_per_gas.unwrap_or_default()),
+        gas_fee_cap: to_fvm_tokens(&tx.max_fee_per_gas.unwrap_or_default()),
+        gas_premium: to_fvm_tokens(&tx.max_fee_per_gas.unwrap_or_default()),
     };
 
     Ok(msg)
@@ -58,8 +58,8 @@ pub fn to_fvm_address(addr: H160) -> Address {
     Address::from(EthAddress(addr.0))
 }
 
-pub fn to_fvm_tokens(value: U256) -> TokenAmount {
-    let mut bz = Vec::new();
+pub fn to_fvm_tokens(value: &U256) -> TokenAmount {
+    let mut bz = [0u8; 256 / 8];
     value.to_big_endian(&mut bz);
     let atto = BigInt::from_bytes_be(Sign::Plus, &bz);
     TokenAmount::from_atto(atto)
@@ -67,6 +67,7 @@ pub fn to_fvm_tokens(value: U256) -> TokenAmount {
 
 #[cfg(test)]
 mod tests {
+
     use fendermint_testing::arb::ArbTokenAmount;
     use quickcheck_macros::quickcheck;
 
@@ -78,7 +79,7 @@ mod tests {
     fn prop_to_token_amount(tokens: ArbTokenAmount) -> bool {
         let tokens0 = tokens.0;
         if let Ok(value) = to_eth_tokens(&tokens0) {
-            let tokens1 = to_fvm_tokens(value);
+            let tokens1 = to_fvm_tokens(&value);
             return tokens0 == tokens1;
         }
         true
