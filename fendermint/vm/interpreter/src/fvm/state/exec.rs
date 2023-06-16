@@ -11,15 +11,13 @@ use fvm::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::{
-    address::Address, chainid::ChainID, clock::ChainEpoch, econ::TokenAmount, message::Message,
+    chainid::ChainID, clock::ChainEpoch, econ::TokenAmount, message::Message,
     version::NetworkVersion,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::fvm::externs::FendermintExterns;
 use fendermint_vm_core::{chainid::HasChainID, Timestamp};
-
-use super::CanResolveAddress;
 
 /// Parts of the state which evolve during the lifetime of the chain.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -121,14 +119,5 @@ where
 {
     fn chain_id(&self) -> &ChainID {
         &self.executor.context().network.chain_id
-    }
-}
-
-impl<DB> CanResolveAddress for FvmExecState<DB>
-where
-    DB: Blockstore + 'static,
-{
-    fn address_to_public_key(&self, addr: Address) -> anyhow::Result<Option<Address>> {
-        self.executor.state_tree().address_to_public_key(addr)
     }
 }

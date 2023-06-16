@@ -4,7 +4,6 @@
 
 use cid::Cid;
 use fvm_ipld_encoding::tuple::{Deserialize_tuple, Serialize_tuple};
-use fvm_shared::address::Address;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::crypto::signature::{Signature, SignatureType};
 use fvm_shared::message::Message;
@@ -74,27 +73,21 @@ impl SignedMessage {
     }
 
     /// Verify that the message CID was signed by the `from` address.
-    ///
-    /// The address is not taken from the message to allow non-public-key
-    /// address types to be resolved first.
     pub fn verify_signature(
         message: &Message,
         signature: &Signature,
-        from: &Address,
         chain_id: &ChainID,
     ) -> Result<(), SignedMessageError> {
         let data = Self::bytes_to_sign(message, chain_id)?;
 
         signature
-            .verify(&data, &from)
+            .verify(&data, &message.from)
             .map_err(SignedMessageError::InvalidSignature)
     }
 
     /// Verifies that the from address of the message generated the signature.
-    ///
-    /// For this to work the from address has to be a public key.
     pub fn verify(&self, chain_id: &ChainID) -> Result<(), SignedMessageError> {
-        Self::verify_signature(&self.message, &self.signature, &self.message.from, chain_id)
+        Self::verify_signature(&self.message, &self.signature, chain_id)
     }
 
     /// Returns reference to the unsigned message.

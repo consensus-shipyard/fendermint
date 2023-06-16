@@ -7,11 +7,9 @@ use cid::Cid;
 use fendermint_vm_core::chainid::HasChainID;
 use fvm::state_tree::StateTree;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_shared::{address::Address, chainid::ChainID};
+use fvm_shared::chainid::ChainID;
 
 use crate::fvm::store::ReadOnlyBlockstore;
-
-use super::CanResolveAddress;
 
 /// A state we create for the execution of all the messages in a block.
 pub struct FvmCheckState<DB>
@@ -63,14 +61,5 @@ where
 {
     fn chain_id(&self) -> &ChainID {
         &self.chain_id
-    }
-}
-
-impl<DB> CanResolveAddress for FvmCheckState<DB>
-where
-    DB: Blockstore + 'static,
-{
-    fn address_to_public_key(&self, addr: Address) -> anyhow::Result<Option<Address>> {
-        self.state_tree.address_to_public_key(addr)
     }
 }

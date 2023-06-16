@@ -7,7 +7,7 @@ use fendermint_vm_core::chainid::HasChainID;
 use fendermint_vm_message::signed::{SignedMessage, SignedMessageError};
 
 use crate::{
-    fvm::{state::CanResolveAddress, FvmApplyRet, FvmCheckRet, FvmMessage},
+    fvm::{FvmApplyRet, FvmCheckRet, FvmMessage},
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, QueryInterpreter,
 };
 
@@ -34,7 +34,7 @@ impl<I> SignedMessageInterpreter<I> {
 impl<I, S> ExecInterpreter for SignedMessageInterpreter<I>
 where
     I: ExecInterpreter<Message = FvmMessage, DeliverOutput = FvmApplyRet, State = S>,
-    S: HasChainID + CanResolveAddress + Send + 'static,
+    S: HasChainID + Send + 'static,
 {
     type State = I::State;
     type Message = SignedMessage;
@@ -50,29 +50,16 @@ where
         // Doing these first, so the compiler doesn't need `Send` bound, which it would if the
         // async call to `inner.deliver` would be inside a match holding a reference to `state`.
         let chain_id = state.chain_id();
-        let from = state.address_to_public_key(msg.message().from)?;
-        match from {
-            None => {
-                let e = InvalidSignature("failed to resolve sender to a public key".into());
-                Ok((state, Err(e)))
+
+        match msg.verify(chain_id) {
+            Err(SignedMessageError::Ipld(e)) => Err(anyhow!(e)),
+            Err(SignedMessageError::InvalidSignature(s)) => {
+                // TODO: We can penalize the validator for including an invalid signature.
+                Ok((state, Err(InvalidSignature(s))))
             }
-            Some(from) => {
-                match SignedMessage::verify_signature(
-                    msg.message(),
-                    msg.signature(),
-                    &from,
-                    chain_id,
-                ) {
-                    Err(SignedMessageError::Ipld(e)) => Err(anyhow!(e)),
-                    Err(SignedMessageError::InvalidSignature(s)) => {
-                        // TODO: We can penalize the validator for including an invalid signature.
-                        Ok((state, Err(InvalidSignature(s))))
-                    }
-                    Ok(()) => {
-                        let (state, ret) = self.inner.deliver(state, msg.message).await?;
-                        Ok((state, Ok(ret)))
-                    }
-                }
+            Ok(()) => {
+                let (state, ret) = self.inner.deliver(state, msg.message).await?;
+                Ok((state, Ok(ret)))
             }
         }
     }
@@ -90,7 +77,7 @@ where
 impl<I, S> CheckInterpreter for SignedMessageInterpreter<I>
 where
     I: CheckInterpreter<Message = FvmMessage, Output = FvmCheckRet, State = S>,
-    S: HasChainID + CanResolveAddress + Send + 'static,
+    S: HasChainID + Send + 'static,
 {
     type State = I::State;
     type Message = SignedMessage;
@@ -105,17 +92,7 @@ where
         let verify_result = if is_recheck {
             Ok(())
         } else {
-            match state.address_to_public_key(msg.message().from)? {
-                Some(from) => SignedMessage::verify_signature(
-                    &msg.message(),
-                    &msg.signature(),
-                    &from,
-                    state.chain_id(),
-                ),
-                None => Err(SignedMessageError::InvalidSignature(
-                    "cannot resolve sender to public key".into(),
-                )),
-            }
+            msg.verify(state.chain_id())
         };
 
         match verify_result {
