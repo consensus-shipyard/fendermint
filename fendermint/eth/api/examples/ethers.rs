@@ -108,6 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Tendermint block interval is lower.
     provider.set_interval(Duration::from_secs(2));
 
+    tracing::debug!("running the tests...");
     run(provider, opts).await?;
 
     Ok(())
@@ -133,6 +134,7 @@ where
     F: FnOnce(&T) -> C,
     C: CheckResult,
 {
+    tracing::debug!("checking request {method}...");
     match res {
         Ok(value) => match check(&value).check_result() {
             Ok(()) => Ok(value),
@@ -207,7 +209,8 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
         !id.is_zero()
     })?;
 
-    let mw = make_middleware(provider.clone(), chain_id.as_u64(), &opts)?;
+    let mw = make_middleware(provider.clone(), chain_id.as_u64(), &opts)
+        .context("failed to create middleware")?;
 
     request(
         "eth_getBalance",
@@ -279,7 +282,9 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     })?;
 
     // Send the transaction and wait for receipt
-    let receipt = example_transfer(mw, opts.actor_id_to).await?;
+    let receipt = example_transfer(mw, opts.actor_id_to)
+        .await
+        .context("transfer failed")?;
     let tx_hash = receipt.transaction_hash;
     let bn = receipt.block_number.unwrap();
     let bh = receipt.block_hash.unwrap();
@@ -351,7 +356,8 @@ async fn example_transfer(mw: TestMiddleware, to: ActorID) -> anyhow::Result<Tra
     // `send_transaction` will fill in the missing fields like `from` and `nonce` (which involves querying the API).
     let receipt = mw
         .send_transaction(tx, None)
-        .await?
+        .await
+        .context("failed to send transaction")?
         .log_msg("Pending transfer")
         .retries(5)
         .await?

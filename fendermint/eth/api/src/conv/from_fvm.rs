@@ -94,10 +94,13 @@ mod tests {
     use std::str::FromStr;
 
     use fendermint_testing::arb::ArbTokenAmount;
-    use fvm_shared::{bigint::BigInt, econ::TokenAmount};
+    use fendermint_vm_message::signed::SignedMessage;
+    use fvm_shared::{bigint::BigInt, chainid::ChainID, econ::TokenAmount};
+    use libsecp256k1::SecretKey;
     use quickcheck_macros::quickcheck;
+    use rand::{rngs::StdRng, SeedableRng};
 
-    use super::to_eth_tokens;
+    use super::{to_eth_signature, to_eth_tokens};
 
     #[quickcheck]
     fn prop_to_eth_tokens(tokens: ArbTokenAmount) -> bool {
@@ -120,5 +123,28 @@ mod tests {
         let tokens = TokenAmount::from_atto(atto);
 
         to_eth_tokens(&tokens).unwrap();
+    }
+
+    #[quickcheck]
+    fn prop_signature(msg: SignedMessage, seed: u64, chain_id: u64) -> Result<(), String> {
+        let chain_id = ChainID::from(chain_id);
+
+        let mut rng = StdRng::seed_from_u64(seed);
+        let sk = SecretKey::random(&mut rng);
+
+        let msg = SignedMessage::new_secp256k1(msg.into_message(), &sk, &chain_id)
+            .map_err(|e| format!("failed to sign: {e}"))?;
+
+        let sig0 = msg.signature();
+
+        let sig1 =
+            to_eth_signature(sig0).map_err(|e| format!("failed to convert signature: {e}"))?;
+
+        let sig2 = fvm_shared::crypto::signature::Signature::new_secp256k1(sig1.to_vec());
+
+        if *sig0 != sig2 {
+            return Err(format!("signatures don't match: {sig0:?} != {sig2:?}"));
+        }
+        Ok(())
     }
 }

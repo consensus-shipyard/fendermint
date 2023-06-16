@@ -34,6 +34,7 @@ clap = { workspace = true }
 ethers = { workspace = true, features = ["abigen"] }
 hex = { workspace = true }
 lazy_static = { workspace = true }
+rand = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -42,3 +43,4 @@ quickcheck_macros = { workspace = true }
 thiserror = { workspace = true }
 
 fendermint_testing = { path = "../../testing", features = ["arb"] }
+fendermint_vm_message = { path = "../../vm/message", features = ["arb"] }
