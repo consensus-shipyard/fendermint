@@ -372,8 +372,11 @@ fn make_middleware(
     chain_id: u64,
     opts: &Options,
 ) -> anyhow::Result<TestMiddleware> {
-    let secret_key = MessageFactory::read_secret_key(&opts.secret_key_from)?;
+    // Note that the `address` will be assigned to the `from` field of the transactions signed by this
+    // middleware, however it will not be part of the RLP encoded message. The library will recover it
+    // during deserialization, but it will not be the same as this, it will be the hash of the public key.
     let address = H160::from_slice(EthAddress::from_id(opts.actor_id_from).as_ref());
+    let secret_key = MessageFactory::read_secret_key(&opts.secret_key_from)?;
     let signer = FvmSigner {
         secret_key,
         address,

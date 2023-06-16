@@ -145,6 +145,7 @@ docker run \
   --volume ${TEST_SCRIPTS_DIR}:/scripts \
   --env FM_DATA_DIR=/data/fendermint/data \
   --env FM_CHAIN_NAME=${NETWORK_NAME} \
+  --env LOG_LEVEL=info \
   --entrypoint ${ENTRY} \
   ${FM_DOCKER_IMAGE} \
   ${CMD}
@@ -153,7 +154,7 @@ dependencies = ["test-data-dir", "network-create"]
 
 [tasks.ethapi-start]
 extend = "ethapi-run"
-env = { "CMD" = "--log-level debug eth run", "FLAGS" = "-d" }
+env = { "CMD" = "eth run", "FLAGS" = "-d" }
 
 
 [tasks.ethapi-run]
@@ -167,6 +168,7 @@ docker run \
   --network ${NETWORK_NAME} \
   --publish 8545:${ETHAPI_HOST_PORT} \
   --env TENDERMINT_RPC_URL=http://${CMT_CONTAINER_NAME}:26657 \
+  --env LOG_LEVEL=debug \
   ${FM_DOCKER_IMAGE} \
   ${CMD}
 """

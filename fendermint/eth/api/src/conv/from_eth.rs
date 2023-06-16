@@ -33,7 +33,16 @@ pub fn to_fvm_message(tx: &Eip1559TransactionRequest) -> anyhow::Result<Message>
             anyhow::bail!("Turning name to address would require ENS which is not supported.")
         }
     };
+
+    // XXX: Unfortunately this address is different on the client and the server,
+    // because `from` is not part of the RLP representation of the message.
+    // Instead, the library assigns it during deserialization to the hash of the
+    // public key recovered from the signature and the message hash.
+    // The result is that it's going to become a delegated address and we have
+    // to get the signing scheme correct.
     let from = to_fvm_address(tx.from.unwrap_or_default());
+
+    tracing::info!(src = ?tx.from, dst = ?from, "converting ETH to FVM sender address");
 
     let msg = Message {
         version: 0,
