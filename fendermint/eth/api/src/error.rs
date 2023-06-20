@@ -3,6 +3,7 @@
 
 use fvm_shared::error::ExitCode;
 
+#[derive(Debug, Clone)]
 pub struct JsonRpcError {
     code: i64,
     message: String,
@@ -42,3 +43,11 @@ pub fn error<T>(exit_code: ExitCode, msg: impl ToString) -> Result<T, JsonRpcErr
         message: msg.to_string(),
     })
 }
+
+impl std::fmt::Display for JsonRpcError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} (code: {})", self.message, self.code)
+    }
+}
+
+impl std::error::Error for JsonRpcError {}

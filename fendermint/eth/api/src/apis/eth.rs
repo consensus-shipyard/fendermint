@@ -90,25 +90,25 @@ where
     let mut block_count = block_count.as_usize();
 
     while block_count > 0 {
-        let block = data.block_by_height(block_number).await?;
+        let block = data
+            .block_by_height(block_number)
+            .await
+            .context("failed to get block")?;
+
         let height = block.header().height;
 
         // Genesis has height 1, but no relevant fees.
         if height.value() <= 1 {
             break;
         }
-
-        hist.oldest_block = et::U256::from(height.value());
-
         let state_params = data.client.state_params(Some(height)).await?;
         let base_fee = &state_params.value.base_fee;
 
-        hist.base_fee_per_gas.push(to_eth_tokens(base_fee)?);
-
-        let consensus_params: consensus_params::Response =
-            data.tm().consensus_params(height).await?;
-
-        let block_results: block_results::Response = data.tm().block_results(height).await?;
+        let consensus_params: consensus_params::Response = data
+            .tm()
+            .consensus_params(height)
+            .await
+            .context("failed to get consensus params")?;
 
         let mut block_gas_limit = consensus_params.consensus_params.block.max_gas;
         if block_gas_limit <= 0 {
@@ -116,46 +116,49 @@ where
                 i64::try_from(fvm_shared::BLOCK_GAS_LIMIT).expect("FVM block gas limit not i64")
         };
 
-        let txs_results = block_results.txs_results.unwrap_or_default();
+        // The latest block might not have results yet.
+        if let Ok(block_results) = data.tm().block_results(height).await {
+            let txs_results = block_results.txs_results.unwrap_or_default();
+            let total_gas_used: i64 = txs_results.iter().map(|r| r.gas_used).sum();
 
-        let total_gas_used: i64 = txs_results.iter().map(|r| r.gas_used).sum();
+            let mut premiums = Vec::new();
+            for (tx, txres) in block.data().iter().zip(txs_results) {
+                let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(tx)
+                    .context("failed to decode tx as ChainMessage")?;
 
-        hist.gas_used_ratio
-            .push(total_gas_used as f64 / block_gas_limit as f64);
-
-        let mut premiums = Vec::new();
-        for (tx, txres) in block.data().iter().zip(txs_results) {
-            let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(tx)
-                .context("failed to decode tx as ChainMessage")?;
-
-            if let ChainMessage::Signed(msg) = msg {
-                let premium = crate::gas::effective_gas_premium(&msg.message, base_fee);
-                premiums.push((premium, txres.gas_used));
-            }
-        }
-        premiums.sort();
-
-        let premium_gas_used: i64 = premiums.iter().map(|(_, gas)| *gas).sum();
-
-        let rewards: Result<Vec<et::U256>, _> = reward_percentiles
-            .iter()
-            .map(|p| {
-                if premiums.is_empty() {
-                    Ok(et::U256::zero())
-                } else {
-                    let threshold_gas_used = (premium_gas_used as f64 * p / 100f64) as i64;
-                    let mut sum_gas_used = 0;
-                    let mut idx = 0;
-                    while sum_gas_used < threshold_gas_used && idx < premiums.len() - 1 {
-                        sum_gas_used += premiums[idx].1;
-                        idx += 1;
-                    }
-                    to_eth_tokens(&premiums[idx].0)
+                if let ChainMessage::Signed(msg) = msg {
+                    let premium = crate::gas::effective_gas_premium(&msg.message, base_fee);
+                    premiums.push((premium, txres.gas_used));
                 }
-            })
-            .collect();
+            }
+            premiums.sort();
 
-        hist.reward.push(rewards?);
+            let premium_gas_used: i64 = premiums.iter().map(|(_, gas)| *gas).sum();
+
+            let rewards: Result<Vec<et::U256>, _> = reward_percentiles
+                .iter()
+                .map(|p| {
+                    if premiums.is_empty() {
+                        Ok(et::U256::zero())
+                    } else {
+                        let threshold_gas_used = (premium_gas_used as f64 * p / 100f64) as i64;
+                        let mut sum_gas_used = 0;
+                        let mut idx = 0;
+                        while sum_gas_used < threshold_gas_used && idx < premiums.len() - 1 {
+                            sum_gas_used += premiums[idx].1;
+                            idx += 1;
+                        }
+                        to_eth_tokens(&premiums[idx].0)
+                    }
+                })
+                .collect();
+
+            hist.oldest_block = et::U256::from(height.value());
+            hist.base_fee_per_gas.push(to_eth_tokens(base_fee)?);
+            hist.gas_used_ratio
+                .push(total_gas_used as f64 / block_gas_limit as f64);
+            hist.reward.push(rewards?);
+        }
 
         block_count -= 1;
         block_number = et::BlockNumber::Number(et::U64::from(height.value()));
