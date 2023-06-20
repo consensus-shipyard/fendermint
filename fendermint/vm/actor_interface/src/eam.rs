@@ -45,7 +45,7 @@ impl EthAddress {
             return Err(Error::InvalidSECPLength(pubkey.len()));
         }
         let mut hash20 = [0u8; 20];
-        // Based on [ethers::core::types::Signature]
+        // Based on [ethers_core::utils::secret_key_to_address]
         let hash32 = cid::multihash::Code::Keccak256.digest(&pubkey[1..]);
         hash20.copy_from_slice(&hash32.digest()[12..]);
         Ok(Self(hash20))
@@ -83,5 +83,29 @@ impl CreateReturn {
     /// Delegated EAM address of the EVM actor, which can be used to invoke the contract.
     pub fn delegated_address(&self) -> Address {
         Address::new_delegated(EAM_ACTOR_ID, &self.eth_address.0).expect("ETH address should work")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ethers_core::k256::ecdsa::SigningKey;
+    use quickcheck_macros::quickcheck;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+
+    use super::EthAddress;
+
+    #[quickcheck]
+    fn prop_new_secp256k1(seed: u64) -> bool {
+        let mut rng = StdRng::seed_from_u64(seed);
+        let sk = libsecp256k1::SecretKey::random(&mut rng);
+        let pk = libsecp256k1::PublicKey::from_secret_key(&sk);
+
+        let signing_key = SigningKey::from_slice(&sk.serialize()).unwrap();
+        let address = ethers_core::utils::secret_key_to_address(&signing_key);
+
+        let eth_address = EthAddress::new_secp256k1(&pk.serialize()).unwrap();
+
+        address.0 == eth_address.0
     }
 }
