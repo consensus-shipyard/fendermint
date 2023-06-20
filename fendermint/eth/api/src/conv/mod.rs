@@ -3,4 +3,4 @@
 
 pub mod from_eth;
 pub mod from_fvm;
-pub(crate) mod from_tm;
+pub mod from_tm;

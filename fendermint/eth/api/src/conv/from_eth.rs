@@ -34,12 +34,9 @@ pub fn to_fvm_message(tx: &Eip1559TransactionRequest) -> anyhow::Result<Message>
         }
     };
 
-    // XXX: Unfortunately this address is different on the client and the server,
-    // because `from` is not part of the RLP representation of the message.
-    // Instead, the library assigns it during deserialization to the hash of the
-    // public key recovered from the signature and the message hash.
-    // The result is that it's going to become a delegated address and we have
-    // to get the signing scheme correct.
+    // The `from` of the transaction is inferred from the signature.
+    // As long as the client and the server use the same hashing scheme,
+    // this should be usable as a delegated address.
     let from = to_fvm_address(tx.from.unwrap_or_default());
 
     let msg = Message {

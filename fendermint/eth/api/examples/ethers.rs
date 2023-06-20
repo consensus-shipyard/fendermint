@@ -25,29 +25,32 @@
 // See https://coinsbench.com/ethereum-with-rust-tutorial-part-1-create-simple-transactions-with-rust-26d365a7ea93
 // and https://coinsbench.com/ethereum-with-rust-tutorial-part-2-compile-and-deploy-solidity-contract-with-rust-c3cd16fce8ee
 
-use std::{fmt::Debug, path::PathBuf, time::Duration};
+use std::{
+    fmt::Debug,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use anyhow::{anyhow, Context};
-use async_trait::async_trait;
 use clap::Parser;
 use ethers::{
     prelude::SignerMiddleware,
     providers::{Http, Middleware, Provider, ProviderError},
-    signers::Signer,
+    signers::{Signer, Wallet},
 };
-use ethers_core::types::{
-    transaction::eip2718::TypedTransaction, Address, BlockId, BlockNumber,
-    Eip1559TransactionRequest, Signature, TransactionReceipt, H160, H256, U256, U64,
+use ethers_core::{
+    k256::ecdsa::SigningKey,
+    types::{
+        Address, BlockId, BlockNumber, Eip1559TransactionRequest, TransactionReceipt, H160, H256,
+        U256, U64,
+    },
 };
-use fendermint_eth_api::conv::{from_eth::to_fvm_message, from_fvm::to_eth_signature};
 use fendermint_rpc::message::MessageFactory;
 use fendermint_vm_actor_interface::eam::EthAddress;
-use fendermint_vm_message::signed::SignedMessage;
-use fvm_shared::{chainid::ChainID, ActorID};
 use libsecp256k1::SecretKey;
 use tracing::Level;
 
-type TestMiddleware = SignerMiddleware<Provider<Http>, FvmSigner>;
+type TestMiddleware = SignerMiddleware<Provider<Http>, Wallet<SigningKey>>;
 
 #[derive(Parser, Debug)]
 pub struct Options {
@@ -59,21 +62,15 @@ pub struct Options {
     #[arg(long, default_value = "8545", env = "FM_ETH__HTTP__PORT")]
     pub http_port: u32,
 
-    /// ID of the actor we send transactions from.
-    ///
-    /// Assumed to exist with a non-zero balance.
-    #[arg(long, short)]
-    pub actor_id_from: ActorID,
-
-    /// Path to the secret key to deploy with, expected to be in Base64 format.
+    /// Secret key used to send funds, expected to be in Base64 format.
     ///
     /// Assumed to exist with a non-zero balance.
     #[arg(long, short)]
     pub secret_key_from: PathBuf,
 
-    /// ID of an actor to send transfers to.
+    /// Secret key used to receive funds, expected to be in Base64 format.
     #[arg(long, short)]
-    pub actor_id_to: ActorID,
+    pub secret_key_to: PathBuf,
 
     /// Enable DEBUG logs.
     #[arg(long, short)]
@@ -144,6 +141,25 @@ where
     }
 }
 
+struct TestAccount {
+    secret_key: SecretKey,
+    eth_addr: H160,
+}
+
+impl TestAccount {
+    pub fn new(sk: &Path) -> anyhow::Result<Self> {
+        let sk = MessageFactory::read_secret_key(sk)?;
+        let pk = libsecp256k1::PublicKey::from_secret_key(&sk);
+        let ea = EthAddress::new_secp256k1(&pk.serialize())?;
+        let h = Address::from_slice(&ea.0);
+
+        Ok(Self {
+            secret_key: sk,
+            eth_addr: h,
+        })
+    }
+}
+
 // The following methods are called by the [`Provider`].
 // This is not an exhaustive list of JSON-RPC methods that the API implements, just what the client library calls.
 //
@@ -195,7 +211,8 @@ where
 
 /// Exercise the above methods, so we know at least the parameters are lined up correctly.
 async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
-    let actor_addr = actor_id_to_eth_addr(opts.actor_id_from);
+    let from = TestAccount::new(&opts.secret_key_from)?;
+    let to = TestAccount::new(&opts.secret_key_to)?;
 
     request("eth_accounts", provider.get_accounts().await, |acnts| {
         acnts.is_empty()
@@ -209,12 +226,12 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
         !id.is_zero()
     })?;
 
-    let mw = make_middleware(provider.clone(), chain_id.as_u64(), &opts)
+    let mw = make_middleware(provider.clone(), chain_id.as_u64(), &from)
         .context("failed to create middleware")?;
 
     request(
         "eth_getBalance",
-        provider.get_balance(actor_addr, None).await,
+        provider.get_balance(from.eth_addr, None).await,
         |b| !b.is_zero(),
     )?;
 
@@ -254,7 +271,7 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     request(
         "eth_getTransactionCount",
         provider
-            .get_transaction_count(actor_addr, Some(BlockId::Number(BlockNumber::Earliest)))
+            .get_transaction_count(from.eth_addr, Some(BlockId::Number(BlockNumber::Earliest)))
             .await,
         |u| u.is_zero(),
     )?;
@@ -282,9 +299,7 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     })?;
 
     // Send the transaction and wait for receipt
-    let receipt = example_transfer(mw, opts.actor_id_to)
-        .await
-        .context("transfer failed")?;
+    let receipt = example_transfer(mw, to).await.context("transfer failed")?;
     let tx_hash = receipt.transaction_hash;
     let bn = receipt.block_number.unwrap();
     let bh = receipt.block_hash.unwrap();
@@ -335,17 +350,13 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn actor_id_to_eth_addr(actor_id: ActorID) -> H160 {
-    let actor_addr = EthAddress::from_id(actor_id);
-    ethers::core::types::Address::from_slice(&actor_addr.0)
-}
-
 /// Make an example transfer.
-async fn example_transfer(mw: TestMiddleware, to: ActorID) -> anyhow::Result<TransactionReceipt> {
+async fn example_transfer(
+    mw: TestMiddleware,
+    to: TestAccount,
+) -> anyhow::Result<TransactionReceipt> {
     // Create a transaction to transfer 1000 atto.
-    let tx = Eip1559TransactionRequest::new()
-        .to(actor_id_to_eth_addr(to))
-        .value(1000);
+    let tx = Eip1559TransactionRequest::new().to(to.eth_addr).value(1000);
 
     // Set the gas based on the testkit so it doesn't trigger estimation (which isn't implemented yet).
     let tx = tx
@@ -370,89 +381,14 @@ async fn example_transfer(mw: TestMiddleware, to: ActorID) -> anyhow::Result<Tra
 fn make_middleware(
     provider: Provider<Http>,
     chain_id: u64,
-    opts: &Options,
+    sender: &TestAccount,
 ) -> anyhow::Result<TestMiddleware> {
-    // Note that the `address` will be assigned to the `from` field of the transactions signed by this
-    // middleware, however it will not be part of the RLP encoded message. The library will recover it
-    // during deserialization, but it will not be the same as this, it will be the hash of the public key.
-    let address = H160::from_slice(EthAddress::from_id(opts.actor_id_from).as_ref());
-    let secret_key = MessageFactory::read_secret_key(&opts.secret_key_from)?;
-    let signer = FvmSigner {
-        secret_key,
-        address,
-        chain_id,
-    };
-    Ok(SignerMiddleware::new(provider, signer))
-}
+    // We have to use Ethereum's signing scheme, beause the `from` is not part of the RLP representation,
+    // it is inferred from the public key recovered from the signature. We could potentially hash the
+    // transaction in a different way, but we can't for example use the actor ID in the hash, because
+    // we have no way of sending it along with the message.
+    let wallet: Wallet<SigningKey> =
+        Wallet::from_bytes(&sender.secret_key.serialize())?.with_chain_id(chain_id);
 
-/// For now we sign the transaction by turning it into an FVM message first and signing the CID and chain ID.
-///
-/// This will change in https://github.com/consensus-shipyard/fendermint/issues/114 which introduces
-/// EVM specific delegated signatures.
-///
-/// XXX: It turns out that this doesn't work because `from` is not part of the RLP, it's not sent with the message,
-/// and the deserializer assigns it to be the hash of a public key recovered based on the hash of the message and
-/// the signature. That hash is not the same as this one, and because the `from` we use here is lost we have no
-/// way to reconstruct it either. Therefore signature checks are disabled for now.
-#[derive(Debug)]
-struct FvmSigner {
-    secret_key: SecretKey,
-    address: Address,
-    chain_id: u64,
-}
-
-#[async_trait]
-impl Signer for FvmSigner {
-    type Error = FvmSignerError;
-
-    async fn sign_message<S: Send + Sync + AsRef<[u8]>>(
-        &self,
-        _message: S,
-    ) -> Result<Signature, Self::Error> {
-        unimplemented!()
-    }
-
-    async fn sign_transaction(&self, message: &TypedTransaction) -> Result<Signature, Self::Error> {
-        match message {
-            TypedTransaction::Eip1559(tx) => {
-                let msg = to_fvm_message(tx)?;
-                let msg = SignedMessage::new_secp256k1(
-                    msg,
-                    &self.secret_key,
-                    &ChainID::from(self.chain_id),
-                )?;
-                let sig = to_eth_signature(msg.signature())?;
-                Ok(sig)
-            }
-            other => panic!("unexpected transaction type: {other:?}"),
-        }
-    }
-
-    async fn sign_typed_data<T: ethers_core::types::transaction::eip712::Eip712 + Send + Sync>(
-        &self,
-        _payload: &T,
-    ) -> Result<Signature, Self::Error> {
-        unimplemented!()
-    }
-
-    fn address(&self) -> ethers_core::types::Address {
-        self.address
-    }
-
-    fn chain_id(&self) -> u64 {
-        self.chain_id
-    }
-
-    fn with_chain_id<T: Into<u64>>(mut self, chain_id: T) -> Self {
-        self.chain_id = chain_id.into();
-        self
-    }
-}
-
-#[derive(thiserror::Error, Debug)]
-pub enum FvmSignerError {
-    #[error("message cannot be serialized")]
-    Ipld(#[from] fvm_ipld_encoding::Error),
-    #[error("arbitrary error")]
-    Anyhow(#[from] anyhow::Error),
+    Ok(SignerMiddleware::new(provider, wallet))
 }

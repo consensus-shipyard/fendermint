@@ -10,11 +10,10 @@ use std::{net::ToSocketAddrs, sync::Arc};
 use tendermint_rpc::HttpClient;
 
 mod apis;
+mod conv;
 mod gas;
 mod rpc_http_handler;
 mod state;
-
-pub mod conv;
 
 // Made generic in the client type so we can mock it if we want to test API
 // methods without having to spin up a server. In those tests the methods
