@@ -161,7 +161,7 @@ where
         }
 
         block_count -= 1;
-        block_number = et::BlockNumber::Number(et::U64::from(height.value()));
+        block_number = et::BlockNumber::Number(et::U64::from(height.value() - 1));
     }
 
     // Reverse data to be oldest-to-newest.

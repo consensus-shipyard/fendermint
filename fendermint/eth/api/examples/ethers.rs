@@ -306,6 +306,8 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     let bn = receipt.block_number.unwrap();
     let bh = receipt.block_hash.unwrap();
 
+    tracing::info!(height = ?bn, ?tx_hash, "example transfer");
+
     // Get a block with transactions by number.
     request(
         "eth_getBlockByNumber /w txns",
@@ -333,7 +335,9 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
             )
             .await,
         |hist| {
-            hist.base_fee_per_gas.len() > 0 && *hist.base_fee_per_gas.last().unwrap() == base_fee
+            hist.base_fee_per_gas.len() > 0
+                && *hist.base_fee_per_gas.last().unwrap() == base_fee
+                && hist.gas_used_ratio.iter().any(|r| *r > 0.0)
         },
     )?;
 
