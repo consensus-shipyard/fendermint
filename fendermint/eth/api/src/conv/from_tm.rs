@@ -5,7 +5,7 @@
 
 use std::str::FromStr;
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use ethers_core::types::{self as et};
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_message::{chain::ChainMessage, signed::SignedMessage};
@@ -94,7 +94,8 @@ pub fn to_eth_block(
         let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(data)?;
         if let ChainMessage::Signed(msg) = msg {
             let hash = tendermint::Hash::from_bytes(tendermint::hash::Algorithm::Sha256, data)?;
-            let mut tx = to_eth_transaction(hash, *msg, chain_id)?;
+            let mut tx = to_eth_transaction(hash, *msg, chain_id)
+                .context("failed to convert to eth transaction")?;
             tx.transaction_index = Some(et::U64::from(idx));
             transactions.push(tx);
         }
@@ -137,7 +138,7 @@ pub fn to_eth_transaction(
     chain_id: ChainID,
 ) -> anyhow::Result<et::Transaction> {
     // Based on https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#L2048
-    let sig = to_eth_signature(msg.signature())?;
+    let sig = to_eth_signature(msg.signature()).context("failed to convert to eth signature")?;
 
     // The following hash is what we use during signing, however, it would be useless
     // when trying to look up the transaction in the Tendermint API.
@@ -386,4 +387,8 @@ fn to_topics_and_data(attrs: &Vec<EventAttribute>) -> anyhow::Result<(Vec<et::H2
         }
     }
     Ok((topics, data.unwrap_or_default()))
+}
+
+pub fn to_chain_message(tx: &[u8]) -> anyhow::Result<ChainMessage> {
+    fvm_ipld_encoding::from_slice::<ChainMessage>(tx).context("failed to decode tx as ChainMessage")
 }

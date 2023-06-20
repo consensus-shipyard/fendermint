@@ -214,6 +214,8 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     let from = TestAccount::new(&opts.secret_key_from)?;
     let to = TestAccount::new(&opts.secret_key_to)?;
 
+    tracing::info!(from = ?from.eth_addr, to = ?to.eth_addr, "ethereum address");
+
     request("eth_accounts", provider.get_accounts().await, |acnts| {
         acnts.is_empty()
     })?;
@@ -278,7 +280,7 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
 
     // Get a block without transactions
     let b = request(
-        "eth_getBlockByNumber",
+        "eth_getBlockByNumber w/o txns",
         provider
             .get_block(BlockId::Number(BlockNumber::Number(bn)))
             .await,
@@ -289,7 +291,7 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
 
     // Get the same block without transactions by hash.
     request(
-        "eth_getBlockByHash",
+        "eth_getBlockByHash w/o txns",
         provider.get_block(BlockId::Hash(bh)).await,
         |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
     )?;
@@ -306,7 +308,7 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
 
     // Get a block with transactions by number.
     request(
-        "eth_getBlockByNumber",
+        "eth_getBlockByNumber /w txns",
         provider
             .get_block_with_txs(BlockId::Number(BlockNumber::Number(bn)))
             .await,
@@ -315,7 +317,7 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
 
     // Get the block with transactions by hash.
     request(
-        "eth_getBlockByHash",
+        "eth_getBlockByHash /w txns",
         provider.get_block_with_txs(BlockId::Hash(bh)).await,
         |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
     )?;

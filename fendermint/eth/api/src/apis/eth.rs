@@ -6,6 +6,7 @@
 // * https://github.com/filecoin-project/lotus/blob/v1.23.1-rc2/api/api_full.go#L783
 // * https://github.com/filecoin-project/lotus/blob/v1.23.1-rc2/node/impl/full/eth.go
 
+use anyhow::Context;
 use ethers_core::types::transaction::eip2718::TypedTransaction;
 use ethers_core::types::{self as et, BlockId};
 use ethers_core::utils::rlp;
@@ -22,6 +23,7 @@ use tendermint_rpc::{
 };
 
 use crate::conv::from_eth::to_fvm_message;
+use crate::conv::from_tm::to_chain_message;
 use crate::{
     conv::{
         from_eth::to_fvm_address,
@@ -123,7 +125,9 @@ where
 
         let mut premiums = Vec::new();
         for (tx, txres) in block.data().iter().zip(txs_results) {
-            let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(tx)?;
+            let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(tx)
+                .context("failed to decode tx as ChainMessage")?;
+
             if let ChainMessage::Signed(msg) = msg {
                 let premium = crate::gas::effective_gas_premium(&msg.message, base_fee);
                 premiums.push((premium, txres.gas_used));
@@ -290,10 +294,13 @@ pub async fn get_transaction_by_hash<C>(
 where
     C: Client + Sync + Send + Send,
 {
-    let hash = tendermint::Hash::try_from(tx_hash.as_bytes().to_vec())?;
+    let hash = tendermint::Hash::try_from(tx_hash.as_bytes().to_vec())
+        .context("failed to convert to Tendermint Hash")?;
+
     match data.tm().tx(hash, false).await {
         Ok(res) => {
-            let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(&res.tx)?;
+            let msg = to_chain_message(&res.tx)?;
+
             if let ChainMessage::Signed(msg) = msg {
                 let header: header::Response = data.tm().header(res.height).await?;
                 let sp = data.client.state_params(Some(res.height)).await?;
@@ -347,14 +354,16 @@ pub async fn get_transaction_receipt<C>(
 where
     C: Client + Sync + Send + Send,
 {
-    let hash = tendermint::Hash::try_from(tx_hash.as_bytes().to_vec())?;
+    let hash = tendermint::Hash::try_from(tx_hash.as_bytes().to_vec())
+        .context("failed to convert to Tendermint Hash")?;
+
     match data.tm().tx(hash, false).await {
         Ok(res) => {
             let header: header::Response = data.tm().header(res.height).await?;
             let block_results: block_results::Response =
                 data.tm().block_results(res.height).await?;
             let state_params = data.client.state_params(Some(res.height)).await?;
-            let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(&res.tx)?;
+            let msg = to_chain_message(&res.tx)?;
             if let ChainMessage::Signed(msg) = msg {
                 let receipt = to_eth_receipt(
                     *msg,
@@ -422,7 +431,9 @@ where
     C: Client + Sync + Send + Send,
 {
     let rlp = rlp::Rlp::new(tx.as_ref());
-    let (tx, sig) = et::transaction::eip2718::TypedTransaction::decode_signed(&rlp)?;
+    let (tx, sig) = et::transaction::eip2718::TypedTransaction::decode_signed(&rlp)
+        .context("failed to decode RLP as signed TypedTransaction")?;
+
     let msg = match tx {
         TypedTransaction::Eip1559(tx) => to_fvm_message(&tx)?,
         TypedTransaction::Legacy(_) | TypedTransaction::Eip2930(_) => {

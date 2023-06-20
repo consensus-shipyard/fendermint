@@ -3,12 +3,12 @@
 
 //! Tendermint RPC helper methods for the implementation of the APIs.
 
+use anyhow::Context;
 use ethers_core::types::{self as et};
 use fendermint_rpc::client::TendermintClient;
 use fendermint_rpc::query::QueryClient;
 use fendermint_vm_message::chain::ChainMessage;
 use fvm_shared::{chainid::ChainID, error::ExitCode};
-use jsonrpc_v2::ErrorLike;
 use tendermint::block::Height;
 use tendermint_rpc::{
     endpoint::{block, block_by_hash, block_results, commit, header, header_by_hash},
@@ -16,7 +16,7 @@ use tendermint_rpc::{
 };
 
 use crate::{
-    conv::from_tm::{map_rpc_block_txs, to_eth_block, to_eth_transaction},
+    conv::from_tm::{map_rpc_block_txs, to_chain_message, to_eth_block, to_eth_transaction},
     error, JsonRpcResult, JsonRpcState,
 };
 
@@ -36,7 +36,8 @@ where
     ) -> JsonRpcResult<tendermint::Block> {
         let block = match block_number {
             et::BlockNumber::Number(height) => {
-                let height = Height::try_from(height.as_u64())?;
+                let height =
+                    Height::try_from(height.as_u64()).context("failed to conver to height")?;
                 let res: block::Response = self.tm().block(height).await?;
                 res.block
             }
@@ -62,7 +63,8 @@ where
     ) -> JsonRpcResult<tendermint::block::Header> {
         let header = match block_number {
             et::BlockNumber::Number(height) => {
-                let height = Height::try_from(height.as_u64())?;
+                let height =
+                    Height::try_from(height.as_u64()).context("failed to convert to height")?;
                 let res: header::Response = self.tm().header(height).await?;
                 res.header
             }
@@ -108,11 +110,10 @@ where
     ) -> JsonRpcResult<tendermint::block::Header> {
         match self.header_by_hash_opt(block_hash).await? {
             Some(header) => Ok(header),
-            None => Err(jsonrpc_v2::Error::Full {
-                code: ExitCode::USR_NOT_FOUND.code(),
-                message: format!("block {block_hash} not found"),
-                data: None,
-            }),
+            None => error(
+                ExitCode::USR_NOT_FOUND,
+                format!("block {block_hash} not found"),
+            ),
         }
     }
 
@@ -133,12 +134,14 @@ where
 
         let block_results: block_results::Response = self.tm().block_results(height).await?;
 
-        let block = to_eth_block(block, block_results, base_fee, chain_id)?;
+        let block = to_eth_block(block, block_results, base_fee, chain_id)
+            .context("failed to convert to eth block")?;
 
         let block = if full_tx {
-            map_rpc_block_txs(block, serde_json::to_value)?
+            map_rpc_block_txs(block, serde_json::to_value).context("failed to convert to JSON")?
         } else {
-            map_rpc_block_txs(block, |h| serde_json::to_value(h.hash))?
+            map_rpc_block_txs(block, |h| serde_json::to_value(h.hash))
+                .context("failed to convert hash to JSON")?
         };
 
         Ok(block)
@@ -151,10 +154,10 @@ where
         index: et::U64,
     ) -> JsonRpcResult<Option<et::Transaction>> {
         if let Some(msg) = block.data().get(index.as_usize()) {
-            let hash =
-                tendermint::hash::Hash::from_bytes(tendermint::hash::Algorithm::Sha256, msg)?;
+            let hash = tendermint::hash::Hash::from_bytes(tendermint::hash::Algorithm::Sha256, msg)
+                .context("failed to hash message")?;
 
-            let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(msg)?;
+            let msg = to_chain_message(msg)?;
 
             if let ChainMessage::Signed(msg) = msg {
                 let sp = self
@@ -163,7 +166,8 @@ where
                     .await?;
 
                 let chain_id = ChainID::from(sp.value.chain_id);
-                let mut tx = to_eth_transaction(hash, *msg, chain_id)?;
+                let mut tx = to_eth_transaction(hash, *msg, chain_id)
+                    .context("failed to convert to eth transaction")?;
                 tx.transaction_index = Some(index);
                 tx.block_hash = Some(et::H256::from_slice(block.header.hash().as_bytes()));
                 tx.block_number = Some(et::U64::from(block.header.height.value()));

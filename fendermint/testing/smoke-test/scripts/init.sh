@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -e
+
 # Create test artifacts, which is basically the Tendermint genesis file.
 
 CMT_DIR=/data/cometbft
@@ -37,7 +39,7 @@ for NAME in emily eric; do
   fendermint key gen --out-dir $KEYS_DIR --name $NAME;
   fendermint \
     genesis --genesis-file $GENESIS_FILE \
-    add-account --public-key $KEYS_DIR/alice.pk \
+    add-account --public-key $KEYS_DIR/$NAME.pk \
                 --balance 1000000000000000000 \
                 --kind ethereum
 done
