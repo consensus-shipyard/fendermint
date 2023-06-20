@@ -22,7 +22,7 @@ use tendermint_rpc::{
     Client,
 };
 
-use crate::conv::from_eth::to_fvm_message;
+use crate::conv::from_eth::{to_fvm_message, to_tm_hash};
 use crate::conv::from_tm::to_chain_message;
 use crate::{
     conv::{
@@ -294,8 +294,7 @@ pub async fn get_transaction_by_hash<C>(
 where
     C: Client + Sync + Send + Send,
 {
-    let hash = tendermint::Hash::try_from(tx_hash.as_bytes().to_vec())
-        .context("failed to convert to Tendermint Hash")?;
+    let hash = to_tm_hash(&tx_hash)?;
 
     match data.tm().tx(hash, false).await {
         Ok(res) => {
@@ -354,8 +353,7 @@ pub async fn get_transaction_receipt<C>(
 where
     C: Client + Sync + Send + Send,
 {
-    let hash = tendermint::Hash::try_from(tx_hash.as_bytes().to_vec())
-        .context("failed to convert to Tendermint Hash")?;
+    let hash = to_tm_hash(&tx_hash)?;
 
     match data.tm().tx(hash, false).await {
         Ok(res) => {

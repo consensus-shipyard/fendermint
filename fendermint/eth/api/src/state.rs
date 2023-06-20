@@ -16,7 +16,9 @@ use tendermint_rpc::{
 };
 
 use crate::{
-    conv::from_tm::{map_rpc_block_txs, to_chain_message, to_eth_block, to_eth_transaction},
+    conv::from_tm::{
+        map_rpc_block_txs, message_hash, to_chain_message, to_eth_block, to_eth_transaction,
+    },
     error, JsonRpcResult, JsonRpcState,
 };
 
@@ -154,9 +156,7 @@ where
         index: et::U64,
     ) -> JsonRpcResult<Option<et::Transaction>> {
         if let Some(msg) = block.data().get(index.as_usize()) {
-            let hash = tendermint::hash::Hash::from_bytes(tendermint::hash::Algorithm::Sha256, msg)
-                .context("failed to hash message")?;
-
+            let hash = message_hash(msg)?;
             let msg = to_chain_message(msg)?;
 
             if let ChainMessage::Signed(msg) = msg {

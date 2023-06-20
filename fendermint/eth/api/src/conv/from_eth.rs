@@ -3,7 +3,8 @@
 
 //! Helper methods to convert between Ethereum and FVM data formats.
 
-use ethers_core::types::{Eip1559TransactionRequest, NameOrAddress, H160, U256};
+use anyhow::Context;
+use ethers_core::types::{Eip1559TransactionRequest, NameOrAddress, H160, H256, U256};
 use fendermint_vm_actor_interface::{
     eam::{self, EthAddress},
     evm,
@@ -67,6 +68,11 @@ pub fn to_fvm_tokens(value: &U256) -> TokenAmount {
     value.to_big_endian(&mut bz);
     let atto = BigInt::from_bytes_be(Sign::Plus, &bz);
     TokenAmount::from_atto(atto)
+}
+
+pub fn to_tm_hash(value: &H256) -> anyhow::Result<tendermint::Hash> {
+    tendermint::Hash::try_from(value.as_bytes().to_vec())
+        .context("failed to convert to Tendermint Hash")
 }
 
 #[cfg(test)]
