@@ -7,6 +7,7 @@ use std::str::FromStr;
 
 use anyhow::anyhow;
 use ethers_core::types as et;
+use ethers_core::types::transaction::eip2718::TypedTransaction;
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_actor_interface::eam::EAM_ACTOR_ID;
 use fvm_shared::address::Address;
@@ -82,10 +83,7 @@ pub fn to_eth_signature(sig: &Signature) -> anyhow::Result<et::Signature> {
     Ok(sig)
 }
 
-pub fn to_eth_transaction(
-    msg: &Message,
-    chain_id: &ChainID,
-) -> anyhow::Result<et::Eip1559TransactionRequest> {
+pub fn to_eth_transaction(msg: &Message, chain_id: &ChainID) -> anyhow::Result<TypedTransaction> {
     let chain_id: u64 = (*chain_id).into();
 
     let Message {
@@ -113,16 +111,19 @@ pub fn to_eth_transaction(
 
     tx.to = to_eth_address(&to).map(et::NameOrAddress::Address);
 
-    Ok(tx)
+    Ok(tx.into())
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 
     use std::{array, str::FromStr};
 
     use fendermint_testing::arb::{ArbMessage, ArbTokenAmount};
-    use fendermint_vm_actor_interface::{eam::EAM_ACTOR_ID, evm};
+    use fendermint_vm_actor_interface::{
+        eam::{EthAddress, EAM_ACTOR_ID},
+        evm,
+    };
     use fendermint_vm_message::signed::SignedMessage;
     use fvm_shared::{
         address::Address,
@@ -140,13 +141,12 @@ mod tests {
     use super::{to_eth_signature, to_eth_tokens, to_eth_transaction, MAX_U256};
 
     #[derive(Clone, Debug)]
-    struct EthAddress(Address);
+    struct EthDelegatedAddress(Address);
 
-    impl quickcheck::Arbitrary for EthAddress {
+    impl quickcheck::Arbitrary for EthDelegatedAddress {
         fn arbitrary(g: &mut quickcheck::Gen) -> Self {
             let mut subaddr: [u8; 20] = array::from_fn(|_| u8::arbitrary(g));
-            // Don't want it to clash with a masked ID address.
-            while subaddr[0] == 0xff {
+            while EthAddress(subaddr).is_masked_id() {
                 subaddr[0] = u8::arbitrary(g);
             }
             Self(Address::new_delegated(EAM_ACTOR_ID, &subaddr).unwrap())
@@ -166,15 +166,15 @@ mod tests {
 
     /// Message that only contains data which can survive a roundtrip.
     #[derive(Clone, Debug)]
-    struct EthMessage(Message);
+    pub struct EthMessage(pub Message);
 
     impl quickcheck::Arbitrary for EthMessage {
         fn arbitrary(g: &mut quickcheck::Gen) -> Self {
             let mut m = ArbMessage::arbitrary(g).0;
             m.version = 0;
             m.method_num = evm::Method::InvokeContract as u64;
-            m.from = EthAddress::arbitrary(g).0;
-            m.to = EthAddress::arbitrary(g).0;
+            m.from = EthDelegatedAddress::arbitrary(g).0;
+            m.to = EthDelegatedAddress::arbitrary(g).0;
             m.value = EthTokenAmount::arbitrary(g).0;
             m.gas_fee_cap = EthTokenAmount::arbitrary(g).0;
             m.gas_premium = EthTokenAmount::arbitrary(g).0;
@@ -233,7 +233,8 @@ mod tests {
         let chain_id = ChainID::from(chain_id);
         let msg0 = msg.0;
         let tx = to_eth_transaction(&msg0, &chain_id).unwrap();
-        let msg1 = to_fvm_message(&tx).unwrap();
+        let tx = tx.as_eip1559_ref().unwrap();
+        let msg1 = to_fvm_message(tx).unwrap();
 
         assert_eq!(msg1, msg0)
     }
