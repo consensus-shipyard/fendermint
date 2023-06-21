@@ -52,7 +52,7 @@ pub fn to_fvm_message(tx: &Eip1559TransactionRequest) -> anyhow::Result<Message>
             .map(|gas| gas.min(U256::from(u64::MAX)).as_u64())
             .unwrap_or_default(),
         gas_fee_cap: to_fvm_tokens(&tx.max_fee_per_gas.unwrap_or_default()),
-        gas_premium: to_fvm_tokens(&tx.max_fee_per_gas.unwrap_or_default()),
+        gas_premium: to_fvm_tokens(&tx.max_priority_fee_per_gas.unwrap_or_default()),
     };
 
     Ok(msg)

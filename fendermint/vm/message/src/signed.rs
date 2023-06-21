@@ -12,12 +12,16 @@ use fvm_shared::message::Message;
 
 use thiserror::Error;
 
+use crate::conv::from_fvm;
+
 #[derive(Error, Debug)]
 pub enum SignedMessageError {
     #[error("message cannot be serialized")]
     Ipld(#[from] fvm_ipld_encoding::Error),
     #[error("invalid signature: {0}")]
     InvalidSignature(String),
+    #[error("message cannot be converted to ethereum")]
+    Ethereum(#[from] anyhow::Error),
 }
 
 /// Represents a wrapped message with signature bytes.
@@ -46,7 +50,7 @@ impl SignedMessage {
         message: Message,
         sk: &libsecp256k1::SecretKey,
         chain_id: &ChainID,
-    ) -> Result<Self, fvm_ipld_encoding::Error> {
+    ) -> Result<Self, SignedMessageError> {
         let data = Self::bytes_to_sign(&message, chain_id)?;
         let signature = Signature {
             sig_type: SignatureType::Secp256k1,
@@ -67,7 +71,7 @@ impl SignedMessage {
     pub fn bytes_to_sign(
         message: &Message,
         chain_id: &ChainID,
-    ) -> Result<Vec<u8>, fvm_ipld_encoding::Error> {
+    ) -> Result<Vec<u8>, SignedMessageError> {
         // Here we look at the sender to decide what scheme to use for hashing.
         //
         // This is in contrast to https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0055.md#delegated-signature-type
@@ -82,7 +86,10 @@ impl SignedMessage {
         // been signed according to the Ethereum scheme, and it could not have been signed by an `f1` address, it doesn't
         // work with regular accounts.
         if is_ethereum(message) {
-            todo!("message -> eth tx -> rlp")
+            let tx = from_fvm::to_eth_transaction(message, chain_id)
+                .map_err(SignedMessageError::Ethereum)?;
+            let rlp = tx.rlp();
+            Ok(rlp.to_vec())
         } else {
             let mut data = Self::cid(message)?.to_bytes();
             data.extend(chain_id_bytes(chain_id).iter());
@@ -174,23 +181,16 @@ fn chain_id_bytes(chain_id: &ChainID) -> [u8; 8] {
 /// Signed message with an invalid random signature.
 #[cfg(feature = "arb")]
 mod arb {
-    use fendermint_testing::arb::{ArbAddress, ArbTokenAmount};
-    use fvm_shared::{crypto::signature::Signature, message::Message};
+    use fendermint_testing::arb::ArbMessage;
+    use fvm_shared::crypto::signature::Signature;
 
     use super::SignedMessage;
 
     /// An arbitrary `SignedMessage` that is at least as consistent as required for serialization.
     impl quickcheck::Arbitrary for SignedMessage {
         fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-            let mut message = Message::arbitrary(g);
-            message.gas_fee_cap = ArbTokenAmount::arbitrary(g).0;
-            message.gas_premium = ArbTokenAmount::arbitrary(g).0;
-            message.value = ArbTokenAmount::arbitrary(g).0;
-            message.to = ArbAddress::arbitrary(g).0;
-            message.from = ArbAddress::arbitrary(g).0;
-
             Self {
-                message,
+                message: ArbMessage::arbitrary(g).0,
                 signature: Signature::arbitrary(g),
             }
         }
