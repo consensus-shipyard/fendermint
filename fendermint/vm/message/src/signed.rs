@@ -3,10 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
+use fendermint_vm_actor_interface::eam::EAM_ACTOR_ID;
 use fvm_ipld_encoding::tuple::{Deserialize_tuple, Serialize_tuple};
-use fvm_shared::address::Protocol;
+use fvm_shared::address::Payload;
 use fvm_shared::chainid::ChainID;
-use fvm_shared::crypto::signature::{Signature, SignatureType};
+use fvm_shared::crypto::signature::{Signature, SignatureType, SECP_SIG_LEN};
 use fvm_shared::message::Message;
 
 use thiserror::Error;
@@ -41,7 +42,6 @@ impl SignedMessage {
     }
 
     /// Create a signed message.
-    #[cfg(feature = "secp256k1")]
     pub fn new_secp256k1(
         message: Message,
         sk: &libsecp256k1::SecretKey,
@@ -60,7 +60,7 @@ impl SignedMessage {
         crate::cid(message)
     }
 
-    /// Calculate the bytes that need to be signed.
+    /// Calculate the bytes that need to be signed, that is, the pre-image before hashing.
     ///
     /// The [`ChainID`] is used as a replay attack protection, a variation of
     /// https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0039.md
@@ -68,9 +68,26 @@ impl SignedMessage {
         message: &Message,
         chain_id: &ChainID,
     ) -> Result<Vec<u8>, fvm_ipld_encoding::Error> {
-        let mut data = Self::cid(message)?.to_bytes();
-        data.extend(chain_id_bytes(chain_id).iter());
-        Ok(data)
+        // Here we look at the sender to decide what scheme to use for hashing.
+        //
+        // This is in contrast to https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0055.md#delegated-signature-type
+        // which introduces a `SignatureType::Delegated`, in which case the signature check should be done by the recipient actor.
+        //
+        // However, that isn't implemented, and adding that type would mean copying the entire `Signature` type into Fendermint,
+        // similarly to how Forest did it https://github.com/ChainSafe/forest/blob/b3c5efe6cc81607da945227bb41c60cec47909c3/utils/forest_shim/src/crypto.rs#L166
+        //
+        // Instead of special casing on the signature type, we are special casing on the sender,
+        // which should be okay because the CLI only uses `f1` addresses and the Ethereum API only uses `f410` addresses,
+        // so at least for now they are easy to tell apart: any `f410` address is coming from Ethereum API and must have
+        // been signed according to the Ethereum scheme, and it could not have been signed by an `f1` address, it doesn't
+        // work with regular accounts.
+        if is_ethereum(message) {
+            todo!("message -> eth tx -> rlp")
+        } else {
+            let mut data = Self::cid(message)?.to_bytes();
+            data.extend(chain_id_bytes(chain_id).iter());
+            Ok(data)
+        }
     }
 
     /// Verify that the message CID was signed by the `from` address.
@@ -79,15 +96,17 @@ impl SignedMessage {
         signature: &Signature,
         chain_id: &ChainID,
     ) -> Result<(), SignedMessageError> {
-        if message.from.protocol() == Protocol::Delegated {
-            // TODO: https://github.com/consensus-shipyard/fendermint/issues/114
-            return Ok(());
-        }
         let data = Self::bytes_to_sign(message, chain_id)?;
 
-        signature
-            .verify(&data, &message.from)
-            .map_err(SignedMessageError::InvalidSignature)
+        if is_ethereum(message) {
+            // TODO: If the sender is ethereum, recover the public key from the signature (which verifies it),
+            // then turn it into an `EthAddress` and verify it matches the `from` of the message.
+            Ok(())
+        } else {
+            signature
+                .verify(&data, &message.from)
+                .map_err(SignedMessageError::InvalidSignature)
+        }
     }
 
     /// Verifies that the from address of the message generated the signature.
@@ -121,11 +140,15 @@ impl SignedMessage {
     }
 }
 
-#[cfg(feature = "secp256k1")]
-fn sign_secp256k1(
-    sk: &libsecp256k1::SecretKey,
-    data: &[u8],
-) -> [u8; fvm_shared::crypto::signature::SECP_SIG_LEN] {
+/// Check if the signature scheme is the Ethereum variant with the delegated address.
+fn is_ethereum(msg: &Message) -> bool {
+    match msg.from.payload() {
+        Payload::Delegated(addr) => addr.namespace() == EAM_ACTOR_ID,
+        _ => false,
+    }
+}
+
+fn sign_secp256k1(sk: &libsecp256k1::SecretKey, data: &[u8]) -> [u8; SECP_SIG_LEN] {
     let hash: [u8; 32] = blake2b_simd::Params::new()
         .hash_length(32)
         .to_state()
@@ -137,7 +160,7 @@ fn sign_secp256k1(
 
     let (sig, recovery_id) = libsecp256k1::sign(&libsecp256k1::Message::parse(&hash), sk);
 
-    let mut signature = [0u8; fvm_shared::crypto::signature::SECP_SIG_LEN];
+    let mut signature = [0u8; SECP_SIG_LEN];
     signature[..64].copy_from_slice(&sig.serialize());
     signature[64] = recovery_id.serialize();
     signature
