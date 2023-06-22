@@ -183,6 +183,7 @@ impl TestAccount {
 // - eth_call
 //
 // DOING:
+// - eth_estimateGas
 //
 // TODO:
 // - eth_newBlockFilter
@@ -200,7 +201,6 @@ impl TestAccount {
 // - eth_mining
 // - eth_subscribe
 // - eth_unsubscribe
-// - eth_estimateGas
 // - eth_getStorageAt
 // - eth_getCode
 //
@@ -363,11 +363,21 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
         |tx| tx.is_some(),
     )?;
 
-    // Calling with 0 nonce so it uses the latest.
+    // Calling with 0 nonce so the node figures out the latest value.
+    let mut probe_tx = transfer.clone();
+    probe_tx.set_nonce(0);
+    let probe_height = BlockId::Number(BlockNumber::Number(bn));
+
     request(
         "eth_call",
-        provider.call(&transfer.clone().set_nonce(0), None).await,
+        provider.call(&probe_tx, Some(probe_height)).await,
         |_| true,
+    )?;
+
+    request(
+        "eth_estimateGas",
+        provider.estimate_gas(&probe_tx, Some(probe_height)).await,
+        |gas: &U256| !gas.is_zero(),
     )?;
 
     Ok(())

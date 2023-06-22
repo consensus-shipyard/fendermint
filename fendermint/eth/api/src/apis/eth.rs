@@ -430,15 +430,7 @@ where
     let (tx, sig) = TypedTransaction::decode_signed(&rlp)
         .context("failed to decode RLP as signed TypedTransaction")?;
 
-    let msg = match tx {
-        TypedTransaction::Eip1559(tx) => to_fvm_message(&tx)?,
-        TypedTransaction::Legacy(_) | TypedTransaction::Eip2930(_) => {
-            return error(
-                ExitCode::USR_ILLEGAL_ARGUMENT,
-                "unexpected transaction type",
-            )
-        }
-    };
+    let msg = to_fvm_message(tx)?;
     let msg = SignedMessage {
         message: msg,
         signature: Signature::new_secp256k1(sig.to_vec()),
@@ -456,7 +448,7 @@ where
     }
 }
 
-/// Creates new message call transaction or a contract creation for signed transactions.
+/// Executes a new message call immediately without creating a transaction on the block chain.
 pub async fn call<C>(
     data: JsonRpcData<C>,
     Params((tx, block_id)): Params<(TypedTransaction, et::BlockId)>,
@@ -464,16 +456,7 @@ pub async fn call<C>(
 where
     C: Client + Sync + Send + Send,
 {
-    let msg = match tx {
-        TypedTransaction::Eip1559(tx) => to_fvm_message(&tx)?,
-        TypedTransaction::Legacy(_) | TypedTransaction::Eip2930(_) => {
-            return error(
-                ExitCode::USR_ILLEGAL_ARGUMENT,
-                "unexpected transaction type",
-            )
-        }
-    };
-
+    let msg = to_fvm_message(tx)?;
     let header = data.header_by_id(block_id).await?;
     let response = data.client.call(msg, Some(header.height)).await?;
     let deliver_tx = response.value;
@@ -486,5 +469,29 @@ where
             .context("error decoding data from deliver_tx in query")?;
 
         Ok(et::Bytes::from(return_data))
+    }
+}
+
+/// Generates and returns an estimate of how much gas is necessary to allow the transaction to complete.
+/// The transaction will not be added to the blockchain.
+/// Note that the estimate may be significantly more than the amount of gas actually used by the transaction, f
+/// or a variety of reasons including EVM mechanics and node performance.
+pub async fn estimate_gas<C>(
+    data: JsonRpcData<C>,
+    Params((tx, block_id)): Params<(TypedTransaction, et::BlockId)>,
+) -> JsonRpcResult<et::U256>
+where
+    C: Client + Sync + Send + Send,
+{
+    let msg = to_fvm_message(tx)?;
+    let header = data.header_by_id(block_id).await?;
+    let response = data.client.estimate_gas(msg, Some(header.height)).await?;
+    let estimate = response.value;
+
+    // Based on Lotus, we should return the data from the receipt.
+    if !estimate.exit_code.is_success() {
+        error(estimate.exit_code, "failed to estimate gas")
+    } else {
+        Ok(estimate.gas_limit.into())
     }
 }

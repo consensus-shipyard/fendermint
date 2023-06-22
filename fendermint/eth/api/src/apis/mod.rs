@@ -35,7 +35,7 @@ pub fn register_methods(server: ServerBuilder<MapRouter>) -> ServerBuilder<MapRo
         // eth_compileLLL
         // eth_compileSerpent
         // eth_compileSolidity
-        // eth_estimateGas
+        estimateGas,
         feeHistory,
         gasPrice,
         getBalance,
