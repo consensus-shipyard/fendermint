@@ -41,8 +41,8 @@ use ethers::{
 use ethers_core::{
     k256::ecdsa::SigningKey,
     types::{
-        Address, BlockId, BlockNumber, Eip1559TransactionRequest, TransactionReceipt, H160, H256,
-        U256, U64,
+        transaction::eip2718::TypedTransaction, Address, BlockId, BlockNumber,
+        Eip1559TransactionRequest, TransactionReceipt, H160, H256, U256, U64,
     },
 };
 use fendermint_rpc::message::MessageFactory;
@@ -180,6 +180,7 @@ impl TestAccount {
 // - eth_getTransactionReceipt
 // - eth_feeHistory
 // - eth_sendRawTransaction
+// - eth_call
 //
 // DOING:
 //
@@ -199,7 +200,6 @@ impl TestAccount {
 // - eth_mining
 // - eth_subscribe
 // - eth_unsubscribe
-// - eth_call
 // - eth_estimateGas
 // - eth_getStorageAt
 // - eth_getCode
@@ -223,6 +223,9 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     let bn = request("eth_blockNumber", provider.get_block_number().await, |bn| {
         bn.as_u64() > 0
     })?;
+
+    // Go back one block, so we can be sure there are results.
+    let bn = bn - 1;
 
     let chain_id = request("eth_chainId", provider.get_chainid().await, |id| {
         !id.is_zero()
@@ -301,7 +304,14 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     })?;
 
     // Send the transaction and wait for receipt
-    let receipt = example_transfer(mw, to).await.context("transfer failed")?;
+    let transfer = make_transfer(&mw, to)
+        .await
+        .context("failed to make a transfer")?;
+
+    let receipt = send_transaction(&mw, transfer.clone())
+        .await
+        .context("failed to send transfer")?;
+
     let tx_hash = receipt.transaction_hash;
     let bn = receipt.block_number.unwrap();
     let bh = receipt.block_hash.unwrap();
@@ -353,29 +363,43 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
         |tx| tx.is_some(),
     )?;
 
+    // Calling with 0 nonce so it uses the latest.
+    request(
+        "eth_call",
+        provider.call(&transfer.clone().set_nonce(0), None).await,
+        |_| true,
+    )?;
+
     Ok(())
 }
 
-/// Make an example transfer.
-async fn example_transfer(
-    mw: TestMiddleware,
-    to: TestAccount,
-) -> anyhow::Result<TransactionReceipt> {
+async fn make_transfer(mw: &TestMiddleware, to: TestAccount) -> anyhow::Result<TypedTransaction> {
     // Create a transaction to transfer 1000 atto.
     let tx = Eip1559TransactionRequest::new().to(to.eth_addr).value(1000);
 
     // Set the gas based on the testkit so it doesn't trigger estimation (which isn't implemented yet).
-    let tx = tx
+    let mut tx = tx
         .gas(10_000_000_000u64)
         .max_fee_per_gas(0)
-        .max_priority_fee_per_gas(0);
+        .max_priority_fee_per_gas(0)
+        .into();
 
+    // Fill in the missing fields like `from` and `nonce` (which involves querying the API).
+    mw.fill_transaction(&mut tx, None).await?;
+
+    Ok(tx)
+}
+
+async fn send_transaction(
+    mw: &TestMiddleware,
+    tx: TypedTransaction,
+) -> anyhow::Result<TransactionReceipt> {
     // `send_transaction` will fill in the missing fields like `from` and `nonce` (which involves querying the API).
     let receipt = mw
         .send_transaction(tx, None)
         .await
         .context("failed to send transaction")?
-        .log_msg("Pending transfer")
+        .log_msg("Pending transaction")
         .retries(5)
         .await?
         .context("Missing receipt")?;
