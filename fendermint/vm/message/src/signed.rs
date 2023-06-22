@@ -5,7 +5,7 @@
 use anyhow::anyhow;
 use cid::Cid;
 use ethers_core::types as et;
-use fendermint_vm_actor_interface::eam::EAM_ACTOR_ID;
+use fendermint_vm_actor_interface::{eam, evm};
 use fvm_ipld_encoding::tuple::{Deserialize_tuple, Serialize_tuple};
 use fvm_shared::address::{Address, Payload};
 use fvm_shared::chainid::ChainID;
@@ -114,7 +114,7 @@ impl SignedMessage {
         signature: &Signature,
         chain_id: &ChainID,
     ) -> Result<(), SignedMessageError> {
-        match Self::signable(&message, chain_id)? {
+        match Self::signable(message, chain_id)? {
             Signable::Ethereum((hash, from)) => {
                 // If the sender is ethereum, recover the public key from the signature (which verifies it),
                 // then turn it into an `EthAddress` and verify it matches the `from` of the message.
@@ -126,7 +126,7 @@ impl SignedMessage {
                     .map_err(|e| SignedMessageError::Ethereum(anyhow!(e)))?;
 
                 if rec == from {
-                    Ok(())
+                    verify_eth_method(message)
                 } else {
                     Err(SignedMessageError::InvalidSignature("the Ethereum delegated address did not match the one recovered from the signature".into()))
                 }
@@ -209,11 +209,30 @@ fn chain_id_bytes(chain_id: &ChainID) -> [u8; 8] {
 fn maybe_eth_address(addr: &Address) -> Option<et::H160> {
     match addr.payload() {
         Payload::Delegated(addr)
-            if addr.namespace() == EAM_ACTOR_ID && addr.subaddress().len() == 20 =>
+            if addr.namespace() == eam::EAM_ACTOR_ID && addr.subaddress().len() == 20 =>
         {
             Some(et::H160::from_slice(addr.subaddress()))
         }
         _ => None,
+    }
+}
+
+/// Verify that the method ID and the recipient are one of the allowed combination,
+/// which for example is set by [from_eth::to_fvm_message].
+///
+/// The method ID is not part of the signature, so someone could modify it, which is
+/// why we have to check explicitly that there is nothing untowards going on.
+fn verify_eth_method(msg: &Message) -> Result<(), SignedMessageError> {
+    if msg.to == eam::EAM_ACTOR_ADDR && msg.method_num != eam::Method::CreateExternal as u64 {
+        Err(SignedMessageError::Ethereum(anyhow!(
+            "The EAM actor can only be called with CreateExternal"
+        )))
+    } else if msg.method_num != evm::Method::InvokeContract as u64 {
+        Err(SignedMessageError::Ethereum(anyhow!(
+            "An EVM actor can only be called with InvokeContract"
+        )))
+    } else {
+        Ok(())
     }
 }
 

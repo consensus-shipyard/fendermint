@@ -101,7 +101,7 @@ pub fn to_eth_transaction(msg: &Message, chain_id: &ChainID) -> anyhow::Result<T
 
     let mut tx = et::Eip1559TransactionRequest::new()
         .chain_id(chain_id)
-        .from(to_eth_address(&from).unwrap_or_default())
+        .from(to_eth_address(from).unwrap_or_default())
         .nonce(*sequence)
         .value(to_eth_tokens(value)?)
         .gas(*gas_limit)
@@ -109,7 +109,7 @@ pub fn to_eth_transaction(msg: &Message, chain_id: &ChainID) -> anyhow::Result<T
         .max_priority_fee_per_gas(to_eth_tokens(gas_premium)?)
         .data(et::Bytes::from(params.to_vec()));
 
-    tx.to = to_eth_address(&to).map(et::NameOrAddress::Address);
+    tx.to = to_eth_address(to).map(et::NameOrAddress::Address);
 
     Ok(tx.into())
 }
