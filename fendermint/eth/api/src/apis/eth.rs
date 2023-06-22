@@ -490,7 +490,10 @@ where
 
     // Based on Lotus, we should return the data from the receipt.
     if !estimate.exit_code.is_success() {
-        error(estimate.exit_code, "failed to estimate gas")
+        error(
+            estimate.exit_code,
+            format!("failed to estimate gas: {}", estimate.info),
+        )
     } else {
         Ok(estimate.gas_limit.into())
     }

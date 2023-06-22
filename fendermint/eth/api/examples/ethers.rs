@@ -28,20 +28,21 @@
 use std::{
     fmt::Debug,
     path::{Path, PathBuf},
+    sync::Arc,
     time::Duration,
 };
 
 use anyhow::{anyhow, Context};
 use clap::Parser;
 use ethers::{
-    prelude::SignerMiddleware,
+    prelude::{abigen, ContractFactory, SignerMiddleware},
     providers::{Http, Middleware, Provider, ProviderError},
     signers::{Signer, Wallet},
 };
 use ethers_core::{
     k256::ecdsa::SigningKey,
     types::{
-        transaction::eip2718::TypedTransaction, Address, BlockId, BlockNumber,
+        transaction::eip2718::TypedTransaction, Address, BlockId, BlockNumber, Bytes,
         Eip1559TransactionRequest, TransactionReceipt, H160, H256, U256, U64,
     },
 };
@@ -51,6 +52,21 @@ use libsecp256k1::SecretKey;
 use tracing::Level;
 
 type TestMiddleware = SignerMiddleware<Provider<Http>, Wallet<SigningKey>>;
+
+// This assumes that https://github.com/filecoin-project/builtin-actors is checked out next to this project,
+// which the Makefile in the root takes care of with `make actor-bundle`, a dependency of creating docker images.
+const SIMPLECOIN_HEX: &'static str =
+    include_str!("../../../../../builtin-actors/actors/evm/tests/contracts/SimpleCoin.bin");
+
+const SIMPLECOIN_ABI: &'static str =
+    include_str!("../../../../../builtin-actors/actors/evm/tests/contracts/SimpleCoin.abi");
+
+// Generate a statically typed interface for the contract.
+// An example of what it looks like is at https://github.com/filecoin-project/ref-fvm/blob/evm-integration-tests/testing/integration/tests/evm/src/simple_coin/simple_coin.rs
+abigen!(
+    SimpleCoin,
+    "../../../../builtin-actors/actors/evm/tests/contracts/SimpleCoin.abi"
+);
 
 #[derive(Parser, Debug)]
 pub struct Options {
@@ -233,6 +249,7 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
 
     let mw = make_middleware(provider.clone(), chain_id.as_u64(), &from)
         .context("failed to create middleware")?;
+    let mw = Arc::new(mw);
 
     request(
         "eth_getBalance",
@@ -303,7 +320,8 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
         !id.is_zero()
     })?;
 
-    // Send the transaction and wait for receipt
+    tracing::info!("sending example transfer");
+
     let transfer = make_transfer(&mw, to)
         .await
         .context("failed to make a transfer")?;
@@ -380,6 +398,35 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
         |gas: &U256| !gas.is_zero(),
     )?;
 
+    tracing::info!("deploying SimpleCoin");
+
+    let bytecode =
+        Bytes::from(hex::decode(SIMPLECOIN_HEX).context("failed to decode contract hex")?);
+    let abi = serde_json::from_str::<ethers::core::abi::Abi>(SIMPLECOIN_ABI)?;
+
+    let factory = ContractFactory::new(abi, bytecode, mw.clone());
+    let deployer = factory.deploy(())?;
+
+    // NOTE: This will call eth_estimateGas to figure out how much gas to use, because we don't set it,
+    // unlike in the case of the example transfer. What the [Provider::fill_transaction] will _also_ do
+    // is estimate the fees using eth_feeHistory, here:
+    // https://github.com/gakonst/ethers-rs/blob/df165b84229cdc1c65e8522e0c1aeead3746d9a8/ethers-providers/src/rpc/provider.rs#LL300C30-L300C51
+    // These were set to zero in the earlier example transfer, ie. it was basically paid for by the miner (which is not at the moment charged),
+    // so the test passed. Here, however, there will be a non-zero cost to pay by the deployer, and therefore those balances
+    // have to be much higher than the defaults used earlier, e.g. the deployment cost 30 FIL, and we used to give 1 FIL.
+    let (contract, receipt) = deployer
+        .send_with_receipt()
+        .await
+        .context("failed to send deployment")?;
+
+    tracing::info!(addr = ?contract.address(), "SimpleCoin deployed");
+
+    let _contract = SimpleCoin::new(contract.address(), contract.client());
+
+    let _tx_hash = receipt.transaction_hash;
+    let _bn = receipt.block_number.unwrap();
+    let _bh = receipt.block_hash.unwrap();
+
     Ok(())
 }
 
@@ -387,7 +434,7 @@ async fn make_transfer(mw: &TestMiddleware, to: TestAccount) -> anyhow::Result<T
     // Create a transaction to transfer 1000 atto.
     let tx = Eip1559TransactionRequest::new().to(to.eth_addr).value(1000);
 
-    // Set the gas based on the testkit so it doesn't trigger estimation (which isn't implemented yet).
+    // Set the gas based on the testkit so it doesn't trigger estimation.
     let mut tx = tx
         .gas(10_000_000_000u64)
         .max_fee_per_gas(0)
