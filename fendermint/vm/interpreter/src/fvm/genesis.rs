@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use async_trait::async_trait;
-use fendermint_vm_actor_interface::{cron, eam, init, system, EMPTY_ARR};
+use fendermint_vm_actor_interface::{account, burntfunds, cron, eam, init, system, EMPTY_ARR};
 use fendermint_vm_core::{chainid, Timestamp};
 use fendermint_vm_genesis::{ActorMeta, Genesis, Validator};
 use fvm_ipld_blockstore::Blockstore;
@@ -48,10 +48,13 @@ where
     /// TODO:
     /// * burnt funds?
     /// * faucet?
+    /// * rewards?
     /// * IPC
     ///
-    /// See [Lotus](https://github.com/filecoin-project/lotus/blob/v1.20.4/chain/gen/genesis/genesis.go) for reference
-    /// and the [ref-fvm tester](https://github.com/filecoin-project/ref-fvm/blob/fvm%40v3.1.0/testing/integration/src/tester.rs#L99-L103).
+    /// See genesis initialization in:
+    /// * [Lotus](https://github.com/filecoin-project/lotus/blob/v1.20.4/chain/gen/genesis/genesis.go)
+    /// * [ref-fvm tester](https://github.com/filecoin-project/ref-fvm/blob/fvm%40v3.1.0/testing/integration/src/tester.rs#L99-L103)
+    /// * [fvm-workbench](https://github.com/anorth/fvm-workbench/blob/67219b3fd0b5654d54f722ab5acea6ec0abb2edc/builtin/src/genesis.rs)
     async fn init(
         &self,
         mut state: Self::State,
@@ -116,6 +119,17 @@ where
             eam::EAM_ACTOR_CODE_ID,
             eam::EAM_ACTOR_ID,
             &EMPTY_ARR,
+            TokenAmount::zero(),
+            None,
+        )?;
+
+        // Burnt funds actor (it's just an account).
+        state.create_actor(
+            account::ACCOUNT_ACTOR_CODE_ID,
+            burntfunds::BURNT_FUNDS_ACTOR_ID,
+            &account::State {
+                address: burntfunds::BURNT_FUNDS_ACTOR_ADDR,
+            },
             TokenAmount::zero(),
             None,
         )?;
