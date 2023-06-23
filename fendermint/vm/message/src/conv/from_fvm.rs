@@ -10,6 +10,7 @@ use ethers_core::types as et;
 use ethers_core::types::transaction::eip2718::TypedTransaction;
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_actor_interface::eam::EAM_ACTOR_ID;
+use fvm_ipld_encoding::BytesDe;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::chainid::ChainID;
@@ -99,6 +100,8 @@ pub fn to_eth_transaction(msg: &Message, chain_id: &ChainID) -> anyhow::Result<T
         gas_premium,
     } = msg;
 
+    let data = fvm_ipld_encoding::from_slice::<BytesDe>(&params).map(|bz| bz.0)?;
+
     let mut tx = et::Eip1559TransactionRequest::new()
         .chain_id(chain_id)
         .from(to_eth_address(from).unwrap_or_default())
@@ -107,7 +110,7 @@ pub fn to_eth_transaction(msg: &Message, chain_id: &ChainID) -> anyhow::Result<T
         .gas(*gas_limit)
         .max_fee_per_gas(to_eth_tokens(gas_fee_cap)?)
         .max_priority_fee_per_gas(to_eth_tokens(gas_premium)?)
-        .data(et::Bytes::from(params.to_vec()));
+        .data(et::Bytes::from(data));
 
     tx.to = to_eth_address(to).map(et::NameOrAddress::Address);
 
@@ -125,6 +128,7 @@ pub mod tests {
         evm,
     };
     use fendermint_vm_message::signed::SignedMessage;
+    use fvm_ipld_encoding::{BytesSer, RawBytes};
     use fvm_shared::{
         address::Address,
         bigint::{BigInt, Integer},
@@ -178,6 +182,10 @@ pub mod tests {
             m.value = EthTokenAmount::arbitrary(g).0;
             m.gas_fee_cap = EthTokenAmount::arbitrary(g).0;
             m.gas_premium = EthTokenAmount::arbitrary(g).0;
+            // The random bytes will fail to deserialize.
+            // With the EVM we expect them to be IPLD serialized bytes.
+            m.params =
+                RawBytes::serialize(BytesSer(m.params.bytes())).expect("failedto serialize params");
             Self(m)
         }
     }
@@ -232,9 +240,9 @@ pub mod tests {
     fn prop_to_and_from_eth_transaction(msg: EthMessage, chain_id: u64) {
         let chain_id = ChainID::from(chain_id);
         let msg0 = msg.0;
-        let tx = to_eth_transaction(&msg0, &chain_id).unwrap();
-        let tx = tx.as_eip1559_ref().unwrap();
-        let msg1 = to_fvm_message(tx).unwrap();
+        let tx = to_eth_transaction(&msg0, &chain_id).expect("to_eth_transaction failed");
+        let tx = tx.as_eip1559_ref().expect("not an eip1559 transaction");
+        let msg1 = to_fvm_message(tx).expect("to_fvm_message failed");
 
         assert_eq!(msg1, msg0)
     }
