@@ -197,9 +197,9 @@ impl TestAccount {
 // - eth_feeHistory
 // - eth_sendRawTransaction
 // - eth_call
+// - eth_estimateGas
 //
 // DOING:
-// - eth_estimateGas
 //
 // TODO:
 // - eth_newBlockFilter

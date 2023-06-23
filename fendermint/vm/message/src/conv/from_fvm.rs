@@ -120,75 +120,18 @@ pub fn to_eth_transaction(msg: &Message, chain_id: &ChainID) -> anyhow::Result<T
 #[cfg(test)]
 pub mod tests {
 
-    use std::{array, str::FromStr};
+    use std::str::FromStr;
 
-    use fendermint_testing::arb::{ArbMessage, ArbTokenAmount};
-    use fendermint_vm_actor_interface::{
-        eam::{EthAddress, EAM_ACTOR_ID},
-        evm,
-    };
+    use fendermint_testing::arb::ArbTokenAmount;
     use fendermint_vm_message::signed::SignedMessage;
-    use fvm_ipld_encoding::{BytesSer, RawBytes};
-    use fvm_shared::{
-        address::Address,
-        bigint::{BigInt, Integer},
-        chainid::ChainID,
-        econ::TokenAmount,
-        message::Message,
-    };
+    use fvm_shared::{bigint::BigInt, chainid::ChainID, econ::TokenAmount};
     use libsecp256k1::SecretKey;
     use quickcheck_macros::quickcheck;
     use rand::{rngs::StdRng, SeedableRng};
 
-    use crate::conv::from_eth::to_fvm_message;
+    use crate::conv::{from_eth::to_fvm_message, tests::EthMessage};
 
-    use super::{to_eth_signature, to_eth_tokens, to_eth_transaction, MAX_U256};
-
-    #[derive(Clone, Debug)]
-    struct EthDelegatedAddress(Address);
-
-    impl quickcheck::Arbitrary for EthDelegatedAddress {
-        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-            let mut subaddr: [u8; 20] = array::from_fn(|_| u8::arbitrary(g));
-            while EthAddress(subaddr).is_masked_id() {
-                subaddr[0] = u8::arbitrary(g);
-            }
-            Self(Address::new_delegated(EAM_ACTOR_ID, &subaddr).unwrap())
-        }
-    }
-
-    #[derive(Clone, Debug)]
-    struct EthTokenAmount(TokenAmount);
-
-    impl quickcheck::Arbitrary for EthTokenAmount {
-        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-            let t = ArbTokenAmount::arbitrary(g).0;
-            let (_, t) = t.atto().div_mod_floor(&MAX_U256);
-            Self(TokenAmount::from_atto(t))
-        }
-    }
-
-    /// Message that only contains data which can survive a roundtrip.
-    #[derive(Clone, Debug)]
-    pub struct EthMessage(pub Message);
-
-    impl quickcheck::Arbitrary for EthMessage {
-        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-            let mut m = ArbMessage::arbitrary(g).0;
-            m.version = 0;
-            m.method_num = evm::Method::InvokeContract as u64;
-            m.from = EthDelegatedAddress::arbitrary(g).0;
-            m.to = EthDelegatedAddress::arbitrary(g).0;
-            m.value = EthTokenAmount::arbitrary(g).0;
-            m.gas_fee_cap = EthTokenAmount::arbitrary(g).0;
-            m.gas_premium = EthTokenAmount::arbitrary(g).0;
-            // The random bytes will fail to deserialize.
-            // With the EVM we expect them to be IPLD serialized bytes.
-            m.params =
-                RawBytes::serialize(BytesSer(m.params.bytes())).expect("failedto serialize params");
-            Self(m)
-        }
-    }
+    use super::{to_eth_signature, to_eth_tokens, to_eth_transaction};
 
     #[quickcheck]
     fn prop_to_eth_tokens(tokens: ArbTokenAmount) -> bool {

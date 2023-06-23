@@ -260,27 +260,10 @@ mod tests {
     use fendermint_vm_actor_interface::eam::EthAddress;
     use fvm_shared::{address::Address, chainid::ChainID};
     use quickcheck_macros::quickcheck;
-    use rand::{rngs::StdRng, SeedableRng};
 
-    use crate::conv::from_fvm::tests::EthMessage;
+    use crate::conv::tests::{EthMessage, KeyPair};
 
     use super::SignedMessage;
-
-    #[derive(Debug, Clone)]
-    struct KeyPair {
-        sk: libsecp256k1::SecretKey,
-        pk: libsecp256k1::PublicKey,
-    }
-
-    impl quickcheck::Arbitrary for KeyPair {
-        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-            let seed = u64::arbitrary(g);
-            let mut rng = StdRng::seed_from_u64(seed);
-            let sk = libsecp256k1::SecretKey::random(&mut rng);
-            let pk = libsecp256k1::PublicKey::from_secret_key(&sk);
-            Self { sk, pk }
-        }
-    }
 
     #[quickcheck]
     fn chain_id_in_signature(
@@ -319,8 +302,6 @@ mod tests {
         let ea = EthAddress::new_secp256k1(&pk.serialize()).map_err(|e| e.to_string())?;
         let mut msg = msg.0;
         msg.from = Address::from(ea);
-
-        eprintln!("from = {:?}", msg.from);
 
         let signed =
             SignedMessage::new_secp256k1(msg, &sk, &chain_id).map_err(|e| e.to_string())?;
