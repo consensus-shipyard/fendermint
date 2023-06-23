@@ -122,14 +122,21 @@ pub mod tests {
 
     use std::str::FromStr;
 
+    use ethers::signers::{Signer, Wallet};
+    use ethers_core::utils::rlp;
+    use ethers_core::{k256::ecdsa::SigningKey, types::transaction::eip2718::TypedTransaction};
     use fendermint_testing::arb::ArbTokenAmount;
     use fendermint_vm_message::signed::SignedMessage;
+    use fvm_shared::crypto::signature::Signature;
     use fvm_shared::{bigint::BigInt, chainid::ChainID, econ::TokenAmount};
     use libsecp256k1::SecretKey;
     use quickcheck_macros::quickcheck;
     use rand::{rngs::StdRng, SeedableRng};
 
-    use crate::conv::{from_eth::to_fvm_message, tests::EthMessage};
+    use crate::conv::{
+        from_eth::to_fvm_message,
+        tests::{EthMessage, KeyPair},
+    };
 
     use super::{to_eth_signature, to_eth_tokens, to_eth_transaction};
 
@@ -188,5 +195,37 @@ pub mod tests {
         let msg1 = to_fvm_message(tx).expect("to_fvm_message failed");
 
         assert_eq!(msg1, msg0)
+    }
+
+    #[quickcheck]
+    fn prop_eth_signature(msg: EthMessage, chain_id: u64, key_pair: KeyPair) {
+        // ethers has `to_eip155_v` which would fail with u64 overflow if the chain ID is too big.
+        let chain_id = chain_id / 3;
+
+        let chain_id = ChainID::from(chain_id);
+        let msg0 = msg.0;
+        let tx = to_eth_transaction(&msg0, &chain_id).expect("to_eth_transaction failed");
+
+        let wallet: Wallet<SigningKey> = Wallet::from_bytes(&key_pair.sk.serialize())
+            .expect("failed to create wallet")
+            .with_chain_id(chain_id);
+
+        let sig = wallet.sign_transaction_sync(&tx).expect("failed to sign");
+
+        let bz = tx.rlp_signed(&sig);
+        let rlp = rlp::Rlp::new(bz.as_ref());
+
+        let (tx1, sig) = TypedTransaction::decode_signed(&rlp)
+            .expect("failed to decode RLP as signed TypedTransaction");
+
+        let tx1 = tx1.as_eip1559_ref().expect("not an eip1559 transaction");
+        let msg1 = to_fvm_message(&tx1).expect("to_fvm_message failed");
+
+        let signed = SignedMessage {
+            message: msg1,
+            signature: Signature::new_secp256k1(sig.to_vec()),
+        };
+
+        signed.verify(&chain_id).expect("signature should be valid")
     }
 }
