@@ -40,6 +40,8 @@ pub fn to_eth_address(addr: &Address) -> Option<et::H160> {
         Payload::Delegated(d) if d.namespace() == EAM_ACTOR_ID && d.subaddress().len() == 20 => {
             Some(et::H160::from_slice(d.subaddress()))
         }
+        // Deployments should be sent with an empty `to`.
+        Payload::ID(EAM_ACTOR_ID) => None,
         // It should be possible to send to an ethereum account by ID.
         Payload::ID(id) => Some(et::H160::from_slice(&EthAddress::from_id(*id).0)),
         // XXX: The following fit into the type but are not valid ethereum addresses.
@@ -100,19 +102,25 @@ pub fn to_eth_transaction(msg: &Message, chain_id: &ChainID) -> anyhow::Result<T
         gas_premium,
     } = msg;
 
-    let data = fvm_ipld_encoding::from_slice::<BytesDe>(&params).map(|bz| bz.0)?;
+    let data = fvm_ipld_encoding::from_slice::<BytesDe>(params).map(|bz| bz.0)?;
 
     let mut tx = et::Eip1559TransactionRequest::new()
         .chain_id(chain_id)
         .from(to_eth_address(from).unwrap_or_default())
         .nonce(*sequence)
-        .value(to_eth_tokens(value)?)
         .gas(*gas_limit)
         .max_fee_per_gas(to_eth_tokens(gas_fee_cap)?)
         .max_priority_fee_per_gas(to_eth_tokens(gas_premium)?)
         .data(et::Bytes::from(data));
 
     tx.to = to_eth_address(to).map(et::NameOrAddress::Address);
+
+    // NOTE: It's impossible to tell if the original Ethereum transaction sent None or Some(0).
+    // The ethers deployer sends None, so let's assume that's the useful behavour to match.
+    // Luckily the RLP encoding at some point seems to resolve them to the same thing.
+    if !value.is_zero() {
+        tx.value = Some(to_eth_tokens(value)?);
+    }
 
     Ok(tx.into())
 }
@@ -219,7 +227,7 @@ pub mod tests {
             .expect("failed to decode RLP as signed TypedTransaction");
 
         let tx1 = tx1.as_eip1559_ref().expect("not an eip1559 transaction");
-        let msg1 = to_fvm_message(&tx1).expect("to_fvm_message failed");
+        let msg1 = to_fvm_message(tx1).expect("to_fvm_message failed");
 
         let signed = SignedMessage {
             message: msg1,

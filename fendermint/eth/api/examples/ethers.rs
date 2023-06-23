@@ -405,7 +405,13 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     let abi = serde_json::from_str::<ethers::core::abi::Abi>(SIMPLECOIN_ABI)?;
 
     let factory = ContractFactory::new(abi, bytecode, mw.clone());
-    let deployer = factory.deploy(())?;
+    let mut deployer = factory.deploy(())?;
+
+    // Fill the fields so we can debug any difference between this and the node.
+    // Using `Some` block ID because with `None` the eth_estimateGas call would receive invalid parameters.
+    mw.fill_transaction(&mut deployer.tx, Some(BlockId::Number(BlockNumber::Latest)))
+        .await?;
+    tracing::info!(sighash = ?deployer.tx.sighash(), "deployment tx");
 
     // NOTE: This will call eth_estimateGas to figure out how much gas to use, because we don't set it,
     // unlike in the case of the example transfer. What the [Provider::fill_transaction] will _also_ do
