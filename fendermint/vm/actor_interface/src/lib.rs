@@ -51,4 +51,5 @@ pub mod evm;
 pub mod init;
 pub mod multisig;
 pub mod placeholder;
+pub mod reward;
 pub mod system;
