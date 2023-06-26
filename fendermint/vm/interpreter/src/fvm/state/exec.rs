@@ -138,7 +138,7 @@ fn check_error(e: anyhow::Error) -> ApplyRet {
     let zero = TokenAmount::from_atto(0);
     ApplyRet {
         msg_receipt: Receipt {
-            exit_code: ExitCode::SYS_OUT_OF_GAS,
+            exit_code: ExitCode::SYS_ASSERTION_FAILED,
             return_data: RawBytes::default(),
             gas_used: 0,
             events_root: None,
