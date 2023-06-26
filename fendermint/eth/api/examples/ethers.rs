@@ -32,10 +32,10 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, bail, Context};
 use clap::Parser;
 use ethers::{
-    prelude::{abigen, ContractFactory, SignerMiddleware},
+    prelude::{abigen, ContractCall, ContractFactory, SignerMiddleware},
     providers::{Http, Middleware, Provider, ProviderError},
     signers::{Signer, Wallet},
 };
@@ -52,6 +52,7 @@ use libsecp256k1::SecretKey;
 use tracing::Level;
 
 type TestMiddleware = SignerMiddleware<Provider<Http>, Wallet<SigningKey>>;
+type TestContractCall<T> = ContractCall<TestMiddleware, T>;
 
 // This assumes that https://github.com/filecoin-project/builtin-actors is checked out next to this project,
 // which the Makefile in the root takes care of with `make actor-bundle`, a dependency of creating docker images.
@@ -60,6 +61,9 @@ const SIMPLECOIN_HEX: &'static str =
 
 const SIMPLECOIN_ABI: &'static str =
     include_str!("../../../../../builtin-actors/actors/evm/tests/contracts/SimpleCoin.abi");
+
+/// Gas limit to set for transactions.
+const ENOUGH_GAS: u64 = 10_000_000_000u64;
 
 // Generate a statically typed interface for the contract.
 // An example of what it looks like is at https://github.com/filecoin-project/ref-fvm/blob/evm-integration-tests/testing/integration/tests/evm/src/simple_coin/simple_coin.rs
@@ -427,11 +431,24 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
 
     tracing::info!(addr = ?contract.address(), "SimpleCoin deployed");
 
-    let _contract = SimpleCoin::new(contract.address(), contract.client());
+    let contract = SimpleCoin::new(contract.address(), contract.client());
 
     let _tx_hash = receipt.transaction_hash;
     let _bn = receipt.block_number.unwrap();
     let _bh = receipt.block_hash.unwrap();
+
+    let mut coin_call: TestContractCall<U256> = contract.get_balance(from.eth_addr);
+    mw.fill_transaction(
+        &mut coin_call.tx,
+        Some(BlockId::Number(BlockNumber::Latest)),
+    )
+    .await?;
+
+    let coin_balance: U256 = coin_call.call().await.context("coin balance call failed")?;
+
+    if coin_balance != U256::from(10000) {
+        bail!("unexpected coin balance: {coin_balance}");
+    }
 
     Ok(())
 }
@@ -442,7 +459,7 @@ async fn make_transfer(mw: &TestMiddleware, to: TestAccount) -> anyhow::Result<T
 
     // Set the gas based on the testkit so it doesn't trigger estimation.
     let mut tx = tx
-        .gas(10_000_000_000u64)
+        .gas(ENOUGH_GAS)
         .max_fee_per_gas(0)
         .max_priority_fee_per_gas(0)
         .into();
