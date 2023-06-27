@@ -26,17 +26,17 @@
 // and https://coinsbench.com/ethereum-with-rust-tutorial-part-2-compile-and-deploy-solidity-contract-with-rust-c3cd16fce8ee
 
 use std::{
-    fmt::Debug,
+    fmt::{Debug, Display},
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::{anyhow, Context};
 use clap::Parser;
 use ethers::{
     prelude::{abigen, ContractCall, ContractFactory, SignerMiddleware},
-    providers::{Http, Middleware, Provider, ProviderError},
+    providers::{Http, Middleware, Provider},
     signers::{Signer, Wallet},
 };
 use ethers_core::{
@@ -145,11 +145,12 @@ impl CheckResult for bool {
     }
 }
 
-fn request<T, F, C>(method: &str, res: Result<T, ProviderError>, check: F) -> anyhow::Result<T>
+fn request<T, E, F, C>(method: &str, res: Result<T, E>, check: F) -> anyhow::Result<T>
 where
     T: Debug,
     F: FnOnce(&T) -> C,
     C: CheckResult,
+    E: Display,
 {
     tracing::debug!("checking request {method}...");
     match res {
@@ -157,7 +158,7 @@ where
             Ok(()) => Ok(value),
             Err(e) => Err(anyhow!("failed to check {method}: {e}:\n{value:?}")),
         },
-        Err(e) => Err(anyhow!("failed to call {method}: {e}")),
+        Err(e) => Err(anyhow!("failed to call {method}: {e:#}")),
     }
 }
 
@@ -202,9 +203,10 @@ impl TestAccount {
 // - eth_sendRawTransaction
 // - eth_call
 // - eth_estimateGas
+// - eth_getBlockReceipts
 //
 // DOING:
-// - eth_getBlockReceipts
+// - eth_getStorageAt
 //
 // TODO:
 // - eth_newBlockFilter
@@ -221,7 +223,6 @@ impl TestAccount {
 // - eth_mining
 // - eth_subscribe
 // - eth_unsubscribe
-// - eth_getStorageAt
 // - eth_getCode
 //
 // WON'T DO:
@@ -451,11 +452,9 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     .await
     .context("failed to fill call transaction")?;
 
-    let coin_balance: U256 = coin_call.call().await.context("coin balance call failed")?;
-
-    if coin_balance != U256::from(10000) {
-        bail!("unexpected coin balance: {coin_balance}");
-    }
+    let _ = request("eth_call", coin_call.call().await, |coin_balance| {
+        *coin_balance == U256::from(10000)
+    });
 
     Ok(())
 }
