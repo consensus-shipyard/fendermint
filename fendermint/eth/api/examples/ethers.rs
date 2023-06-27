@@ -204,11 +204,11 @@ impl TestAccount {
 // - eth_estimateGas
 //
 // DOING:
+// - eth_getBlockReceipts
 //
 // TODO:
 // - eth_newBlockFilter
 // - eth_newPendingTransactionFilter
-// - eth_getBlockReceipts
 // - eth_syncing
 // - eth_createAccessList
 // - eth_getLogs
@@ -385,6 +385,12 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
         |tx| tx.is_some(),
     )?;
 
+    request(
+        "eth_getBlockReceipts",
+        provider.get_block_receipts(BlockNumber::Number(bn)).await,
+        |rs| !rs.is_empty(),
+    )?;
+
     // Calling with 0 nonce so the node figures out the latest value.
     let mut probe_tx = transfer.clone();
     probe_tx.set_nonce(0);
@@ -442,7 +448,8 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
         &mut coin_call.tx,
         Some(BlockId::Number(BlockNumber::Latest)),
     )
-    .await?;
+    .await
+    .context("failed to fill call transaction")?;
 
     let coin_balance: U256 = coin_call.call().await.context("coin balance call failed")?;
 

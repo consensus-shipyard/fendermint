@@ -18,13 +18,14 @@ use fendermint_vm_message::signed::SignedMessage;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::{chainid::ChainID, error::ExitCode};
 use jsonrpc_v2::Params;
+use tendermint_rpc::endpoint;
 use tendermint_rpc::{
     endpoint::{block, block_results, broadcast::tx_sync, consensus_params, header},
     Client,
 };
 
 use crate::conv::from_eth::{to_fvm_message, to_tm_hash};
-use crate::conv::from_tm::to_chain_message;
+use crate::conv::from_tm::{message_hash, to_chain_message, to_cumulative};
 use crate::{
     conv::{
         from_eth::to_fvm_address,
@@ -358,15 +359,16 @@ where
             let header: header::Response = data.tm().header(res.height).await?;
             let block_results: block_results::Response =
                 data.tm().block_results(res.height).await?;
+            let cumulative = to_cumulative(&block_results);
             let state_params = data.client.state_params(Some(res.height)).await?;
             let msg = to_chain_message(&res.tx)?;
             if let ChainMessage::Signed(msg) = msg {
                 let receipt = to_eth_receipt(
-                    *msg,
-                    res,
-                    block_results,
-                    header.header,
-                    state_params.value.base_fee,
+                    &msg,
+                    &res,
+                    &cumulative,
+                    &header.header,
+                    &state_params.value.base_fee,
                 )?;
                 Ok(Some(receipt))
             } else {
@@ -376,6 +378,53 @@ where
         Err(e) if e.to_string().contains("not found") => Ok(None),
         Err(e) => error(ExitCode::USR_UNSPECIFIED, e),
     }
+}
+
+/// Returns receipts for all the transactions in a block.
+pub async fn get_block_receipts<C>(
+    data: JsonRpcData<C>,
+    Params((block_number,)): Params<(et::BlockNumber,)>,
+) -> JsonRpcResult<Vec<et::TransactionReceipt>>
+where
+    C: Client + Sync + Send,
+{
+    let block = data.block_by_height(block_number).await?;
+    let height = block.header.height;
+    let state_params = data.client.state_params(Some(height)).await?;
+    let block_results: block_results::Response = data.tm().block_results(height).await?;
+    let cumulative = to_cumulative(&block_results);
+    let mut receipts = Vec::new();
+
+    for (index, (tx, tx_result)) in block
+        .data
+        .into_iter()
+        .zip(block_results.txs_results.unwrap_or_default().into_iter())
+        .enumerate()
+    {
+        let msg = to_chain_message(&tx)?;
+        if let ChainMessage::Signed(msg) = msg {
+            let hash = message_hash(&tx)?;
+
+            let result = endpoint::tx::Response {
+                hash,
+                height,
+                index: index as u32,
+                tx_result,
+                tx,
+                proof: None,
+            };
+
+            let receipt = to_eth_receipt(
+                &msg,
+                &result,
+                &cumulative,
+                &block.header,
+                &state_params.value.base_fee,
+            )?;
+            receipts.push(receipt)
+        }
+    }
+    Ok(receipts)
 }
 
 /// Returns the number of uncles in a block from a block matching the given block hash.
