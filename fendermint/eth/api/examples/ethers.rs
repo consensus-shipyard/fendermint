@@ -43,7 +43,7 @@ use ethers_core::{
     k256::ecdsa::SigningKey,
     types::{
         transaction::eip2718::TypedTransaction, Address, BlockId, BlockNumber, Bytes,
-        Eip1559TransactionRequest, TransactionReceipt, H160, H256, U256, U64,
+        Eip1559TransactionRequest, SyncingStatus, TransactionReceipt, H160, H256, U256, U64,
     },
 };
 use fendermint_rpc::message::MessageFactory;
@@ -206,28 +206,28 @@ impl TestAccount {
 // - eth_getBlockReceipts
 // - eth_getStorageAt
 // - eth_getCode
+// - eth_syncing
 //
 // DOING:
 //
 // TODO:
-// - eth_newBlockFilter
-// - eth_newPendingTransactionFilter
-// - eth_syncing
-// - eth_createAccessList
+//
 // - eth_getLogs
 // - eth_newBlockFilter
+// - eth_newPendingTransactionFilter
 // - eth_newPendingTransactionFilter
 // - eth_newFilter
 // - eth_uninstallFilter
 // - eth_getFilterChanges
-// - eth_getProof
-// - eth_mining
 // - eth_subscribe
 // - eth_unsubscribe
 //
 // WON'T DO:
 // - eth_sign
 // - eth_sendTransaction
+// - eth_mining
+// - eth_createAccessList
+// - eth_getProof
 //
 
 /// Exercise the above methods, so we know at least the parameters are lined up correctly.
@@ -490,6 +490,10 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
                 && ar.zip(br).take_while(|(a, b)| a == b).count() > 0
         },
     )?;
+
+    request("eth_syncing", mw.syncing().await, |s| {
+        *s == SyncingStatus::IsFalse // There is only one node.
+    })?;
 
     Ok(())
 }
