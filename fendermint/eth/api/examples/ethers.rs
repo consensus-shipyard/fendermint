@@ -204,9 +204,10 @@ impl TestAccount {
 // - eth_call
 // - eth_estimateGas
 // - eth_getBlockReceipts
+// - eth_getStorageAt
+// - eth_getCode
 //
 // DOING:
-// - eth_getStorageAt
 //
 // TODO:
 // - eth_newBlockFilter
@@ -223,7 +224,6 @@ impl TestAccount {
 // - eth_mining
 // - eth_subscribe
 // - eth_unsubscribe
-// - eth_getCode
 //
 // WON'T DO:
 // - eth_sign
@@ -415,7 +415,7 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
         Bytes::from(hex::decode(SIMPLECOIN_HEX).context("failed to decode contract hex")?);
     let abi = serde_json::from_str::<ethers::core::abi::Abi>(SIMPLECOIN_ABI)?;
 
-    let factory = ContractFactory::new(abi, bytecode, mw.clone());
+    let factory = ContractFactory::new(abi, bytecode.clone(), mw.clone());
     let mut deployer = factory.deploy(())?;
 
     // Fill the fields so we can debug any difference between this and the node.
@@ -472,6 +472,23 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
         )
         .await,
         |_| true,
+    )?;
+
+    request(
+        "eth_code",
+        mw.get_code(contract.address(), None).await,
+        |bz| {
+            // It's not exactly the same as the bytecode above.
+            // The initcode is stripped, only the runtime bytecode is returned.
+            // But the two seem to start and end the same way.
+            let a = bz.iter();
+            let b = bytecode.iter();
+            let ar = bz.iter().rev();
+            let br = bytecode.iter().rev();
+            !bz.is_empty()
+                && a.zip(b).take_while(|(a, b)| a == b).count() > 0
+                && ar.zip(br).take_while(|(a, b)| a == b).count() > 0
+        },
     )?;
 
     Ok(())

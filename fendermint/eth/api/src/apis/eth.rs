@@ -13,13 +13,11 @@ use ethers_core::utils::rlp;
 use fendermint_rpc::message::MessageFactory;
 use fendermint_rpc::query::QueryClient;
 use fendermint_rpc::response::decode_fevm_invoke;
-use fendermint_vm_actor_interface::{evm, system};
+use fendermint_vm_actor_interface::evm;
 use fendermint_vm_message::chain::ChainMessage;
 use fendermint_vm_message::signed::SignedMessage;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::crypto::signature::Signature;
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::message::Message;
 use fvm_shared::{chainid::ChainID, error::ExitCode};
 use jsonrpc_v2::Params;
 use tendermint_rpc::endpoint;
@@ -40,10 +38,6 @@ use crate::{
 };
 
 const MAX_FEE_HIST_SIZE: usize = 1024;
-
-/// Gas limit to set for read-only transactions
-/// where it's otherwise not specified.
-const READ_ONLY_GAS: u64 = fvm_shared::BLOCK_GAS_LIMIT;
 
 /// Returns a list of addresses owned by client.
 ///
@@ -558,16 +552,14 @@ where
 
 /// Returns the value from a storage position at a given address.
 ///
-/// The return value is a hex encoded H256.
+/// The return value is a hex encoded U256.
 pub async fn get_storage_at<C>(
     data: JsonRpcData<C>,
-    Params((address, position, block_number)): Params<(et::H160, et::U256, et::BlockNumber)>,
+    Params((address, position, block_id)): Params<(et::H160, et::U256, et::BlockId)>,
 ) -> JsonRpcResult<String>
 where
     C: Client + Sync + Send + Send,
 {
-    let header = data.header_by_height(block_number).await?;
-
     let params = evm::GetStorageAtParams {
         storage_key: {
             let mut bz = [0u8; 32];
@@ -577,38 +569,41 @@ where
     };
     let params = RawBytes::serialize(params).context("failed to serialize position to IPLD")?;
 
-    // We send off a read-only query to an EVM actor at the given address.
-    let message = Message {
-        version: Default::default(),
-        from: system::SYSTEM_ACTOR_ADDR,
-        to: to_fvm_address(address),
-        sequence: 0, // Let the node figure out the value.
-        value: TokenAmount::from_atto(0),
-        method_num: evm::Method::GetStorageAt as u64,
-        params,
-        gas_limit: READ_ONLY_GAS,
-        gas_fee_cap: TokenAmount::from_atto(0),
-        gas_premium: TokenAmount::from_atto(0),
-    };
-
-    let result = data
-        .client
-        .call(message, Some(header.height))
-        .await
-        .context("failed to call contract")?;
-
-    if result.value.code.is_err() {
-        return error(ExitCode::new(result.value.code.value()), result.value.info);
-    }
-
-    let data = fendermint_rpc::response::decode_bytes(&result.value)
-        .context("failed to decode data as bytes")?;
-
-    let data: evm::GetStorageAtReturn =
-        fvm_ipld_encoding::from_slice(&data).context("failed to decode as GetStorageAtReturn")?;
+    let ret: evm::GetStorageAtReturn = data
+        .read_evm_actor(address, evm::Method::GetStorageAt, params, block_id)
+        .await?;
 
     // The client library expects hex encoded string.
     let mut bz = [0u8; 32];
-    data.storage.to_big_endian(&mut bz);
+    ret.storage.to_big_endian(&mut bz);
     Ok(hex::encode(bz))
+}
+
+/// Returns code at a given address.
+pub async fn get_code<C>(
+    data: JsonRpcData<C>,
+    Params((address, block_id)): Params<(et::H160, et::BlockId)>,
+) -> JsonRpcResult<et::Bytes>
+where
+    C: Client + Sync + Send + Send,
+{
+    // This method has no input parameters.
+    let params = RawBytes::default();
+
+    let ret: evm::BytecodeReturn = data
+        .read_evm_actor(address, evm::Method::GetBytecode, params, block_id)
+        .await?;
+
+    match ret.code {
+        None => Ok(et::Bytes::default()),
+        Some(cid) => {
+            let code = data
+                .client
+                .ipld(&cid)
+                .await
+                .context("failed to fetch bytecode")?;
+
+            Ok(code.map(et::Bytes::from).unwrap_or_default())
+        }
+    }
 }
