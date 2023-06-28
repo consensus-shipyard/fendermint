@@ -452,9 +452,27 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     .await
     .context("failed to fill call transaction")?;
 
-    let _ = request("eth_call", coin_call.call().await, |coin_balance| {
+    request("eth_call", coin_call.call().await, |coin_balance| {
         *coin_balance == U256::from(10000)
-    });
+    })?;
+
+    // We could calculate the storage location of the balance of the owner of the contract,
+    // but let's just see what it returns with at slot 0. See an example at
+    // https://ethereum.org/en/developers/docs/apis/json-rpc/#eth_getstorageat
+    request(
+        "eth_getStorageAt",
+        mw.get_storage_at(
+            contract.address(),
+            {
+                let mut bz = [0u8; 32];
+                U256::zero().to_big_endian(&mut bz);
+                H256::from_slice(&bz)
+            },
+            None,
+        )
+        .await,
+        |_| true,
+    )?;
 
     Ok(())
 }
