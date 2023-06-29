@@ -65,7 +65,7 @@ pub fn register_methods(server: ServerBuilder<MapRouter>) -> ServerBuilder<MapRo
         // eth_newBlockFilter
         // eth_newFilter
         // eth_newPendingTransactionFilter
-        // eth_protocolVersion
+        protocolVersion,
         sendRawTransaction,
         // eth_sendTransaction
         // eth_sign
