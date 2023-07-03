@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::anyhow;
-use axum::routing::post;
+use axum::routing::{get, post};
 use fendermint_rpc::client::FendermintClient;
 use jsonrpc_v2::Data;
 use std::{net::ToSocketAddrs, sync::Arc};
@@ -57,7 +57,7 @@ fn make_server(state: JsonRpcState<HttpClient>) -> JsonRpcServer {
 /// Register routes in the `axum` router to handle JSON-RPC and WebSocket calls.
 fn make_router(server: JsonRpcServer) -> axum::Router {
     axum::Router::new()
-        //.route("/", get(rpc_ws_handler::handle))
         .route("/", post(handlers::http::handle))
+        .route("/", get(handlers::ws::handle))
         .with_state(server)
 }
