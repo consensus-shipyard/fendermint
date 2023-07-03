@@ -12,7 +12,7 @@ mod apis;
 mod conv;
 mod error;
 mod gas;
-mod rpc_http_handler;
+mod handlers;
 mod state;
 
 pub use error::{error, JsonRpcError};
@@ -58,6 +58,6 @@ fn make_server(state: JsonRpcState<HttpClient>) -> JsonRpcServer {
 fn make_router(server: JsonRpcServer) -> axum::Router {
     axum::Router::new()
         //.route("/", get(rpc_ws_handler::handle))
-        .route("/", post(rpc_http_handler::handle))
+        .route("/", post(handlers::http::handle))
         .with_state(server)
 }
