@@ -9,6 +9,7 @@ use paste::paste;
 use tendermint_rpc::HttpClient;
 
 mod eth;
+mod net;
 mod web3;
 
 macro_rules! with_methods {
@@ -77,8 +78,14 @@ pub fn register_methods(server: ServerBuilder<MapRouter>) -> ServerBuilder<MapRo
         // eth_uninstallFilter
     });
 
-    with_methods!(server, web3, {
+    let server = with_methods!(server, web3, {
         clientVersion,
         sha3
+    });
+
+    with_methods!(server, net, {
+        version,
+        listening,
+        peerCount
     })
 }

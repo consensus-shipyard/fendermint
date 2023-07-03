@@ -242,6 +242,10 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
         v.starts_with("fendermint/")
     })?;
 
+    request("net_version", provider.get_net_version().await, |v| {
+        !v.is_empty() && v.chars().all(|c| c.is_numeric())
+    })?;
+
     request("eth_accounts", provider.get_accounts().await, |acnts| {
         acnts.is_empty()
     })?;
