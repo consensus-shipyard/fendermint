@@ -78,7 +78,7 @@ pub fn register_methods(server: ServerBuilder<MapRouter>) -> ServerBuilder<MapRo
     });
 
     with_methods!(server, web3, {
-        clientVersion
-        // web3_sha
+        clientVersion,
+        sha3
     })
 }
