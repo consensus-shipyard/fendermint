@@ -11,6 +11,7 @@ use tendermint_rpc::HttpClient;
 mod apis;
 mod conv;
 mod error;
+mod filters;
 mod gas;
 mod handlers;
 mod state;

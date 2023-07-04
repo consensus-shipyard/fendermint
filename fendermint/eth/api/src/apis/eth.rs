@@ -6,6 +6,8 @@
 // * https://github.com/filecoin-project/lotus/blob/v1.23.1-rc2/api/api_full.go#L783
 // * https://github.com/filecoin-project/lotus/blob/v1.23.1-rc2/node/impl/full/eth.go
 
+use std::collections::HashSet;
+
 use anyhow::Context;
 use ethers_core::types as et;
 use ethers_core::types::transaction::eip2718::TypedTransaction;
@@ -13,10 +15,12 @@ use ethers_core::utils::rlp;
 use fendermint_rpc::message::MessageFactory;
 use fendermint_rpc::query::QueryClient;
 use fendermint_rpc::response::decode_fevm_invoke;
+use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_actor_interface::evm;
 use fendermint_vm_message::chain::ChainMessage;
 use fendermint_vm_message::signed::SignedMessage;
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::{chainid::ChainID, error::ExitCode};
 use jsonrpc_v2::Params;
@@ -27,7 +31,8 @@ use tendermint_rpc::{
 };
 
 use crate::conv::from_eth::{to_fvm_message, to_tm_hash};
-use crate::conv::from_tm::{message_hash, to_chain_message, to_cumulative};
+use crate::conv::from_tm::{self, message_hash, to_chain_message, to_cumulative};
+use crate::filters::matches_topics;
 use crate::{
     conv::{
         from_eth::to_fvm_address,
@@ -654,4 +659,98 @@ where
     };
 
     Ok(status)
+}
+
+/// Executes a new message call immediately without creating a transaction on the block chain.
+pub async fn get_logs<C>(
+    data: JsonRpcData<C>,
+    Params((filter,)): Params<(et::Filter,)>,
+) -> JsonRpcResult<Vec<et::Log>>
+where
+    C: Client + Sync + Send,
+{
+    let (from_height, to_height) = match filter.block_option {
+        et::FilterBlockOption::Range {
+            from_block,
+            to_block,
+        } => {
+            let from_block = from_block.unwrap_or_default();
+            let to_block = to_block.unwrap_or_default();
+            let to_header = data.header_by_height(to_block).await?;
+            let from_header = if from_block == to_block {
+                to_header.clone()
+            } else {
+                data.header_by_height(from_block).await?
+            };
+            (from_header.height, to_header.height)
+        }
+        et::FilterBlockOption::AtBlockHash(block_hash) => {
+            let header = data.header_by_hash(block_hash).await?;
+            (header.height, header.height)
+        }
+    };
+
+    let addrs = match &filter.address {
+        Some(et::ValueOrArray::Value(addr)) => vec![*addr],
+        Some(et::ValueOrArray::Array(addrs)) => addrs.clone(),
+        None => Vec::new(),
+    };
+    let addrs = addrs
+        .into_iter()
+        .map(|addr| Address::from(EthAddress(addr.0)))
+        .collect::<HashSet<_>>();
+
+    let mut height = from_height;
+    let mut logs = Vec::new();
+
+    while height <= to_height {
+        if let Ok(block_results) = data.tm().block_results(height).await {
+            if let Some(tx_results) = block_results.txs_results {
+                let block_number = et::U64::from(height.value());
+
+                let block = data
+                    .block_by_height(et::BlockNumber::Number(block_number))
+                    .await?;
+
+                let block_hash = et::H256::from_slice(block.header().hash().as_bytes());
+
+                let mut log_index_start = 0usize;
+                for ((tx_idx, tx_result), tx) in tx_results.iter().enumerate().zip(block.data()) {
+                    let tx_hash = from_tm::message_hash(tx)?;
+                    let tx_hash = et::H256::from_slice(tx_hash.as_bytes());
+                    let tx_idx = et::U64::from(tx_idx);
+
+                    // Filter by address.
+                    if !addrs.is_empty() {
+                        if let Ok(ChainMessage::Signed(msg)) = to_chain_message(tx) {
+                            if !addrs.contains(&msg.message().from) {
+                                continue;
+                            }
+                        }
+                    }
+
+                    let mut tx_logs = from_tm::to_logs(
+                        &tx_result,
+                        block_hash,
+                        block_number,
+                        tx_hash,
+                        tx_idx,
+                        log_index_start,
+                    )?;
+
+                    // Filter by topic.
+                    tx_logs.retain(|log| matches_topics(&filter, &log));
+
+                    logs.append(&mut tx_logs);
+
+                    log_index_start += tx_result.events.len();
+                }
+            }
+        } else {
+            break;
+        }
+        height = height.increment()
+    }
+
+    Ok(logs)
 }

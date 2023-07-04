@@ -43,7 +43,8 @@ use ethers_core::{
     k256::ecdsa::SigningKey,
     types::{
         transaction::eip2718::TypedTransaction, Address, BlockId, BlockNumber, Bytes,
-        Eip1559TransactionRequest, SyncingStatus, TransactionReceipt, H160, H256, U256, U64,
+        Eip1559TransactionRequest, Filter, SyncingStatus, TransactionReceipt, H160, H256, U256,
+        U64,
     },
 };
 use fendermint_rpc::message::MessageFactory;
@@ -210,12 +211,11 @@ impl TestAccount {
 // - web3_clientVersion
 //
 // DOING:
+// - eth_getLogs
 //
 // TODO:
 //
-// - eth_getLogs
 // - eth_newBlockFilter
-// - eth_newPendingTransactionFilter
 // - eth_newPendingTransactionFilter
 // - eth_newFilter
 // - eth_uninstallFilter
@@ -336,7 +336,7 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
 
     tracing::info!("sending example transfer");
 
-    let transfer = make_transfer(&mw, to)
+    let transfer = make_transfer(&mw, &to)
         .await
         .context("failed to make a transfer")?;
 
@@ -422,6 +422,7 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
 
     let bytecode =
         Bytes::from(hex::decode(SIMPLECOIN_HEX).context("failed to decode contract hex")?);
+
     let abi = serde_json::from_str::<ethers::core::abi::Abi>(SIMPLECOIN_ABI)?;
 
     let factory = ContractFactory::new(abi, bytecode.clone(), mw.clone());
@@ -430,7 +431,9 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     // Fill the fields so we can debug any difference between this and the node.
     // Using `Some` block ID because with `None` the eth_estimateGas call would receive invalid parameters.
     mw.fill_transaction(&mut deployer.tx, Some(BlockId::Number(BlockNumber::Latest)))
-        .await?;
+        .await
+        .context("failed to fill deploy transaction")?;
+
     tracing::info!(sighash = ?deployer.tx.sighash(), "deployment tx");
 
     // NOTE: This will call eth_estimateGas to figure out how much gas to use, because we don't set it,
@@ -453,15 +456,10 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     let _bn = receipt.block_number.unwrap();
     let _bh = receipt.block_hash.unwrap();
 
-    let mut coin_call: TestContractCall<U256> = contract.get_balance(from.eth_addr);
-    mw.fill_transaction(
-        &mut coin_call.tx,
-        Some(BlockId::Number(BlockNumber::Latest)),
-    )
-    .await
-    .context("failed to fill call transaction")?;
+    let coin_balance: TestContractCall<U256> =
+        prepare_call(&mw, contract.get_balance(from.eth_addr)).await?;
 
-    request("eth_call", coin_call.call().await, |coin_balance| {
+    request("eth_call", coin_balance.call().await, |coin_balance| {
         *coin_balance == U256::from(10000)
     })?;
 
@@ -504,10 +502,27 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
         *s == SyncingStatus::IsFalse // There is only one node.
     })?;
 
+    // Not using `prepare_call` here because `send_transaction` will fill the missing fields.
+    let coin_send: TestContractCall<bool> = contract.send_coin(to.eth_addr, U256::from(100));
+    // Using `send_transaction` instead of `coin_send.send()` so it gets the receipt.
+    // Unfortunately the returned `bool` is not available through the Ethereum API.
+    let receipt = request(
+        "eth_sendRawTransaction",
+        send_transaction(&mw, coin_send.tx).await,
+        |receipt| !receipt.logs.is_empty(),
+    )?;
+
+    request(
+        "eth_getLogs",
+        mw.get_logs(&Filter::new().at_block_hash(receipt.block_hash.unwrap()))
+            .await,
+        |logs| *logs == receipt.logs,
+    )?;
+
     Ok(())
 }
 
-async fn make_transfer(mw: &TestMiddleware, to: TestAccount) -> anyhow::Result<TypedTransaction> {
+async fn make_transfer(mw: &TestMiddleware, to: &TestAccount) -> anyhow::Result<TypedTransaction> {
     // Create a transaction to transfer 1000 atto.
     let tx = Eip1559TransactionRequest::new().to(to.eth_addr).value(1000);
 
@@ -524,6 +539,7 @@ async fn make_transfer(mw: &TestMiddleware, to: TestAccount) -> anyhow::Result<T
     Ok(tx)
 }
 
+/// Send a transaction and await the receipt.
 async fn send_transaction(
     mw: &TestMiddleware,
     tx: TypedTransaction,
@@ -555,4 +571,16 @@ fn make_middleware(
         Wallet::from_bytes(&sender.secret_key.serialize())?.with_chain_id(chain_id);
 
     Ok(SignerMiddleware::new(provider, wallet))
+}
+
+/// Fill the transaction fields such as gas and nonce.
+async fn prepare_call<T>(
+    mw: &TestMiddleware,
+    mut call: TestContractCall<T>,
+) -> anyhow::Result<TestContractCall<T>> {
+    mw.fill_transaction(&mut call.tx, Some(BlockId::Number(BlockNumber::Latest)))
+        .await
+        .context("failed to fill transaction")?;
+
+    Ok(call)
 }

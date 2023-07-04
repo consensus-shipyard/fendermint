@@ -31,6 +31,7 @@ fendermint_vm_message = { path = "../../vm/message" }
 
 [dev-dependencies]
 async-trait = { workspace = true }
+tokio = { workspace = true }
 clap = { workspace = true }
 ethers = { workspace = true, features = ["abigen"] }
 hex = { workspace = true }

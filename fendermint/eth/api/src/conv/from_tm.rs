@@ -221,38 +221,14 @@ pub fn to_eth_receipt(
 
     let log_index_start = cumulative_event_count.saturating_sub(result.tx_result.events.len());
 
-    let mut logs = Vec::new();
-    for (idx, event) in result.tx_result.events.iter().enumerate() {
-        // TODO: Lotus looks up an Ethereum address based on the actor ID:
-        // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#L1987
-        let address = event
-            .attributes
-            .iter()
-            .find(|a| a.key == "emitter")
-            .and_then(|a| a.value.parse::<u64>().ok())
-            .map(EthAddress::from_id)
-            .map(|a| et::H160::from_slice(&a.0))
-            .unwrap_or_default();
-
-        // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#LL2240C9-L2240C15
-        let (topics, data) = to_topics_and_data(&event.attributes)?;
-
-        let log = et::Log {
-            address,
-            topics,
-            data,
-            block_hash: Some(block_hash),
-            block_number: Some(block_number),
-            transaction_hash: Some(transaction_hash),
-            transaction_index: Some(transaction_index),
-            log_index: Some(et::U256::from(idx + log_index_start)),
-            transaction_log_index: Some(et::U256::from(idx)),
-            log_type: Some(event.kind.clone()),
-            removed: Some(false),
-        };
-
-        logs.push(log);
-    }
+    let logs = to_logs(
+        &result.tx_result,
+        block_hash,
+        block_number,
+        transaction_hash,
+        transaction_index,
+        log_index_start,
+    )?;
 
     // See if the return value is an Ethereum contract creation.
     // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#LL2240C9-L2240C15
@@ -365,6 +341,49 @@ fn maybe_contract_address(deliver_tx: &DeliverTx) -> Option<EthAddress> {
     fendermint_rpc::response::decode_fevm_create(deliver_tx)
         .ok()
         .map(|cr| cr.eth_address)
+}
+
+pub fn to_logs(
+    tx_result: &DeliverTx,
+    block_hash: et::H256,
+    block_number: et::U64,
+    transaction_hash: et::H256,
+    transaction_index: et::U64,
+    log_index_start: usize,
+) -> anyhow::Result<Vec<et::Log>> {
+    let mut logs = Vec::new();
+    for (idx, event) in tx_result.events.iter().enumerate() {
+        // TODO: Lotus looks up an Ethereum address based on the actor ID:
+        // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#L1987
+        let address = event
+            .attributes
+            .iter()
+            .find(|a| a.key == "emitter")
+            .and_then(|a| a.value.parse::<u64>().ok())
+            .map(EthAddress::from_id)
+            .map(|a| et::H160::from_slice(&a.0))
+            .unwrap_or_default();
+
+        // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#LL2240C9-L2240C15
+        let (topics, data) = to_topics_and_data(&event.attributes)?;
+
+        let log = et::Log {
+            address,
+            topics,
+            data,
+            block_hash: Some(block_hash),
+            block_number: Some(block_number),
+            transaction_hash: Some(transaction_hash),
+            transaction_index: Some(transaction_index),
+            log_index: Some(et::U256::from(idx + log_index_start)),
+            transaction_log_index: Some(et::U256::from(idx)),
+            log_type: Some(event.kind.clone()),
+            removed: Some(false),
+        };
+
+        logs.push(log);
+    }
+    Ok(logs)
 }
 
 // Find the Ethereum topics (up to 4) and the data in the event attributes.
