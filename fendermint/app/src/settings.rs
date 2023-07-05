@@ -6,28 +6,6 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize)]
-pub struct AbciSettings {
-    pub host: String,
-    pub port: u32,
-    /// Queue size for each ABCI component.
-    pub bound: usize,
-}
-
-impl AbciSettings {
-    pub fn listen_addr(&self) -> String {
-        format!("{}:{}", self.host, self.port)
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct DbSettings {
-    /// Length of the app state history to keep in the database before pruning; 0 means unlimited.
-    ///
-    /// This affects how long we can go back in state queries.
-    pub state_hist_size: u64,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct Address {
     pub host: String,
     pub port: u32,
@@ -39,13 +17,25 @@ impl Address {
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct AbciSettings {
+    pub listen: Address,
+    /// Queue size for each ABCI component.
+    pub bound: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DbSettings {
+    /// Length of the app state history to keep in the database before pruning; 0 means unlimited.
+    ///
+    /// This affects how long we can go back in state queries.
+    pub state_hist_size: u64,
+}
+
 /// Ethereum API facade settings.
 #[derive(Debug, Deserialize)]
 pub struct EthSettings {
-    /// Listen address for JSON-RPC
-    pub http: Address,
-    /// Listen address for WebSockets
-    pub ws: Address,
+    pub listen: Address,
 }
 
 #[derive(Debug, Deserialize)]
