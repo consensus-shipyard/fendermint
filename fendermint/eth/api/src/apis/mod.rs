@@ -6,7 +6,7 @@
 
 use jsonrpc_v2::{MapRouter, ServerBuilder};
 use paste::paste;
-use tendermint_rpc::HttpClient;
+use tendermint_rpc::WebSocketClient;
 
 mod eth;
 mod net;
@@ -18,7 +18,7 @@ macro_rules! with_methods {
             $server
                 $(.with_method(
                     stringify!([< $module _ $method >]),
-                    $module :: [< $method:snake >] ::<HttpClient>
+                    $module :: [< $method:snake >] ::<WebSocketClient>
                 ))*
         }
     };

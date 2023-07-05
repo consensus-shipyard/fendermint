@@ -6,7 +6,7 @@ use axum::routing::{get, post};
 use fendermint_rpc::client::FendermintClient;
 use jsonrpc_v2::Data;
 use std::{net::ToSocketAddrs, sync::Arc};
-use tendermint_rpc::HttpClient;
+use tendermint_rpc::WebSocketClient;
 
 mod apis;
 mod conv;
@@ -31,7 +31,10 @@ type JsonRpcServer = Arc<jsonrpc_v2::Server<jsonrpc_v2::MapRouter>>;
 type JsonRpcResult<T> = Result<T, JsonRpcError>;
 
 /// Start listening to JSON-RPC requests.
-pub async fn listen<A: ToSocketAddrs>(listen_addr: A, client: HttpClient) -> anyhow::Result<()> {
+pub async fn listen<A: ToSocketAddrs>(
+    listen_addr: A,
+    client: WebSocketClient,
+) -> anyhow::Result<()> {
     if let Some(listen_addr) = listen_addr.to_socket_addrs()?.next() {
         let state = JsonRpcState {
             client: FendermintClient::new(client),
@@ -49,7 +52,7 @@ pub async fn listen<A: ToSocketAddrs>(listen_addr: A, client: HttpClient) -> any
 }
 
 /// Register method handlers with the JSON-RPC server construct.
-fn make_server(state: JsonRpcState<HttpClient>) -> JsonRpcServer {
+fn make_server(state: JsonRpcState<WebSocketClient>) -> JsonRpcServer {
     let server = jsonrpc_v2::Server::new().with_data(Data(Arc::new(state)));
     let server = apis::register_methods(server);
     server.finish()

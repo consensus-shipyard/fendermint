@@ -9,6 +9,7 @@ use fendermint_vm_message::chain::ChainMessage;
 use tendermint::abci::response::DeliverTx;
 use tendermint::block::Height;
 use tendermint_rpc::{endpoint::abci_query::AbciQuery, Client, HttpClient, Scheme, Url};
+use tendermint_rpc::{WebSocketClient, WebSocketClientDriver};
 
 use fendermint_vm_message::query::FvmQuery;
 
@@ -64,6 +65,16 @@ pub fn http_client(url: Url, proxy_url: Option<Url>) -> anyhow::Result<HttpClien
         }
     };
     Ok(client)
+}
+
+/// Create a Tendermint WebSocket client.
+///
+/// The caller must start the driver in a background task.
+pub async fn ws_client(url: Url) -> anyhow::Result<(WebSocketClient, WebSocketClientDriver)> {
+    // TODO: Doesn't handle proxy.
+    tracing::debug!("Using WS client to submit request to: {}", url);
+    let (client, driver) = WebSocketClient::new(url).await?;
+    Ok((client, driver))
 }
 
 /// Unauthenticated Fendermint client.
