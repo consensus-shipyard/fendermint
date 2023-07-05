@@ -6,7 +6,6 @@
 use std::str::FromStr;
 
 use anyhow::{anyhow, Context};
-use cid::multihash::MultihashDigest;
 use ethers_core::types::{self as et};
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_message::{chain::ChainMessage, signed::SignedMessage};
@@ -15,6 +14,7 @@ use fvm_shared::{bigint::BigInt, econ::TokenAmount};
 use lazy_static::lazy_static;
 use tendermint::abci::response::DeliverTx;
 use tendermint::abci::EventAttribute;
+use tendermint::crypto::sha256::Sha256;
 use tendermint_rpc::endpoint;
 
 use super::from_fvm::{to_eth_address, to_eth_signature, to_eth_tokens};
@@ -228,7 +228,8 @@ pub fn to_eth_receipt(
         transaction_hash,
         transaction_index,
         log_index_start,
-    )?;
+    )
+    .context("failed to collect logs")?;
 
     // See if the return value is an Ethereum contract creation.
     // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#LL2240C9-L2240C15
@@ -365,7 +366,8 @@ pub fn to_logs(
             .unwrap_or_default();
 
         // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#LL2240C9-L2240C15
-        let (topics, data) = to_topics_and_data(&event.attributes)?;
+        let (topics, data) =
+            to_topics_and_data(&event.attributes).context("failed to collect topics and data")?;
 
         let log = et::Log {
             address,
@@ -392,9 +394,14 @@ fn to_topics_and_data(attrs: &Vec<EventAttribute>) -> anyhow::Result<(Vec<et::H2
     let mut topics = Vec::new();
     let mut data = None;
     for attr in attrs {
-        let bz = hex::decode(&attr.value)?;
+        let decode_value = || {
+            hex::decode(&attr.value)
+                .with_context(|| format!("failed to decode attr value as hex: {}", &attr.value))
+        };
+
         match attr.key.as_str() {
             "t1" | "t2" | "t3" | "t4" => {
+                let bz = decode_value()?;
                 if bz.len() != 32 {
                     return Err(anyhow!("unexpected topic value: {attr:?}"));
                 }
@@ -405,10 +412,8 @@ fn to_topics_and_data(attrs: &Vec<EventAttribute>) -> anyhow::Result<(Vec<et::H2
                 }
                 topics[i] = h;
             }
-            "d" => {
-                data = Some(et::Bytes::from_iter(bz.iter()));
-            }
-            _ => {}
+            "d" => data = Some(et::Bytes::from(decode_value()?)),
+            _ => {} // e.g. "emitter"
         }
     }
     Ok((topics, data.unwrap_or_default()))
@@ -419,9 +424,11 @@ pub fn to_chain_message(tx: &[u8]) -> anyhow::Result<ChainMessage> {
     fvm_ipld_encoding::from_slice::<ChainMessage>(tx).context("failed to decode tx as ChainMessage")
 }
 
-/// Hash the transaction payload for Tendermint.
+/// Hash the transaction payload the way Tendermint does,
+/// to calculate the transaction hash which is otherwise unavailable.
 pub fn message_hash(tx: &[u8]) -> anyhow::Result<tendermint::Hash> {
-    let hash = cid::multihash::Code::Sha3_256.digest(tx);
-    tendermint::Hash::from_bytes(tendermint::hash::Algorithm::Sha256, hash.digest())
-        .context("failed to convert to tendermint hash")
+    // based on how `tendermint::Header::hash` works.
+    let hash = tendermint::crypto::default::Sha256::digest(tx);
+    let hash = tendermint::Hash::Sha256(hash);
+    Ok(hash)
 }

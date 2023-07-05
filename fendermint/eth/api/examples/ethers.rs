@@ -209,12 +209,11 @@ impl TestAccount {
 // - eth_getCode
 // - eth_syncing
 // - web3_clientVersion
-//
-// DOING:
 // - eth_getLogs
 //
-// TODO:
+// DOING:
 //
+// TODO:
 // - eth_newBlockFilter
 // - eth_newPendingTransactionFilter
 // - eth_newFilter
@@ -351,17 +350,23 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     tracing::info!(height = ?bn, ?tx_hash, "example transfer");
 
     // Get a block with transactions by number.
-    request(
-        "eth_getBlockByNumber /w txns",
+    let block = request(
+        "eth_getBlockByNumber w/ txns",
         provider
             .get_block_with_txs(BlockId::Number(BlockNumber::Number(bn)))
             .await,
         |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
     )?;
 
+    assert_eq!(
+        block.unwrap().transactions[0].hash,
+        tx_hash,
+        "computed hash should match"
+    );
+
     // Get the block with transactions by hash.
     request(
-        "eth_getBlockByHash /w txns",
+        "eth_getBlockByHash w/ txns",
         provider.get_block_with_txs(BlockId::Hash(bh)).await,
         |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
     )?;
@@ -413,8 +418,14 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     )?;
 
     request(
-        "eth_estimateGas",
+        "eth_estimateGas w/ height",
         provider.estimate_gas(&probe_tx, Some(probe_height)).await,
+        |gas: &U256| !gas.is_zero(),
+    )?;
+
+    request(
+        "eth_estimateGas w/o height",
+        provider.estimate_gas(&probe_tx, None).await,
         |gas: &U256| !gas.is_zero(),
     )?;
 
@@ -502,6 +513,7 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
         *s == SyncingStatus::IsFalse // There is only one node.
     })?;
 
+    // Send a SimpleCoin transaction to get an event emitted.
     // Not using `prepare_call` here because `send_transaction` will fill the missing fields.
     let coin_send: TestContractCall<bool> = contract.send_coin(to.eth_addr, U256::from(100));
     // Using `send_transaction` instead of `coin_send.send()` so it gets the receipt.

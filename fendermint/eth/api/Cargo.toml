@@ -16,6 +16,7 @@ jsonrpc-v2 = { workspace = true }
 lazy_static = { workspace = true }
 libsecp256k1 = { workspace = true }
 paste = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 tendermint = { workspace = true }
@@ -31,7 +32,6 @@ fendermint_vm_message = { path = "../../vm/message" }
 
 [dev-dependencies]
 async-trait = { workspace = true }
-tokio = { workspace = true }
 clap = { workspace = true }
 ethers = { workspace = true, features = ["abigen"] }
 hex = { workspace = true }
@@ -42,6 +42,7 @@ tracing-subscriber = { workspace = true }
 quickcheck = { workspace = true }
 quickcheck_macros = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 
 fendermint_testing = { path = "../../testing", features = ["arb"] }
 fendermint_vm_message = { path = "../../vm/message", features = ["arb"] }

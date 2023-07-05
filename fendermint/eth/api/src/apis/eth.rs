@@ -24,6 +24,7 @@ use fvm_shared::address::Address;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::{chainid::ChainID, error::ExitCode};
 use jsonrpc_v2::Params;
+use serde::Deserialize;
 use tendermint_rpc::endpoint::{self, status};
 use tendermint_rpc::{
     endpoint::{block, block_results, broadcast::tx_sync, consensus_params, header},
@@ -386,7 +387,9 @@ where
                     &cumulative,
                     &header.header,
                     &state_params.value.base_fee,
-                )?;
+                )
+                .context("failed to convert to receipt")?;
+
                 Ok(Some(receipt))
             } else {
                 error(ExitCode::USR_ILLEGAL_ARGUMENT, "incompatible transaction")
@@ -538,20 +541,44 @@ where
     }
 }
 
+/// The client either sends one or two items in the array, depending on whether a block ID is specified.
+/// This is to keep it backwards compatible with nodes that do not support the block ID parameter.
+/// If we were using `Option`, they would have to send `null`; this way it works with both 1 or 2 parameters.
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub enum EstimateGasParams {
+    One((TypedTransaction,)),
+    Two((TypedTransaction, et::BlockId)),
+}
+
 /// Generates and returns an estimate of how much gas is necessary to allow the transaction to complete.
 /// The transaction will not be added to the blockchain.
 /// Note that the estimate may be significantly more than the amount of gas actually used by the transaction, f
 /// or a variety of reasons including EVM mechanics and node performance.
 pub async fn estimate_gas<C>(
     data: JsonRpcData<C>,
-    Params((tx, block_id)): Params<(TypedTransaction, et::BlockId)>,
+    Params(params): Params<EstimateGasParams>,
 ) -> JsonRpcResult<et::U256>
 where
     C: Client + Sync + Send,
 {
-    let msg = to_fvm_message(tx)?;
-    let header = data.header_by_id(block_id).await?;
-    let response = data.client.estimate_gas(msg, Some(header.height)).await?;
+    let (tx, block_id) = match params {
+        EstimateGasParams::One((tx,)) => (tx, et::BlockId::Number(et::BlockNumber::Latest)),
+        EstimateGasParams::Two((tx, block_id)) => (tx, block_id),
+    };
+    let msg = to_fvm_message(tx).context("failed to convert to FVM message")?;
+
+    let header = data
+        .header_by_id(block_id)
+        .await
+        .context("failed to get header")?;
+
+    let response = data
+        .client
+        .estimate_gas(msg, Some(header.height))
+        .await
+        .context("failed to call estimate gas query")?;
+
     let estimate = response.value;
 
     // Based on Lotus, we should return the data from the receipt.
@@ -661,7 +688,7 @@ where
     Ok(status)
 }
 
-/// Executes a new message call immediately without creating a transaction on the block chain.
+/// Returns an array of all logs matching a given filter object.
 pub async fn get_logs<C>(
     data: JsonRpcData<C>,
     Params((filter,)): Params<(et::Filter,)>,
@@ -730,7 +757,7 @@ where
                     }
 
                     let mut tx_logs = from_tm::to_logs(
-                        &tx_result,
+                        tx_result,
                         block_hash,
                         block_number,
                         tx_hash,
@@ -739,7 +766,7 @@ where
                     )?;
 
                     // Filter by topic.
-                    tx_logs.retain(|log| matches_topics(&filter, &log));
+                    tx_logs.retain(|log| matches_topics(&filter, log));
 
                     logs.append(&mut tx_logs);
 
