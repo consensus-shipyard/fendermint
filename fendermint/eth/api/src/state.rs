@@ -279,25 +279,37 @@ impl<C> JsonRpcState<C>
 where
     C: SubscriptionClient,
 {
-    pub async fn new_filter(&self, filter: FilterKind) -> anyhow::Result<FilterId> {
+    /// Create a new filter with the next available ID and insert it into the filters collection.
+    fn new_filter_state(&self) -> (FilterId, Arc<Mutex<FilterState>>) {
         let id = FilterId::from(self.next_filter_id.fetch_add(1, Ordering::Relaxed));
-        let query = Query::from(filter);
-        let state = FilterState::new(id);
+        let state = Arc::new(Mutex::new(FilterState::default()));
+        let mut filters = self.filters.lock().expect("lock poisoned");
+        filters.insert(id, state.clone());
+        (id, state)
+    }
 
-        let sub: Subscription = self
-            .tm()
-            .subscribe(query)
-            .await
-            .context("failed to subscribe to query")?;
+    pub async fn new_filter(&self, filter: FilterKind) -> anyhow::Result<FilterId> {
+        let queries = filter
+            .to_queries()
+            .context("failed to convert filter to queries")?;
 
-        let state = Arc::new(Mutex::new(state));
+        let mut subs = Vec::new();
 
-        {
-            let mut filters = self.filters.lock().expect("lock poisoned");
-            filters.insert(id, state.clone());
+        for query in queries {
+            let sub: Subscription = self
+                .tm()
+                .subscribe(query)
+                .await
+                .context("failed to subscribe to query")?;
+
+            subs.push(sub);
         }
 
-        spawn_subscription_handler(self.filters.clone(), state, sub);
+        let (id, state) = self.new_filter_state();
+
+        for sub in subs {
+            spawn_subscription_handler(self.filters.clone(), id, state.clone(), sub);
+        }
 
         Ok(id)
     }
@@ -306,6 +318,7 @@ where
 /// Spawn a subscription handler in a new task.
 fn spawn_subscription_handler(
     filters: FilterMap,
+    id: FilterId,
     state: Arc<Mutex<FilterState>>,
     mut sub: Subscription,
 ) {
@@ -316,8 +329,8 @@ fn spawn_subscription_handler(
             if state.is_unsubscribed() {
                 return;
             } else if state.is_timed_out() {
-                let mut filters = filters.lock().expect("lock poisoned");
-                filters.remove(state.id());
+                state.unsubscribe();
+                filters.lock().expect("lock poisoned").remove(&id);
                 return;
             } else {
                 match result {
@@ -332,10 +345,11 @@ fn spawn_subscription_handler(
             }
         }
         // Mark the state as finished, but don't remove; let the poller consume whatever is left.
-        let mut state = state.lock().expect("lock poisoned");
-        state.finish(None)
+        state.lock().expect("lock poisoned").finish(None)
+
         // Dropping the `Subscription` should cause the client to unsubscribe,
         // if this was the last one interested in that query; we don't have to
         // call the unsubscribe method explicitly.
+        // See https://docs.rs/tendermint-rpc/0.31.1/tendermint_rpc/client/struct.WebSocketClient.html
     });
 }

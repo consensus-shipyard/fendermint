@@ -1,8 +1,13 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use ethers_core::types as et;
-use tendermint_rpc::{event::Event, query::Query};
+use ethers_core::types::{self as et, ValueOrArray};
+use fendermint_vm_actor_interface::eam::EthAddress;
+use fvm_shared::address::Address;
+use tendermint_rpc::{
+    event::Event,
+    query::{EventType, Query},
+};
 
 /// Check whether to keep a log according to the topic filter.
 ///
@@ -38,26 +43,54 @@ pub enum FilterKind {
     PendingTransactions,
 }
 
-impl From<FilterKind> for Query {
-    fn from(value: FilterKind) -> Self {
-        todo!()
+impl FilterKind {
+    /// Convert an Ethereum filter to potentially multiple Tendermint queries.
+    ///
+    /// One limitation with Tendermint is that it only handles AND condition
+    /// in filtering, so if the filter contains arrays, we have to make a
+    /// cartesian product of all conditions in it and subscribe individually.
+    ///
+    /// https://docs.tendermint.com/v0.34/rpc/#/Websocket/subscribe
+    pub fn to_queries(&self) -> anyhow::Result<Vec<Query>> {
+        match self {
+            FilterKind::NewBlocks => Ok(vec![Query::from(EventType::NewBlock)]),
+            FilterKind::PendingTransactions => Ok(vec![Query::from(EventType::Tx)]),
+            FilterKind::Logs(filter) => {
+                todo!()
+
+                // let addr = match filter.address {
+                //     None => None,
+                //     Some(ValueOrArray::Value(addr)) => Some(addr),
+                //     Some(ValueOrArray::Array(addrs)) => {
+                //         match addrs.len() {
+                //             0 => None,
+                //             1 => Some(addrs[0])
+                //             _ => return anyhow!("Only use 1 address in a subscription.")
+                //         }
+                //     }
+                // }
+
+                // if let Some(addr) = filter.address {
+                //     let addrs = match addr {
+                //         ValueOrArray::Value(addr) => addr,
+                //         ValueOrArray::Array(addrs) if addres.l
+                //     }
+                //     let id = Address::from(EthAddress::from(addr.0))
+                //         .id()
+                //         .context("Only use f0 type addresses in filters.")?;
+
+                //     query.and_eq("emitter", id.to_string())
+                // }
+            }
+        }
     }
 }
 
 /// Accumulate changes between polls.
-pub struct FilterState {
-    id: FilterId,
-}
+#[derive(Default)]
+pub struct FilterState {}
 
 impl FilterState {
-    pub fn new(id: FilterId) -> Self {
-        Self { id }
-    }
-
-    pub fn id(&self) -> &FilterId {
-        &self.id
-    }
-
     /// Accumulate the events.
     pub fn update(&mut self, _event: Event) {
         todo!()
@@ -72,6 +105,11 @@ impl FilterState {
     /// Indicate whether the reader has been too slow at polling the filter
     /// and that it should be removed.
     pub fn is_timed_out(&self) -> bool {
+        todo!()
+    }
+
+    /// Indicate that the reader is no longer interested in receiving updates.
+    pub fn unsubscribe(&self) -> bool {
         todo!()
     }
 
