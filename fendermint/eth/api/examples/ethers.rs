@@ -36,7 +36,7 @@ use anyhow::{anyhow, Context};
 use clap::Parser;
 use ethers::{
     prelude::{abigen, ContractCall, ContractFactory, SignerMiddleware},
-    providers::{Http, Middleware, Provider},
+    providers::{FilterKind, Http, Middleware, Provider},
     signers::{Signer, Wallet},
 };
 use ethers_core::{
@@ -236,6 +236,27 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     let to = TestAccount::new(&opts.secret_key_to)?;
 
     tracing::info!(from = ?from.eth_addr, to = ?to.eth_addr, "ethereum address");
+
+    // Set up a filter to collect events.
+    let logs_filter_id = request(
+        "eth_newFilter",
+        provider
+            .new_filter(FilterKind::Logs(&Filter::default()))
+            .await,
+        |_| true,
+    )?;
+
+    let blocks_filter_id = request(
+        "eth_newBlockFilter",
+        provider.new_filter(FilterKind::NewBlocks).await,
+        |id| *id != logs_filter_id,
+    )?;
+
+    let txns_filter_id = request(
+        "eth_newPendingTransactionFilter",
+        provider.new_filter(FilterKind::PendingTransactions).await,
+        |id| *id != logs_filter_id && *id != blocks_filter_id,
+    )?;
 
     request("web3_clientVersion", provider.client_version().await, |v| {
         v.starts_with("fendermint/")

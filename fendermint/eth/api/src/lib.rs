@@ -3,7 +3,6 @@
 
 use anyhow::anyhow;
 use axum::routing::{get, post};
-use fendermint_rpc::client::FendermintClient;
 use jsonrpc_v2::Data;
 use std::{net::ToSocketAddrs, sync::Arc};
 use tendermint_rpc::WebSocketClient;
@@ -16,15 +15,8 @@ mod gas;
 mod handlers;
 mod state;
 
-pub use error::{error, JsonRpcError};
-
-// Made generic in the client type so we can mock it if we want to test API
-// methods without having to spin up a server. In those tests the methods
-// below would not be used, so those aren't generic; we'd directly invoke
-// e.g. `fendermint_eth_api::apis::eth::accounts` with some mock client.
-pub struct JsonRpcState<C> {
-    pub client: FendermintClient<C>,
-}
+use error::{error, JsonRpcError};
+use state::JsonRpcState;
 
 type JsonRpcData<C> = Data<JsonRpcState<C>>;
 type JsonRpcServer = Arc<jsonrpc_v2::Server<jsonrpc_v2::MapRouter>>;
@@ -36,9 +28,7 @@ pub async fn listen<A: ToSocketAddrs>(
     client: WebSocketClient,
 ) -> anyhow::Result<()> {
     if let Some(listen_addr) = listen_addr.to_socket_addrs()?.next() {
-        let state = JsonRpcState {
-            client: FendermintClient::new(client),
-        };
+        let state = JsonRpcState::new(client);
         let server = make_server(state);
         let router = make_router(server);
         let server = axum::Server::try_bind(&listen_addr)?.serve(router.into_make_service());

@@ -3,36 +3,66 @@
 
 //! Tendermint RPC helper methods for the implementation of the APIs.
 
-use anyhow::Context;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+
+use anyhow::{anyhow, Context};
 use ethers_core::types::{self as et, BlockId};
-use fendermint_rpc::client::TendermintClient;
+use fendermint_rpc::client::{FendermintClient, TendermintClient};
 use fendermint_rpc::query::QueryClient;
 use fendermint_vm_actor_interface::{evm, system};
 use fendermint_vm_message::{chain::ChainMessage, conv::from_eth::to_fvm_address};
+use futures::StreamExt;
 use fvm_ipld_encoding::{de::DeserializeOwned, RawBytes};
 use fvm_shared::{chainid::ChainID, econ::TokenAmount, error::ExitCode, message::Message};
 use tendermint::block::Height;
+use tendermint_rpc::query::Query;
 use tendermint_rpc::{
     endpoint::{block, block_by_hash, block_results, commit, header, header_by_hash},
     Client,
 };
+use tendermint_rpc::{Subscription, SubscriptionClient};
 
+use crate::filters::{FilterId, FilterKind, FilterState};
 use crate::{
     conv::from_tm::{
         map_rpc_block_txs, message_hash, to_chain_message, to_eth_block, to_eth_transaction,
     },
-    error, JsonRpcResult, JsonRpcState,
+    error, JsonRpcResult,
 };
+
+type FilterMap = Arc<Mutex<HashMap<FilterId, Arc<Mutex<FilterState>>>>>;
+
+// Made generic in the client type so we can mock it if we want to test API
+// methods without having to spin up a server. In those tests the methods
+// below would not be used, so those aren't generic; we'd directly invoke
+// e.g. `fendermint_eth_api::apis::eth::accounts` with some mock client.
+pub struct JsonRpcState<C> {
+    pub client: FendermintClient<C>,
+    next_filter_id: AtomicUsize,
+    filters: FilterMap,
+}
+
+impl<C> JsonRpcState<C> {
+    pub fn new(client: C) -> Self {
+        Self {
+            client: FendermintClient::new(client),
+            next_filter_id: Default::default(),
+            filters: Default::default(),
+        }
+    }
+
+    /// The underlying Tendermint RPC client.
+    pub fn tm(&self) -> &C {
+        self.client.underlying()
+    }
+}
 
 impl<C> JsonRpcState<C>
 where
     C: Client + Sync + Send,
 {
-    /// The underlying Tendermint RPC client.
-    pub fn tm(&self) -> &C {
-        self.client.underlying()
-    }
-
     /// Get the Tendermint block at a specific height.
     pub async fn block_by_height(
         &self,
@@ -243,4 +273,69 @@ where
 
         Ok(data)
     }
+}
+
+impl<C> JsonRpcState<C>
+where
+    C: SubscriptionClient,
+{
+    pub async fn new_filter(&self, filter: FilterKind) -> anyhow::Result<FilterId> {
+        let id = FilterId::from(self.next_filter_id.fetch_add(1, Ordering::Relaxed));
+        let query = Query::from(filter);
+        let state = FilterState::new(id);
+
+        let sub: Subscription = self
+            .tm()
+            .subscribe(query)
+            .await
+            .context("failed to subscribe to query")?;
+
+        let state = Arc::new(Mutex::new(state));
+
+        {
+            let mut filters = self.filters.lock().expect("lock poisoned");
+            filters.insert(id, state.clone());
+        }
+
+        spawn_subscription_handler(self.filters.clone(), state, sub);
+
+        Ok(id)
+    }
+}
+
+/// Spawn a subscription handler in a new task.
+fn spawn_subscription_handler(
+    filters: FilterMap,
+    state: Arc<Mutex<FilterState>>,
+    mut sub: Subscription,
+) {
+    tokio::spawn(async move {
+        while let Some(result) = sub.next().await {
+            let mut state = state.lock().expect("lock poisoned");
+
+            if state.is_unsubscribed() {
+                return;
+            } else if state.is_timed_out() {
+                let mut filters = filters.lock().expect("lock poisoned");
+                filters.remove(state.id());
+                return;
+            } else {
+                match result {
+                    Ok(event) => {
+                        state.update(event);
+                    }
+                    Err(err) => {
+                        state.finish(Some(anyhow!("subscription failed: {err}")));
+                        return;
+                    }
+                }
+            }
+        }
+        // Mark the state as finished, but don't remove; let the poller consume whatever is left.
+        let mut state = state.lock().expect("lock poisoned");
+        state.finish(None)
+        // Dropping the `Subscription` should cause the client to unsubscribe,
+        // if this was the last one interested in that query; we don't have to
+        // call the unsubscribe method explicitly.
+    });
 }

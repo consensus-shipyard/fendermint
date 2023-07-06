@@ -82,7 +82,7 @@ pub struct FendermintClient<C = HttpClient> {
     inner: C,
 }
 
-impl<C: Client> FendermintClient<C> {
+impl<C> FendermintClient<C> {
     pub fn new(inner: C) -> Self {
         Self { inner }
     }
@@ -101,12 +101,12 @@ impl FendermintClient<HttpClient> {
 }
 
 /// Get to the underlying Tendermint client if necessary, for example to query the state of transactions.
-pub trait TendermintClient<C: Client> {
+pub trait TendermintClient<C> {
     /// The underlying Tendermint client.
     fn underlying(&self) -> &C;
 }
 
-impl<C: Client> TendermintClient<C> for FendermintClient<C> {
+impl<C> TendermintClient<C> for FendermintClient<C> {
     fn underlying(&self) -> &C {
         &self.inner
     }
@@ -128,10 +128,7 @@ pub struct BoundFendermintClient<C = HttpClient> {
     message_factory: MessageFactory,
 }
 
-impl<C> BoundFendermintClient<C>
-where
-    C: Client,
-{
+impl<C> BoundFendermintClient<C> {
     pub fn new(inner: C, message_factory: MessageFactory) -> Self {
         Self {
             inner,
@@ -146,10 +143,7 @@ impl<C> BoundClient for BoundFendermintClient<C> {
     }
 }
 
-impl<C> TendermintClient<C> for BoundFendermintClient<C>
-where
-    C: Client,
-{
+impl<C> TendermintClient<C> for BoundFendermintClient<C> {
     fn underlying(&self) -> &C {
         &self.inner
     }

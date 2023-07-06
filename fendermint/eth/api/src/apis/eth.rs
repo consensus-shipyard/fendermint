@@ -26,6 +26,7 @@ use fvm_shared::{chainid::ChainID, error::ExitCode};
 use jsonrpc_v2::Params;
 use serde::Deserialize;
 use tendermint_rpc::endpoint::{self, status};
+use tendermint_rpc::SubscriptionClient;
 use tendermint_rpc::{
     endpoint::{block, block_results, broadcast::tx_sync, consensus_params, header},
     Client,
@@ -33,7 +34,7 @@ use tendermint_rpc::{
 
 use crate::conv::from_eth::{to_fvm_message, to_tm_hash};
 use crate::conv::from_tm::{self, message_hash, to_chain_message, to_cumulative};
-use crate::filters::matches_topics;
+use crate::filters::{matches_topics, FilterKind};
 use crate::{
     conv::{
         from_eth::to_fvm_address,
@@ -780,4 +781,46 @@ where
     }
 
     Ok(logs)
+}
+
+/// Creates a filter object, based on filter options, to notify when the state changes (logs).
+/// To check if the state has changed, call eth_getFilterChanges.
+pub async fn new_filter<C>(
+    data: JsonRpcData<C>,
+    Params((filter,)): Params<(et::Filter,)>,
+) -> JsonRpcResult<et::U256>
+where
+    C: SubscriptionClient + Sync + Send,
+{
+    let id = data
+        .new_filter(FilterKind::Logs(Box::new(filter)))
+        .await
+        .context("failed to add log filter")?;
+    Ok(id)
+}
+
+/// Creates a filter in the node, to notify when a new block arrives.
+/// To check if the state has changed, call eth_getFilterChanges.
+pub async fn new_block_filter<C>(data: JsonRpcData<C>) -> JsonRpcResult<et::U256>
+where
+    C: SubscriptionClient + Sync + Send,
+{
+    let id = data
+        .new_filter(FilterKind::NewBlocks)
+        .await
+        .context("failed to add block filter")?;
+    Ok(id)
+}
+
+/// Creates a filter in the node, to notify when new pending transactions arrive.
+/// To check if the state has changed, call eth_getFilterChanges.
+pub async fn new_pending_transaction_filter<C>(data: JsonRpcData<C>) -> JsonRpcResult<et::U256>
+where
+    C: SubscriptionClient + Sync + Send,
+{
+    let id = data
+        .new_filter(FilterKind::PendingTransactions)
+        .await
+        .context("failed to add transaction filter")?;
+    Ok(id)
 }
