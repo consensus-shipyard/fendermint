@@ -17,7 +17,6 @@ use futures::StreamExt;
 use fvm_ipld_encoding::{de::DeserializeOwned, RawBytes};
 use fvm_shared::{chainid::ChainID, econ::TokenAmount, error::ExitCode, message::Message};
 use tendermint::block::Height;
-use tendermint_rpc::query::Query;
 use tendermint_rpc::{
     endpoint::{block, block_by_hash, block_results, commit, header, header_by_hash},
     Client,

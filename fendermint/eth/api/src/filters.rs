@@ -1,6 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use anyhow::Context;
 use ethers_core::types::{self as et, ValueOrArray};
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fvm_shared::address::Address;
@@ -56,31 +57,68 @@ impl FilterKind {
             FilterKind::NewBlocks => Ok(vec![Query::from(EventType::NewBlock)]),
             FilterKind::PendingTransactions => Ok(vec![Query::from(EventType::Tx)]),
             FilterKind::Logs(filter) => {
-                todo!()
+                let mut query = Query::from(EventType::Tx);
 
-                // let addr = match filter.address {
-                //     None => None,
-                //     Some(ValueOrArray::Value(addr)) => Some(addr),
-                //     Some(ValueOrArray::Array(addrs)) => {
-                //         match addrs.len() {
-                //             0 => None,
-                //             1 => Some(addrs[0])
-                //             _ => return anyhow!("Only use 1 address in a subscription.")
-                //         }
-                //     }
-                // }
+                if let Some(block_hash) = filter.get_block_hash() {
+                    query = query.and_eq("tx.hash", hex::encode(block_hash.0));
+                }
+                if let Some(from_block) = filter.get_from_block() {
+                    query = query.and_gte("tx.height", from_block.as_u64());
+                }
+                if let Some(to_block) = filter.get_to_block() {
+                    query = query.and_lte("tx.height", to_block.as_u64());
+                }
 
-                // if let Some(addr) = filter.address {
-                //     let addrs = match addr {
-                //         ValueOrArray::Value(addr) => addr,
-                //         ValueOrArray::Array(addrs) if addres.l
-                //     }
-                //     let id = Address::from(EthAddress::from(addr.0))
-                //         .id()
-                //         .context("Only use f0 type addresses in filters.")?;
+                let mut queries = vec![query];
 
-                //     query.and_eq("emitter", id.to_string())
-                // }
+                let addrs = match &filter.address {
+                    None => vec![],
+                    Some(ValueOrArray::Value(addr)) => vec![*addr],
+                    Some(ValueOrArray::Array(addrs)) => addrs.clone(),
+                };
+
+                let addrs = addrs
+                    .into_iter()
+                    .map(|addr| {
+                        Address::from(EthAddress(addr.0))
+                            .id()
+                            .context("only f0 type addresses are supported")
+                    })
+                    .collect::<Result<Vec<u64>, _>>()?;
+
+                if !addrs.is_empty() {
+                    queries = addrs
+                        .iter()
+                        .flat_map(|addr| {
+                            queries
+                                .iter()
+                                .map(|q| q.clone().and_eq("message.emitter", *addr))
+                        })
+                        .collect();
+                };
+
+                for i in 0..4 {
+                    if let Some(Some(topics)) = filter.topics.get(i) {
+                        let topics = match topics {
+                            ValueOrArray::Value(Some(t)) => vec![t],
+                            ValueOrArray::Array(ts) => ts.iter().flatten().collect(),
+                            _ => vec![],
+                        };
+                        if !topics.is_empty() {
+                            let key = format!("message.t{}", i + 1);
+                            queries = topics
+                                .into_iter()
+                                .flat_map(|t| {
+                                    queries
+                                        .iter()
+                                        .map(|q| q.clone().and_eq(&key, hex::encode(t.0)))
+                                })
+                                .collect();
+                        }
+                    }
+                }
+
+                Ok(queries)
             }
         }
     }
