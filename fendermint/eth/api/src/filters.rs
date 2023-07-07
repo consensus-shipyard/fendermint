@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::Context;
-use ethers_core::types::{self as et, ValueOrArray};
+use ethers_core::types as et;
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fvm_shared::address::Address;
 use tendermint_rpc::{
@@ -73,8 +73,8 @@ impl FilterKind {
 
                 let addrs = match &filter.address {
                     None => vec![],
-                    Some(ValueOrArray::Value(addr)) => vec![*addr],
-                    Some(ValueOrArray::Array(addrs)) => addrs.clone(),
+                    Some(et::ValueOrArray::Value(addr)) => vec![*addr],
+                    Some(et::ValueOrArray::Array(addrs)) => addrs.clone(),
                 };
 
                 let addrs = addrs
@@ -92,7 +92,7 @@ impl FilterKind {
                         .flat_map(|addr| {
                             queries
                                 .iter()
-                                .map(|q| q.clone().and_eq("message.emitter", *addr))
+                                .map(|q| q.clone().and_eq("message.emitter", addr.to_string()))
                         })
                         .collect();
                 };
@@ -100,8 +100,8 @@ impl FilterKind {
                 for i in 0..4 {
                     if let Some(Some(topics)) = filter.topics.get(i) {
                         let topics = match topics {
-                            ValueOrArray::Value(Some(t)) => vec![t],
-                            ValueOrArray::Array(ts) => ts.iter().flatten().collect(),
+                            et::ValueOrArray::Value(Some(t)) => vec![t],
+                            et::ValueOrArray::Array(ts) => ts.iter().flatten().collect(),
                             _ => vec![],
                         };
                         if !topics.is_empty() {
@@ -154,5 +154,69 @@ impl FilterState {
     /// Indicate that the reader has unsubscribed from the filter.
     pub fn is_unsubscribed(&self) -> bool {
         todo!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ethers_core::types as et;
+
+    use super::FilterKind;
+
+    #[test]
+    fn filter_to_query() {
+        fn hash(s: &str) -> et::H256 {
+            et::H256::from(ethers_core::utils::keccak256(s))
+        }
+
+        fn hash_hex(s: &str) -> String {
+            hex::encode(hash(s))
+        }
+
+        let filter = et::Filter::new()
+            .select(1234..)
+            .address(
+                "0xff00000000000000000000000000000000000064"
+                    .parse::<et::Address>()
+                    .unwrap(),
+            )
+            .events(vec!["Foo", "Bar"])
+            .topic1(hash("Alice"))
+            .topic2(
+                vec!["Bob", "Charlie"]
+                    .into_iter()
+                    .map(hash)
+                    .collect::<Vec<_>>(),
+            );
+
+        eprintln!("filter = {filter:?}");
+
+        assert_eq!(
+            filter.topics[0],
+            Some(et::ValueOrArray::Array(vec![
+                Some(hash("Foo")),
+                Some(hash("Bar"))
+            ]))
+        );
+
+        let queries = FilterKind::Logs(Box::new(filter))
+            .to_queries()
+            .expect("failed to convert");
+
+        assert_eq!(queries.len(), 4);
+
+        for (i, (t1, t3)) in [
+            ("Foo", "Bob"),
+            ("Bar", "Bob"),
+            ("Foo", "Charlie"),
+            ("Bar", "Charlie"),
+        ]
+        .iter()
+        .enumerate()
+        {
+            let q = queries[i].to_string();
+            let e = format!("tm.event = 'Tx' AND tx.height >= 1234 AND message.emitter = '100' AND message.t1 = '{}' AND message.t2 = '{}' AND message.t3 = '{}'", hash_hex(t1), hash_hex("Alice"), hash_hex(t3));
+            assert_eq!(q, e, "combination {i}");
+        }
     }
 }
