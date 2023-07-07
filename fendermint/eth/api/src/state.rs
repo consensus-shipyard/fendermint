@@ -282,9 +282,10 @@ where
     C: SubscriptionClient,
 {
     /// Create a new filter with the next available ID and insert it into the filters collection.
-    fn new_filter_state(&self) -> (FilterId, Arc<Mutex<FilterState>>) {
+    fn new_filter_state(&self, filter: &FilterKind) -> (FilterId, Arc<Mutex<FilterState>>) {
         let id = FilterId::from(self.next_filter_id.fetch_add(1, Ordering::Relaxed));
-        let state = Arc::new(Mutex::new(FilterState::new(self.filter_timeout)));
+        let state = FilterState::new(self.filter_timeout, filter);
+        let state = Arc::new(Mutex::new(state));
         let mut filters = self.filters.lock().expect("lock poisoned");
         filters.insert(id, state.clone());
         (id, state)
@@ -308,7 +309,7 @@ where
             subs.push(sub);
         }
 
-        let (id, state) = self.new_filter_state();
+        let (id, state) = self.new_filter_state(&filter);
 
         for sub in subs {
             spawn_subscription_handler(self.filters.clone(), id, state.clone(), sub);
@@ -354,7 +355,10 @@ fn spawn_subscription_handler(
             } else {
                 match result {
                     Ok(event) => {
-                        state.update(event);
+                        if let Err(err) = state.update(event) {
+                            state.finish(Some(anyhow!("update failed: {err}")));
+                            return;
+                        }
                     }
                     Err(err) => {
                         state.finish(Some(anyhow!("subscription failed: {err}")));

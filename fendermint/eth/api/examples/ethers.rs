@@ -252,7 +252,7 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
         |id| *id != logs_filter_id,
     )?;
 
-    let txns_filter_id = request(
+    let txs_filter_id = request(
         "eth_newPendingTransactionFilter",
         provider.new_filter(FilterKind::PendingTransactions).await,
         |id| *id != logs_filter_id && *id != blocks_filter_id,
@@ -552,10 +552,23 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
         |logs| *logs == receipt.logs,
     )?;
 
-    // TODO: See what kind of events were logged.
+    // See what kind of events were logged.
+    request(
+        "eth_getFilterChanges",
+        mw.get_filter_changes(blocks_filter_id).await,
+        |block_hashes: &Vec<H256>| block_hashes.contains(&bh),
+    )?;
+
+    request(
+        "eth_getFilterChanges",
+        mw.get_filter_changes(txs_filter_id).await,
+        |tx_hashes: &Vec<H256>| tx_hashes.contains(&tx_hash),
+    )?;
+
+    // TODO: query logs_filter_id
 
     // Uninstall all filters.
-    for id in [blocks_filter_id, logs_filter_id, txns_filter_id] {
+    for id in [blocks_filter_id, logs_filter_id, txs_filter_id] {
         request("eth_uninstallFilter", mw.uninstall_filter(id).await, |ok| {
             *ok
         })?;

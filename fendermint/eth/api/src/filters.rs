@@ -8,9 +8,11 @@ use ethers_core::types as et;
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fvm_shared::address::Address;
 use tendermint_rpc::{
-    event::Event,
+    event::{Event, EventData},
     query::{EventType, Query},
 };
+
+use crate::conv::from_tm;
 
 /// Check whether to keep a log according to the topic filter.
 ///
@@ -41,9 +43,9 @@ pub fn matches_topics(filter: &et::Filter, log: &et::Log) -> bool {
 pub type FilterId = et::U256;
 
 pub enum FilterKind {
-    Logs(Box<et::Filter>),
     NewBlocks,
     PendingTransactions,
+    Logs(Box<et::Filter>),
 }
 
 impl FilterKind {
@@ -126,26 +128,71 @@ impl FilterKind {
     }
 }
 
+pub enum FilterAccumulator {
+    NewBlocks(Vec<et::H256>),
+    PendingTransactions(Vec<et::H256>),
+    Logs(Vec<et::Log>),
+}
+
+impl From<&FilterKind> for FilterAccumulator {
+    fn from(value: &FilterKind) -> Self {
+        match value {
+            FilterKind::NewBlocks => FilterAccumulator::NewBlocks(vec![]),
+            FilterKind::PendingTransactions => FilterAccumulator::PendingTransactions(vec![]),
+            FilterKind::Logs(_) => FilterAccumulator::Logs(vec![]),
+        }
+    }
+}
+
 /// Accumulate changes between polls.
 pub struct FilterState {
     timeout: Duration,
     last_poll: Instant,
     is_unsubscribed: bool,
     finished: Option<Option<anyhow::Error>>,
+    accum: FilterAccumulator,
 }
 
 impl FilterState {
-    pub fn new(timeout: Duration) -> Self {
+    pub fn new(timeout: Duration, kind: &FilterKind) -> Self {
         Self {
             timeout,
             last_poll: Instant::now(),
             is_unsubscribed: false,
             finished: None,
+            accum: FilterAccumulator::from(kind),
         }
     }
 
     /// Accumulate the events.
-    pub fn update(&mut self, _event: Event) {}
+    pub fn update(&mut self, event: Event) -> anyhow::Result<()> {
+        match (&mut self.accum, event.data) {
+            (
+                FilterAccumulator::NewBlocks(ref mut hashes),
+                EventData::NewBlock {
+                    block: Some(block), ..
+                },
+            ) => {
+                let h = block.header().hash();
+                let h = et::H256::from_slice(h.as_bytes());
+                hashes.push(h);
+            }
+            (
+                FilterAccumulator::PendingTransactions(ref mut hashes),
+                EventData::Tx { tx_result },
+            ) => {
+                let h = from_tm::message_hash(&tx_result.tx)?;
+                let h = et::H256::from_slice(h.as_bytes());
+                hashes.push(h);
+            }
+            (FilterAccumulator::Logs(ref mut _logs), _) => {
+                // Where should we get block hash etc from??
+                todo!()
+            }
+            _ => {}
+        }
+        Ok(())
+    }
 
     /// The subscription returned an error and will no longer be polled for data.
     /// Propagate the error to the reader next time it comes to check on the filter.
