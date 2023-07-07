@@ -18,6 +18,8 @@ state_hist_size = 0
 
 # Ethereum API facade
 [eth]
+# Maximum time allowed between polls for filter changes, in seconds, before the subscription is canceled.
+filter_timeout = 300
 
 [eth.listen]
 # Only accept local connections by default.

@@ -1,6 +1,8 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::time::{Duration, Instant};
+
 use anyhow::Context;
 use ethers_core::types as et;
 use fendermint_vm_actor_interface::eam::EthAddress;
@@ -125,35 +127,49 @@ impl FilterKind {
 }
 
 /// Accumulate changes between polls.
-#[derive(Default)]
-pub struct FilterState {}
+pub struct FilterState {
+    timeout: Duration,
+    last_poll: Instant,
+    is_unsubscribed: bool,
+    finished: Option<Option<anyhow::Error>>,
+}
 
 impl FilterState {
-    /// Accumulate the events.
-    pub fn update(&mut self, _event: Event) {
-        todo!()
+    pub fn new(timeout: Duration) -> Self {
+        Self {
+            timeout,
+            last_poll: Instant::now(),
+            is_unsubscribed: false,
+            finished: None,
+        }
     }
+
+    /// Accumulate the events.
+    pub fn update(&mut self, _event: Event) {}
 
     /// The subscription returned an error and will no longer be polled for data.
     /// Propagate the error to the reader next time it comes to check on the filter.
-    pub fn finish(&mut self, _error: Option<anyhow::Error>) {
-        todo!()
+    pub fn finish(&mut self, error: Option<anyhow::Error>) {
+        // Keep any already existing error.
+        let error = self.finished.take().flatten().or(error);
+
+        self.finished = Some(error);
     }
 
     /// Indicate whether the reader has been too slow at polling the filter
     /// and that it should be removed.
     pub fn is_timed_out(&self) -> bool {
-        todo!()
+        Instant::now().duration_since(self.last_poll) > self.timeout
     }
 
     /// Indicate that the reader is no longer interested in receiving updates.
-    pub fn unsubscribe(&self) -> bool {
-        todo!()
+    pub fn unsubscribe(&mut self) {
+        self.is_unsubscribed = true;
     }
 
     /// Indicate that the reader has unsubscribed from the filter.
     pub fn is_unsubscribed(&self) -> bool {
-        todo!()
+        self.is_unsubscribed
     }
 }
 

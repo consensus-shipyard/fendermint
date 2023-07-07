@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use anyhow::{anyhow, Context};
 use ethers_core::types::{self as et, BlockId};
@@ -39,14 +40,16 @@ type FilterMap = Arc<Mutex<HashMap<FilterId, Arc<Mutex<FilterState>>>>>;
 // e.g. `fendermint_eth_api::apis::eth::accounts` with some mock client.
 pub struct JsonRpcState<C> {
     pub client: FendermintClient<C>,
+    filter_timeout: Duration,
     next_filter_id: AtomicUsize,
     filters: FilterMap,
 }
 
 impl<C> JsonRpcState<C> {
-    pub fn new(client: C) -> Self {
+    pub fn new(client: C, filter_timeout: Duration) -> Self {
         Self {
             client: FendermintClient::new(client),
+            filter_timeout,
             next_filter_id: Default::default(),
             filters: Default::default(),
         }
@@ -281,7 +284,7 @@ where
     /// Create a new filter with the next available ID and insert it into the filters collection.
     fn new_filter_state(&self) -> (FilterId, Arc<Mutex<FilterState>>) {
         let id = FilterId::from(self.next_filter_id.fetch_add(1, Ordering::Relaxed));
-        let state = Arc::new(Mutex::new(FilterState::default()));
+        let state = Arc::new(Mutex::new(FilterState::new(self.filter_timeout)));
         let mut filters = self.filters.lock().expect("lock poisoned");
         filters.insert(id, state.clone());
         (id, state)

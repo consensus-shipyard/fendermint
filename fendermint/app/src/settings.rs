@@ -3,7 +3,11 @@
 
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
-use std::path::{Path, PathBuf};
+use serde_with::{serde_as, DurationSeconds};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct Address {
@@ -33,9 +37,12 @@ pub struct DbSettings {
 }
 
 /// Ethereum API facade settings.
+#[serde_as]
 #[derive(Debug, Deserialize)]
 pub struct EthSettings {
     pub listen: Address,
+    #[serde_as(as = "DurationSeconds<u64>")]
+    pub filter_timeout: Duration,
 }
 
 #[derive(Debug, Deserialize)]

@@ -4,7 +4,7 @@
 use anyhow::anyhow;
 use axum::routing::{get, post};
 use jsonrpc_v2::Data;
-use std::{net::ToSocketAddrs, sync::Arc};
+use std::{net::ToSocketAddrs, sync::Arc, time::Duration};
 use tendermint_rpc::WebSocketClient;
 
 mod apis;
@@ -26,9 +26,10 @@ type JsonRpcResult<T> = Result<T, JsonRpcError>;
 pub async fn listen<A: ToSocketAddrs>(
     listen_addr: A,
     client: WebSocketClient,
+    filter_timeout: Duration,
 ) -> anyhow::Result<()> {
     if let Some(listen_addr) = listen_addr.to_socket_addrs()?.next() {
-        let state = JsonRpcState::new(client);
+        let state = JsonRpcState::new(client, filter_timeout);
         let server = make_server(state);
         let router = make_router(server);
         let server = axum::Server::try_bind(&listen_addr)?.serve(router.into_make_service());
