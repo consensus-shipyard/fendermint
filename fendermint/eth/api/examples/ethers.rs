@@ -552,6 +552,15 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
         |logs| *logs == receipt.logs,
     )?;
 
+    // TODO: See what kind of events were logged.
+
+    // Uninstall all filters.
+    for id in [blocks_filter_id, logs_filter_id, txns_filter_id] {
+        request("eth_uninstallFilter", mw.uninstall_filter(id).await, |ok| {
+            *ok
+        })?;
+    }
+
     Ok(())
 }
 

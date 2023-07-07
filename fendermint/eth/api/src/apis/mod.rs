@@ -74,8 +74,8 @@ pub fn register_methods(server: ServerBuilder<MapRouter>) -> ServerBuilder<MapRo
         // eth_signTransaction
         // eth_submitHashrate
         // eth_submitWork
-        syncing
-        // eth_uninstallFilter
+        syncing,
+        uninstallFilter
     });
 
     let server = with_methods!(server, web3, {

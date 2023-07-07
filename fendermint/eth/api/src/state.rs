@@ -290,6 +290,7 @@ where
         (id, state)
     }
 
+    /// Create a new filter, subscribe with Tendermint and start handlers in the background.
     pub async fn new_filter(&self, filter: FilterKind) -> anyhow::Result<FilterId> {
         let queries = filter
             .to_queries()
@@ -314,6 +315,22 @@ where
         }
 
         Ok(id)
+    }
+
+    pub fn uninstall_filter(&self, filter_id: FilterId) -> bool {
+        let removed = {
+            let mut filters = self.filters.lock().expect("lock poisoned");
+            filters.remove(&filter_id)
+        };
+
+        if let Some(filter) = removed {
+            // Signal to the background tasks that they can unsubscribe.
+            let mut filter = filter.lock().expect("lock poisoned");
+            filter.unsubscribe();
+            true
+        } else {
+            false
+        }
     }
 }
 

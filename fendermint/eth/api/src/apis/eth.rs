@@ -34,7 +34,7 @@ use tendermint_rpc::{
 
 use crate::conv::from_eth::{to_fvm_message, to_tm_hash};
 use crate::conv::from_tm::{self, message_hash, to_chain_message, to_cumulative};
-use crate::filters::{matches_topics, FilterKind};
+use crate::filters::{matches_topics, FilterId, FilterKind};
 use crate::{
     conv::{
         from_eth::to_fvm_address,
@@ -788,7 +788,7 @@ where
 pub async fn new_filter<C>(
     data: JsonRpcData<C>,
     Params((filter,)): Params<(et::Filter,)>,
-) -> JsonRpcResult<et::U256>
+) -> JsonRpcResult<FilterId>
 where
     C: SubscriptionClient + Sync + Send,
 {
@@ -801,7 +801,7 @@ where
 
 /// Creates a filter in the node, to notify when a new block arrives.
 /// To check if the state has changed, call eth_getFilterChanges.
-pub async fn new_block_filter<C>(data: JsonRpcData<C>) -> JsonRpcResult<et::U256>
+pub async fn new_block_filter<C>(data: JsonRpcData<C>) -> JsonRpcResult<FilterId>
 where
     C: SubscriptionClient + Sync + Send,
 {
@@ -814,7 +814,7 @@ where
 
 /// Creates a filter in the node, to notify when new pending transactions arrive.
 /// To check if the state has changed, call eth_getFilterChanges.
-pub async fn new_pending_transaction_filter<C>(data: JsonRpcData<C>) -> JsonRpcResult<et::U256>
+pub async fn new_pending_transaction_filter<C>(data: JsonRpcData<C>) -> JsonRpcResult<FilterId>
 where
     C: SubscriptionClient + Sync + Send,
 {
@@ -823,4 +823,16 @@ where
         .await
         .context("failed to add transaction filter")?;
     Ok(id)
+}
+
+/// Uninstalls a filter with given id. Should always be called when watch is no longer needed.
+/// Additionally Filters timeout when they aren't requested with eth_getFilterChanges for a period of time
+pub async fn uninstall_filter<C>(
+    data: JsonRpcData<C>,
+    Params((filter_id,)): Params<(FilterId,)>,
+) -> JsonRpcResult<bool>
+where
+    C: SubscriptionClient + Sync + Send,
+{
+    Ok(data.uninstall_filter(filter_id))
 }
