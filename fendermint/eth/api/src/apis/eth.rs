@@ -24,7 +24,7 @@ use fvm_shared::address::Address;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::{chainid::ChainID, error::ExitCode};
 use jsonrpc_v2::Params;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tendermint_rpc::endpoint::{self, status};
 use tendermint_rpc::SubscriptionClient;
 use tendermint_rpc::{
@@ -34,7 +34,7 @@ use tendermint_rpc::{
 
 use crate::conv::from_eth::{to_fvm_message, to_tm_hash};
 use crate::conv::from_tm::{self, message_hash, to_chain_message, to_cumulative};
-use crate::filters::{matches_topics, FilterId, FilterKind};
+use crate::filters::{matches_topics, FilterId, FilterKind, FilterRecords};
 use crate::{
     conv::{
         from_eth::to_fvm_address,
@@ -830,9 +830,31 @@ where
 pub async fn uninstall_filter<C>(
     data: JsonRpcData<C>,
     Params((filter_id,)): Params<(FilterId,)>,
-) -> JsonRpcResult<bool>
-where
-    C: SubscriptionClient + Sync + Send,
-{
+) -> JsonRpcResult<bool> {
     Ok(data.uninstall_filter(filter_id))
+}
+
+pub async fn get_filter_changes<C>(
+    data: JsonRpcData<C>,
+    Params((filter_id,)): Params<(FilterId,)>,
+) -> JsonRpcResult<Vec<serde_json::Value>> {
+    fn to_json<R: Serialize>(values: Vec<R>) -> JsonRpcResult<Vec<serde_json::Value>> {
+        let values: Vec<serde_json::Value> = values
+            .into_iter()
+            .map(serde_json::to_value)
+            .collect::<Result<Vec<_>, _>>()
+            .context("failed to convert events to JSON")?;
+
+        Ok(values)
+    }
+
+    if let Some(accum) = data.take_filter_changes(filter_id)? {
+        match accum {
+            FilterRecords::Logs(logs) => to_json(logs),
+            FilterRecords::NewBlocks(hashes) => to_json(hashes),
+            FilterRecords::PendingTransactions(hashes) => to_json(hashes),
+        }
+    } else {
+        error(ExitCode::USR_NOT_FOUND, "filter not found")
+    }
 }

@@ -24,7 +24,7 @@ use tendermint_rpc::{
 };
 use tendermint_rpc::{Subscription, SubscriptionClient};
 
-use crate::filters::{FilterId, FilterKind, FilterState};
+use crate::filters::{FilterId, FilterKind, FilterRecords, FilterState};
 use crate::{
     conv::from_tm::{
         map_rpc_block_txs, message_hash, to_chain_message, to_eth_block, to_eth_transaction,
@@ -317,7 +317,9 @@ where
 
         Ok(id)
     }
+}
 
+impl<C> JsonRpcState<C> {
     pub fn uninstall_filter(&self, filter_id: FilterId) -> bool {
         let removed = {
             let mut filters = self.filters.lock().expect("lock poisoned");
@@ -327,11 +329,40 @@ where
         if let Some(filter) = removed {
             // Signal to the background tasks that they can unsubscribe.
             let mut filter = filter.lock().expect("lock poisoned");
-            filter.unsubscribe();
+            filter.finish(None);
             true
         } else {
             false
         }
+    }
+
+    /// Take the currently accumulated changes, and remove the filter if it's finished.
+    pub fn take_filter_changes(
+        &self,
+        filter_id: FilterId,
+    ) -> anyhow::Result<Option<FilterRecords>> {
+        let mut filters = self.filters.lock().expect("lock poisoned");
+
+        let result = match filters.get(&filter_id) {
+            None => Ok(None),
+            Some(state) => {
+                let mut state = state.lock().expect("lock poisoned");
+                state.try_take()
+            }
+        };
+
+        let keep = match result {
+            Ok(Some(_)) => true,
+            Ok(None) => false,
+            Err(_) => false,
+        };
+
+        if !keep {
+            // Filter won't produce more data, remove it from the registry.
+            filters.remove(&filter_id);
+        }
+
+        result
     }
 }
 
@@ -346,11 +377,12 @@ fn spawn_subscription_handler(
         while let Some(result) = sub.next().await {
             let mut state = state.lock().expect("lock poisoned");
 
-            if state.is_unsubscribed() {
+            if state.is_finished() {
                 return;
             } else if state.is_timed_out() {
-                state.unsubscribe();
+                // Clean up because the reader won't do it.
                 filters.lock().expect("lock poisoned").remove(&id);
+                state.finish(Some(anyhow!("filter timeout")));
                 return;
             } else {
                 match result {

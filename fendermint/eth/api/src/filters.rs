@@ -128,18 +128,41 @@ impl FilterKind {
     }
 }
 
-pub enum FilterAccumulator {
+/// Accumulator for filter data.
+///
+/// The type expected can be seen in [ethers::providers::Provider::watch_blocks].
+pub enum FilterRecords {
     NewBlocks(Vec<et::H256>),
     PendingTransactions(Vec<et::H256>),
     Logs(Vec<et::Log>),
 }
 
-impl From<&FilterKind> for FilterAccumulator {
+impl FilterRecords {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::NewBlocks(xs) => xs.is_empty(),
+            Self::PendingTransactions(xs) => xs.is_empty(),
+            Self::Logs(xs) => xs.is_empty(),
+        }
+    }
+}
+
+impl From<&FilterKind> for FilterRecords {
     fn from(value: &FilterKind) -> Self {
         match value {
-            FilterKind::NewBlocks => FilterAccumulator::NewBlocks(vec![]),
-            FilterKind::PendingTransactions => FilterAccumulator::PendingTransactions(vec![]),
-            FilterKind::Logs(_) => FilterAccumulator::Logs(vec![]),
+            FilterKind::NewBlocks => Self::NewBlocks(vec![]),
+            FilterKind::PendingTransactions => Self::PendingTransactions(vec![]),
+            FilterKind::Logs(_) => Self::Logs(vec![]),
+        }
+    }
+}
+
+impl From<&FilterRecords> for FilterRecords {
+    fn from(value: &FilterRecords) -> Self {
+        match value {
+            Self::NewBlocks(_) => Self::NewBlocks(vec![]),
+            Self::PendingTransactions(_) => Self::PendingTransactions(vec![]),
+            Self::Logs(_) => Self::Logs(vec![]),
         }
     }
 }
@@ -148,9 +171,8 @@ impl From<&FilterKind> for FilterAccumulator {
 pub struct FilterState {
     timeout: Duration,
     last_poll: Instant,
-    is_unsubscribed: bool,
     finished: Option<Option<anyhow::Error>>,
-    accum: FilterAccumulator,
+    records: FilterRecords,
 }
 
 impl FilterState {
@@ -158,17 +180,16 @@ impl FilterState {
         Self {
             timeout,
             last_poll: Instant::now(),
-            is_unsubscribed: false,
             finished: None,
-            accum: FilterAccumulator::from(kind),
+            records: FilterRecords::from(kind),
         }
     }
 
     /// Accumulate the events.
     pub fn update(&mut self, event: Event) -> anyhow::Result<()> {
-        match (&mut self.accum, event.data) {
+        match (&mut self.records, &event.data) {
             (
-                FilterAccumulator::NewBlocks(ref mut hashes),
+                FilterRecords::NewBlocks(ref mut hashes),
                 EventData::NewBlock {
                     block: Some(block), ..
                 },
@@ -177,24 +198,47 @@ impl FilterState {
                 let h = et::H256::from_slice(h.as_bytes());
                 hashes.push(h);
             }
-            (
-                FilterAccumulator::PendingTransactions(ref mut hashes),
-                EventData::Tx { tx_result },
-            ) => {
+            (FilterRecords::PendingTransactions(ref mut hashes), EventData::Tx { tx_result }) => {
                 let h = from_tm::message_hash(&tx_result.tx)?;
                 let h = et::H256::from_slice(h.as_bytes());
                 hashes.push(h);
             }
-            (FilterAccumulator::Logs(ref mut _logs), _) => {
-                // Where should we get block hash etc from??
-                todo!()
+            (FilterRecords::Logs(ref mut _logs), _) => {
+                // TODO:
+                // - Where should we get block hash etc from??
+                // - Are events in the TxInfo log or the generic JSON part?
+                tracing::info!(?event, "collecting logs");
             }
             _ => {}
         }
         Ok(())
     }
 
-    /// The subscription returned an error and will no longer be polled for data.
+    /// Take all the accumulated changes.
+    ///
+    /// If there are no changes but there was an error, return that.
+    /// If the producers have stopped, return `None`.
+    pub fn try_take(&mut self) -> anyhow::Result<Option<FilterRecords>> {
+        self.last_poll = Instant::now();
+
+        let mut records = FilterRecords::from(&self.records);
+        std::mem::swap(&mut self.records, &mut records);
+
+        if records.is_empty() {
+            if let Some(ref mut finished) = self.finished {
+                // Return error on first poll, because it can't be cloned.
+                return match finished.take() {
+                    Some(e) => Err(e),
+                    None => Ok(None),
+                };
+            }
+        }
+
+        Ok(Some(records))
+    }
+
+    /// Signal that the producers are finished, or that the reader is no longer intersted.
+    ///
     /// Propagate the error to the reader next time it comes to check on the filter.
     pub fn finish(&mut self, error: Option<anyhow::Error>) {
         // Keep any already existing error.
@@ -209,14 +253,9 @@ impl FilterState {
         Instant::now().duration_since(self.last_poll) > self.timeout
     }
 
-    /// Indicate that the reader is no longer interested in receiving updates.
-    pub fn unsubscribe(&mut self) {
-        self.is_unsubscribed = true;
-    }
-
-    /// Indicate that the reader has unsubscribed from the filter.
-    pub fn is_unsubscribed(&self) -> bool {
-        self.is_unsubscribed
+    /// Indicate that that the filter takes no more data.
+    pub fn is_finished(&self) -> bool {
+        self.finished.is_some()
     }
 }
 
