@@ -758,7 +758,7 @@ where
                     }
 
                     let mut tx_logs = from_tm::to_logs(
-                        tx_result,
+                        &tx_result.events,
                         block_hash,
                         block_number,
                         tx_hash,

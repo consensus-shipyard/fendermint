@@ -237,7 +237,7 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
 
     tracing::info!(from = ?from.eth_addr, to = ?to.eth_addr, "ethereum address");
 
-    // Set up a filter to collect events.
+    // Set up filters to collect events.
     let logs_filter_id = request(
         "eth_newFilter",
         provider
@@ -554,13 +554,13 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
 
     // See what kind of events were logged.
     request(
-        "eth_getFilterChanges",
+        "eth_getFilterChanges (blocks)",
         mw.get_filter_changes(blocks_filter_id).await,
         |block_hashes: &Vec<H256>| block_hashes.contains(&bh),
     )?;
 
     request(
-        "eth_getFilterChanges",
+        "eth_getFilterChanges (txs)",
         mw.get_filter_changes(txs_filter_id).await,
         |tx_hashes: &Vec<H256>| tx_hashes.contains(&tx_hash),
     )?;

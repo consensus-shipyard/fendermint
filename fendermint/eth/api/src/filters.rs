@@ -203,11 +203,72 @@ impl FilterState {
                 let h = et::H256::from_slice(h.as_bytes());
                 hashes.push(h);
             }
-            (FilterRecords::Logs(ref mut _logs), _) => {
-                // TODO:
-                // - Where should we get block hash etc from??
-                // - Are events in the TxInfo log or the generic JSON part?
-                tracing::info!(?event, "collecting logs");
+            (FilterRecords::Logs(ref mut logs), EventData::Tx { tx_result }) => {
+                // An example of an `Event`:
+                // Event {
+                //     query: "tm.event = 'Tx'",
+                //     data: Tx {
+                //         tx_result: TxInfo {
+                //             height: 1088,
+                //             index: None,
+                //             tx: [161, 102, ..., 0],
+                //             result: TxResult {
+                //                 log: None,
+                //                 gas_wanted: Some("5156433"),
+                //                 gas_used: Some("5151233"),
+                //                 events: [
+                //                     Event {
+                //                         kind: "message",
+                //                         attributes: [
+                //                             EventAttribute { key: "emitter", value: "108", index: true },
+                //                             EventAttribute { key: "t1", value: "dd...b3ef", index: true },
+                //                             EventAttribute { key: "t2", value: "00...362f", index: true },
+                //                             EventAttribute { key: "t3", value: "00...44eb", index: true },
+                //                             EventAttribute { key: "d",  value: "00...0064", index: true }
+                //                         ]
+                //                     }
+                //                 ]
+                //             }
+                //         }
+                //     },
+                //     events: Some(
+                //     {
+                //         "message.d": ["00...0064"],
+                //         "message.emitter": ["108"],
+                //         "message.t1": ["dd...b3ef"],
+                //         "message.t2": ["00...362f"],
+                //         "message.t3": ["00...44eb"],
+                //         "tm.event": ["Tx"],
+                //         "tx.hash": ["FA7339B4D9F6AF80AEDB03FC4BFBC1FDD9A62F97632EF8B79C98AAD7044C5BDB"],
+                //         "tx.height": ["1088"]
+                //     })
+                // }
+
+                // TODO: There is no easy way here to tell the block hash. Maybe it has been given in a preceding event,
+                // but other than that our only option is to query the Tendermint API. If we do that we should have caching,
+                // otherwise all the transactions in a block hammering the node will act like a DoS attack.
+                let block_hash = et::H256::default();
+                let block_number = et::U64::from(tx_result.height);
+
+                let transaction_hash = from_tm::message_hash(&tx_result.tx)?;
+                let transaction_hash = et::H256::from_slice(transaction_hash.as_bytes());
+
+                // TODO: The transaction index comes as None.
+                let transaction_index = et::U64::from(tx_result.index.unwrap_or_default());
+
+                // TODO: We have no way to tell where the logs start within the block.
+                let log_index_start = Default::default();
+
+                let tx_logs = from_tm::to_logs(
+                    &tx_result.result.events,
+                    block_hash,
+                    block_number,
+                    transaction_hash,
+                    transaction_index,
+                    log_index_start,
+                )?;
+
+                logs.extend(tx_logs)
             }
             _ => {}
         }
