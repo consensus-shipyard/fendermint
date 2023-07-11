@@ -858,3 +858,19 @@ pub async fn get_filter_changes<C>(
         error(ExitCode::USR_NOT_FOUND, "filter not found")
     }
 }
+
+pub async fn get_filter_logs<C>(
+    data: JsonRpcData<C>,
+    Params((filter_id,)): Params<(FilterId,)>,
+) -> JsonRpcResult<Vec<et::Log>> {
+    if let Some(accum) = data.take_filter_changes(filter_id)? {
+        match accum {
+            FilterRecords::Logs(logs) => Ok(logs),
+            FilterRecords::NewBlocks(_) | FilterRecords::PendingTransactions(_) => {
+                error(ExitCode::USR_ILLEGAL_STATE, "not a log filter")
+            }
+        }
+    } else {
+        error(ExitCode::USR_NOT_FOUND, "filter not found")
+    }
+}
