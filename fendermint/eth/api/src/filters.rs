@@ -59,7 +59,9 @@ impl FilterKind {
     pub fn to_queries(&self) -> anyhow::Result<Vec<Query>> {
         match self {
             FilterKind::NewBlocks => Ok(vec![Query::from(EventType::NewBlock)]),
-            FilterKind::PendingTransactions => Ok(vec![Query::from(EventType::Tx)]),
+            // Testing indicates that `EventType::Tx` might only be raised
+            // if there are events emitted by the transaction itself.
+            FilterKind::PendingTransactions => Ok(vec![Query::from(EventType::NewBlock)]),
             FilterKind::Logs(filter) => {
                 let mut query = Query::from(EventType::Tx);
 
@@ -169,6 +171,7 @@ impl From<&FilterRecords> for FilterRecords {
 
 /// Accumulate changes between polls.
 pub struct FilterState {
+    _id: FilterId,
     timeout: Duration,
     last_poll: Instant,
     finished: Option<Option<anyhow::Error>>,
@@ -176,8 +179,9 @@ pub struct FilterState {
 }
 
 impl FilterState {
-    pub fn new(timeout: Duration, kind: &FilterKind) -> Self {
+    pub fn new(id: FilterId, timeout: Duration, kind: &FilterKind) -> Self {
         Self {
+            _id: id,
             timeout,
             last_poll: Instant::now(),
             finished: None,
@@ -198,10 +202,17 @@ impl FilterState {
                 let h = et::H256::from_slice(h.as_bytes());
                 hashes.push(h);
             }
-            (FilterRecords::PendingTransactions(ref mut hashes), EventData::Tx { tx_result }) => {
-                let h = from_tm::message_hash(&tx_result.tx)?;
-                let h = et::H256::from_slice(h.as_bytes());
-                hashes.push(h);
+            (
+                FilterRecords::PendingTransactions(ref mut hashes),
+                EventData::NewBlock {
+                    block: Some(block), ..
+                },
+            ) => {
+                for tx in &block.data {
+                    let h = from_tm::message_hash(tx)?;
+                    let h = et::H256::from_slice(h.as_bytes());
+                    hashes.push(h);
+                }
             }
             (FilterRecords::Logs(ref mut logs), EventData::Tx { tx_result }) => {
                 // An example of an `Event`:

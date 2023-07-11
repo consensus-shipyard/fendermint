@@ -43,8 +43,8 @@ use ethers_core::{
     k256::ecdsa::SigningKey,
     types::{
         transaction::eip2718::TypedTransaction, Address, BlockId, BlockNumber, Bytes,
-        Eip1559TransactionRequest, Filter, SyncingStatus, TransactionReceipt, H160, H256, U256,
-        U64,
+        Eip1559TransactionRequest, Filter, Log, SyncingStatus, TransactionReceipt, H160, H256,
+        U256, U64,
     },
 };
 use fendermint_rpc::message::MessageFactory;
@@ -238,6 +238,8 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     tracing::info!(from = ?from.eth_addr, to = ?to.eth_addr, "ethereum address");
 
     // Set up filters to collect events.
+    let mut filter_ids = Vec::new();
+
     let logs_filter_id = request(
         "eth_newFilter",
         provider
@@ -245,18 +247,21 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
             .await,
         |_| true,
     )?;
+    filter_ids.push(logs_filter_id);
 
     let blocks_filter_id = request(
         "eth_newBlockFilter",
         provider.new_filter(FilterKind::NewBlocks).await,
         |id| *id != logs_filter_id,
     )?;
+    filter_ids.push(blocks_filter_id);
 
     let txs_filter_id = request(
         "eth_newPendingTransactionFilter",
         provider.new_filter(FilterKind::PendingTransactions).await,
-        |id| *id != logs_filter_id && *id != blocks_filter_id,
+        |id| *id != logs_filter_id,
     )?;
+    filter_ids.push(txs_filter_id);
 
     request("web3_clientVersion", provider.client_version().await, |v| {
         v.starts_with("fendermint/")
@@ -360,7 +365,7 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
         .await
         .context("failed to make a transfer")?;
 
-    let receipt = send_transaction(&mw, transfer.clone())
+    let receipt = send_transaction(&mw, transfer.clone(), "transfer")
         .await
         .context("failed to send transfer")?;
 
@@ -475,7 +480,7 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     // These were set to zero in the earlier example transfer, ie. it was basically paid for by the miner (which is not at the moment charged),
     // so the test passed. Here, however, there will be a non-zero cost to pay by the deployer, and therefore those balances
     // have to be much higher than the defaults used earlier, e.g. the deployment cost 30 FIL, and we used to give 1 FIL.
-    let (contract, receipt) = deployer
+    let (contract, deploy_receipt): (_, TransactionReceipt) = deployer
         .send_with_receipt()
         .await
         .context("failed to send deployment")?;
@@ -483,10 +488,6 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     tracing::info!(addr = ?contract.address(), "SimpleCoin deployed");
 
     let contract = SimpleCoin::new(contract.address(), contract.client());
-
-    let _tx_hash = receipt.transaction_hash;
-    let _bn = receipt.block_number.unwrap();
-    let _bh = receipt.block_hash.unwrap();
 
     let coin_balance: TestContractCall<U256> =
         prepare_call(&mw, contract.get_balance(from.eth_addr)).await?;
@@ -541,7 +542,7 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     // Unfortunately the returned `bool` is not available through the Ethereum API.
     let receipt = request(
         "eth_sendRawTransaction",
-        send_transaction(&mw, coin_send.tx).await,
+        send_transaction(&mw, coin_send.tx, "coin_send").await,
         |receipt| !receipt.logs.is_empty(),
     )?;
 
@@ -556,19 +557,32 @@ async fn run(provider: Provider<Http>, opts: Options) -> anyhow::Result<()> {
     request(
         "eth_getFilterChanges (blocks)",
         mw.get_filter_changes(blocks_filter_id).await,
-        |block_hashes: &Vec<H256>| block_hashes.contains(&bh),
+        |block_hashes: &Vec<H256>| {
+            [bh, deploy_receipt.block_hash.unwrap()]
+                .iter()
+                .all(|h| block_hashes.contains(h))
+        },
     )?;
 
     request(
         "eth_getFilterChanges (txs)",
         mw.get_filter_changes(txs_filter_id).await,
-        |tx_hashes: &Vec<H256>| tx_hashes.contains(&tx_hash),
+        |tx_hashes: &Vec<H256>| {
+            [&tx_hash, &deploy_receipt.transaction_hash]
+                .iter()
+                .all(|h| tx_hashes.contains(h))
+        },
     )?;
 
-    // TODO: query logs_filter_id
+    // TODO: Parse logs with the contract.
+    request(
+        "eth_getFilterChanges (logs)",
+        mw.get_filter_changes(logs_filter_id).await,
+        |logs: &Vec<Log>| !logs.is_empty(),
+    )?;
 
     // Uninstall all filters.
-    for id in [blocks_filter_id, logs_filter_id, txs_filter_id] {
+    for id in filter_ids {
         request("eth_uninstallFilter", mw.uninstall_filter(id).await, |ok| {
             *ok
         })?;
@@ -598,13 +612,14 @@ async fn make_transfer(mw: &TestMiddleware, to: &TestAccount) -> anyhow::Result<
 async fn send_transaction(
     mw: &TestMiddleware,
     tx: TypedTransaction,
+    label: &str,
 ) -> anyhow::Result<TransactionReceipt> {
     // `send_transaction` will fill in the missing fields like `from` and `nonce` (which involves querying the API).
     let receipt = mw
         .send_transaction(tx, None)
         .await
         .context("failed to send transaction")?
-        .log_msg("Pending transaction")
+        .log_msg(format!("Pending transaction: {label}"))
         .retries(5)
         .await?
         .context("Missing receipt")?;

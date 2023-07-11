@@ -284,7 +284,7 @@ where
     /// Create a new filter with the next available ID and insert it into the filters collection.
     fn new_filter_state(&self, filter: &FilterKind) -> (FilterId, Arc<Mutex<FilterState>>) {
         let id = FilterId::from(self.next_filter_id.fetch_add(1, Ordering::Relaxed));
-        let state = FilterState::new(self.filter_timeout, filter);
+        let state = FilterState::new(id, self.filter_timeout, filter);
         let state = Arc::new(Mutex::new(state));
         let mut filters = self.filters.lock().expect("lock poisoned");
         filters.insert(id, state.clone());
@@ -374,12 +374,20 @@ fn spawn_subscription_handler(
     mut sub: Subscription,
 ) {
     tokio::spawn(async move {
+        tracing::debug!(
+            ?id,
+            query = sub.query().to_string(),
+            "polling filter subscription"
+        );
         while let Some(result) = sub.next().await {
+            tracing::debug!(?id, ?result, "next filter event");
             let mut state = state.lock().expect("lock poisoned");
 
             if state.is_finished() {
+                tracing::debug!(?id, "filter already finished");
                 return;
             } else if state.is_timed_out() {
+                tracing::warn!(?id, "removing timed out filter");
                 // Clean up because the reader won't do it.
                 filters.lock().expect("lock poisoned").remove(&id);
                 state.finish(Some(anyhow!("filter timeout")));
@@ -388,11 +396,14 @@ fn spawn_subscription_handler(
                 match result {
                     Ok(event) => {
                         if let Err(err) = state.update(event) {
+                            tracing::error!(?id, "failed to update filter: {err}");
                             state.finish(Some(anyhow!("update failed: {err}")));
                             return;
                         }
+                        tracing::debug!(?id, "filter updated");
                     }
                     Err(err) => {
+                        tracing::error!(?id, "filter subscription failed: {err}");
                         state.finish(Some(anyhow!("subscription failed: {err}")));
                         return;
                     }
@@ -400,6 +411,7 @@ fn spawn_subscription_handler(
             }
         }
         // Mark the state as finished, but don't remove; let the poller consume whatever is left.
+        tracing::debug!(?id, "finishing filter");
         state.lock().expect("lock poisoned").finish(None)
 
         // Dropping the `Subscription` should cause the client to unsubscribe,

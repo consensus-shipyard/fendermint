@@ -345,7 +345,7 @@ fn maybe_contract_address(deliver_tx: &DeliverTx) -> Option<EthAddress> {
 }
 
 pub fn to_logs(
-    events: &Vec<abci::Event>,
+    events: &[abci::Event],
     block_hash: et::H256,
     block_number: et::U64,
     transaction_hash: et::H256,
