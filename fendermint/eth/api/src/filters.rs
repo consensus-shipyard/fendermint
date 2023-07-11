@@ -423,7 +423,7 @@ pub async fn run_subscription(id: FilterId, mut sub: Subscription, tx: Sender<Fi
     while let Some(result) = sub.next().await {
         match result {
             Ok(event) => {
-                if let Err(_) = tx.send(FilterCommand::Update(event)).await {
+                if tx.send(FilterCommand::Update(event)).await.is_err() {
                     // Filter has been uninstalled.
                     tracing::debug!(
                         ?id,
