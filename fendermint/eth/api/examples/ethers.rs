@@ -210,15 +210,15 @@ impl TestAccount {
 // - eth_syncing
 // - web3_clientVersion
 // - eth_getLogs
+// - eth_newFilter
+// - eth_newBlockFilter
+// - eth_newPendingTransactionFilter
+// - eth_getFilterChanges
+// - eth_uninstallFilter
 //
 // DOING:
 //
 // TODO:
-// - eth_newBlockFilter
-// - eth_newPendingTransactionFilter
-// - eth_newFilter
-// - eth_uninstallFilter
-// - eth_getFilterChanges
 // - eth_subscribe
 // - eth_unsubscribe
 //
