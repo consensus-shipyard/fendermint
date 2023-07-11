@@ -4,7 +4,6 @@
 //! Tendermint RPC helper methods for the implementation of the APIs.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -17,6 +16,7 @@ use fendermint_vm_message::{chain::ChainMessage, conv::from_eth::to_fvm_address}
 use futures::StreamExt;
 use fvm_ipld_encoding::{de::DeserializeOwned, RawBytes};
 use fvm_shared::{chainid::ChainID, econ::TokenAmount, error::ExitCode, message::Message};
+use rand::Rng;
 use tendermint::block::Height;
 use tendermint_rpc::{
     endpoint::{block, block_by_hash, block_results, commit, header, header_by_hash},
@@ -41,7 +41,6 @@ type FilterMap = Arc<Mutex<HashMap<FilterId, Arc<Mutex<FilterState>>>>>;
 pub struct JsonRpcState<C> {
     pub client: FendermintClient<C>,
     filter_timeout: Duration,
-    next_filter_id: AtomicUsize,
     filters: FilterMap,
 }
 
@@ -50,7 +49,6 @@ impl<C> JsonRpcState<C> {
         Self {
             client: FendermintClient::new(client),
             filter_timeout,
-            next_filter_id: Default::default(),
             filters: Default::default(),
         }
     }
@@ -283,11 +281,21 @@ where
 {
     /// Create a new filter with the next available ID and insert it into the filters collection.
     fn new_filter_state(&self, filter: &FilterKind) -> (FilterId, Arc<Mutex<FilterState>>) {
-        let id = FilterId::from(self.next_filter_id.fetch_add(1, Ordering::Relaxed));
+        let mut filters = self.filters.lock().expect("lock poisoned");
+
+        // Choose an unpredictable filter, so
+        let mut id: et::U256;
+        loop {
+            id = FilterId::from(rand::thread_rng().gen::<u64>());
+            if !filters.contains_key(&id) {
+                break;
+            }
+        }
+
         let state = FilterState::new(id, self.filter_timeout, filter);
         let state = Arc::new(Mutex::new(state));
-        let mut filters = self.filters.lock().expect("lock poisoned");
         filters.insert(id, state.clone());
+
         (id, state)
     }
 
