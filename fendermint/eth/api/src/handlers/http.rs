@@ -9,12 +9,12 @@ use axum::response::IntoResponse;
 use jsonrpc_v2::{Id, RequestObject as JsonRpcRequestObject};
 
 use crate::handlers::call_rpc_str;
-use crate::JsonRpcServer;
+use crate::AppState;
 
 /// Handle JSON-RPC calls.
 pub async fn handle(
     _headers: HeaderMap,
-    axum::extract::State(server): axum::extract::State<JsonRpcServer>,
+    axum::extract::State(state): axum::extract::State<AppState>,
     axum::Json(request): axum::Json<JsonRpcRequestObject>,
 ) -> impl IntoResponse {
     let response_headers = [("content-type", "application/json-rpc;charset=utf-8")];
@@ -26,7 +26,7 @@ pub async fn handle(
     let id = request.id_ref().map(id_to_string).unwrap_or_default();
     let method = request.method_ref().to_owned();
 
-    match call_rpc_str(&server, request).await {
+    match call_rpc_str(&state.rpc_server, request).await {
         Ok(result) => {
             tracing::debug!(method, id, result, "RPC call success");
             (StatusCode::OK, response_headers, result)

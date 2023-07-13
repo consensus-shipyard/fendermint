@@ -16,21 +16,21 @@ use axum::{
 use futures::{stream::SplitSink, SinkExt, StreamExt};
 use fvm_shared::error::ExitCode;
 
-use crate::{handlers::call_rpc_str, JsonRpcServer};
+use crate::{handlers::call_rpc_str, AppState, JsonRpcServer};
 
 pub async fn handle(
     _headers: HeaderMap,
-    axum::extract::State(server): axum::extract::State<JsonRpcServer>,
+    axum::extract::State(state): axum::extract::State<AppState>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| async { rpc_ws_handler_inner(server, socket).await })
+    ws.on_upgrade(move |socket| async { rpc_ws_handler_inner(state, socket).await })
 }
 
 /// Handle requests in a loop, interpreting each message as a JSON-RPC request.
 ///
 /// Messages are evaluated one by one. We could spawn tasks like Forest,
 /// but there should be some rate limiting applied to avoid DoS attacks.
-async fn rpc_ws_handler_inner(server: JsonRpcServer, socket: WebSocket) {
+async fn rpc_ws_handler_inner(state: AppState, socket: WebSocket) {
     tracing::debug!("Accepted WS connection!");
     let (mut sender, mut receiver) = socket.split();
     while let Some(Ok(message)) = receiver.next().await {
@@ -45,7 +45,7 @@ async fn rpc_ws_handler_inner(server: JsonRpcServer, socket: WebSocket) {
                 match serde_json::from_str(&request_text)
                     as Result<jsonrpc_v2::RequestObject, serde_json::Error>
                 {
-                    Ok(req) => match rpc_ws_call(&server, &mut sender, req).await {
+                    Ok(req) => match rpc_ws_call(&state.rpc_server, &mut sender, req).await {
                         Ok(()) => {
                             tracing::debug!("WS RPC task success.");
                         }
