@@ -89,3 +89,8 @@ pub fn register_methods(server: ServerBuilder<MapRouter>) -> ServerBuilder<MapRo
         peerCount
     })
 }
+
+/// Indicate whether a method requires a WebSocket connection.
+pub fn is_streaming_method(method: &str) -> bool {
+    matches!(method, "eth_subscribe" | "eth_unsubscribe")
+}

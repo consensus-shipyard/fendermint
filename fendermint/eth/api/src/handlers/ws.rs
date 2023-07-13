@@ -15,8 +15,9 @@ use axum::{
 };
 use futures::{stream::SplitSink, SinkExt, StreamExt};
 use fvm_shared::error::ExitCode;
+use jsonrpc_v2::RequestObject as JsonRpcRequest;
 
-use crate::{handlers::call_rpc_str, AppState, JsonRpcServer};
+use crate::{apis, handlers::call_rpc_str, AppState, JsonRpcServer};
 
 pub async fn handle(
     _headers: HeaderMap,
@@ -33,6 +34,14 @@ pub async fn handle(
 async fn rpc_ws_handler_inner(state: AppState, socket: WebSocket) {
     tracing::debug!("Accepted WS connection!");
     let (mut sender, mut receiver) = socket.split();
+
+    // Create a channel over which the application can send messages to this socket.
+    let (socket_tx, _socket_rx) = tokio::sync::mpsc::unbounded_channel();
+
+    let web_socket_id = state.rpc_state.add_web_socket(socket_tx).await;
+
+    // TODO: Use tokio select!
+
     while let Some(Ok(message)) = receiver.next().await {
         tracing::debug!("Received new WS RPC message: {:?}", message);
 
@@ -42,33 +51,80 @@ async fn rpc_ws_handler_inner(state: AppState, socket: WebSocket) {
             if !request_text.is_empty() {
                 tracing::debug!("RPC Request Received: {:?}", &request_text);
 
-                match serde_json::from_str(&request_text)
-                    as Result<jsonrpc_v2::RequestObject, serde_json::Error>
-                {
-                    Ok(req) => match rpc_ws_call(&state.rpc_server, &mut sender, req).await {
-                        Ok(()) => {
-                            tracing::debug!("WS RPC task success.");
+                match serde_json::from_str::<serde_json::Value>(&request_text) {
+                    Ok(mut json) => {
+                        // If the method requires web sockets, append the ID of the socket to the parameters.
+                        let is_streaming = match json.get("method") {
+                            Some(serde_json::Value::String(method)) => {
+                                apis::is_streaming_method(method)
+                            }
+                            _ => false,
+                        };
+
+                        if is_streaming {
+                            match json.get_mut("params") {
+                                Some(serde_json::Value::Array(ref mut params)) => {
+                                    params.push(serde_json::Value::Number(
+                                        serde_json::Number::from(web_socket_id),
+                                    ))
+                                }
+                                _ => {
+                                    tracing::debug!(
+                                        "JSON-RPC streaming request has no or unexpected params: {json}"
+                                    )
+                                }
+                            }
                         }
-                        Err(e) => {
-                            tracing::warn!("failed to send response to WS: {e}");
+
+                        match serde_json::from_value::<JsonRpcRequest>(json) {
+                            Ok(req) => {
+                                match rpc_ws_call(&state.rpc_server, &mut sender, req).await {
+                                    Ok(()) => {
+                                        tracing::debug!("WS RPC task success.");
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!("failed to send response to WS: {e}");
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                send_error(
+                                    &mut sender,
+                                    format!(
+                                        "Error deserializing WS payload as JSON-RPC request: {e}"
+                                    ),
+                                )
+                                .await;
+                            }
                         }
-                    },
+                    }
                     Err(e) => {
-                        let msg = format!("Error deserializing WS request payload: {e}");
-                        tracing::error!("{}", msg);
-                        if let Err(e) = sender
-                            .send(Message::Text(error_str(
-                                ExitCode::USR_SERIALIZATION.value() as i64,
-                                msg,
-                            )))
-                            .await
-                        {
-                            tracing::warn!("failed to send error response to WS: {e}");
-                        }
+                        send_error(
+                            &mut sender,
+                            format!("Error deserializing WS payload as JSON: {e}"),
+                        )
+                        .await;
                     }
                 }
             }
         }
+
+        state.rpc_state.remove_web_socket(&web_socket_id).await;
+    }
+
+    // TODO: Remove web socket.
+}
+
+async fn send_error(sender: &mut SplitSink<WebSocket, Message>, msg: String) {
+    tracing::error!("{}", msg);
+    if let Err(e) = sender
+        .send(Message::Text(error_str(
+            ExitCode::USR_SERIALIZATION.value() as i64,
+            msg,
+        )))
+        .await
+    {
+        tracing::warn!("failed to send error response to WS: {e}");
     }
 }
 

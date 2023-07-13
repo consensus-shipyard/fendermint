@@ -9,7 +9,7 @@ use axum::response::IntoResponse;
 use jsonrpc_v2::{Id, RequestObject as JsonRpcRequestObject};
 
 use crate::handlers::call_rpc_str;
-use crate::AppState;
+use crate::{apis, AppState};
 
 /// Handle JSON-RPC calls.
 pub async fn handle(
@@ -25,6 +25,14 @@ pub async fn handle(
 
     let id = request.id_ref().map(id_to_string).unwrap_or_default();
     let method = request.method_ref().to_owned();
+
+    if apis::is_streaming_method(&method) {
+        return (
+            StatusCode::BAD_REQUEST,
+            response_headers,
+            format!("'{method}' is only available through WebSocket"),
+        );
+    }
 
     match call_rpc_str(&state.rpc_server, request).await {
         Ok(result) => {

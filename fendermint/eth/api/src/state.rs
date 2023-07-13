@@ -3,6 +3,8 @@
 
 //! Tendermint RPC helper methods for the implementation of the APIs.
 
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use anyhow::{anyhow, Context};
@@ -20,7 +22,8 @@ use tendermint_rpc::{
     Client,
 };
 use tendermint_rpc::{Subscription, SubscriptionClient};
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{Sender, UnboundedSender};
+use tokio::sync::RwLock;
 
 use crate::filters::{
     run_subscription, FilterCommand, FilterId, FilterKind, FilterMap, FilterRecords, FilterState,
@@ -32,6 +35,8 @@ use crate::{
     error, JsonRpcResult,
 };
 
+pub type WebSocketId = usize;
+
 // Made generic in the client type so we can mock it if we want to test API
 // methods without having to spin up a server. In those tests the methods
 // below would not be used, so those aren't generic; we'd directly invoke
@@ -40,6 +45,8 @@ pub struct JsonRpcState<C> {
     pub client: FendermintClient<C>,
     filter_timeout: Duration,
     filters: FilterMap,
+    next_web_socket_id: AtomicUsize,
+    web_sockets: RwLock<HashMap<WebSocketId, UnboundedSender<serde_json::Value>>>,
 }
 
 impl<C> JsonRpcState<C> {
@@ -48,12 +55,28 @@ impl<C> JsonRpcState<C> {
             client: FendermintClient::new(client),
             filter_timeout,
             filters: Default::default(),
+            next_web_socket_id: Default::default(),
+            web_sockets: Default::default(),
         }
     }
 
     /// The underlying Tendermint RPC client.
     pub fn tm(&self) -> &C {
         self.client.underlying()
+    }
+
+    /// Register the sender of a web socket.
+    pub async fn add_web_socket(&self, tx: UnboundedSender<serde_json::Value>) -> WebSocketId {
+        let next_id = self.next_web_socket_id.fetch_add(1, Ordering::Relaxed);
+        let mut guard = self.web_sockets.write().await;
+        guard.insert(next_id, tx);
+        next_id
+    }
+
+    /// Register the sender of a web socket.
+    pub async fn remove_web_socket(&self, id: &WebSocketId) {
+        let mut guard = self.web_sockets.write().await;
+        guard.remove(&id);
     }
 }
 
