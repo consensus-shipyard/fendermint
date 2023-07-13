@@ -76,7 +76,7 @@ impl<C> JsonRpcState<C> {
     /// Register the sender of a web socket.
     pub async fn remove_web_socket(&self, id: &WebSocketId) {
         let mut guard = self.web_sockets.write().await;
-        guard.remove(&id);
+        guard.remove(id);
     }
 }
 
