@@ -13,10 +13,19 @@ use axum::{
     response::IntoResponse,
 };
 use futures::{stream::SplitSink, SinkExt, StreamExt};
-use fvm_shared::error::ExitCode;
-use jsonrpc_v2::RequestObject as JsonRpcRequest;
+use jsonrpc_v2::{RequestObject as JsonRpcRequest, ResponseObject, ResponseObjects};
+use serde_json::json;
 
-use crate::{apis, handlers::call_rpc_str, state::WebSocketId, AppState, JsonRpcServer};
+use crate::{apis, state::WebSocketId, AppState, JsonRpcServer};
+
+/// Similar to [ethers_providers::rpc::transports::ws::types::Notification], which is what the library
+/// expects for non-request-response payloads in [PubSubItem::deserialize].
+#[derive(Debug)]
+pub struct Notification {
+    pub method: String,
+    pub subscription: ethers_core::types::U256,
+    pub result: serde_json::Value,
+}
 
 pub async fn handle(
     _headers: HeaderMap,
@@ -35,17 +44,17 @@ async fn rpc_ws_handler_inner(state: AppState, socket: WebSocket) {
     let (mut sender, mut receiver) = socket.split();
 
     // Create a channel over which the application can send messages to this socket.
-    let (app_tx, mut app_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (notif_tx, mut notif_rx) = tokio::sync::mpsc::unbounded_channel();
 
-    let web_socket_id = state.rpc_state.add_web_socket(app_tx).await;
+    let web_socket_id = state.rpc_state.add_web_socket(notif_tx).await;
 
     loop {
         tokio::select! {
             Some(Ok(message)) = receiver.next() => {
                 handle_incoming(web_socket_id, &state.rpc_server, &mut sender, message).await
             },
-            Some(json) = app_rx.recv() => {
-                handle_outgoing(&mut sender, json).await
+            Some(notif) = notif_rx.recv() => {
+                handle_outgoing(&mut sender, notif).await
             },
             else => break,
         }
@@ -62,8 +71,6 @@ async fn handle_incoming(
     sender: &mut SplitSink<WebSocket, Message>,
     message: Message,
 ) {
-    tracing::debug!("Received new WS RPC message: {:?}", message);
-
     if let Message::Text(request_text) = message {
         tracing::debug!("WS RPC Request: {}", request_text);
 
@@ -98,48 +105,45 @@ async fn handle_incoming(
                             send_call_result(rpc_server, sender, req).await;
                         }
                         Err(e) => {
-                            send_error(
-                                sender,
-                                ExitCode::USR_SERIALIZATION,
-                                format!("Error deserializing WS payload as JSON-RPC request: {e}"),
-                            )
-                            .await;
+                            deserialization_error("RequestObject", e);
                         }
                     }
                 }
                 Err(e) => {
-                    send_error(
-                        sender,
-                        ExitCode::USR_SERIALIZATION,
-                        format!("Error deserializing WS payload as JSON: {e}"),
-                    )
-                    .await;
+                    deserialization_error("JSON", e);
                 }
             }
         }
     }
 }
 
-/// Send a message from the application, result of an async subscription.
-async fn handle_outgoing(sender: &mut SplitSink<WebSocket, Message>, json: serde_json::Value) {
-    match serde_json::to_string(&json) {
-        Ok(response) => {
-            send_response(sender, response).await;
-        }
-        Err(e) => {
-            tracing::error!("Failed to convert to JSON: {}", e);
-            send_error(sender, ExitCode::USR_UNSPECIFIED, e.to_string()).await;
-        }
-    }
+fn deserialization_error(what: &str, e: serde_json::Error) {
+    // Not responding to the websocket because it requires valid responses, which need to have
+    // the `id` field present, which we'd only get if we managed to parse the request.
+    // Using `debug!` so someone sending junk cannot flood the log with warnings.
+    tracing::debug!("Error deserializing WS payload as {what}: {e}");
 }
 
-async fn send_error(sender: &mut SplitSink<WebSocket, Message>, exit_code: ExitCode, msg: String) {
-    tracing::error!("{}", msg);
-    if let Err(e) = sender
-        .send(Message::Text(error_str(exit_code.value() as i64, msg)))
-        .await
-    {
-        tracing::warn!("failed to send error response to WS: {e}");
+/// Send a message from the application, result of an async subscription.
+async fn handle_outgoing(sender: &mut SplitSink<WebSocket, Message>, notif: Notification) {
+    // Based on https://github.com/gakonst/ethers-rs/blob/ethers-v2.0.7/ethers-providers/src/rpc/transports/ws/types.rs#L145
+    let json = json! ({
+        "method": notif.method,
+        "params": {
+            "subscription": notif.subscription,
+            "result": notif.result
+        }
+    });
+
+    match serde_json::to_string(&json) {
+        Err(e) => {
+            tracing::error!(error=?e, "failed to serialize notification to JSON");
+        }
+        Ok(response) => {
+            if let Err(e) = sender.send(Message::Text(response)).await {
+                tracing::warn!("failed to send notfication to WS: {e}");
+            }
+        }
     }
 }
 
@@ -153,38 +157,43 @@ async fn send_call_result(
 
     tracing::debug!("RPC WS called method: {}", method);
 
-    match call_rpc_str(server, request).await {
-        Ok(response) => {
+    match server.handle(request).await {
+        ResponseObjects::Empty => {}
+        ResponseObjects::One(response) => {
             send_response(sender, response).await;
         }
-        Err(e) => {
-            tracing::error!("RPC call failed: {}", e);
-            send_error(sender, ExitCode::USR_UNSPECIFIED, e.to_string()).await;
+        ResponseObjects::Many(responses) => {
+            for response in responses {
+                send_response(sender, response).await;
+            }
         }
     }
 }
 
-async fn send_response(sender: &mut SplitSink<WebSocket, Message>, response: String) {
-    if let Err(e) = sender.send(Message::Text(response)).await {
-        tracing::warn!("failed to send response to WS: {e}");
+async fn send_response(sender: &mut SplitSink<WebSocket, Message>, response: ResponseObject) {
+    let response = serde_json::to_string(&response);
+
+    match response {
+        Err(e) => {
+            tracing::error!(error=?e, "failed to serialize response to JSON");
+        }
+        Ok(json) => {
+            if let Err(e) = sender.send(Message::Text(json)).await {
+                tracing::warn!("failed to send response to WS: {e}");
+            }
+        }
     }
 }
 
-pub fn error_res(code: i64, message: String) -> jsonrpc_v2::ResponseObject {
-    jsonrpc_v2::ResponseObject::Error {
-        jsonrpc: jsonrpc_v2::V2,
-        error: jsonrpc_v2::Error::Full {
-            code,
-            message,
-            data: None,
-        },
-        id: jsonrpc_v2::Id::Null,
-    }
-}
+#[cfg(test)]
+mod tests {
+    use jsonrpc_v2::RequestObject;
 
-pub fn error_str(code: i64, message: String) -> String {
-    match serde_json::to_string(&error_res(code, message)) {
-        Ok(err_str) => err_str,
-        Err(err) => format!("Failed to serialize error data. Error was: {err}"),
+    #[test]
+    fn can_parse_request() {
+        let text = "{\"id\":0,\"jsonrpc\":\"2.0\",\"method\":\"eth_newFilter\",\"params\":[{\"topics\":[]}]}";
+        let value = serde_json::from_str::<serde_json::Value>(&text).expect("should parse as JSON");
+        let _request = serde_json::from_value::<RequestObject>(value)
+            .expect("should parse as JSON-RPC request");
     }
 }

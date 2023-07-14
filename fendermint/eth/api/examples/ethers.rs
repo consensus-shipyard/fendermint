@@ -127,13 +127,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_max_level(opts.log_level())
         .init();
 
-    tracing::debug!("Running the tests over HTTP...");
+    tracing::info!("Running the tests over HTTP...");
     let provider = Provider::<Http>::try_from(opts.http_endpoint())?;
     run(provider, &opts).await?;
 
-    // tracing::debug!("Running the tests over WS...");
-    // let provider = Provider::<Ws>::connect(opts.ws_endpoint()).await?;
-    // run(provider, &opts).await?;
+    tracing::info!("Running the tests over WS...");
+    let provider = Provider::<Ws>::connect(opts.ws_endpoint()).await?;
+    run(provider, &opts).await?;
 
     Ok(())
 }

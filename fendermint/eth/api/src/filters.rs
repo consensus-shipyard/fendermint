@@ -28,6 +28,7 @@ use tokio::sync::{
 use crate::{
     conv::from_tm::{self, map_rpc_block_txs},
     error::JsonRpcError,
+    handlers::ws::Notification,
     state::{enrich_block, WebSocketSender},
 };
 
@@ -457,18 +458,23 @@ where
 
                         match res {
                             Err(e) => {
-                                tracing::error!("failed to process events: {e}");
                                 send_error(
                                     &state.ws_sender,
                                     ExitCode::USR_UNSPECIFIED,
                                     format!("failed to process events: {e}"),
+                                    id,
                                 );
                             }
                             Ok(()) => match records.to_json_vec() {
                                 Err(e) => tracing::error!("failed to convert events to JSON: {e}"),
                                 Ok(records) => {
                                     for rec in records {
-                                        if state.ws_sender.send(rec).is_err() {
+                                        let notif = Notification {
+                                            method: "eth_subscribe".into(),
+                                            subscription: id,
+                                            result: rec,
+                                        };
+                                        if state.ws_sender.send(notif).is_err() {
                                             tracing::debug!(?id, "web socket no longer listening");
                                             return self.remove(filters).await;
                                         }
@@ -487,6 +493,7 @@ where
                                 &state.ws_sender,
                                 ExitCode::USR_UNSPECIFIED,
                                 format!("subscription finished with error: {err}"),
+                                id,
                             );
                         }
 
@@ -513,7 +520,9 @@ where
     }
 }
 
-fn send_error(ws_sender: &WebSocketSender, exit_code: ExitCode, msg: String) {
+fn send_error(ws_sender: &WebSocketSender, exit_code: ExitCode, msg: String, id: FilterId) {
+    tracing::error!(?id, "sending error to WS: {msg}");
+
     let err = JsonRpcError {
         code: exit_code.value().into(),
         message: msg,
@@ -525,7 +534,12 @@ fn send_error(ws_sender: &WebSocketSender, exit_code: ExitCode, msg: String) {
         Ok(json) => {
             // Ignoring the case where the socket is no longer there.
             // Assuming that there will be another event to trigger removal.
-            let _ = ws_sender.send(json);
+            let notif = Notification {
+                method: "eth_subscribe".into(),
+                subscription: id,
+                result: json,
+            };
+            let _ = ws_sender.send(notif);
         }
     }
 }
