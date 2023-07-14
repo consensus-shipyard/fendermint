@@ -34,7 +34,6 @@ use tendermint_rpc::{
 use crate::conv::from_eth::{to_fvm_message, to_tm_hash};
 use crate::conv::from_tm::{self, message_hash, to_chain_message, to_cumulative};
 use crate::filters::{matches_topics, FilterId, FilterKind, FilterRecords};
-use crate::state::WebSocketId;
 use crate::{
     conv::{
         from_eth::to_fvm_address,
@@ -909,7 +908,7 @@ where
 /// Unsubscribe from the filter registered by this websocket.
 pub async fn unsubscribe<C>(
     data: JsonRpcData<C>,
-    Params((filter_id, _web_socket_id)): Params<(FilterId, WebSocketId)>,
+    Params((filter_id,)): Params<(FilterId,)>,
 ) -> JsonRpcResult<bool> {
     uninstall_filter(data, Params((filter_id,))).await
 }
