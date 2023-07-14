@@ -24,7 +24,6 @@ use fvm_shared::address::Address;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::{chainid::ChainID, error::ExitCode};
 use jsonrpc_v2::Params;
-use serde::{Deserialize, Serialize};
 use tendermint_rpc::endpoint::{self, status};
 use tendermint_rpc::SubscriptionClient;
 use tendermint_rpc::{
@@ -35,6 +34,7 @@ use tendermint_rpc::{
 use crate::conv::from_eth::{to_fvm_message, to_tm_hash};
 use crate::conv::from_tm::{self, message_hash, to_chain_message, to_cumulative};
 use crate::filters::{matches_topics, FilterId, FilterKind, FilterRecords};
+use crate::state::WebSocketId;
 use crate::{
     conv::{
         from_eth::to_fvm_address,
@@ -542,16 +542,6 @@ where
     }
 }
 
-/// The client either sends one or two items in the array, depending on whether a block ID is specified.
-/// This is to keep it backwards compatible with nodes that do not support the block ID parameter.
-/// If we were using `Option`, they would have to send `null`; this way it works with both 1 or 2 parameters.
-#[derive(Deserialize)]
-#[serde(untagged)]
-pub enum EstimateGasParams {
-    One((TypedTransaction,)),
-    Two((TypedTransaction, et::BlockId)),
-}
-
 /// Generates and returns an estimate of how much gas is necessary to allow the transaction to complete.
 /// The transaction will not be added to the blockchain.
 /// Note that the estimate may be significantly more than the amount of gas actually used by the transaction, f
@@ -838,22 +828,11 @@ pub async fn get_filter_changes<C>(
     data: JsonRpcData<C>,
     Params((filter_id,)): Params<(FilterId,)>,
 ) -> JsonRpcResult<Vec<serde_json::Value>> {
-    fn to_json<R: Serialize>(values: Vec<R>) -> JsonRpcResult<Vec<serde_json::Value>> {
-        let values: Vec<serde_json::Value> = values
-            .into_iter()
-            .map(serde_json::to_value)
-            .collect::<Result<Vec<_>, _>>()
-            .context("failed to convert events to JSON")?;
-
-        Ok(values)
-    }
-
-    if let Some(accum) = data.take_filter_changes(filter_id).await? {
-        match accum {
-            FilterRecords::Logs(logs) => to_json(logs),
-            FilterRecords::NewBlocks(hashes) => to_json(hashes),
-            FilterRecords::PendingTransactions(hashes) => to_json(hashes),
-        }
+    if let Some(records) = data.take_filter_changes(filter_id).await? {
+        let records = records
+            .to_json_vec()
+            .context("failed to convert filter changes")?;
+        Ok(records)
     } else {
         error(ExitCode::USR_NOT_FOUND, "filter not found")
     }
@@ -873,5 +852,97 @@ pub async fn get_filter_logs<C>(
         }
     } else {
         error(ExitCode::USR_NOT_FOUND, "filter not found")
+    }
+}
+
+/// Subscribe to a filter and send the data to a websocket.
+pub async fn subscribe<C>(
+    data: JsonRpcData<C>,
+    Params(params): Params<SubscribeParams>,
+) -> JsonRpcResult<FilterId>
+where
+    C: SubscriptionClient + Sync + Send,
+{
+    match params {
+        SubscribeParams::One((tag, web_socket_id)) => match tag.as_str() {
+            "newHeads" => {
+                // Subscribe to `Block<TxHash>`
+                let ws_sender = data.get_web_socket(&web_socket_id).await?;
+                let id = data
+                    .new_subscription(FilterKind::NewBlocks, ws_sender)
+                    .await
+                    .context("failed to add block subscription")?;
+                Ok(id)
+            }
+            "newPendingTransactions" => {
+                // Subscribe to `TxHash`
+                let ws_sender = data.get_web_socket(&web_socket_id).await?;
+                let id = data
+                    .new_subscription(FilterKind::PendingTransactions, ws_sender)
+                    .await
+                    .context("failed to add transaction subscription")?;
+                Ok(id)
+            }
+            other => {
+                return error(
+                    ExitCode::USR_ILLEGAL_ARGUMENT,
+                    format!("unknown subscription: {other}"),
+                )
+            }
+        },
+        SubscribeParams::Two((tag, filter, web_socket_id)) => match tag.as_str() {
+            "logs" => {
+                // Subscribe to `Log`
+                let ws_sender = data.get_web_socket(&web_socket_id).await?;
+                let id = data
+                    .new_subscription(FilterKind::Logs(Box::new(filter)), ws_sender)
+                    .await
+                    .context("failed to add transaction subscription")?;
+                Ok(id)
+            }
+            other => {
+                return error(
+                    ExitCode::USR_ILLEGAL_ARGUMENT,
+                    format!("unknown subscription: {other}"),
+                )
+            }
+        },
+    }
+}
+
+/// Unsubscribe from the filter registered by this websocket.
+pub async fn unsubscribe<C>(
+    data: JsonRpcData<C>,
+    Params((filter_id, _web_socket_id)): Params<(FilterId, WebSocketId)>,
+) -> JsonRpcResult<bool> {
+    uninstall_filter(data, Params((filter_id,))).await
+}
+
+use params::{EstimateGasParams, SubscribeParams};
+
+mod params {
+    use ethers_core::types as et;
+    use ethers_core::types::transaction::eip2718::TypedTransaction;
+    use serde::Deserialize;
+
+    use crate::state::WebSocketId;
+
+    /// The client either sends one or two items in the array, depending on whether a block ID is specified.
+    /// This is to keep it backwards compatible with nodes that do not support the block ID parameter.
+    /// If we were using `Option`, they would have to send `null`; this way it works with both 1 or 2 parameters.
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    pub enum EstimateGasParams {
+        One((TypedTransaction,)),
+        Two((TypedTransaction, et::BlockId)),
+    }
+
+    /// The client either sends one or two items in the array, depending on whether it's subscribing to block,
+    /// transactions or logs. To that we add the web socket ID.
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    pub enum SubscribeParams {
+        One((String, WebSocketId)),
+        Two((String, et::Filter, WebSocketId)),
     }
 }
