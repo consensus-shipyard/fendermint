@@ -10,6 +10,7 @@ use std::{
 
 use anyhow::{anyhow, Context};
 use ethers_core::types as et;
+use fendermint_rpc::client::FendermintClient;
 use fendermint_vm_actor_interface::eam::EthAddress;
 use futures::{Future, StreamExt};
 use fvm_shared::{address::Address, error::ExitCode};
@@ -17,14 +18,18 @@ use serde::Serialize;
 use tendermint_rpc::{
     event::{Event, EventData},
     query::{EventType, Query},
-    Subscription,
+    Client, Subscription,
 };
 use tokio::sync::{
     mpsc::{Receiver, Sender},
     RwLock,
 };
 
-use crate::{conv::from_tm, error::JsonRpcError, state::WebSocketSender};
+use crate::{
+    conv::from_tm::{self, map_rpc_block_txs},
+    error::JsonRpcError,
+    state::{enrich_block, WebSocketSender},
+};
 
 /// Check whether to keep a log according to the topic filter.
 ///
@@ -305,7 +310,7 @@ where
 
 fn to_json_vec<R: Serialize>(records: &[R]) -> anyhow::Result<Vec<serde_json::Value>> {
     let values: Vec<serde_json::Value> = records
-        .into_iter()
+        .iter()
         .map(serde_json::to_value)
         .collect::<Result<Vec<_>, _>>()
         .context("failed to convert records to JSON")?;
@@ -313,15 +318,15 @@ fn to_json_vec<R: Serialize>(records: &[R]) -> anyhow::Result<Vec<serde_json::Va
     Ok(values)
 }
 
-pub struct FilterDriver {
+pub struct FilterDriver<C> {
     id: FilterId,
-    state: FilterState,
+    state: FilterState<C>,
     rx: Receiver<FilterCommand>,
 }
 
-enum FilterState {
+enum FilterState<C> {
     Poll(PollState),
-    Subscription(SubscriptionState),
+    Subscription(SubscriptionState<C>),
 }
 
 /// Accumulate changes between polls.
@@ -335,21 +340,31 @@ struct PollState {
 }
 
 /// Send changes to a WebSocket as soon as they happen, one by one, not in batches.
-struct SubscriptionState {
+struct SubscriptionState<C> {
+    client: FendermintClient<C>,
     kind: FilterKind,
     ws_sender: WebSocketSender,
 }
 
-impl FilterDriver {
+impl<C> FilterDriver<C>
+where
+    C: Client + Send + Sync + Clone + 'static,
+{
     pub fn new(
         id: FilterId,
         timeout: Duration,
         kind: FilterKind,
         ws_sender: Option<WebSocketSender>,
+        client: FendermintClient<C>,
     ) -> (Self, Sender<FilterCommand>) {
         let (tx, rx) = tokio::sync::mpsc::channel(10);
+
         let state = match ws_sender {
-            Some(ws_sender) => FilterState::Subscription(SubscriptionState { kind, ws_sender }),
+            Some(ws_sender) => FilterState::Subscription(SubscriptionState {
+                kind,
+                ws_sender,
+                client,
+            }),
             None => FilterState::Poll(PollState {
                 timeout,
                 last_poll: Instant::now(),
@@ -357,7 +372,9 @@ impl FilterDriver {
                 records: FilterRecords::new(&kind),
             }),
         };
+
         let r = Self { id, state, rx };
+
         (r, tx)
     }
 
@@ -428,7 +445,13 @@ impl FilterDriver {
 
                         let res = records
                             .update(event, |block| {
-                                todo!("need to make API queries to fill out all the fields")
+                                let client = state.client.clone();
+                                Box::pin(async move {
+                                    let block = enrich_block(&client, block).await?;
+                                    let block: anyhow::Result<et::Block<et::TxHash>> =
+                                        map_rpc_block_txs(block, |tx| Ok(tx.hash()));
+                                    block
+                                })
                             })
                             .await;
 

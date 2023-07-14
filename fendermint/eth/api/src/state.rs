@@ -209,16 +209,7 @@ where
     where
         C: Client + Sync + Send,
     {
-        let height = block.header().height;
-
-        let state_params = self.client.state_params(Some(height)).await?;
-        let base_fee = state_params.value.base_fee;
-        let chain_id = ChainID::from(state_params.value.chain_id);
-
-        let block_results: block_results::Response = self.tm().block_results(height).await?;
-
-        let block = to_eth_block(block, block_results, base_fee, chain_id)
-            .context("failed to convert to eth block")?;
+        let block = enrich_block(&self.client, block).await?;
 
         let block = if full_tx {
             map_rpc_block_txs(block, serde_json::to_value).context("failed to convert to JSON")?
@@ -309,14 +300,14 @@ where
 
 impl<C> JsonRpcState<C>
 where
-    C: SubscriptionClient,
+    C: Client + SubscriptionClient + Clone + Sync + Send + 'static,
 {
     /// Create a new filter with the next available ID and insert it into the filters collection.
     async fn insert_filter_driver(
         &self,
         kind: FilterKind,
         ws_sender: Option<WebSocketSender>,
-    ) -> (FilterDriver, Sender<FilterCommand>) {
+    ) -> (FilterDriver<C>, Sender<FilterCommand>) {
         let mut filters = self.filters.write().await;
 
         // Choose an unpredictable filter, so it's not so easy to clear out someone else's logs.
@@ -328,7 +319,13 @@ where
             }
         }
 
-        let (driver, tx) = FilterDriver::new(id, self.filter_timeout, kind, ws_sender);
+        let (driver, tx) = FilterDriver::new(
+            id,
+            self.filter_timeout,
+            kind,
+            ws_sender,
+            self.client.clone(),
+        );
 
         // Inserting happens here, while removal will be handled by the `FilterState` itself.
         filters.insert(id, tx.clone());
@@ -422,4 +419,25 @@ impl<C> JsonRpcState<C> {
             }
         }
     }
+}
+
+pub async fn enrich_block<C>(
+    client: &FendermintClient<C>,
+    block: tendermint::Block,
+) -> JsonRpcResult<et::Block<et::Transaction>>
+where
+    C: Client + Sync + Send,
+{
+    let height = block.header().height;
+
+    let state_params = client.state_params(Some(height)).await?;
+    let base_fee = state_params.value.base_fee;
+    let chain_id = ChainID::from(state_params.value.chain_id);
+
+    let block_results: block_results::Response = client.underlying().block_results(height).await?;
+
+    let block = to_eth_block(block, block_results, base_fee, chain_id)
+        .context("failed to convert to eth block")?;
+
+    Ok(block)
 }

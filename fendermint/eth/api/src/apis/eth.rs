@@ -780,7 +780,7 @@ pub async fn new_filter<C>(
     Params((filter,)): Params<(et::Filter,)>,
 ) -> JsonRpcResult<FilterId>
 where
-    C: SubscriptionClient + Sync + Send,
+    C: Client + SubscriptionClient + Clone + Sync + Send + 'static,
 {
     let id = data
         .new_filter(FilterKind::Logs(Box::new(filter)))
@@ -793,7 +793,7 @@ where
 /// To check if the state has changed, call eth_getFilterChanges.
 pub async fn new_block_filter<C>(data: JsonRpcData<C>) -> JsonRpcResult<FilterId>
 where
-    C: SubscriptionClient + Sync + Send,
+    C: Client + SubscriptionClient + Clone + Sync + Send + 'static,
 {
     let id = data
         .new_filter(FilterKind::NewBlocks)
@@ -806,7 +806,7 @@ where
 /// To check if the state has changed, call eth_getFilterChanges.
 pub async fn new_pending_transaction_filter<C>(data: JsonRpcData<C>) -> JsonRpcResult<FilterId>
 where
-    C: SubscriptionClient + Sync + Send,
+    C: Client + SubscriptionClient + Clone + Sync + Send + 'static,
 {
     let id = data
         .new_filter(FilterKind::PendingTransactions)
@@ -861,7 +861,7 @@ pub async fn subscribe<C>(
     Params(params): Params<SubscribeParams>,
 ) -> JsonRpcResult<FilterId>
 where
-    C: SubscriptionClient + Sync + Send,
+    C: Client + SubscriptionClient + Clone + Sync + Send + 'static,
 {
     match params {
         SubscribeParams::One((tag, web_socket_id)) => match tag.as_str() {
@@ -883,12 +883,10 @@ where
                     .context("failed to add transaction subscription")?;
                 Ok(id)
             }
-            other => {
-                return error(
-                    ExitCode::USR_ILLEGAL_ARGUMENT,
-                    format!("unknown subscription: {other}"),
-                )
-            }
+            other => error(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                format!("unknown subscription: {other}"),
+            ),
         },
         SubscribeParams::Two((tag, filter, web_socket_id)) => match tag.as_str() {
             "logs" => {
@@ -900,12 +898,10 @@ where
                     .context("failed to add transaction subscription")?;
                 Ok(id)
             }
-            other => {
-                return error(
-                    ExitCode::USR_ILLEGAL_ARGUMENT,
-                    format!("unknown subscription: {other}"),
-                )
-            }
+            other => error(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                format!("unknown subscription: {other}"),
+            ),
         },
     }
 }
@@ -941,6 +937,7 @@ mod params {
     /// transactions or logs. To that we add the web socket ID.
     #[derive(Deserialize)]
     #[serde(untagged)]
+    #[allow(clippy::large_enum_variant)]
     pub enum SubscribeParams {
         One((String, WebSocketId)),
         Two((String, et::Filter, WebSocketId)),
