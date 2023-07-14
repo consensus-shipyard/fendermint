@@ -71,46 +71,20 @@ async fn handle_incoming(
     sender: &mut SplitSink<WebSocket, Message>,
     message: Message,
 ) {
-    if let Message::Text(request_text) = message {
-        tracing::debug!("WS RPC Request: {}", request_text);
-
+    if let Message::Text(mut request_text) = message {
         if !request_text.is_empty() {
-            tracing::debug!("RPC Request Received: {:?}", &request_text);
+            tracing::debug!("WS Request Received: {:?}", &request_text);
 
-            match serde_json::from_str::<serde_json::Value>(&request_text) {
-                Ok(mut json) => {
-                    // If the method requires web sockets, append the ID of the socket to the parameters.
-                    let is_streaming = match json.get("method") {
-                        Some(serde_json::Value::String(method)) => {
-                            apis::is_streaming_method(method)
-                        }
-                        _ => false,
-                    };
+            // We have to deserialize-add-reserialize becuase `JsonRpcRequest` can
+            // only be parsed with `from_str`, not `from_value`.
+            request_text = maybe_add_web_socket_id(request_text, web_socket_id);
 
-                    if is_streaming {
-                        match json.get_mut("params") {
-                            Some(serde_json::Value::Array(ref mut params)) => params.push(
-                                serde_json::Value::Number(serde_json::Number::from(web_socket_id)),
-                            ),
-                            _ => {
-                                tracing::debug!(
-                                        "JSON-RPC streaming request has no or unexpected params: {json}"
-                                    )
-                            }
-                        }
-                    }
-
-                    match serde_json::from_value::<JsonRpcRequest>(json) {
-                        Ok(req) => {
-                            send_call_result(rpc_server, sender, req).await;
-                        }
-                        Err(e) => {
-                            deserialization_error("RequestObject", e);
-                        }
-                    }
+            match serde_json::from_str::<JsonRpcRequest>(&request_text) {
+                Ok(req) => {
+                    send_call_result(rpc_server, sender, req).await;
                 }
                 Err(e) => {
-                    deserialization_error("JSON", e);
+                    deserialization_error("RequestObject", e);
                 }
             }
         }
@@ -122,6 +96,40 @@ fn deserialization_error(what: &str, e: serde_json::Error) {
     // the `id` field present, which we'd only get if we managed to parse the request.
     // Using `debug!` so someone sending junk cannot flood the log with warnings.
     tracing::debug!("Error deserializing WS payload as {what}: {e}");
+}
+
+/// Try to append the websocket ID to the parameters if the method is a streaming one.
+///
+/// This is best effort. If fails, just let the JSON-RPC server handle the problem.
+fn maybe_add_web_socket_id(request_text: String, web_socket_id: WebSocketId) -> String {
+    match serde_json::from_str::<serde_json::Value>(&request_text) {
+        Ok(mut json) => {
+            // If the method requires web sockets, append the ID of the socket to the parameters.
+            let is_streaming = match json.get("method") {
+                Some(serde_json::Value::String(method)) => apis::is_streaming_method(method),
+                _ => false,
+            };
+
+            if is_streaming {
+                match json.get_mut("params") {
+                    Some(serde_json::Value::Array(ref mut params)) => {
+                        params.push(serde_json::Value::Number(serde_json::Number::from(
+                            web_socket_id,
+                        )));
+
+                        return serde_json::to_string(&json).unwrap_or(request_text);
+                    }
+                    _ => {
+                        tracing::debug!("JSON-RPC streaming request has no or unexpected params")
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            deserialization_error("JSON", e);
+        }
+    }
+    request_text
 }
 
 /// Send a message from the application, result of an async subscription.
@@ -187,13 +195,14 @@ async fn send_response(sender: &mut SplitSink<WebSocket, Message>, response: Res
 
 #[cfg(test)]
 mod tests {
-    use jsonrpc_v2::RequestObject;
 
     #[test]
     fn can_parse_request() {
         let text = "{\"id\":0,\"jsonrpc\":\"2.0\",\"method\":\"eth_newFilter\",\"params\":[{\"topics\":[]}]}";
-        let value = serde_json::from_str::<serde_json::Value>(&text).expect("should parse as JSON");
-        let _request = serde_json::from_value::<RequestObject>(value)
-            .expect("should parse as JSON-RPC request");
+        let _value =
+            serde_json::from_str::<serde_json::Value>(&text).expect("should parse as JSON");
+        // The following would fail because `V2` expects an `&str` but the `from_value` deserialized returns `String`.
+        // let _request = serde_json::from_value::<jsonrpc_v2::RequestObject>(value)
+        //     .expect("should parse as JSON-RPC request");
     }
 }
