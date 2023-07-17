@@ -208,8 +208,7 @@ mod tests {
     #[test]
     fn can_parse_request() {
         let text = "{\"id\":0,\"jsonrpc\":\"2.0\",\"method\":\"eth_newFilter\",\"params\":[{\"topics\":[]}]}";
-        let _value =
-            serde_json::from_str::<serde_json::Value>(&text).expect("should parse as JSON");
+        let _value = serde_json::from_str::<serde_json::Value>(text).expect("should parse as JSON");
         // The following would fail because `V2` expects an `&str` but the `from_value` deserialized returns `String`.
         // let _request = serde_json::from_value::<jsonrpc_v2::RequestObject>(value)
         //     .expect("should parse as JSON-RPC request");

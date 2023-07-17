@@ -222,10 +222,10 @@ impl TestAccount {
 // - eth_newPendingTransactionFilter
 // - eth_getFilterChanges
 // - eth_uninstallFilter
-//
-// DOING:
 // - eth_subscribe
 // - eth_unsubscribe
+//
+// DOING:
 //
 // TODO:
 //
@@ -636,11 +636,30 @@ async fn run_ws(mut provider: Provider<Ws>, opts: &Options) -> anyhow::Result<()
     adjust_provider(&mut provider);
 
     // Subscriptions as well.
-    let mut block_subscription = provider.subscribe_blocks().await?;
+    let mut block_sub = provider.subscribe_blocks().await?;
+    let mut txs_sub = provider.subscribe_pending_txs().await?;
+    let mut log_sub = provider.subscribe_logs(&Filter::default()).await?;
 
     run(&provider, opts).await?;
 
-    assert!(block_subscription.next().await.is_some());
+    assert!(block_sub.next().await.is_some(), "blocks should arrive");
+    assert!(txs_sub.next().await.is_some(), "transactions should arrive");
+    assert!(log_sub.next().await.is_some(), "logs should arrive");
+
+    block_sub
+        .unsubscribe()
+        .await
+        .context("failed to unsubscribe blocks")?;
+
+    txs_sub
+        .unsubscribe()
+        .await
+        .context("failed to unsubscribe txs")?;
+
+    log_sub
+        .unsubscribe()
+        .await
+        .context("failed to unsubscribe logs")?;
 
     Ok(())
 }
