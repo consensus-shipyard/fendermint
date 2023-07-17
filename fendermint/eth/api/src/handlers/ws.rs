@@ -13,18 +13,24 @@ use axum::{
     response::IntoResponse,
 };
 use futures::{stream::SplitSink, SinkExt, StreamExt};
-use jsonrpc_v2::{RequestObject as JsonRpcRequest, ResponseObject, ResponseObjects};
+use jsonrpc_v2::{RequestObject, ResponseObject, ResponseObjects, V2};
 use serde_json::json;
 
 use crate::{apis, state::WebSocketId, AppState, JsonRpcServer};
 
-/// Similar to [ethers_providers::rpc::transports::ws::types::Notification], which is what the library
+/// Mirroring [ethers_providers::rpc::transports::ws::types::Notification], which is what the library
 /// expects for non-request-response payloads in [PubSubItem::deserialize].
 #[derive(Debug)]
 pub struct Notification {
-    pub method: String,
     pub subscription: ethers_core::types::U256,
     pub result: serde_json::Value,
+}
+
+#[derive(Debug)]
+pub struct MethodNotification {
+    // There is only one streaming method at the moment, but let's not hardcode it here.
+    pub method: String,
+    pub notification: Notification,
 }
 
 pub async fn handle(
@@ -79,7 +85,7 @@ async fn handle_incoming(
             // only be parsed with `from_str`, not `from_value`.
             request_text = maybe_add_web_socket_id(request_text, web_socket_id);
 
-            match serde_json::from_str::<JsonRpcRequest>(&request_text) {
+            match serde_json::from_str::<RequestObject>(&request_text) {
                 Ok(req) => {
                     send_call_result(rpc_server, sender, req).await;
                 }
@@ -133,22 +139,24 @@ fn maybe_add_web_socket_id(request_text: String, web_socket_id: WebSocketId) -> 
 }
 
 /// Send a message from the application, result of an async subscription.
-async fn handle_outgoing(sender: &mut SplitSink<WebSocket, Message>, notif: Notification) {
+async fn handle_outgoing(sender: &mut SplitSink<WebSocket, Message>, notif: MethodNotification) {
     // Based on https://github.com/gakonst/ethers-rs/blob/ethers-v2.0.7/ethers-providers/src/rpc/transports/ws/types.rs#L145
-    let json = json! ({
+    let message = json! ({
+        "jsonrpc": V2,
         "method": notif.method,
         "params": {
-            "subscription": notif.subscription,
-            "result": notif.result
+            "subscription": notif.notification.subscription,
+            "result": notif.notification.result
         }
     });
 
-    match serde_json::to_string(&json) {
+    match serde_json::to_string(&message) {
         Err(e) => {
             tracing::error!(error=?e, "failed to serialize notification to JSON");
         }
-        Ok(response) => {
-            if let Err(e) = sender.send(Message::Text(response)).await {
+        Ok(json) => {
+            tracing::debug!(json, "sending notification to WS");
+            if let Err(e) = sender.send(Message::Text(json)).await {
                 tracing::warn!("failed to send notfication to WS: {e}");
             }
         }
@@ -159,7 +167,7 @@ async fn handle_outgoing(sender: &mut SplitSink<WebSocket, Message>, notif: Noti
 async fn send_call_result(
     server: &JsonRpcServer,
     sender: &mut SplitSink<WebSocket, Message>,
-    request: jsonrpc_v2::RequestObject,
+    request: RequestObject,
 ) {
     let method = request.method_ref();
 
@@ -186,6 +194,7 @@ async fn send_response(sender: &mut SplitSink<WebSocket, Message>, response: Res
             tracing::error!(error=?e, "failed to serialize response to JSON");
         }
         Ok(json) => {
+            tracing::debug!(json, "sending response to WS");
             if let Err(e) = sender.send(Message::Text(json)).await {
                 tracing::warn!("failed to send response to WS: {e}");
             }

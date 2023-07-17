@@ -29,7 +29,7 @@ use crate::filters::{
     run_subscription, BlockHash, FilterCommand, FilterDriver, FilterId, FilterKind, FilterMap,
     FilterRecords,
 };
-use crate::handlers::ws::Notification;
+use crate::handlers::ws::MethodNotification;
 use crate::{
     conv::from_tm::{
         map_rpc_block_txs, message_hash, to_chain_message, to_eth_block, to_eth_transaction,
@@ -38,7 +38,7 @@ use crate::{
 };
 
 pub type WebSocketId = usize;
-pub type WebSocketSender = UnboundedSender<Notification>;
+pub type WebSocketSender = UnboundedSender<MethodNotification>;
 
 // Made generic in the client type so we can mock it if we want to test API
 // methods without having to spin up a server. In those tests the methods

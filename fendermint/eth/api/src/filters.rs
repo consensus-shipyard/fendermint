@@ -28,7 +28,7 @@ use tokio::sync::{
 use crate::{
     conv::from_tm::{self, map_rpc_block_txs},
     error::JsonRpcError,
-    handlers::ws::Notification,
+    handlers::ws::{MethodNotification, Notification},
     state::{enrich_block, WebSocketSender},
 };
 
@@ -469,12 +469,8 @@ where
                                 Err(e) => tracing::error!("failed to convert events to JSON: {e}"),
                                 Ok(records) => {
                                     for rec in records {
-                                        let notif = Notification {
-                                            method: "eth_subscribe".into(),
-                                            subscription: id,
-                                            result: rec,
-                                        };
-                                        if state.ws_sender.send(notif).is_err() {
+                                        let msg: MethodNotification = notification(id, rec);
+                                        if state.ws_sender.send(msg).is_err() {
                                             tracing::debug!(?id, "web socket no longer listening");
                                             return self.remove(filters).await;
                                         }
@@ -534,13 +530,20 @@ fn send_error(ws_sender: &WebSocketSender, exit_code: ExitCode, msg: String, id:
         Ok(json) => {
             // Ignoring the case where the socket is no longer there.
             // Assuming that there will be another event to trigger removal.
-            let notif = Notification {
-                method: "eth_subscribe".into(),
-                subscription: id,
-                result: json,
-            };
-            let _ = ws_sender.send(notif);
+            let msg = notification(id, json);
+            let _ = ws_sender.send(msg);
         }
+    }
+}
+
+fn notification(subscription: FilterId, result: serde_json::Value) -> MethodNotification {
+    MethodNotification {
+        // We know this is the only one at the moment.
+        method: "eth_subscribe".into(),
+        notification: Notification {
+            subscription,
+            result,
+        },
     }
 }
 

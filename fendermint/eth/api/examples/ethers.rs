@@ -35,6 +35,7 @@ use std::{
 
 use anyhow::{anyhow, Context};
 use clap::Parser;
+use ethers::providers::StreamExt;
 use ethers::{
     prelude::{abigen, ContractCall, ContractFactory, SignerMiddleware},
     providers::{FilterKind, Http, JsonRpcClient, Middleware, Provider, Ws},
@@ -129,11 +130,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("Running the tests over HTTP...");
     let provider = Provider::<Http>::try_from(opts.http_endpoint())?;
-    run(provider, &opts).await?;
+    run_http(provider, &opts).await?;
 
     tracing::info!("Running the tests over WS...");
     let provider = Provider::<Ws>::connect(opts.ws_endpoint()).await?;
-    run(provider, &opts).await?;
+    run_ws(provider, &opts).await?;
 
     Ok(())
 }
@@ -237,13 +238,10 @@ impl TestAccount {
 //
 
 /// Exercise the above methods, so we know at least the parameters are lined up correctly.
-async fn run<C>(mut provider: Provider<C>, opts: &Options) -> anyhow::Result<()>
+async fn run<C>(provider: &Provider<C>, opts: &Options) -> anyhow::Result<()>
 where
     C: JsonRpcClient + Clone + 'static,
 {
-    // Tendermint block interval is lower.
-    provider.set_interval(Duration::from_secs(2));
-
     let from = TestAccount::new(&opts.secret_key_from)?;
     let to = TestAccount::new(&opts.secret_key_to)?;
 
@@ -274,13 +272,6 @@ where
         |id| *id != logs_filter_id,
     )?;
     filter_ids.push(txs_filter_id);
-
-    // Subscriptions as well.
-    // let block_subscription = request(
-    //     "eth_subscribe (blocks)",
-    //     provider.subscribe_blocks().await,
-    //     |_| true,
-    // )?;
 
     request("web3_clientVersion", provider.client_version().await, |v| {
         v.starts_with("fendermint/")
@@ -628,6 +619,38 @@ where
     }
 
     Ok(())
+}
+
+/// The HTTP interface provides JSON-RPC request/response endpoints.
+async fn run_http(mut provider: Provider<Http>, opts: &Options) -> anyhow::Result<()> {
+    adjust_provider(&mut provider);
+    run(&provider, opts).await
+}
+
+/// The WebSocket interface provides JSON-RPC request/response interactions
+/// as well as subscriptions, both using messages over the socket.
+///
+/// We subscribe to notifications first, then run the same suite of request/responses
+/// as the HTTP case, finally check that we have collected events over the subscriptions.
+async fn run_ws(mut provider: Provider<Ws>, opts: &Options) -> anyhow::Result<()> {
+    adjust_provider(&mut provider);
+
+    // Subscriptions as well.
+    let mut block_subscription = provider.subscribe_blocks().await?;
+
+    run(&provider, opts).await?;
+
+    assert!(block_subscription.next().await.is_some());
+
+    Ok(())
+}
+
+fn adjust_provider<C>(provider: &mut Provider<C>)
+where
+    C: JsonRpcClient,
+{
+    // Tendermint block interval is lower.
+    provider.set_interval(Duration::from_secs(2));
 }
 
 async fn make_transfer<C>(
