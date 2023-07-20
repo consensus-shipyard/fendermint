@@ -4,9 +4,10 @@ BUILTIN_ACTORS_DIR:=../builtin-actors
 BUILTIN_ACTORS_CODE:=$(shell find $(BUILTIN_ACTORS_DIR) -type f -name "*.rs" | grep -v target)
 BUILTIN_ACTORS_BUNDLE:=$(shell pwd)/$(BUILTIN_ACTORS_DIR)/output/bundle.car
 
-IPC_ACTORS_DIR:=../ipc-solidity-actors
+IPC_ACTORS_DIR:=$(shell pwd)/../ipc-solidity-actors
 IPC_ACTORS_CODE:=$(shell find $(IPC_ACTORS_DIR) -type f -name "*.sol")
-IPC_ACTORS_ABI:=../ipc-solidity-actors/out/.compile.abi
+IPC_ACTORS_BUILD:=fendermint/vm/ipc_actors/build.rs
+IPC_ACTORS_ABI:=$(IPC_ACTORS_DIR)/out/.compile.abi
 
 FENDERMINT_CODE:=$(shell find . -type f \( -name "*.rs" -o -name "Cargo.toml" \) | grep -v target)
 
@@ -82,7 +83,9 @@ $(BUILTIN_ACTORS_BUNDLE): $(BUILTIN_ACTORS_CODE)
 
 # Compile the ABI artifacts for the IPC Solidity actors.
 ipc-actors-abi: $(IPC_ACTORS_ABI)
+	cargo build --release -p fendermint_vm_ipc_actors
 
+# Clone the IPC Solidity actors if necessary and compile the ABI, putting down a marker at the end.
 $(IPC_ACTORS_ABI): $(IPC_ACTORS_CODE) | forge
 	if [ ! -d $(IPC_ACTORS_DIR) ]; then \
 		mkdir -p $(IPC_ACTORS_DIR) && \
@@ -95,6 +98,7 @@ $(IPC_ACTORS_ABI): $(IPC_ACTORS_CODE) | forge
 	touch $@
 
 
+# Forge is used by the ipc-solidity-actors compilation steps.
 .PHONY: forge
 forge:
 	@if [ -z "$(shell which forge)" ]; then \
