@@ -3,6 +3,11 @@
 BUILTIN_ACTORS_DIR:=../builtin-actors
 BUILTIN_ACTORS_CODE:=$(shell find $(BUILTIN_ACTORS_DIR) -type f -name "*.rs" | grep -v target)
 BUILTIN_ACTORS_BUNDLE:=$(shell pwd)/$(BUILTIN_ACTORS_DIR)/output/bundle.car
+
+IPC_ACTORS_DIR:=../ipc-solidity-actors
+IPC_ACTORS_CODE:=$(shell find $(IPC_ACTORS_DIR) -type f -name "*.sol")
+IPC_ACTORS_ABI:=../ipc-solidity-actors/out/.compile.abi
+
 FENDERMINT_CODE:=$(shell find . -type f \( -name "*.rs" -o -name "Cargo.toml" \) | grep -v target)
 
 all: test build
@@ -73,3 +78,26 @@ $(BUILTIN_ACTORS_BUNDLE): $(BUILTIN_ACTORS_CODE)
 	git pull && \
 	rustup target add wasm32-unknown-unknown && \
 	cargo run --release -- -o output/$(shell basename $@)
+
+
+# Compile the ABI artifacts for the IPC Solidity actors.
+ipc-actors-abi: $(IPC_ACTORS_ABI)
+
+$(IPC_ACTORS_ABI): $(IPC_ACTORS_CODE) | forge
+	if [ ! -d $(IPC_ACTORS_DIR) ]; then \
+		mkdir -p $(IPC_ACTORS_DIR) && \
+		cd $(IPC_ACTORS_DIR) && \
+		cd .. && \
+		git clone https://github.com/consensus-shipyard/ipc-solidity-actors.git; \
+	fi
+	cd $(IPC_ACTORS_DIR) && git pull
+	make -C $(IPC_ACTORS_DIR) compile-abi
+	touch $@
+
+
+.PHONY: forge
+forge:
+	@if [ -z "$(shell which forge)" ]; then \
+		echo "Please install Foundry. See https://book.getfoundry.sh/getting-started/installation"; \
+		exit 1; \
+	fi
