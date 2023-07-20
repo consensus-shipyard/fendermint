@@ -95,7 +95,9 @@ $(IPC_ACTORS_ABI): $(IPC_ACTORS_CODE) | forge
 		cd .. && \
 		git clone https://github.com/consensus-shipyard/ipc-solidity-actors.git; \
 	fi
-	cd $(IPC_ACTORS_DIR) && git pull
+	cd $(IPC_ACTORS_DIR) && \
+	git checkout fm-156-ipc-solidity-actors && \
+	git pull
 	make -C $(IPC_ACTORS_DIR) compile-abi
 	touch $@
 
