@@ -39,7 +39,11 @@ fn main() {
             .write_to_file(output_path)
             .expect("failed to write Rust code");
 
-        writeln!(lib, "pub mod {module_name};").unwrap();
+        writeln!(
+            lib,
+            "#[allow(clippy::module_inception)]\npub mod {module_name};"
+        )
+        .unwrap();
     }
 }
 
