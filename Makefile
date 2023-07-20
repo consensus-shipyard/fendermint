@@ -42,10 +42,11 @@ check-fmt:
 check-clippy:
 	cargo clippy --all --tests -- -D clippy::all
 
-docker-build: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE)
-	mkdir -p docker/.artifacts
+docker-build: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE) $(IPC_ACTORS_ABI)
+	mkdir -p docker/.artifacts/contracts
 
 	cp $(BUILTIN_ACTORS_BUNDLE) docker/.artifacts
+	cp $(IPC_ACTORS_DIR)/out/*.json docker/.artifacts/contracts
 
 	if [ -z "$${GITHUB_ACTIONS}" ]; then \
 		DOCKER_FILE=local ; \
@@ -81,7 +82,7 @@ $(BUILTIN_ACTORS_BUNDLE): $(BUILTIN_ACTORS_CODE)
 	cargo run --release -- -o output/$(shell basename $@)
 
 
-# Compile the ABI artifacts for the IPC Solidity actors.
+# Compile the ABI artifacts and Rust bindings for the IPC Solidity actors.
 ipc-actors-abi: $(IPC_ACTORS_ABI)
 	cargo build --release -p fendermint_vm_ipc_actors
 
