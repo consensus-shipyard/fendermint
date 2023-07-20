@@ -20,7 +20,7 @@ fn main() {
     });
 
     if !Path::new(&ipc_actors_dir).is_dir() {
-        println!("{ipc_actors_dir} doesn't exist. Skip regenerating Rust bindings.");
+        eprintln!("{ipc_actors_dir} doesn't exist. Skip regenerating Rust bindings.");
         return;
     }
 
@@ -32,7 +32,7 @@ fn main() {
         let input_path = format!("{ipc_actors_dir}/out/{contract_name}.json");
         let output_path = format!("./src/{}.rs", module_name);
 
-        ethers::prelude::Abigen::new(contract_name, input_path)
+        ethers::prelude::Abigen::new(contract_name, &input_path)
             .expect("failed to create Abigen")
             .generate()
             .expect("failed to generate Rust bindings")
@@ -44,7 +44,10 @@ fn main() {
             "#[allow(clippy::module_inception)]\npub mod {module_name};"
         )
         .unwrap();
+
+        println!("cargo:rerun-if-changed={input_path}");
     }
+    println!("cargo:rerun-if-changed=build.rs");
 }
 
 /// Convert ContractName to contract_name so we can use it as a Rust module.
