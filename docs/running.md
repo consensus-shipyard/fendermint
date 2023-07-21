@@ -410,6 +410,8 @@ Note that the first block execution is very slow because we have to load the Was
 but after that the blocks come in fast, one per second.
 
 ### Run ETH API
+If we want to use `evm` related API, such as running `fendermint/eth/api/examples/ethers.rs`, we need to start ETH API process. 
+
 The ETH RPC api runs on top of cometbft. Make sure you have cometbft running properly. The architecture is as follows:
 ```
 +---------------------------+
