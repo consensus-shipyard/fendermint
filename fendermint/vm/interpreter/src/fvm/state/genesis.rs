@@ -1,7 +1,9 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use anyhow::{anyhow, Context};
+use std::sync::Arc;
+
+use anyhow::{anyhow, bail, Context};
 use cid::{multihash::Code, Cid};
 use fendermint_vm_actor_interface::{
     account::{self, ACCOUNT_ACTOR_CODE_ID},
@@ -11,8 +13,10 @@ use fendermint_vm_actor_interface::{
     multisig::{self, MULTISIG_ACTOR_CODE_ID},
     EMPTY_ARR,
 };
+use fendermint_vm_core::Timestamp;
 use fendermint_vm_genesis::{Account, Multisig};
 use fvm::{
+    engine::MultiEngine,
     machine::Manifest,
     state_tree::{ActorState, StateTree},
 };
@@ -24,10 +28,13 @@ use fvm_shared::{
     clock::ChainEpoch,
     econ::TokenAmount,
     state::StateTreeVersion,
+    version::NetworkVersion,
     ActorID,
 };
 use num_traits::Zero;
 use serde::Serialize;
+
+use super::{exec::MachineBlockstore, FvmExecState, FvmStateParams};
 
 /// Create an empty state tree.
 pub fn empty_state_tree<DB: Blockstore>(store: DB) -> anyhow::Result<StateTree<DB>> {
@@ -35,21 +42,35 @@ pub fn empty_state_tree<DB: Blockstore>(store: DB) -> anyhow::Result<StateTree<D
     Ok(state_tree)
 }
 
+/// Initially we can only set up an empty state tree.
+/// Then we have to create the built-in actors' state that the FVM relies on.
+/// Then we can instantiate an FVM execution engine, which we can use to construct FEVM based actors.
+enum Stage<DB: Blockstore + 'static> {
+    Tree(StateTree<DB>),
+    Exec(FvmExecState<DB>),
+}
+
 /// A state we create for the execution of genesis initialisation.
 pub struct FvmGenesisState<DB>
 where
-    DB: Blockstore,
+    DB: Blockstore + 'static,
 {
     pub manifest_data_cid: Cid,
     pub manifest: Manifest,
-    state_tree: StateTree<DB>,
+    store: DB,
+    multi_engine: Arc<MultiEngine>,
+    stage: Stage<DB>,
 }
 
 impl<DB> FvmGenesisState<DB>
 where
-    DB: Blockstore,
+    DB: Blockstore + Clone + 'static,
 {
-    pub async fn new(store: DB, bundle: &[u8]) -> anyhow::Result<Self> {
+    pub async fn new(
+        store: DB,
+        multi_engine: Arc<MultiEngine>,
+        bundle: &[u8],
+    ) -> anyhow::Result<Self> {
         // Load the actor bundle.
         let bundle_roots = load_car_unchecked(&store, bundle).await?;
         let bundle_root = match bundle_roots.as_slice() {
@@ -72,21 +93,62 @@ where
             }
         };
         let manifest = Manifest::load(&store, &manifest_data_cid, manifest_version)?;
-        let state_tree = empty_state_tree(store)?;
+
+        let state_tree = empty_state_tree(store.clone())?;
 
         let state = Self {
             manifest_data_cid,
             manifest,
-            state_tree,
+            store,
+            multi_engine,
+            stage: Stage::Tree(state_tree),
         };
 
         Ok(state)
     }
 
+    /// Instantiate the execution state, once the basic genesis parameters are known.
+    ///
+    /// This must be called before we try to instantiate any EVM actors in genesis.
+    pub fn init_exec_state(
+        &mut self,
+        timestamp: Timestamp,
+        network_version: NetworkVersion,
+        base_fee: TokenAmount,
+        circ_supply: TokenAmount,
+        chain_id: u64,
+    ) -> anyhow::Result<()> {
+        self.stage = match self.stage {
+            Stage::Exec(_) => bail!("execution engine already initialized"),
+            Stage::Tree(ref mut state_tree) => {
+                // We have to flush the data at this point.
+                let state_root = state_tree.flush()?;
+
+                let params = FvmStateParams {
+                    state_root,
+                    timestamp,
+                    network_version,
+                    base_fee,
+                    circ_supply,
+                    chain_id,
+                };
+
+                let exec_state =
+                    FvmExecState::new(self.store.clone(), &self.multi_engine, 1, params)
+                        .context("failed to create exec state")?;
+
+                Stage::Exec(exec_state)
+            }
+        };
+        Ok(())
+    }
+
     /// Flush the data to the block store.
-    pub fn commit(mut self) -> anyhow::Result<Cid> {
-        let root = self.state_tree.flush()?;
-        Ok(root)
+    pub fn commit(self) -> anyhow::Result<Cid> {
+        match self.stage {
+            Stage::Tree(mut state_tree) => Ok(state_tree.flush()?),
+            Stage::Exec(exec_state) => exec_state.commit(),
+        }
     }
 
     /// Creates an actor using code specified in the manifest.
@@ -114,7 +176,10 @@ where
             delegated_address,
         };
 
-        self.state_tree.set_actor(id, actor_state);
+        self.with_state_tree(
+            |s| s.set_actor(id, actor_state.clone()),
+            |s| s.set_actor(id, actor_state.clone()),
+        );
 
         Ok(())
     }
@@ -160,7 +225,10 @@ where
                 .get(&signer.0)
                 .ok_or_else(|| anyhow!("can't find ID for signer {}", signer.0))?;
 
-            if self.state_tree.get_actor(*id)?.is_none() {
+            if self
+                .with_state_tree(|s| s.get_actor(*id), |s| s.get_actor(*id))?
+                .is_none()
+            {
                 self.create_account_actor(Account { owner: signer }, TokenAmount::zero(), ids)?;
             }
 
@@ -169,7 +237,7 @@ where
 
         // Now create a multisig actor that manages group transactions.
         let state = multisig::State::new(
-            self.state_tree.store(),
+            self.store(),
             signers,
             ms.threshold,
             ms.vesting_start as ChainEpoch,
@@ -180,14 +248,27 @@ where
         self.create_actor(MULTISIG_ACTOR_CODE_ID, next_id, &state, balance, None)
     }
 
-    pub fn store(&self) -> &DB {
-        self.state_tree.store()
+    pub fn store(&mut self) -> &DB {
+        &self.store
     }
 
     fn put_state(&mut self, state: impl Serialize) -> anyhow::Result<Cid> {
-        self.state_tree
-            .store()
+        self.store()
             .put_cbor(&state, Code::Blake2b256)
             .context("failed to store actor state")
+    }
+
+    /// A horrible way of unifying the state tree under the two different stages.
+    ///
+    /// We only use this a few times, so perhaps it's not that much of a burden to duplicate some code.
+    fn with_state_tree<F, G, T>(&mut self, f: F, g: G) -> T
+    where
+        F: FnOnce(&mut StateTree<DB>) -> T,
+        G: FnOnce(&mut StateTree<MachineBlockstore<DB>>) -> T,
+    {
+        match self.stage {
+            Stage::Tree(ref mut state_tree) => f(state_tree),
+            Stage::Exec(ref mut exec_state) => g(exec_state.state_tree_mut()),
+        }
     }
 }

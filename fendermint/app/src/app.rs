@@ -354,9 +354,10 @@ where
         let bundle = std::fs::read(bundle_path)
             .map_err(|e| anyhow!("failed to load bundle CAR from {bundle_path:?}: {e}"))?;
 
-        let state = FvmGenesisState::new(self.state_store_clone(), &bundle)
-            .await
-            .context("failed to create genesis state")?;
+        let state =
+            FvmGenesisState::new(self.state_store_clone(), self.multi_engine.clone(), &bundle)
+                .await
+                .context("failed to create genesis state")?;
 
         tracing::info!(
             manifest_root = format!("{}", state.manifest_data_cid),

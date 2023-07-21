@@ -1,6 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use anyhow::Context;
 use async_trait::async_trait;
 use fendermint_vm_actor_interface::{
     account, burntfunds, cron, eam, init, reward, system, EMPTY_ARR,
@@ -71,7 +72,7 @@ where
         // Currently we just pass them back as they are, but later we should
         // store them in the IPC actors; or in case of a snapshot restore them
         // from the state.
-        let output = FvmGenesisOutput {
+        let out = FvmGenesisOutput {
             chain_id,
             timestamp: genesis.timestamp,
             network_version: genesis.network_version,
@@ -80,72 +81,101 @@ where
             validators: genesis.validators,
         };
 
+        // STAGE 1: First we initialize native built-in actors.
+
         // System actor
-        state.create_actor(
-            system::SYSTEM_ACTOR_CODE_ID,
-            system::SYSTEM_ACTOR_ID,
-            &system::State {
-                builtin_actors: state.manifest_data_cid,
-            },
-            TokenAmount::zero(),
-            None,
-        )?;
+        state
+            .create_actor(
+                system::SYSTEM_ACTOR_CODE_ID,
+                system::SYSTEM_ACTOR_ID,
+                &system::State {
+                    builtin_actors: state.manifest_data_cid,
+                },
+                TokenAmount::zero(),
+                None,
+            )
+            .context("failed to create system actor")?;
 
         // Init actor
         let (init_state, addr_to_id) =
-            init::State::new(state.store(), genesis.chain_name.clone(), &genesis.accounts)?;
+            init::State::new(state.store(), genesis.chain_name.clone(), &genesis.accounts)
+                .context("failed to create init state")?;
 
-        state.create_actor(
-            init::INIT_ACTOR_CODE_ID,
-            init::INIT_ACTOR_ID,
-            &init_state,
-            TokenAmount::zero(),
-            None,
-        )?;
+        state
+            .create_actor(
+                init::INIT_ACTOR_CODE_ID,
+                init::INIT_ACTOR_ID,
+                &init_state,
+                TokenAmount::zero(),
+                None,
+            )
+            .context("failed to create init actor")?;
 
         // Cron actor
-        state.create_actor(
-            cron::CRON_ACTOR_CODE_ID,
-            cron::CRON_ACTOR_ID,
-            &cron::State {
-                entries: vec![], // TODO: Maybe with the IPC.
-            },
-            TokenAmount::zero(),
-            None,
-        )?;
+        state
+            .create_actor(
+                cron::CRON_ACTOR_CODE_ID,
+                cron::CRON_ACTOR_ID,
+                &cron::State {
+                    entries: vec![], // TODO: Maybe with the IPC.
+                },
+                TokenAmount::zero(),
+                None,
+            )
+            .context("failed to create cron actor")?;
 
         // Ethereum Account Manager (EAM) actor
-        state.create_actor(
-            eam::EAM_ACTOR_CODE_ID,
-            eam::EAM_ACTOR_ID,
-            &EMPTY_ARR,
-            TokenAmount::zero(),
-            None,
-        )?;
+        state
+            .create_actor(
+                eam::EAM_ACTOR_CODE_ID,
+                eam::EAM_ACTOR_ID,
+                &EMPTY_ARR,
+                TokenAmount::zero(),
+                None,
+            )
+            .context("failed to create EAM actor")?;
 
         // Burnt funds actor (it's just an account).
-        state.create_actor(
-            account::ACCOUNT_ACTOR_CODE_ID,
-            burntfunds::BURNT_FUNDS_ACTOR_ID,
-            &account::State {
-                address: burntfunds::BURNT_FUNDS_ACTOR_ADDR,
-            },
-            TokenAmount::zero(),
-            None,
-        )?;
+        state
+            .create_actor(
+                account::ACCOUNT_ACTOR_CODE_ID,
+                burntfunds::BURNT_FUNDS_ACTOR_ID,
+                &account::State {
+                    address: burntfunds::BURNT_FUNDS_ACTOR_ADDR,
+                },
+                TokenAmount::zero(),
+                None,
+            )
+            .context("failed to create burnt funds actor")?;
 
         // A placeholder for the reward actor, beause I don't think
         // using the one in the builtin actors library would be appropriate.
         // This effectively burns the miner rewards. Better than panicking.
-        state.create_actor(
-            account::ACCOUNT_ACTOR_CODE_ID,
-            reward::REWARD_ACTOR_ID,
-            &account::State {
-                address: reward::REWARD_ACTOR_ADDR,
-            },
-            TokenAmount::zero(),
-            None,
-        )?;
+        state
+            .create_actor(
+                account::ACCOUNT_ACTOR_CODE_ID,
+                reward::REWARD_ACTOR_ID,
+                &account::State {
+                    address: reward::REWARD_ACTOR_ADDR,
+                },
+                TokenAmount::zero(),
+                None,
+            )
+            .context("failed to create reward actor")?;
+
+        // STAGE 2: Now we can initialize the FVM and create built-in FEVM actors.
+
+        state
+            .init_exec_state(
+                out.timestamp,
+                out.network_version,
+                out.base_fee.clone(),
+                out.circ_supply.clone(),
+                out.chain_id.into(),
+            )
+            .context("failed to init exec state")?;
+
+        // STAGE 3: Finally we can create non-builtin actors which do not have a fixed ID.
 
         // Create accounts
         let mut next_id = init::FIRST_NON_SINGLETON_ADDR + addr_to_id.len() as u64;
@@ -153,16 +183,20 @@ where
             let balance = a.balance;
             match a.meta {
                 ActorMeta::Account(acct) => {
-                    state.create_account_actor(acct, balance, &addr_to_id)?;
+                    state
+                        .create_account_actor(acct, balance, &addr_to_id)
+                        .context("failed to create account actor")?;
                 }
                 ActorMeta::Multisig(ms) => {
-                    state.create_multisig_actor(ms, balance, &addr_to_id, next_id)?;
+                    state
+                        .create_multisig_actor(ms, balance, &addr_to_id, next_id)
+                        .context("failed to create multisig actor")?;
                     next_id += 1;
                 }
             }
         }
 
-        Ok((state, output))
+        Ok((state, out))
     }
 }
 
@@ -174,7 +208,10 @@ fn circ_supply(g: &Genesis) -> TokenAmount {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use fendermint_vm_genesis::Genesis;
+    use fvm::engine::MultiEngine;
     use quickcheck::Arbitrary;
 
     use crate::{
@@ -190,8 +227,9 @@ mod tests {
         let genesis = Genesis::arbitrary(&mut g);
         let bundle = std::fs::read(bundle_path()).expect("failed to read bundle");
         let store = MemoryBlockstore::new();
+        let multi_engine = Arc::new(MultiEngine::default());
 
-        let state = FvmGenesisState::new(store, &bundle)
+        let state = FvmGenesisState::new(store, multi_engine, &bundle)
             .await
             .expect("failed to create state");
 
