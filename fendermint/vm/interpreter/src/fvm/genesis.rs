@@ -215,7 +215,11 @@ mod tests {
     use quickcheck::Arbitrary;
 
     use crate::{
-        fvm::{bundle::bundle_path, store::memory::MemoryBlockstore, FvmMessageInterpreter},
+        fvm::{
+            bundle::{bundle_path, contracts_path},
+            store::memory::MemoryBlockstore,
+            FvmMessageInterpreter,
+        },
         GenesisInterpreter,
     };
 
@@ -233,7 +237,7 @@ mod tests {
             .await
             .expect("failed to create state");
 
-        let interpreter = FvmMessageInterpreter::new();
+        let interpreter = FvmMessageInterpreter::new(contracts_path());
 
         let (state, out) = interpreter
             .init(state, genesis.clone())
