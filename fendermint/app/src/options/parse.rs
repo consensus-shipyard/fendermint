@@ -35,7 +35,6 @@ pub fn parse_token_amount(s: &str) -> Result<TokenAmount, String> {
 }
 
 pub fn parse_full_fil(s: &str) -> Result<TokenAmount, String> {
-    // no rounding, just the integer part
     let f: Result<f64, _> = s.parse();
     if f.is_err() {
         return Err("input not a token amount".to_owned());
