@@ -469,11 +469,11 @@ gVUBRpGWKyQvYeoOY3OJROSyogmA3ys=
 
 The simplest transaction we can do is to transfer tokens from one account to another.
 
-For example we can send 1000 tokens from Alice to Bob:
+For example we can send 0.1 tokens from Alice to Bob:
 
 ```shell
 cargo run -p fendermint_app --release -- \
-  rpc transfer --secret-key test-network/keys/alice.sk --to $BOB_ADDR --sequence 0 --value 1000 --chain-name test
+  rpc transfer --secret-key test-network/keys/alice.sk --to $BOB_ADDR --sequence 0 --value 0.1 --chain-name test
 ```
 
 Note that we are using `--sequence 0` because this is the first transaction we make using Alice's key.
@@ -481,9 +481,9 @@ Note that we are using `--sequence 0` because this is the first transaction we m
 The `transfer` command waits for the commit results of the transaction:
 
 ```console
-$ cargo run -p fendermint_app --release -- rpc transfer --secret-key test-network/keys/alice.sk --to $BOB_ADDR --sequence 0 --value 1000 --chain-name test
+$ cargo run -p fendermint_app --release -- rpc transfer --secret-key test-network/keys/alice.sk --to $BOB_ADDR --sequence 0 --value 0.1 --chain-name test
     Finished dev [unoptimized + debuginfo] target(s) in 0.40s
-     Running `target/debug/fendermint rpc transfer --secret-key test-network/keys/alice.sk --to f1kgtzp5nuob3gdccagivcgns7e25be2c2rqozilq --sequence 0 --value 1000`
+     Running `target/debug/fendermint rpc transfer --secret-key test-network/keys/alice.sk --to f1kgtzp5nuob3gdccagivcgns7e25be2c2rqozilq --sequence 0 --value 0.1`
 {
   "response": {
     "check_tx": {

@@ -93,7 +93,7 @@ STATE_CID=$(fendermint rpc query actor-state --address $ALICE_ADDR | jq -r .stat
 fendermint rpc query ipld --cid $STATE_CID
 
 #22
-fendermint rpc transfer --secret-key test-network/keys/alice.sk --to $BOB_ADDR --sequence 0 --value 1000
+fendermint rpc transfer --secret-key test-network/keys/alice.sk --to $BOB_ADDR --sequence 0 --value 0.1
 
 #23
 fendermint rpc query actor-state --address $BOB_ADDR | jq .state.balance
