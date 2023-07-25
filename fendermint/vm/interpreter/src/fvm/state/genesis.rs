@@ -250,7 +250,7 @@ where
         self.create_actor(MULTISIG_ACTOR_CODE_ID, next_id, &state, balance, None)
     }
 
-    /// Deploy an EVM contract with a fixed ID.
+    /// Deploy an EVM contract with a fixed ID and some constructor arguments.
     pub fn create_evm_actor_with_cons<T: Tokenize>(
         &mut self,
         id: ActorID,
@@ -258,9 +258,6 @@ where
         bytecode: Vec<u8>,
         constructor_params: T,
     ) -> anyhow::Result<()> {
-        // Here we are circumventing the normal way of creating an actor through the EAM and jump ahead to what the `Init` actor would do:
-        // https://github.com/filecoin-project/builtin-actors/blob/421855a7b968114ac59422c1faeca968482eccf4/actors/init/src/lib.rs#L97-L107
-
         let constructor = abi
             .constructor()
             .ok_or_else(|| anyhow!("contract doesn't have a constructor"))?;
@@ -268,6 +265,14 @@ where
         let initcode = constructor
             .encode_input(bytecode, &constructor_params.into_tokens())
             .context("failed to encode constructor input")?;
+
+        self.create_evm_actor(id, initcode)
+    }
+
+    /// Deploy an EVM contract.
+    pub fn create_evm_actor(&mut self, id: ActorID, initcode: Vec<u8>) -> anyhow::Result<()> {
+        // Here we are circumventing the normal way of creating an actor through the EAM and jump ahead to what the `Init` actor would do:
+        // https://github.com/filecoin-project/builtin-actors/blob/421855a7b968114ac59422c1faeca968482eccf4/actors/init/src/lib.rs#L97-L107
 
         let params = evm::ConstructorParams {
             // We have to pick someone as creator for these quasi built-in types.

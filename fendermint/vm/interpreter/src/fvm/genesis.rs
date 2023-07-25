@@ -1,9 +1,12 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::collections::HashMap;
+
 use anyhow::Context;
 use async_trait::async_trait;
-use ethers::types::U256;
+use ethers::core::types as et;
+use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_actor_interface::{
     account, burntfunds, cron, eam, init, ipc, reward, system, EMPTY_ARR,
 };
@@ -103,6 +106,9 @@ where
             init::State::new(state.store(), genesis.chain_name.clone(), &genesis.accounts)
                 .context("failed to create init state")?;
 
+        // The next ID is going to be _after_ the accounts, which have already been assigned an ID by the `Init` actor.
+        let mut next_id = init::FIRST_NON_SINGLETON_ADDR + addr_to_id.len() as u64;
+
         state
             .create_actor(
                 init::INIT_ACTOR_CODE_ID,
@@ -177,17 +183,50 @@ where
             )
             .context("failed to init exec state")?;
 
+        // Assign dynamic ID addresses to libraries, but use fixed addresses for the top level contracts.
+        let mut lib_addrs = HashMap::new();
+
+        // IPC libraries.
+        {
+            // Collect dependencies of the main IPC actors.
+            let libs = self
+                .contracts
+                .library_dependencies(&[
+                    ("Gateway.sol", "Gateway"),
+                    ("SubnetRegistry.sol", "SubnetRegistry"),
+                ])
+                .context("failed to collect dependencies")?;
+
+            // Deploy them with non-deterministic IDs.
+            for (lib_src, lib_name) in libs {
+                let bytecode = self
+                    .contracts
+                    .bytecode(&lib_src, &lib_name, &lib_addrs)
+                    .context("failed to load library contract")?;
+
+                let id = next_id;
+
+                state
+                    .create_evm_actor(id, bytecode)
+                    .context("failed to create Gateway actor")?;
+
+                lib_addrs.insert(
+                    self.contracts.fqn(&lib_src, &lib_name),
+                    et::Address::from(EthAddress::from_id(id).0),
+                );
+
+                next_id += 1;
+            }
+        }
+
         // IPC Gateway actor.
         {
             use fendermint_vm_ipc_actors::gateway::GATEWAY_ABI;
             use ipc::gateway::ConstructorParameters;
 
-            // TODO: Deploy dependencies.
-            let libraries = Default::default();
-
             let bytecode = self
                 .contracts
-                .bytecode("Gateway", "Gateway", &libraries)
+                .bytecode("Gateway.sol", "Gateway", &lib_addrs)
                 .context("failed to load Gateway contract")?;
 
             // TODO: Move all these parameters to Genesis.
@@ -198,7 +237,7 @@ where
                 },
                 bottom_up_check_period: 100,
                 top_down_check_period: 100,
-                msg_fee: U256::from(0),
+                msg_fee: et::U256::from(0),
                 majority_percentage: 67,
             };
 
@@ -209,8 +248,6 @@ where
 
         // STAGE 3: Finally we can create non-builtin actors which do not have a fixed ID.
 
-        // Create accounts
-        let mut next_id = init::FIRST_NON_SINGLETON_ADDR + addr_to_id.len() as u64;
         for a in genesis.accounts {
             let balance = a.balance;
             match a.meta {

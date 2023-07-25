@@ -35,7 +35,7 @@ impl Hardhat {
     }
 
     /// Fully qualified name of a source and contract.
-    pub fn fqn(contract_source: &Path, contract_name: &str) -> String {
+    pub fn fqn(&self, contract_source: &Path, contract_name: &str) -> String {
         format!("{}:{}", contract_source.to_string_lossy(), contract_name)
     }
 
@@ -63,7 +63,7 @@ impl Hardhat {
         for (lib_src, lib_name) in artifact.libraries_needed() {
             // References can be given with Fully Qualified Name, or just the contract name,
             // but they must be unique and unambiguous.
-            let fqn = Self::fqn(&lib_src, &lib_name);
+            let fqn = self.fqn(&lib_src, &lib_name);
 
             let lib_addr = match (libraries.get(&fqn), libraries.get(&lib_name)) {
                 (None, None) => {
@@ -126,7 +126,7 @@ impl Hardhat {
         let mut sorted = Vec::new();
 
         while !deps.is_empty() {
-            let leaf = match deps.iter().find(|((s, c), ds)| ds.is_empty()) {
+            let leaf = match deps.iter().find(|(_, ds)| ds.is_empty()) {
                 Some((sc, _)) => sc.clone(),
                 None => bail!("circular reference in the dependencies"),
             };
@@ -300,7 +300,7 @@ mod tests {
                 "failed to produce library bytecode in topo order for {c}"
             ));
             // Pretend that we deployed it.
-            libs.insert(Hardhat::fqn(&s, &c), et::Address::default());
+            libs.insert(hardhat.fqn(&s, &c), et::Address::default());
         }
 
         hardhat
