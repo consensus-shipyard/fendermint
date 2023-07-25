@@ -1,9 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::path::Path;
-
-use anyhow::{anyhow, bail, Context};
+use anyhow::Context;
 use async_trait::async_trait;
 use ethers::types::U256;
 use fendermint_vm_actor_interface::{
@@ -184,7 +182,12 @@ where
             use fendermint_vm_ipc_actors::gateway::GATEWAY_ABI;
             use ipc::gateway::ConstructorParameters;
 
-            let bytecode = bytecode(&self.contracts_dir, "Gateway")
+            // TODO: Deploy dependencies.
+            let libraries = Default::default();
+
+            let bytecode = self
+                .contracts
+                .bytecode("Gateway", &libraries)
                 .context("failed to load Gateway contract")?;
 
             // TODO: Move all these parameters to Genesis.
@@ -234,35 +237,6 @@ fn circ_supply(g: &Genesis) -> TokenAmount {
     g.accounts
         .iter()
         .fold(TokenAmount::zero(), |s, a| s + a.balance.clone())
-}
-
-/// Read the bytecode of the contract.
-///
-/// Currently expecting the artifacts to be the full JSON output of a Hardhat build,
-/// which is a JSON file containing among other things the ABCI and the bytecode itself.
-fn bytecode(contracts_dir: &Path, contract_name: &str) -> anyhow::Result<Vec<u8>> {
-    let contract_path = contracts_dir.join(format!("{contract_name}.json"));
-
-    let json = std::fs::read_to_string(&contract_path)
-        .with_context(|| format!("failed to read {contract_path:?}"))?;
-
-    let json: serde_json::Value =
-        serde_json::from_str(&json).context("failed to parse contract")?;
-
-    let bytecode = json
-        .get("bytecode")
-        .and_then(|x| x.get("object"))
-        .ok_or_else(|| anyhow!("cannot find bytecode/object"))?;
-
-    match bytecode {
-        serde_json::Value::String(bytecode) => {
-            let bytecode = hex::decode(bytecode.trim_start_matches("0x"))
-                .context("failed to decode contract from hex")?;
-
-            Ok(bytecode)
-        }
-        other => bail!("unexpected bytecode content: {other}"),
-    }
 }
 
 #[cfg(test)]

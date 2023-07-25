@@ -6,6 +6,7 @@ mod check;
 mod exec;
 mod externs;
 mod genesis;
+mod hardhat;
 mod query;
 pub mod state;
 mod store;
@@ -19,21 +20,21 @@ pub use fendermint_vm_message::query::FvmQuery;
 pub use genesis::FvmGenesisOutput;
 pub use query::FvmQueryRet;
 
+use self::hardhat::Hardhat;
+
 pub type FvmMessage = fvm_shared::message::Message;
 
 /// Interpreter working on already verified unsigned messages.
 #[derive(Clone)]
 pub struct FvmMessageInterpreter<DB> {
-    /// Directory containing Solidity or other contracts that
-    /// need to be loaded during Genesis.
-    contracts_dir: PathBuf,
+    contracts: Hardhat,
     _phantom_db: PhantomData<DB>,
 }
 
 impl<DB> FvmMessageInterpreter<DB> {
     pub fn new(contracts_dir: PathBuf) -> Self {
         Self {
-            contracts_dir,
+            contracts: Hardhat::new(contracts_dir),
             _phantom_db: PhantomData,
         }
     }
