@@ -187,7 +187,7 @@ where
 
             let bytecode = self
                 .contracts
-                .bytecode("Gateway", &libraries)
+                .bytecode("Gateway", "Gateway", &libraries)
                 .context("failed to load Gateway contract")?;
 
             // TODO: Move all these parameters to Genesis.
