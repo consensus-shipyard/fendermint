@@ -5,13 +5,14 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context};
 use cid::{multihash::Code, Cid};
+use ethers::{abi::Tokenize, core::abi::Abi};
 use fendermint_vm_actor_interface::{
     account::{self, ACCOUNT_ACTOR_CODE_ID},
-    eam,
+    eam::{self, EthAddress},
     ethaccount::ETHACCOUNT_ACTOR_CODE_ID,
-    init,
+    evm, init,
     multisig::{self, MULTISIG_ACTOR_CODE_ID},
-    EMPTY_ARR,
+    system, EMPTY_ARR,
 };
 use fendermint_vm_core::Timestamp;
 use fendermint_vm_genesis::{Account, Multisig};
@@ -22,14 +23,15 @@ use fvm::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_car::load_car_unchecked;
-use fvm_ipld_encoding::CborStore;
+use fvm_ipld_encoding::{BytesSer, CborStore, RawBytes};
 use fvm_shared::{
     address::{Address, Payload},
     clock::ChainEpoch,
     econ::TokenAmount,
+    message::Message,
     state::StateTreeVersion,
     version::NetworkVersion,
-    ActorID,
+    ActorID, BLOCK_GAS_LIMIT, METHOD_CONSTRUCTOR,
 };
 use num_traits::Zero;
 use serde::Serialize;
@@ -246,6 +248,73 @@ where
         )?;
 
         self.create_actor(MULTISIG_ACTOR_CODE_ID, next_id, &state, balance, None)
+    }
+
+    /// Deploy an EVM contract with a fixed ID.
+    pub fn create_evm_actor_with_cons<T: Tokenize>(
+        &mut self,
+        id: ActorID,
+        abi: &Abi,
+        bytecode: Vec<u8>,
+        constructor_params: T,
+    ) -> anyhow::Result<()> {
+        // Here we are circumventing the normal way of creating an actor through the EAM and jump ahead to what the `Init` actor would do:
+        // https://github.com/filecoin-project/builtin-actors/blob/421855a7b968114ac59422c1faeca968482eccf4/actors/init/src/lib.rs#L97-L107
+
+        let constructor = abi
+            .constructor()
+            .ok_or_else(|| anyhow!("contract doesn't have a constructor"))?;
+
+        let initcode = constructor
+            .encode_input(bytecode, &constructor_params.into_tokens())
+            .context("failed to encode constructor input")?;
+
+        let params = evm::ConstructorParams {
+            // We have to pick someone as creator for these quasi built-in types.
+            creator: EthAddress::from_id(system::SYSTEM_ACTOR_ID),
+            initcode: RawBytes::serialize(BytesSer(&initcode))?,
+        };
+        let params = RawBytes::serialize(params)?;
+
+        let msg = Message {
+            version: 0,
+            from: init::INIT_ACTOR_ADDR, // asserted by the constructor
+            to: Address::new_id(id),
+            sequence: 0, // We will use implicit execution which doesn't check or modify this.
+            value: TokenAmount::zero(),
+            method_num: METHOD_CONSTRUCTOR,
+            params,
+            gas_limit: BLOCK_GAS_LIMIT,
+            gas_fee_cap: TokenAmount::zero(),
+            gas_premium: TokenAmount::zero(),
+        };
+
+        // Create an empty actor to receive the call.
+        self.create_actor(
+            evm::EVM_ACTOR_CODE_ID,
+            id,
+            &EMPTY_ARR,
+            TokenAmount::zero(),
+            None,
+        )
+        .context("failed to create empty actor")?;
+
+        let apply_ret = match self.stage {
+            Stage::Tree(_) => bail!("execution engine not initialized"),
+            Stage::Exec(ref mut exec_state) => exec_state
+                .execute_implicit(msg)
+                .context("failed to execute message")?,
+        };
+
+        if !apply_ret.msg_receipt.exit_code.is_success() {
+            bail!(
+                "failed to deploy EVM actor: {}; {:?}",
+                apply_ret.msg_receipt.exit_code,
+                apply_ret.failure_info
+            );
+        }
+
+        Ok(())
     }
 
     pub fn store(&mut self) -> &DB {

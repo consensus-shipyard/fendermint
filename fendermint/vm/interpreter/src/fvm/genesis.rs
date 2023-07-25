@@ -1,13 +1,17 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use anyhow::Context;
+use std::path::Path;
+
+use anyhow::{anyhow, bail, Context};
 use async_trait::async_trait;
+use ethers::types::U256;
 use fendermint_vm_actor_interface::{
-    account, burntfunds, cron, eam, init, reward, system, EMPTY_ARR,
+    account, burntfunds, cron, eam, init, ipc, reward, system, EMPTY_ARR,
 };
 use fendermint_vm_core::{chainid, Timestamp};
 use fendermint_vm_genesis::{ActorMeta, Genesis, Validator};
+use fendermint_vm_ipc_actors::gateway::SubnetID;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::econ::TokenAmount;
@@ -175,6 +179,31 @@ where
             )
             .context("failed to init exec state")?;
 
+        // IPC Gateway actor.
+        {
+            use fendermint_vm_ipc_actors::gateway::GATEWAY_ABI;
+            use ipc::gateway::ConstructorParameters;
+
+            let bytecode = bytecode(&self.contracts_dir, "Gateway")
+                .context("failed to load Gateway contract")?;
+
+            // TODO: Move all these parameters to Genesis.
+            let params = ConstructorParameters {
+                network_name: SubnetID {
+                    root: 0,
+                    route: Vec::new(),
+                },
+                bottom_up_check_period: 100,
+                top_down_check_period: 100,
+                msg_fee: U256::from(0),
+                majority_percentage: 67,
+            };
+
+            state
+                .create_evm_actor_with_cons(ipc::GATEWAY_ACTOR_ID, &GATEWAY_ABI, bytecode, params)
+                .context("failed to create Gateway actor")?;
+        }
+
         // STAGE 3: Finally we can create non-builtin actors which do not have a fixed ID.
 
         // Create accounts
@@ -200,10 +229,40 @@ where
     }
 }
 
+/// Sum of balances in the genesis accounts.
 fn circ_supply(g: &Genesis) -> TokenAmount {
     g.accounts
         .iter()
         .fold(TokenAmount::zero(), |s, a| s + a.balance.clone())
+}
+
+/// Read the bytecode of the contract.
+///
+/// Currently expecting the artifacts to be the full JSON output of a Hardhat build,
+/// which is a JSON file containing among other things the ABCI and the bytecode itself.
+fn bytecode(contracts_dir: &Path, contract_name: &str) -> anyhow::Result<Vec<u8>> {
+    let contract_path = contracts_dir.join(format!("{contract_name}.json"));
+
+    let json = std::fs::read_to_string(&contract_path)
+        .with_context(|| format!("failed to read {contract_path:?}"))?;
+
+    let json: serde_json::Value =
+        serde_json::from_str(&json).context("failed to parse contract")?;
+
+    let bytecode = json
+        .get("bytecode")
+        .and_then(|x| x.get("object"))
+        .ok_or_else(|| anyhow!("cannot find bytecode/object"))?;
+
+    match bytecode {
+        serde_json::Value::String(bytecode) => {
+            let bytecode = hex::decode(bytecode.trim_start_matches("0x"))
+                .context("failed to decode contract from hex")?;
+
+            Ok(bytecode)
+        }
+        other => bail!("unexpected bytecode content: {other}"),
+    }
 }
 
 #[cfg(test)]
