@@ -24,7 +24,7 @@ use fvm::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_car::load_car_unchecked;
-use fvm_ipld_encoding::{BytesSer, CborStore, RawBytes};
+use fvm_ipld_encoding::{CborStore, RawBytes};
 use fvm_shared::{
     address::{Address, Payload},
     clock::ChainEpoch,
@@ -275,10 +275,11 @@ where
         // Here we are circumventing the normal way of creating an actor through the EAM and jump ahead to what the `Init` actor would do:
         // https://github.com/filecoin-project/builtin-actors/blob/421855a7b968114ac59422c1faeca968482eccf4/actors/init/src/lib.rs#L97-L107
 
+        // Based on how the EAM constructs it.
         let params = evm::ConstructorParams {
             // We have to pick someone as creator for these quasi built-in types.
             creator: EthAddress::from_id(system::SYSTEM_ACTOR_ID),
-            initcode: RawBytes::serialize(BytesSer(&initcode))?,
+            initcode: RawBytes::from(initcode),
         };
         let params = RawBytes::serialize(params)?;
 
