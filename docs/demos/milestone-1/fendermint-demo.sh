@@ -25,7 +25,7 @@ cat test-network/keys/alice.pk
 fendermint \
   genesis --genesis-file test-network/genesis.json \
   add-account --public-key test-network/keys/alice.pk \
-              --balance 1000
+              --balance 1000000000000000000
 
 #7
 fendermint \
@@ -34,7 +34,7 @@ fendermint \
                 --public-key test-network/keys/charlie.pk \
                 --public-key test-network/keys/dave.pk \
                 --threshold 2 --vesting-start 0 --vesting-duration 1000000 \
-                --balance 3000
+                --balance 3000000000000000000
 
 #8
 cat test-network/genesis.json | jq .accounts
@@ -93,7 +93,7 @@ STATE_CID=$(fendermint rpc query actor-state --address $ALICE_ADDR | jq -r .stat
 fendermint rpc query ipld --cid $STATE_CID
 
 #22
-fendermint rpc transfer --secret-key test-network/keys/alice.sk --to $BOB_ADDR --sequence 0 --value 0.1
+fendermint rpc transfer --secret-key test-network/keys/alice.sk --to $BOB_ADDR --sequence 0 --value 1000
 
 #23
 fendermint rpc query actor-state --address $BOB_ADDR | jq .state.balance
