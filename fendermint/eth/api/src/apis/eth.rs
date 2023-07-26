@@ -917,24 +917,35 @@ pub async fn unsubscribe<C>(
 use params::{EstimateGasParams, SubscribeParams};
 
 mod params {
-    use ethers_core::types as et;
     use ethers_core::types::transaction::eip2718::TypedTransaction;
     use ethers_core::types::Eip1559TransactionRequest;
+    use ethers_core::types::{self as et, Eip2930TransactionRequest, TransactionRequest};
     use serde::{Deserialize, Serialize};
 
     use crate::state::WebSocketId;
 
     #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
-    #[serde(tag = "type")]
+    // NOTE: Using untagged so is able to deserialize as a legacy transaction
+    // directly if the type is not set. Needed for backward compatibility.
+    // #[serde(tag = "type")]
+    #[serde(untagged)]
     pub enum TypedTransactionCompat {
+        // 0x00
+        #[serde(rename = "0x00", alias = "0x0")]
+        Legacy(TransactionRequest),
         #[serde(rename = "0x02", alias = "0x2")]
         Eip1559(Eip1559TransactionRequest),
+        // 0x01
+        #[serde(rename = "0x01", alias = "0x1")]
+        Eip2930(Eip2930TransactionRequest),
     }
 
     impl From<TypedTransactionCompat> for TypedTransaction {
         fn from(value: TypedTransactionCompat) -> Self {
             match value {
                 TypedTransactionCompat::Eip1559(v) => TypedTransaction::Eip1559(v),
+                TypedTransactionCompat::Legacy(v) => TypedTransaction::Legacy(v),
+                TypedTransactionCompat::Eip2930(v) => TypedTransaction::Eip2930(v),
             }
         }
     }
