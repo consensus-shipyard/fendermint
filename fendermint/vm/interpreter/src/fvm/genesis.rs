@@ -228,14 +228,15 @@ where
         {
             // Deploy them with non-deterministic IDs.
             for (lib_src, lib_name) in eth_libs {
+                let fqn = self.contracts.fqn(&lib_src, &lib_name);
                 let bytecode = self
                     .contracts
                     .bytecode(&lib_src, &lib_name, &eth_lib_addrs)
-                    .context("failed to load library contract")?;
+                    .with_context(|| format!("failed to load library contract {fqn}"))?;
 
                 state
                     .create_evm_actor(next_id, bytecode)
-                    .context("failed to create Gateway actor")?;
+                    .with_context(|| format!("failed to create library actor {fqn}"))?;
 
                 eth_lib_addrs.insert(
                     self.contracts.fqn(&lib_src, &lib_name),
