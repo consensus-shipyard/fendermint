@@ -18,7 +18,7 @@ build:
 	cargo build --release
 
 # Using --release for testing because wasm can otherwise be slow.
-test: $(BUILTIN_ACTORS_BUNDLE)
+test: $(BUILTIN_ACTORS_BUNDLE) $(IPC_ACTORS_ABI)
 	FM_BUILTIN_ACTORS_BUNDLE=$(BUILTIN_ACTORS_BUNDLE) \
 	FM_CONTRACTS_DIR=$(IPC_ACTORS_OUT) \
 	cargo test --release --workspace --exclude smoke-test
