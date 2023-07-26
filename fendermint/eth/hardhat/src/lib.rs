@@ -5,7 +5,8 @@ use anyhow::{anyhow, bail, Context};
 use ethers_core::types as et;
 use serde::Deserialize;
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    cmp::Ord,
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     hash::Hash,
     path::{Path, PathBuf},
 };
@@ -22,7 +23,10 @@ pub type ContractSourceAndName = (ContractSource, ContractName);
 /// Fully Qualified Name of a contract, e.g. `"src/lib/SubnetIDHelper.sol:SubnetIDHelper"`.
 pub type FQN = String;
 
-type DependencyTree<T> = HashMap<T, HashSet<T>>;
+/// Dependency tree for libraries.
+///
+/// Using a [BTreeMap] for deterministic ordering.
+type DependencyTree<T> = BTreeMap<T, HashSet<T>>;
 
 /// Utility to link bytecode from Hardhat build artifacts.
 #[derive(Clone, Debug)]
@@ -224,7 +228,7 @@ struct Position {
 /// Return elements of a dependency tree in topological order.
 fn topo_sort<T>(mut dependency_tree: DependencyTree<T>) -> anyhow::Result<Vec<T>>
 where
-    T: Eq + PartialEq + Hash + Clone,
+    T: Eq + PartialEq + Hash + Ord + Clone,
 {
     let mut sorted = Vec::new();
 
