@@ -10,7 +10,8 @@ use fendermint_vm_actor_interface::{
     account::{self, ACCOUNT_ACTOR_CODE_ID},
     eam::{self, EthAddress},
     ethaccount::ETHACCOUNT_ACTOR_CODE_ID,
-    evm, init,
+    evm,
+    init::{self, eth_builtin_address},
     multisig::{self, MULTISIG_ACTOR_CODE_ID},
     system, EMPTY_ARR,
 };
@@ -281,10 +282,15 @@ where
         };
         let params = RawBytes::serialize(params)?;
 
+        // When a contract is constructed the EVM actor verifies that it has an Ethereum delegated address.
+        // This has been inserted into the Init actor state as well.
+        let f4_addr = eth_builtin_address(id);
+        let f0_addr = Address::new_id(id);
+
         let msg = Message {
             version: 0,
             from: init::INIT_ACTOR_ADDR, // asserted by the constructor
-            to: Address::new_id(id),
+            to: f0_addr,
             sequence: 0, // We will use implicit execution which doesn't check or modify this.
             value: TokenAmount::zero(),
             method_num: METHOD_CONSTRUCTOR,
@@ -300,7 +306,7 @@ where
             id,
             &EMPTY_ARR,
             TokenAmount::zero(),
-            None,
+            Some(f4_addr),
         )
         .context("failed to create empty actor")?;
 

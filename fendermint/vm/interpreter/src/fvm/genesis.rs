@@ -86,6 +86,19 @@ where
             validators: genesis.validators,
         };
 
+        // STAGE 0: Declare the built-in EVM contracts we'll have to deploy.
+
+        let eth_contract_ids = vec![ipc::GATEWAY_ACTOR_ID, ipc::SUBNET_REGISTRY_ACTOR_ID];
+
+        // Collect dependencies of the main IPC actors.
+        let eth_libs = self
+            .contracts
+            .library_dependencies(&[
+                ("Gateway.sol", "Gateway"),
+                ("SubnetRegistry.sol", "SubnetRegistry"),
+            ])
+            .context("failed to collect EVM contract dependencies")?;
+
         // STAGE 1: First we initialize native built-in actors.
 
         // System actor
@@ -102,12 +115,14 @@ where
             .context("failed to create system actor")?;
 
         // Init actor
-        let (init_state, addr_to_id) =
-            init::State::new(state.store(), genesis.chain_name.clone(), &genesis.accounts)
-                .context("failed to create init state")?;
-
-        // The next ID is going to be _after_ the accounts, which have already been assigned an ID by the `Init` actor.
-        let mut next_id = init::FIRST_NON_SINGLETON_ADDR + addr_to_id.len() as u64;
+        let (init_state, addr_to_id) = init::State::new(
+            state.store(),
+            genesis.chain_name.clone(),
+            &genesis.accounts,
+            &eth_contract_ids,
+            eth_libs.len() as u64,
+        )
+        .context("failed to create init state")?;
 
         state
             .create_actor(
@@ -171,7 +186,30 @@ where
             )
             .context("failed to create reward actor")?;
 
-        // STAGE 2: Now we can initialize the FVM and create built-in FEVM actors.
+        // STAGE 2: Create non-builtin accounts which do not have a fixed ID.
+
+        // The next ID is going to be _after_ the accounts, which have already been assigned an ID by the `Init` actor.
+        // The reason we aren't using the `init_state.next_id` is because that already accounted for the multisig accounts.
+        let mut next_id = init::FIRST_NON_SINGLETON_ADDR + addr_to_id.len() as u64;
+
+        for a in genesis.accounts {
+            let balance = a.balance;
+            match a.meta {
+                ActorMeta::Account(acct) => {
+                    state
+                        .create_account_actor(acct, balance, &addr_to_id)
+                        .context("failed to create account actor")?;
+                }
+                ActorMeta::Multisig(ms) => {
+                    state
+                        .create_multisig_actor(ms, balance, &addr_to_id, next_id)
+                        .context("failed to create multisig actor")?;
+                    next_id += 1;
+                }
+            }
+        }
+
+        // STAGE 3: Initialize the FVM and create built-in FEVM actors.
 
         state
             .init_exec_state(
@@ -184,35 +222,24 @@ where
             .context("failed to init exec state")?;
 
         // Assign dynamic ID addresses to libraries, but use fixed addresses for the top level contracts.
-        let mut lib_addrs = HashMap::new();
+        let mut eth_lib_addrs = HashMap::new();
 
         // IPC libraries.
         {
-            // Collect dependencies of the main IPC actors.
-            let libs = self
-                .contracts
-                .library_dependencies(&[
-                    ("Gateway.sol", "Gateway"),
-                    ("SubnetRegistry.sol", "SubnetRegistry"),
-                ])
-                .context("failed to collect dependencies")?;
-
             // Deploy them with non-deterministic IDs.
-            for (lib_src, lib_name) in libs {
+            for (lib_src, lib_name) in eth_libs {
                 let bytecode = self
                     .contracts
-                    .bytecode(&lib_src, &lib_name, &lib_addrs)
+                    .bytecode(&lib_src, &lib_name, &eth_lib_addrs)
                     .context("failed to load library contract")?;
 
-                let id = next_id;
-
                 state
-                    .create_evm_actor(id, bytecode)
+                    .create_evm_actor(next_id, bytecode)
                     .context("failed to create Gateway actor")?;
 
-                lib_addrs.insert(
+                eth_lib_addrs.insert(
                     self.contracts.fqn(&lib_src, &lib_name),
-                    et::Address::from(EthAddress::from_id(id).0),
+                    et::Address::from(EthAddress::from_id(next_id).0),
                 );
 
                 next_id += 1;
@@ -226,7 +253,7 @@ where
 
             let bytecode = self
                 .contracts
-                .bytecode("Gateway.sol", "Gateway", &lib_addrs)
+                .bytecode("Gateway.sol", "Gateway", &eth_lib_addrs)
                 .context("failed to load Gateway contract")?;
 
             // TODO: Move all these parameters to Genesis.
@@ -244,25 +271,6 @@ where
             state
                 .create_evm_actor_with_cons(ipc::GATEWAY_ACTOR_ID, &GATEWAY_ABI, bytecode, params)
                 .context("failed to create Gateway actor")?;
-        }
-
-        // STAGE 3: Finally we can create non-builtin actors which do not have a fixed ID.
-
-        for a in genesis.accounts {
-            let balance = a.balance;
-            match a.meta {
-                ActorMeta::Account(acct) => {
-                    state
-                        .create_account_actor(acct, balance, &addr_to_id)
-                        .context("failed to create account actor")?;
-                }
-                ActorMeta::Multisig(ms) => {
-                    state
-                        .create_multisig_actor(ms, balance, &addr_to_id, next_id)
-                        .context("failed to create multisig actor")?;
-                    next_id += 1;
-                }
-            }
         }
 
         Ok((state, out))
