@@ -5,7 +5,8 @@ use anyhow::{anyhow, bail, Context};
 use ethers_core::types as et;
 use serde::Deserialize;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
+    hash::Hash,
     path::{Path, PathBuf},
 };
 
@@ -20,6 +21,8 @@ pub type ContractSourceAndName = (ContractSource, ContractName);
 
 /// Fully Qualified Name of a contract, e.g. `"src/lib/SubnetIDHelper.sol:SubnetIDHelper"`.
 pub type FQN = String;
+
+type DependencyTree<T> = HashMap<T, HashSet<T>>;
 
 /// Utility to link bytecode from Hardhat build artifacts.
 #[derive(Clone, Debug)]
@@ -94,11 +97,12 @@ impl Hardhat {
         &self,
         top_contracts: &[(impl AsRef<Path>, &str)],
     ) -> anyhow::Result<Vec<ContractSourceAndName>> {
-        let mut deps: HashMap<ContractSourceAndName, Vec<ContractSourceAndName>> = HashMap::new();
+        let mut deps: DependencyTree<ContractSourceAndName> = Default::default();
+
         let mut queue: VecDeque<ContractSourceAndName> = VecDeque::new();
 
         let top_contracts = top_contracts
-            .into_iter()
+            .iter()
             .map(|(s, c)| (PathBuf::from(s.as_ref()), c.to_string()))
             .collect::<Vec<_>>();
 
@@ -117,25 +121,13 @@ impl Hardhat {
             let cds = deps.entry(sc).or_default();
 
             for (ls, ln) in artifact.libraries_needed() {
-                cds.push((ls.clone(), ln.clone()));
+                cds.insert((ls.clone(), ln.clone()));
                 queue.push_back((ls, ln));
             }
         }
 
-        // Topo-sort the dependency tree.
-        let mut sorted = Vec::new();
-
-        while !deps.is_empty() {
-            let leaf = match deps.iter().find(|(_, ds)| ds.is_empty()) {
-                Some((sc, _)) => sc.clone(),
-                None => bail!("circular reference in the dependencies"),
-            };
-            deps.remove(&leaf);
-            for (_, ds) in deps.iter_mut() {
-                ds.retain(|dsc| *dsc != leaf);
-            }
-            sorted.push(leaf);
-        }
+        // Topo-sort the libraries in the order of deployment.
+        let mut sorted = topo_sort(deps)?;
 
         // Remove the top contracts, which are assumed to be non-library contracts with potential constructor logic.
         sorted.retain(|sc| !top_contracts.contains(sc));
@@ -229,12 +221,39 @@ struct Position {
     pub length: usize,
 }
 
+/// Return elements of a dependency tree in topological order.
+fn topo_sort<T>(mut dependency_tree: DependencyTree<T>) -> anyhow::Result<Vec<T>>
+where
+    T: Eq + PartialEq + Hash + Clone,
+{
+    let mut sorted = Vec::new();
+
+    while !dependency_tree.is_empty() {
+        let leaf = match dependency_tree.iter().find(|(_, ds)| ds.is_empty()) {
+            Some((k, _)) => k.clone(),
+            None => bail!("circular reference in the dependencies"),
+        };
+
+        dependency_tree.remove(&leaf);
+
+        for (_, ds) in dependency_tree.iter_mut() {
+            ds.remove(&leaf);
+        }
+
+        sorted.push(leaf);
+    }
+
+    Ok(sorted)
+}
+
 #[cfg(test)]
 mod tests {
     use ethers_core::types as et;
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
     use std::str::FromStr;
+
+    use crate::{topo_sort, DependencyTree};
 
     use super::Hardhat;
 
@@ -299,7 +318,10 @@ mod tests {
         let result = hardhat.bytecode("Gateway.sol", "Gateway", &Default::default());
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("AccountHelper"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("failed to resolve library"));
     }
 
     #[test]
@@ -320,9 +342,9 @@ mod tests {
         let mut libs = HashMap::default();
 
         for (s, c) in lib_deps {
-            hardhat.bytecode(&s, &c, &libs).expect(&format!(
-                "failed to produce library bytecode in topo order for {c}"
-            ));
+            hardhat.bytecode(&s, &c, &libs).unwrap_or_else(|e| {
+                panic!("failed to produce library bytecode in topo order for {c}: {e}")
+            });
             // Pretend that we deployed it.
             libs.insert(hardhat.fqn(&s, &c), et::Address::default());
         }
@@ -330,5 +352,31 @@ mod tests {
         hardhat
             .bytecode("Gateway.sol", "Gateway", &libs)
             .expect("failed to produce contract bytecode in topo order");
+    }
+
+    #[test]
+    fn sorting() {
+        let mut tree: DependencyTree<u8> = Default::default();
+
+        for (k, ds) in [
+            (1, vec![]),
+            (2, vec![1]),
+            (3, vec![1, 2]),
+            (4, vec![3]),
+            (5, vec![4, 2]),
+        ] {
+            tree.entry(k).or_default().extend(ds);
+        }
+
+        let sorted = topo_sort(tree.clone()).unwrap();
+
+        assert_eq!(sorted.len(), 5);
+
+        for (i, k) in sorted.iter().enumerate() {
+            for d in &tree[k] {
+                let j = sorted.iter().position(|x| x == d).unwrap();
+                assert!(j < i);
+            }
+        }
     }
 }
