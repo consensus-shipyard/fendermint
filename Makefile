@@ -50,7 +50,7 @@ docker-build: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE) $(IPC_ACTORS_ABI)
 	mkdir -p docker/.artifacts/contracts
 
 	cp $(BUILTIN_ACTORS_BUNDLE) docker/.artifacts
-	cp $(IPC_ACTORS_OUT) docker/.artifacts/contracts
+	cp -r $(IPC_ACTORS_OUT)/* docker/.artifacts/contracts
 
 	if [ -z "$${GITHUB_ACTIONS}" ]; then \
 		DOCKER_FILE=local ; \
