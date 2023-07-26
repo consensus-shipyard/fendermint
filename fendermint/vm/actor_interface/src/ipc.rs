@@ -26,6 +26,39 @@ pub mod gateway {
         pub msg_fee: U256,
         pub majority_percentage: u8,
     }
+
+    #[cfg(test)]
+    mod tests {
+        use ethers::core::types::U256;
+        use ethers_core::abi::Tokenize;
+        use fendermint_vm_ipc_actors::gateway::SubnetID;
+
+        use super::ConstructorParameters;
+
+        #[test]
+        fn tokenize_constructor_params() {
+            let cp = ConstructorParameters {
+                network_name: SubnetID {
+                    root: 0,
+                    route: Vec::new(),
+                },
+                bottom_up_check_period: 100,
+                top_down_check_period: 100,
+                msg_fee: U256::from(0),
+                majority_percentage: 67,
+            };
+
+            let tokens = cp.into_tokens();
+
+            let constructor = fendermint_vm_ipc_actors::gateway::GATEWAY_ABI
+                .constructor()
+                .expect("Gatway has a constructor");
+
+            constructor
+                .encode_input(vec![], &tokens)
+                .expect("should encode constructor input");
+        }
+    }
 }
 
 pub mod subnet_registry {}
