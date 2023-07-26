@@ -21,6 +21,7 @@ pub async fn handle(
     // NOTE: Any authorization can come here.
 
     tracing::debug!("RPC request: {request:?}");
+    println!("** RPC request: {request:?}");
 
     let id = request.id_ref().map(id_to_string).unwrap_or_default();
     let method = request.method_ref().to_owned();
@@ -36,11 +37,14 @@ pub async fn handle(
     match call_rpc_str(&state.rpc_server, request).await {
         Ok(result) => {
             tracing::debug!(method, id, result, "RPC call success");
+
+            println!("-- RPC response success!: {method:?} - {result:?}");
             (StatusCode::OK, response_headers, result)
         }
         Err(err) => {
             let msg = err.to_string();
             tracing::error!(method, id, msg, "RPC call failure");
+            println!("xx RPC response failure!: {method:?} - {msg:?}");
             (StatusCode::INTERNAL_SERVER_ERROR, response_headers, msg)
         }
     }
@@ -62,3 +66,8 @@ async fn call_rpc_str(
     let response = server.handle(request).await;
     Ok(serde_json::to_string(&response)?)
 }
+
+// RPC request: RequestObject { jsonrpc: V2, method: "eth_estimateGas", params: Some(Value(Array [Object {"data": Null, "from": String("0x6be1ccf648c74800380d0520d797a170c808b624"), "gasPrice": String("0x0"), "value": String("0x0")}])), id: Some(Some(Num(1314076190650))) }
+// RPC request: RequestObject { jsonrpc: V2, method: "eth_blockNumber", params: Some(Value(Array [])), id: Some(Some(Num(4225860438222755))) }
+// RPC request: RequestObject { jsonrpc: V2, method: "eth_getBlockByNumber", params: Some(Value(Array [String("0x3cd"), Bool(false)])), id: Some(Some(Num(4225860438222756))) }
+// RPC request: RequestObject { jsonrpc: V2, method: "eth_feeHistory", params: Some(Value(Array [String("0x5"), String("0x3cd"), Array [Number(10), Number(20), Number(30)]])), id: Some(Some(Num(4225860438222757))) }

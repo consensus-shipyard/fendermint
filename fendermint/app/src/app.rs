@@ -539,6 +539,10 @@ where
                 }
             },
         };
+        println!(
+            "-- Deliver Response status: {:?} - info: {:?}",
+            response.code, response.info
+        );
 
         Ok(response)
     }
