@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::{anyhow, bail, Context};
-use ethers::core::types as et;
+use ethers_core::types as et;
 use serde::Deserialize;
 use std::{
     collections::{HashMap, VecDeque},
@@ -231,15 +231,39 @@ struct Position {
 
 #[cfg(test)]
 mod tests {
-    use ethers::core::types as et;
+    use ethers_core::types as et;
     use std::collections::HashMap;
-
-    use crate::fvm::bundle;
+    use std::path::{Path, PathBuf};
+    use std::str::FromStr;
 
     use super::Hardhat;
 
+    fn workspace_dir() -> PathBuf {
+        let output = std::process::Command::new(env!("CARGO"))
+            .arg("locate-project")
+            .arg("--workspace")
+            .arg("--message-format=plain")
+            .output()
+            .unwrap()
+            .stdout;
+        let cargo_path = Path::new(std::str::from_utf8(&output).unwrap().trim());
+        cargo_path.parent().unwrap().to_path_buf()
+    }
+
+    /// Path to the Solidity contracts, indended to be used in tests.
+    fn contracts_path() -> PathBuf {
+        let contracts_path = std::env::var("FM_CONTRACTS_DIR").unwrap_or_else(|_| {
+            workspace_dir()
+                .join("../ipc-solidity-actors/out")
+                .to_string_lossy()
+                .into_owned()
+        });
+
+        PathBuf::from_str(&contracts_path).expect("malformed contracts path")
+    }
+
     fn test_hardhat() -> Hardhat {
-        Hardhat::new(bundle::contracts_path())
+        Hardhat::new(contracts_path())
     }
 
     // Based on the `scripts/deploy-libraries.ts` in `ipc-solidity-actors`.

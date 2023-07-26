@@ -6,7 +6,6 @@ mod check;
 mod exec;
 mod externs;
 mod genesis;
-mod hardhat;
 mod query;
 pub mod state;
 mod store;
@@ -16,11 +15,10 @@ pub mod bundle;
 
 pub use check::FvmCheckRet;
 pub use exec::FvmApplyRet;
+use fendermint_eth_hardhat::Hardhat;
 pub use fendermint_vm_message::query::FvmQuery;
 pub use genesis::FvmGenesisOutput;
 pub use query::FvmQueryRet;
-
-use self::hardhat::Hardhat;
 
 pub type FvmMessage = fvm_shared::message::Message;
 

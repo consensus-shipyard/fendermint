@@ -2,7 +2,7 @@
 members = [
   "fendermint/abci",
   "fendermint/app",
-  "fendermint/eth/api",
+  "fendermint/eth/*",
   "fendermint/rocksdb",
   "fendermint/rpc",
   "fendermint/storage",

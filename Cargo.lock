@@ -2278,6 +2278,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fendermint_eth_hardhat"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ethers-core",
+ "hex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "fendermint_rocksdb"
 version = "0.1.0"
 dependencies = [
@@ -2433,6 +2444,7 @@ dependencies = [
  "async-trait",
  "cid",
  "ethers",
+ "fendermint_eth_hardhat",
  "fendermint_vm_actor_interface",
  "fendermint_vm_core",
  "fendermint_vm_genesis",
