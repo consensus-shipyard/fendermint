@@ -25,7 +25,7 @@ cat test-network/keys/alice.pk
 fendermint \
   genesis --genesis-file test-network/genesis.json \
   add-account --public-key test-network/keys/alice.pk \
-              --balance 1000000000000000000
+              --balance 1000
 
 #7
 fendermint \
@@ -34,7 +34,7 @@ fendermint \
                 --public-key test-network/keys/charlie.pk \
                 --public-key test-network/keys/dave.pk \
                 --threshold 2 --vesting-start 0 --vesting-duration 1000000 \
-                --balance 3000000000000000000
+                --balance 3000
 
 #8
 cat test-network/genesis.json | jq .accounts
