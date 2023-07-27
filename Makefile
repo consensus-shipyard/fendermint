@@ -1,5 +1,6 @@
 .PHONY: all build test lint license check-fmt check-clippy actor-bundle
 
+BUILTIN_ACTORS_TAG:=v11.0.0
 BUILTIN_ACTORS_DIR:=../builtin-actors
 BUILTIN_ACTORS_CODE:=$(shell find $(BUILTIN_ACTORS_DIR) -type f -name "*.rs" | grep -v target)
 BUILTIN_ACTORS_BUNDLE:=$(shell pwd)/$(BUILTIN_ACTORS_DIR)/output/bundle.car
@@ -80,8 +81,7 @@ $(BUILTIN_ACTORS_BUNDLE): $(BUILTIN_ACTORS_CODE)
 		git clone https://github.com/filecoin-project/builtin-actors.git; \
 	fi
 	cd $(BUILTIN_ACTORS_DIR) && \
-	git checkout next && \
-	git pull && \
+	git checkout $(BUILTIN_ACTORS_TAG) && \
 	rustup target add wasm32-unknown-unknown && \
 	cargo run --release -- -o output/$(shell basename $@)
 
@@ -99,8 +99,8 @@ $(IPC_ACTORS_ABI): $(IPC_ACTORS_CODE) | forge
 		git clone https://github.com/consensus-shipyard/ipc-solidity-actors.git; \
 	fi
 	cd $(IPC_ACTORS_DIR) && \
-	git checkout fm-156-ipc-solidity-actors && \
-	git pull
+	git fetch origin && \
+	git checkout origin/fm-156-ipc-solidity-actors
 	make -C $(IPC_ACTORS_DIR) compile-abi
 	touch $@
 
