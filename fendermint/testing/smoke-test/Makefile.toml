@@ -42,8 +42,8 @@ dependencies = [
   "cometbft-start",
   "wait",
   "ethapi-start",
-  "wait",
   "fendermint-logs",
+  "cometbft-logs",
   "ethapi-logs",
 ]
 
@@ -214,6 +214,10 @@ env = { "CONTAINER_NAME" = "${ETHAPI_CONTAINER_NAME}" }
 [tasks.fendermint-logs]
 extend = "docker-logs"
 env = { "CONTAINER_NAME" = "${FM_CONTAINER_NAME}" }
+
+[tasks.cometbft-logs]
+extend = "docker-logs"
+env = { "CONTAINER_NAME" = "${CMT_CONTAINER_NAME}" }
 
 [tasks.docker-stop]
 command = "docker"
