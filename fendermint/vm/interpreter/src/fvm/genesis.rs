@@ -57,12 +57,13 @@ where
     /// * init
     /// * cron
     /// * EAM
+    /// * burnt funds
+    /// * rewards (placeholder)
+    /// * accounts
+    /// * IPC
     ///
     /// TODO:
-    /// * burnt funds?
     /// * faucet?
-    /// * rewards?
-    /// * IPC
     ///
     /// See genesis initialization in:
     /// * [Lotus](https://github.com/filecoin-project/lotus/blob/v1.20.4/chain/gen/genesis/genesis.go)
@@ -328,7 +329,8 @@ where
             actor_id = next_id,
             ?eth_addr,
             ?id_addr,
-            "deployed library contract"
+            fqn,
+            "deployed Ethereum library"
         );
 
         // We can use the masked ID here or the delegated address.
@@ -372,7 +374,7 @@ where
             ?eth_addr,
             ?id_addr,
             contract_name,
-            "deployed Ethereum actor"
+            "deployed Ethereum contract"
         );
 
         Ok(id_addr)
