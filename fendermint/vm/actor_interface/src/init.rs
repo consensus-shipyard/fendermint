@@ -21,7 +21,7 @@ define_singleton!(INIT { id: 1, code_id: 2 });
 pub type AddressMap = HashMap<Address, ActorID>;
 
 /// Delegated address of an Ethereum built-in actor.
-pub fn eth_builtin_address(id: ActorID) -> Address {
+pub fn eth_builtin_deleg_addr(id: ActorID) -> Address {
     // The EVM actor would reject a delegated address that looks like an ID address, so let's hash it.
     let eth_addr = EthAddress::from_id(id).0;
     // Based on `hash20` in the EAM actor.
@@ -90,7 +90,7 @@ impl State {
 
         // Insert top-level EVM contracts which have fixed IDs.
         for id in eth_builtin_ids {
-            let addr = eth_builtin_address(*id);
+            let addr = eth_builtin_deleg_addr(*id);
             address_map
                 .set(addr.to_bytes().into(), *id)
                 .context("cannot set ID of eth address")?;
@@ -98,7 +98,7 @@ impl State {
 
         // Insert dynamic EVM library contracts.
         for _ in 0..eth_library_count {
-            let addr = eth_builtin_address(next_id);
+            let addr = eth_builtin_deleg_addr(next_id);
             address_map
                 .set(addr.to_bytes().into(), next_id)
                 .context("cannot set ID of eth address")?;

@@ -234,21 +234,30 @@ where
                     .bytecode(&lib_src, &lib_name, &eth_lib_addrs)
                     .with_context(|| format!("failed to load library contract {fqn}"))?;
 
-                state
+                let eth_addr = state
                     .create_evm_actor(next_id, bytecode)
                     .with_context(|| format!("failed to create library actor {fqn}"))?;
 
-                eth_lib_addrs.insert(
-                    self.contracts.fqn(&lib_src, &lib_name),
-                    et::Address::from(EthAddress::from_id(next_id).0),
+                let id_addr = et::Address::from(EthAddress::from_id(next_id).0);
+                let eth_addr = et::Address::from(eth_addr.0);
+
+                tracing::info!(
+                    actor_id = next_id,
+                    ?eth_addr,
+                    ?id_addr,
+                    "deployed library contract"
                 );
+
+                // We can use the masked ID here or the delegated address.
+                // Maybe the masked ID is quicker because it doesn't need to be resolved.
+                eth_lib_addrs.insert(self.contracts.fqn(&lib_src, &lib_name), id_addr);
 
                 next_id += 1;
             }
         }
 
         // IPC Gateway actor.
-        {
+        let _gateway_addr = {
             use fendermint_vm_ipc_actors::gateway::GATEWAY_ABI;
             use ipc::gateway::ConstructorParameters;
 
@@ -269,7 +278,7 @@ where
                 majority_percentage: 66,
             };
 
-            state
+            let eth_addr = state
                 .create_evm_actor_with_cons(
                     ipc::GATEWAY_ACTOR_ID,
                     &GATEWAY_ABI,
@@ -277,7 +286,19 @@ where
                     (params,),
                 )
                 .context("failed to create Gateway actor")?;
-        }
+
+            let id_addr = et::Address::from(EthAddress::from_id(ipc::GATEWAY_ACTOR_ID).0);
+            let eth_addr = et::Address::from(eth_addr.0);
+
+            tracing::info!(
+                actor_id = ipc::GATEWAY_ACTOR_ID,
+                ?eth_addr,
+                ?id_addr,
+                "deployed IPC Gateway actor"
+            );
+
+            id_addr
+        };
 
         Ok((state, out))
     }

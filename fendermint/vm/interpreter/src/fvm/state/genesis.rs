@@ -11,7 +11,7 @@ use fendermint_vm_actor_interface::{
     eam::{self, EthAddress},
     ethaccount::ETHACCOUNT_ACTOR_CODE_ID,
     evm,
-    init::{self, eth_builtin_address},
+    init::{self, eth_builtin_deleg_addr},
     multisig::{self, MULTISIG_ACTOR_CODE_ID},
     system, EMPTY_ARR,
 };
@@ -252,13 +252,15 @@ where
     }
 
     /// Deploy an EVM contract with a fixed ID and some constructor arguments.
+    ///
+    /// Returns the hashed Ethereum address we can use to invoke the contract.
     pub fn create_evm_actor_with_cons<T: Tokenize>(
         &mut self,
         id: ActorID,
         abi: &Abi,
         bytecode: Vec<u8>,
         constructor_params: T,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<EthAddress> {
         let constructor = abi
             .constructor()
             .ok_or_else(|| anyhow!("contract doesn't have a constructor"))?;
@@ -271,7 +273,13 @@ where
     }
 
     /// Deploy an EVM contract.
-    pub fn create_evm_actor(&mut self, id: ActorID, initcode: Vec<u8>) -> anyhow::Result<()> {
+    ///
+    /// Returns the hashed Ethereum address we can use to invoke the contract.
+    pub fn create_evm_actor(
+        &mut self,
+        id: ActorID,
+        initcode: Vec<u8>,
+    ) -> anyhow::Result<EthAddress> {
         // Here we are circumventing the normal way of creating an actor through the EAM and jump ahead to what the `Init` actor would do:
         // https://github.com/filecoin-project/builtin-actors/blob/421855a7b968114ac59422c1faeca968482eccf4/actors/init/src/lib.rs#L97-L107
 
@@ -285,7 +293,7 @@ where
 
         // When a contract is constructed the EVM actor verifies that it has an Ethereum delegated address.
         // This has been inserted into the Init actor state as well.
-        let f4_addr = eth_builtin_address(id);
+        let f4_addr = eth_builtin_deleg_addr(id);
         let f0_addr = Address::new_id(id);
 
         let msg = Message {
@@ -326,7 +334,12 @@ where
             );
         }
 
-        Ok(())
+        let addr: [u8; 20] = match f4_addr.payload() {
+            Payload::Delegated(addr) => addr.subaddress().try_into().expect("hash is 20 bytes"),
+            other => panic!("not an f4 address: {other:?}"),
+        };
+
+        Ok(EthAddress(addr))
     }
 
     pub fn store(&mut self) -> &DB {
