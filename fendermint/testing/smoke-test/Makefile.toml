@@ -10,7 +10,12 @@ TEST_SCRIPTS_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/fendermint/testing
 ACTORS_BUNDLE = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/../builtin-actors/output/bundle.car"
 CMT_HOST_PORT = 26657
 ETHAPI_HOST_PORT = 8545
+# If this wasn't present, any wait task is skipped.
 CARGO_MAKE_WAIT_MILLISECONDS = 5000
+# This wait time seems to work locally.
+CMT_WAIT_MILLIS = 10000
+
+[env.ci]
 CMT_WAIT_MILLIS = 20000
 
 # smoke-test infrastructure:
