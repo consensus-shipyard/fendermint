@@ -129,7 +129,7 @@ where
             state.store(),
             genesis.chain_name.clone(),
             &genesis.accounts,
-            &eth_contract_ids,
+            &eth_contract_ids.values().cloned().collect::<Vec<_>>(),
             eth_libs.len() as u64,
         )
         .context("failed to create init state")?;
