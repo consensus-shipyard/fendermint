@@ -263,14 +263,19 @@ where
                     root: 0,
                     route: Vec::new(),
                 },
-                bottom_up_check_period: 100,
-                top_down_check_period: 100,
-                msg_fee: et::U256::from(0),
-                majority_percentage: 67,
+                bottom_up_check_period: 10,
+                top_down_check_period: 10,
+                msg_fee: et::U256::from(10),
+                majority_percentage: 66,
             };
 
             state
-                .create_evm_actor_with_cons(ipc::GATEWAY_ACTOR_ID, &GATEWAY_ABI, bytecode, params)
+                .create_evm_actor_with_cons(
+                    ipc::GATEWAY_ACTOR_ID,
+                    &GATEWAY_ABI,
+                    bytecode,
+                    (params,),
+                )
                 .context("failed to create Gateway actor")?;
         }
 

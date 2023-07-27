@@ -33,6 +33,8 @@ pub mod gateway {
         use ethers_core::abi::Tokenize;
         use fendermint_vm_ipc_actors::gateway::SubnetID;
 
+        use crate::ipc::tests::{check_param_types, constructor_param_types};
+
         use super::ConstructorParameters;
 
         #[test]
@@ -48,17 +50,58 @@ pub mod gateway {
                 majority_percentage: 67,
             };
 
+            // It looks like if we pass just the record then it will be passed as 5 tokens,
+            // but the constructor only expects one parameter, and it has to be a tuple.
+            let cp = (cp,);
+
             let tokens = cp.into_tokens();
 
-            let constructor = fendermint_vm_ipc_actors::gateway::GATEWAY_ABI
+            let cons = fendermint_vm_ipc_actors::gateway::GATEWAY_ABI
                 .constructor()
-                .expect("Gatway has a constructor");
+                .expect("Gateway has a constructor");
 
-            constructor
-                .encode_input(vec![], &tokens)
+            let param_types = constructor_param_types(cons);
+
+            check_param_types(&tokens, &param_types).unwrap();
+
+            cons.encode_input(vec![], &tokens)
                 .expect("should encode constructor input");
         }
     }
 }
 
 pub mod subnet_registry {}
+
+#[cfg(test)]
+mod tests {
+    use anyhow::bail;
+    use ethers_core::abi::{Constructor, ParamType, Token};
+
+    /// Check all tokens against expected parameters; return any offending one.
+    ///
+    /// Based on [Tokens::types_check]
+    pub fn check_param_types(tokens: &[Token], param_types: &[ParamType]) -> anyhow::Result<()> {
+        if param_types.len() != tokens.len() {
+            bail!(
+                "different number of parameters; expected {}, got {}",
+                param_types.len(),
+                tokens.len()
+            );
+        }
+
+        for (i, (pt, t)) in param_types.iter().zip(tokens).enumerate() {
+            if !t.type_check(pt) {
+                bail!("parameter {i} didn't type check: expected {pt:?}, got {t:?}");
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Returns all input params of given constructor.
+    ///
+    /// Based on [Constructor::param_types]
+    pub fn constructor_param_types(cons: &Constructor) -> Vec<ParamType> {
+        cons.inputs.iter().map(|p| p.kind.clone()).collect()
+    }
+}
