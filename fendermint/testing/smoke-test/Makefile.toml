@@ -12,9 +12,6 @@ CMT_HOST_PORT = 26657
 ETHAPI_HOST_PORT = 8545
 CARGO_MAKE_WAIT_MILLISECONDS = 10000
 
-[config]
-on_error_task = "container-logs"
-
 # smoke-test infrastructure:
 # cargo install cargo-make
 #
@@ -46,17 +43,13 @@ dependencies = [
   "wait",
   "ethapi-start",
   "wait",
+  "fendermint-logs",
+  "ethapi-logs",
 ]
 
 [tasks.test]
 clear = true
 dependencies = ["simplecoin-example", "ethapi-example"]
-
-[tasks.container-logs]
-run_task = { name = [
-  "ethapi-logs",
-  "fendermint-logs",
-] }
 
 [tasks.teardown]
 # `dependencies` doesn't seem to work with `cleanup_task`.
