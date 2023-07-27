@@ -13,6 +13,9 @@ IPC_ACTORS_ABI:=$(IPC_ACTORS_OUT)/.compile.abi
 
 FENDERMINT_CODE:=$(shell find . -type f \( -name "*.rs" -o -name "Cargo.toml" \) | grep -v target)
 
+# Override PROFILE env var to choose between `local | ci`
+PROFILE?=local
+
 all: test build
 
 build:
@@ -25,7 +28,7 @@ test: $(BUILTIN_ACTORS_BUNDLE) $(IPC_ACTORS_ABI)
 	cargo test --release --workspace --exclude smoke-test
 
 e2e: docker-build
-	cd fendermint/testing/smoke-test && cargo make
+	cd fendermint/testing/smoke-test && cargo make --profile $(PROFILE)
 
 clean:
 	cargo clean
@@ -53,16 +56,13 @@ docker-build: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE) $(IPC_ACTORS_ABI)
 	cp $(BUILTIN_ACTORS_BUNDLE) docker/.artifacts
 	cp -r $(IPC_ACTORS_OUT)/* docker/.artifacts/contracts
 
-	if [ -z "$${GITHUB_ACTIONS}" ]; then \
-		DOCKER_FILE=local ; \
-	else \
+	if [ "$(PROFILE)" = "ci" ]; then \
 		$(MAKE) --no-print-directory build && \
-		cp ./target/release/fendermint docker/.artifacts && \
-		DOCKER_FILE=ci ; \
+		cp ./target/release/fendermint docker/.artifacts ; \
 	fi && \
 	DOCKER_BUILDKIT=1 \
 	docker build \
-		-f docker/$${DOCKER_FILE}.Dockerfile \
+		-f docker/$${PROFILE}.Dockerfile \
 		-t fendermint:latest $(PWD)
 
 	rm -rf docker/.artifacts
