@@ -49,7 +49,7 @@ impl State {
         // Accounts from the Genesis file.
         accounts: &[Actor],
         // Pre-defined IDs for top-level EVM contracts.
-        eth_builtin_ids: &[ActorID],
+        eth_builtin_ids: &HashMap<&str, ActorID>,
         // Number of dynamically deployed EVM library contracts.
         eth_library_count: u64,
     ) -> anyhow::Result<(Self, AddressMap)> {
@@ -89,7 +89,7 @@ impl State {
         }
 
         // Insert top-level EVM contracts which have fixed IDs.
-        for id in eth_builtin_ids {
+        for (_, id) in eth_builtin_ids {
             let addr = eth_builtin_deleg_addr(*id);
             address_map
                 .set(addr.to_bytes().into(), *id)

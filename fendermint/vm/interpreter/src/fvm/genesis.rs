@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use std::collections::HashMap;
+use std::path::Path;
 
 use anyhow::Context;
 use async_trait::async_trait;
+use ethers::abi::Tokenize;
 use ethers::core::types as et;
+use fendermint_eth_hardhat::{Hardhat, FQN};
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_actor_interface::{
     account, burntfunds, cron, eam, init, ipc, reward, system, EMPTY_ARR,
@@ -17,6 +20,7 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::version::NetworkVersion;
+use fvm_shared::ActorID;
 use num_traits::Zero;
 
 use crate::GenesisInterpreter;
@@ -88,7 +92,12 @@ where
 
         // STAGE 0: Declare the built-in EVM contracts we'll have to deploy.
 
-        let eth_contract_ids = vec![ipc::GATEWAY_ACTOR_ID, ipc::SUBNET_REGISTRY_ACTOR_ID];
+        let eth_contract_ids: HashMap<&str, ActorID> = vec![
+            ("Gateway", ipc::GATEWAY_ACTOR_ID),
+            ("SubnetRegistry", ipc::SUBNETREGISTRY_ACTOR_ID),
+        ]
+        .into_iter()
+        .collect();
 
         // Collect dependencies of the main IPC actors.
         let eth_libs = self
@@ -232,7 +241,7 @@ where
                 let bytecode = self
                     .contracts
                     .bytecode(&lib_src, &lib_name, &eth_lib_addrs)
-                    .with_context(|| format!("failed to load library contract {fqn}"))?;
+                    .with_context(|| format!("failed to load library bytecode {fqn}"))?;
 
                 let eth_addr = state
                     .create_evm_actor(next_id, bytecode)
@@ -257,14 +266,9 @@ where
         }
 
         // IPC Gateway actor.
-        let _gateway_addr = {
+        let gateway_addr = {
             use fendermint_vm_ipc_actors::gateway::GATEWAY_ABI;
             use ipc::gateway::ConstructorParameters;
-
-            let bytecode = self
-                .contracts
-                .bytecode("Gateway.sol", "Gateway", &eth_lib_addrs)
-                .context("failed to load Gateway contract")?;
 
             // TODO: Move all these parameters to Genesis.
             let params = ConstructorParameters {
@@ -278,30 +282,75 @@ where
                 majority_percentage: 66,
             };
 
-            let eth_addr = state
-                .create_evm_actor_with_cons(
-                    ipc::GATEWAY_ACTOR_ID,
-                    &GATEWAY_ABI,
-                    bytecode,
-                    (params,),
-                )
-                .context("failed to create Gateway actor")?;
+            deploy_evm_contract(
+                &mut state,
+                &self.contracts,
+                &eth_lib_addrs,
+                &eth_contract_ids,
+                "Gateway.sol",
+                "Gateway",
+                &GATEWAY_ABI,
+                (params,),
+            )?
+        };
 
-            let id_addr = et::Address::from(EthAddress::from_id(ipc::GATEWAY_ACTOR_ID).0);
-            let eth_addr = et::Address::from(eth_addr.0);
+        // IPC SubnetRegistry actory.
+        {
+            use fendermint_vm_ipc_actors::subnet_registry::SUBNETREGISTRY_ABI;
 
-            tracing::info!(
-                actor_id = ipc::GATEWAY_ACTOR_ID,
-                ?eth_addr,
-                ?id_addr,
-                "deployed IPC Gateway actor"
-            );
-
-            id_addr
+            deploy_evm_contract(
+                &mut state,
+                &self.contracts,
+                &eth_lib_addrs,
+                &eth_contract_ids,
+                "SubnetRegistry.sol",
+                "SubnetRegistry",
+                &SUBNETREGISTRY_ABI,
+                (gateway_addr,),
+            )?;
         };
 
         Ok((state, out))
     }
+}
+
+/// Construct the bytecode of a top-level contract and deploy it with some constructor parameters.
+fn deploy_evm_contract<DB, T>(
+    state: &mut FvmGenesisState<DB>,
+    contracts: &Hardhat,
+    eth_lib_addrs: &HashMap<FQN, et::Address>,
+    contract_ids: &HashMap<&str, ActorID>,
+    contract_src: impl AsRef<Path>,
+    contract_name: &str,
+    contract_abi: &ethers::core::abi::Abi,
+    constructor_params: T,
+) -> anyhow::Result<et::Address>
+where
+    DB: Blockstore + Clone + 'static,
+    T: Tokenize,
+{
+    let contract_id = contract_ids[contract_name];
+
+    let bytecode = contracts
+        .bytecode(contract_src, contract_name, &eth_lib_addrs)
+        .with_context(|| format!("failed to load {contract_name} bytecode"))?;
+
+    let eth_addr = state
+        .create_evm_actor_with_cons(contract_id, contract_abi, bytecode, constructor_params)
+        .with_context(|| format!("failed to create {contract_name} actor"))?;
+
+    let id_addr = et::Address::from(EthAddress::from_id(contract_id).0);
+    let eth_addr = et::Address::from(eth_addr.0);
+
+    tracing::info!(
+        actor_id = contract_id,
+        ?eth_addr,
+        ?id_addr,
+        contract_name,
+        "deployed Ethereum actor"
+    );
+
+    Ok(id_addr)
 }
 
 /// Sum of balances in the genesis accounts.
