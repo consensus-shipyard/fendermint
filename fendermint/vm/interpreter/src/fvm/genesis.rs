@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::path::Path;
 
 use anyhow::Context;
@@ -230,39 +231,11 @@ where
             )
             .context("failed to init exec state")?;
 
-        // Assign dynamic ID addresses to libraries, but use fixed addresses for the top level contracts.
-        let mut eth_lib_addrs = HashMap::new();
+        let mut deployer = ContractDeployer::<DB>::new(&self.contracts);
 
         // IPC libraries.
-        {
-            // Deploy them with non-deterministic IDs.
-            for (lib_src, lib_name) in eth_libs {
-                let fqn = self.contracts.fqn(&lib_src, &lib_name);
-                let bytecode = self
-                    .contracts
-                    .bytecode(&lib_src, &lib_name, &eth_lib_addrs)
-                    .with_context(|| format!("failed to load library bytecode {fqn}"))?;
-
-                let eth_addr = state
-                    .create_evm_actor(next_id, bytecode)
-                    .with_context(|| format!("failed to create library actor {fqn}"))?;
-
-                let id_addr = et::Address::from(EthAddress::from_id(next_id).0);
-                let eth_addr = et::Address::from(eth_addr.0);
-
-                tracing::info!(
-                    actor_id = next_id,
-                    ?eth_addr,
-                    ?id_addr,
-                    "deployed library contract"
-                );
-
-                // We can use the masked ID here or the delegated address.
-                // Maybe the masked ID is quicker because it doesn't need to be resolved.
-                eth_lib_addrs.insert(self.contracts.fqn(&lib_src, &lib_name), id_addr);
-
-                next_id += 1;
-            }
+        for (lib_src, lib_name) in eth_libs {
+            deployer.deploy_library(&mut state, &mut next_id, lib_src, &lib_name)?;
         }
 
         // IPC Gateway actor.
@@ -282,10 +255,8 @@ where
                 majority_percentage: 66,
             };
 
-            deploy_evm_contract(
+            deployer.deploy_contract(
                 &mut state,
-                &self.contracts,
-                &eth_lib_addrs,
                 &eth_contract_ids,
                 "Gateway.sol",
                 "Gateway",
@@ -298,10 +269,8 @@ where
         {
             use fendermint_vm_ipc_actors::subnet_registry::SUBNETREGISTRY_ABI;
 
-            deploy_evm_contract(
+            deployer.deploy_contract(
                 &mut state,
-                &self.contracts,
-                &eth_lib_addrs,
                 &eth_contract_ids,
                 "SubnetRegistry.sol",
                 "SubnetRegistry",
@@ -314,43 +283,100 @@ where
     }
 }
 
-/// Construct the bytecode of a top-level contract and deploy it with some constructor parameters.
-fn deploy_evm_contract<DB, T>(
-    state: &mut FvmGenesisState<DB>,
-    contracts: &Hardhat,
-    eth_lib_addrs: &HashMap<FQN, et::Address>,
-    contract_ids: &HashMap<&str, ActorID>,
-    contract_src: impl AsRef<Path>,
-    contract_name: &str,
-    contract_abi: &ethers::core::abi::Abi,
-    constructor_params: T,
-) -> anyhow::Result<et::Address>
+struct ContractDeployer<'a, DB> {
+    contracts: &'a Hardhat,
+    // Assign dynamic ID addresses to libraries, but use fixed addresses for the top level contracts.
+    lib_addrs: HashMap<FQN, et::Address>,
+    phantom_db: PhantomData<DB>,
+}
+
+impl<'a, DB> ContractDeployer<'a, DB>
 where
-    DB: Blockstore + Clone + 'static,
-    T: Tokenize,
+    DB: Blockstore + 'static + Send + Sync + Clone,
 {
-    let contract_id = contract_ids[contract_name];
+    pub fn new(contracts: &'a Hardhat) -> Self {
+        Self {
+            contracts,
+            lib_addrs: Default::default(),
+            phantom_db: PhantomData,
+        }
+    }
 
-    let bytecode = contracts
-        .bytecode(contract_src, contract_name, &eth_lib_addrs)
-        .with_context(|| format!("failed to load {contract_name} bytecode"))?;
+    /// Deploy a library contract with a dynamic ID and no constructor.
+    pub fn deploy_library(
+        &mut self,
+        state: &mut FvmGenesisState<DB>,
+        next_id: &mut u64,
+        lib_src: impl AsRef<Path>,
+        lib_name: &str,
+    ) -> anyhow::Result<()> {
+        let fqn = self.contracts.fqn(lib_src.as_ref(), lib_name);
 
-    let eth_addr = state
-        .create_evm_actor_with_cons(contract_id, contract_abi, bytecode, constructor_params)
-        .with_context(|| format!("failed to create {contract_name} actor"))?;
+        let bytecode = self
+            .contracts
+            .bytecode(&lib_src, lib_name, &self.lib_addrs)
+            .with_context(|| format!("failed to load library bytecode {fqn}"))?;
 
-    let id_addr = et::Address::from(EthAddress::from_id(contract_id).0);
-    let eth_addr = et::Address::from(eth_addr.0);
+        let eth_addr = state
+            .create_evm_actor(*next_id, bytecode)
+            .with_context(|| format!("failed to create library actor {fqn}"))?;
 
-    tracing::info!(
-        actor_id = contract_id,
-        ?eth_addr,
-        ?id_addr,
-        contract_name,
-        "deployed Ethereum actor"
-    );
+        let id_addr = et::Address::from(EthAddress::from_id(*next_id).0);
+        let eth_addr = et::Address::from(eth_addr.0);
 
-    Ok(id_addr)
+        tracing::info!(
+            actor_id = next_id,
+            ?eth_addr,
+            ?id_addr,
+            "deployed library contract"
+        );
+
+        // We can use the masked ID here or the delegated address.
+        // Maybe the masked ID is quicker because it doesn't need to be resolved.
+        self.lib_addrs.insert(fqn, id_addr);
+
+        *next_id += 1;
+
+        Ok(())
+    }
+
+    /// Construct the bytecode of a top-level contract and deploy it with some constructor parameters.
+    pub fn deploy_contract<T>(
+        &self,
+        state: &mut FvmGenesisState<DB>,
+        contract_ids: &HashMap<&str, ActorID>,
+        contract_src: impl AsRef<Path>,
+        contract_name: &str,
+        contract_abi: &ethers::core::abi::Abi,
+        constructor_params: T,
+    ) -> anyhow::Result<et::Address>
+    where
+        T: Tokenize,
+    {
+        let contract_id = contract_ids[contract_name];
+
+        let bytecode = self
+            .contracts
+            .bytecode(contract_src, contract_name, &self.lib_addrs)
+            .with_context(|| format!("failed to load {contract_name} bytecode"))?;
+
+        let eth_addr = state
+            .create_evm_actor_with_cons(contract_id, contract_abi, bytecode, constructor_params)
+            .with_context(|| format!("failed to create {contract_name} actor"))?;
+
+        let id_addr = et::Address::from(EthAddress::from_id(contract_id).0);
+        let eth_addr = et::Address::from(eth_addr.0);
+
+        tracing::info!(
+            actor_id = contract_id,
+            ?eth_addr,
+            ?id_addr,
+            contract_name,
+            "deployed Ethereum actor"
+        );
+
+        Ok(id_addr)
+    }
 }
 
 /// Sum of balances in the genesis accounts.

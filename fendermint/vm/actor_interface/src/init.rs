@@ -89,7 +89,7 @@ impl State {
         }
 
         // Insert top-level EVM contracts which have fixed IDs.
-        for (_, id) in eth_builtin_ids {
+        for id in eth_builtin_ids.values() {
             let addr = eth_builtin_deleg_addr(*id);
             address_map
                 .set(addr.to_bytes().into(), *id)
