@@ -197,7 +197,6 @@ where
         msg.gas_limit = limit;
         // set message nonce to zero so the right one is picked up
         msg.sequence = 0;
-        println!("message being applied: {:?}", msg);
 
         let apply_ret = state.call_with_cache(msg, false)?;
 
