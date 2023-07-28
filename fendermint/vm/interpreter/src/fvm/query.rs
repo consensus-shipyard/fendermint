@@ -161,9 +161,8 @@ where
         let mut curr_limit = msg.gas_limit;
 
         while {
-            let ret = self.estimation_call_with_limit(state, msg, curr_limit)?;
-            if ret.is_some() {
-                return Ok(ret.unwrap());
+            if let Some(ret) = self.estimation_call_with_limit(state, msg, curr_limit)? {
+                return Ok(ret);
             }
 
             curr_limit = (curr_limit as f64 * Self::GAS_SEARCH_STEP) as u64;
