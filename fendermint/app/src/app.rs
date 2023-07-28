@@ -539,10 +539,14 @@ where
                 }
             },
         };
-        println!(
-            "-- Deliver Response status: {:?} - info: {:?}",
-            response.code, response.info
-        );
+
+        if response.code != 0.into() {
+            tracing::error!(
+                "deliver_tx failed: {:?} - {:?}",
+                response.code,
+                response.info
+            );
+        }
 
         Ok(response)
     }
