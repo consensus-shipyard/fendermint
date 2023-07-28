@@ -499,7 +499,7 @@ where
     let (tx, sig) = TypedTransaction::decode_signed(&rlp)
         .context("failed to decode RLP as signed TypedTransaction")?;
 
-    let msg = to_fvm_message(tx)?;
+    let msg = to_fvm_message(tx, false)?;
     let msg = SignedMessage {
         message: msg,
         signature: Signature::new_secp256k1(sig.to_vec()),
@@ -525,7 +525,7 @@ pub async fn call<C>(
 where
     C: Client + Sync + Send,
 {
-    let msg = to_fvm_message(tx)?;
+    let msg = to_fvm_message(tx, false)?;
     let header = data.header_by_id(block_id).await?;
     let response = data.client.call(msg, Some(header.height)).await?;
     let deliver_tx = response.value;
@@ -557,7 +557,7 @@ where
         EstimateGasParams::Two((tx, block_id)) => (tx, block_id),
     };
 
-    let msg = to_fvm_message(tx.into()).context("failed to convert to FVM message")?;
+    let msg = to_fvm_message(tx.into(), true).context("failed to convert to FVM message")?;
 
     let header = data
         .header_by_id(block_id)
