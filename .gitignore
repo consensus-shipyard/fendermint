@@ -1,2 +1,4 @@
 target
 docker/.artifacts
+cometbft
+test-network

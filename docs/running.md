@@ -76,7 +76,7 @@ Add one of the keys we created to the Genesis file as a stand-alone account:
 ```shell
  cargo run -p fendermint_app -- \
         genesis --genesis-file test-network/genesis.json \
-        add-account --public-key test-network/keys/alice.pk --balance 1000000000000000000
+        add-account --public-key test-network/keys/alice.pk --balance 10
 ```
 
 Check that the balance is correct:
@@ -90,7 +90,7 @@ $ cat test-network/genesis.json | jq .accounts
         "owner": "f1jqqlnr5b56rnmc34ywp7p7i2lg37ty23s2bmg4y"
       }
     },
-    "balance": "1000000000000000000"
+    "balance": "10000000000000000000"
   }
 ]
 ```
@@ -104,7 +104,7 @@ Let's add an example of the other possible account type, a multi-sig account:
 cargo run -p fendermint_app -- \
         genesis --genesis-file test-network/genesis.json \
         add-multisig --public-key test-network/keys/bob.pk --public-key test-network/keys/charlie.pk --public-key test-network/keys/dave.pk \
-          --threshold 2 --vesting-start 0 --vesting-duration 1000000 --balance 3000000000000000000
+          --threshold 2 --vesting-start 0 --vesting-duration 1000000 --balance 30
 ```
 
 Check that all three of the signatories have been added:
@@ -124,7 +124,7 @@ $ cat test-network/genesis.json | jq .accounts[1]
       "vesting_start": 0
     }
   },
-  "balance": "3000000000000000000"
+  "balance": "30000000000000000000"
 }
 ```
 
@@ -217,7 +217,7 @@ $ cat ~/.cometbft/config/genesis.json
   "app_state": {
     "accounts": [
       {
-        "balance": "1000000000000000000",
+        "balance": "10000000000000000000",
         "meta": {
           "Account": {
             "owner": "f1jqqlnr5b56rnmc34ywp7p7i2lg37ty23s2bmg4y"
@@ -225,7 +225,7 @@ $ cat ~/.cometbft/config/genesis.json
         }
       },
       {
-        "balance": "3000000000000000000",
+        "balance": "30000000000000000000",
         "meta": {
           "Multisig": {
             "signers": [
@@ -409,6 +409,62 @@ I[2023-05-19|10:13:54.116] indexed block exents                         module=t
 Note that the first block execution is very slow because we have to load the Wasm engine, as indicated by the first proposal having a timeout,
 but after that the blocks come in fast, one per second.
 
+### Run ETH API
+If we want to use `evm` related API, such as running `fendermint/eth/api/examples/ethers.rs`, we need to start ETH API process. 
+
+The ETH RPC api runs on top of cometbft. Make sure you have cometbft running properly. The architecture is as follows:
+```
++---------------------------+
+| Node                      |
+|                           |
+|   ------------------      |
+|   | fendermint run |      |
+|   |                |      |
+|   | :26658         |      |
+|   ------------------      |
+|     ^                     |
+|     |                     |
+|   ------------------      |
+|   | cometbft       |      |
+|   |                |      |
+|   | :26657         |      |
+|   ------------------      |
+|     |                     |
+| :26657                    |
++---------------------------+
+  ^
+  |
+-----------------------------
+| Ethereum API              |
+|                           |
+|   +-------------------+   |
+|   | fendermint eth run|   |
+|   |                   |   |
+|   | :8545             |   |
+|   +-------------------+   |
+|     |                     |
+| :8545                     |
+-----------------------------
+```
+To start the ethereum RPC api with:
+```
+cargo run -p fendermint_app --release -- eth run
+```
+We will see:
+<details>
+  <summary>ETH API log</summary>
+
+```console
+2023-07-20T12:30:48.385026Z  INFO fendermint::cmd: reading configuration path="/home/admin/.fendermint/config"
+2023-07-20T12:30:48.435387Z  INFO fendermint_eth_api: bound Ethereum API listen_addr=127.0.0.1:8545
+```
+
+</details>
+
+We can try query the chain id by:
+```shell
+curl -X POST -i   -H 'Content-Type: application/json'   -d '{"jsonrpc":"2.0","id":0,"method":"eth_chainId","params":[]}'   http://localhost:8545
+```
 
 ## Query the state
 
@@ -439,7 +495,7 @@ $ cargo run -p fendermint_app --release --   rpc query actor-state --address $AL
 {
   "id": 100,
   "state": {
-    "balance": "1000000000000000000",
+    "balance": "10000000000000000000",
     "code": "bafk2bzacealdyp7dmpc6eir65qhuh2hgv7onmv53rzzyp5futafmjjlxrt6fg",
     "delegated_address": null,
     "sequence": 0,
@@ -469,11 +525,11 @@ gVUBRpGWKyQvYeoOY3OJROSyogmA3ys=
 
 The simplest transaction we can do is to transfer tokens from one account to another.
 
-For example we can send 1000 tokens from Alice to Bob:
+For example we can send 0.1 tokens from Alice to Bob:
 
 ```shell
 cargo run -p fendermint_app --release -- \
-  rpc transfer --secret-key test-network/keys/alice.sk --to $BOB_ADDR --sequence 0 --value 1000 --chain-name test
+  rpc transfer --secret-key test-network/keys/alice.sk --to $BOB_ADDR --sequence 0 --value 0.1 --chain-name test
 ```
 
 Note that we are using `--sequence 0` because this is the first transaction we make using Alice's key.
@@ -481,9 +537,9 @@ Note that we are using `--sequence 0` because this is the first transaction we m
 The `transfer` command waits for the commit results of the transaction:
 
 ```console
-$ cargo run -p fendermint_app --release -- rpc transfer --secret-key test-network/keys/alice.sk --to $BOB_ADDR --sequence 0 --value 1000 --chain-name test
+$ cargo run -p fendermint_app --release -- rpc transfer --secret-key test-network/keys/alice.sk --to $BOB_ADDR --sequence 0 --value 0.1 --chain-name test
     Finished dev [unoptimized + debuginfo] target(s) in 0.40s
-     Running `target/debug/fendermint rpc transfer --secret-key test-network/keys/alice.sk --to f1kgtzp5nuob3gdccagivcgns7e25be2c2rqozilq --sequence 0 --value 1000`
+     Running `target/debug/fendermint rpc transfer --secret-key test-network/keys/alice.sk --to f1kgtzp5nuob3gdccagivcgns7e25be2c2rqozilq --sequence 0 --value 0.1`
 {
   "response": {
     "check_tx": {

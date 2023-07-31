@@ -14,16 +14,20 @@ ETHAPI_HOST_PORT = 8545
 CARGO_MAKE_WAIT_MILLISECONDS = 5000
 # This wait time seems to work locally.
 CMT_WAIT_MILLIS = 10000
+# Keep example logs to a minimum.
+VERBOSITY = ""
 
 [env.ci]
 CMT_WAIT_MILLIS = 20000
+# Help debug any issues with simplecoin by logging requests and responses.
+VERBOSITY = "--verbose"
 
 # smoke-test infrastructure:
 # cargo install cargo-make
 #
 # cd fendermint/testing/smoke-test
 # - then -
-# cargo make
+# cargo make --profile ci
 # - or -
 # cargo make setup
 # cargo make test
@@ -76,7 +80,8 @@ run_task = { name = [
 script = """
 cd ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}
 cargo run -p fendermint_rpc --release --example simplecoin -- \
-  --secret-key fendermint/testing/smoke-test/test-data/fendermint/keys/alice.sk
+  --secret-key fendermint/testing/smoke-test/test-data/fendermint/keys/alice.sk \
+  ${VERBOSITY}
 """
 
 
