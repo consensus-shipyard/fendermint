@@ -76,7 +76,7 @@ Add one of the keys we created to the Genesis file as a stand-alone account:
 ```shell
  cargo run -p fendermint_app -- \
         genesis --genesis-file test-network/genesis.json \
-        add-account --public-key test-network/keys/alice.pk --balance 1000000000000000000
+        add-account --public-key test-network/keys/alice.pk --balance 10
 ```
 
 Check that the balance is correct:
@@ -90,7 +90,7 @@ $ cat test-network/genesis.json | jq .accounts
         "owner": "f1jqqlnr5b56rnmc34ywp7p7i2lg37ty23s2bmg4y"
       }
     },
-    "balance": "1000000000000000000"
+    "balance": "10000000000000000000"
   }
 ]
 ```
@@ -104,7 +104,7 @@ Let's add an example of the other possible account type, a multi-sig account:
 cargo run -p fendermint_app -- \
         genesis --genesis-file test-network/genesis.json \
         add-multisig --public-key test-network/keys/bob.pk --public-key test-network/keys/charlie.pk --public-key test-network/keys/dave.pk \
-          --threshold 2 --vesting-start 0 --vesting-duration 1000000 --balance 3000000000000000000
+          --threshold 2 --vesting-start 0 --vesting-duration 1000000 --balance 30
 ```
 
 Check that all three of the signatories have been added:
@@ -124,7 +124,7 @@ $ cat test-network/genesis.json | jq .accounts[1]
       "vesting_start": 0
     }
   },
-  "balance": "3000000000000000000"
+  "balance": "30000000000000000000"
 }
 ```
 
@@ -217,7 +217,7 @@ $ cat ~/.cometbft/config/genesis.json
   "app_state": {
     "accounts": [
       {
-        "balance": "1000000000000000000",
+        "balance": "10000000000000000000",
         "meta": {
           "Account": {
             "owner": "f1jqqlnr5b56rnmc34ywp7p7i2lg37ty23s2bmg4y"
@@ -225,7 +225,7 @@ $ cat ~/.cometbft/config/genesis.json
         }
       },
       {
-        "balance": "3000000000000000000",
+        "balance": "30000000000000000000",
         "meta": {
           "Multisig": {
             "signers": [
@@ -439,7 +439,7 @@ $ cargo run -p fendermint_app --release --   rpc query actor-state --address $AL
 {
   "id": 100,
   "state": {
-    "balance": "1000000000000000000",
+    "balance": "10000000000000000000",
     "code": "bafk2bzacealdyp7dmpc6eir65qhuh2hgv7onmv53rzzyp5futafmjjlxrt6fg",
     "delegated_address": null,
     "sequence": 0,
