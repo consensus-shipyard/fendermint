@@ -58,7 +58,7 @@ docker-build: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE) $(IPC_ACTORS_ABI)
 	fi && \
 	DOCKER_BUILDKIT=1 \
 	docker build \
-		-f docker/$${PROFILE}.Dockerfile \
+		-f docker/$(PROFILE).Dockerfile \
 		-t fendermint:latest $(PWD)
 
 	rm -rf docker/.artifacts
