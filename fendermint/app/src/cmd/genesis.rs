@@ -41,7 +41,8 @@ cmd! {
       network_version: self.network_version,
       base_fee: self.base_fee.clone(),
       validators: Vec::new(),
-      accounts: Vec::new()
+      accounts: Vec::new(),
+      ipc: None
     };
 
     let json = serde_json::to_string_pretty(&genesis)?;

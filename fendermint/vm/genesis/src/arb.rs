@@ -4,9 +4,10 @@ use crate::{
     Account, Actor, ActorMeta, Genesis, Multisig, Power, SignerAddr, Validator, ValidatorKey,
 };
 use cid::multihash::MultihashDigest;
-use fendermint_testing::arb::ArbTokenAmount;
+use fendermint_testing::arb::{ArbAddress, ArbTokenAmount};
 use fendermint_vm_core::Timestamp;
 use fvm_shared::{address::Address, version::NetworkVersion};
+use ipc_sdk::subnet_id::SubnetID;
 use quickcheck::{Arbitrary, Gen};
 use rand::{rngs::StdRng, SeedableRng};
 
@@ -86,6 +87,38 @@ impl Arbitrary for Genesis {
             base_fee: ArbTokenAmount::arbitrary(g).0,
             validators: (0..nv).map(|_| Arbitrary::arbitrary(g)).collect(),
             accounts: (0..na).map(|_| Arbitrary::arbitrary(g)).collect(),
+            ipc: if bool::arbitrary(g) {
+                Some(crate::ipc::Params::arbitrary(g))
+            } else {
+                None
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ArbSubnetID(SubnetID);
+
+impl Arbitrary for ArbSubnetID {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        let child_count = usize::arbitrary(g) % 4;
+
+        let children = (0..child_count)
+            .map(|_| ArbAddress::arbitrary(g).0)
+            .collect::<Vec<_>>();
+
+        Self(SubnetID::new(u64::arbitrary(g), children))
+    }
+}
+
+impl Arbitrary for crate::ipc::Params {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        Self {
+            subnet_id: ArbSubnetID::arbitrary(g).0,
+            bottom_up_check_period: u64::arbitrary(g),
+            top_down_check_period: u64::arbitrary(g),
+            msg_fee: ArbTokenAmount::arbitrary(g).0,
+            majority_percentage: u8::arbitrary(g) % 101,
         }
     }
 }
