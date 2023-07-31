@@ -76,7 +76,7 @@ where
                     }
                     None => {
                         // perform a gas search for an accurate value
-                        self.gas_search(&state, &*msg)?
+                        self.gas_search(&state, &msg)?
                     }
                 };
 
