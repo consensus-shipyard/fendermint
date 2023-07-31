@@ -33,7 +33,7 @@ pub struct Genesis {
     pub accounts: Vec<Actor>,
     /// IPC related configuration, if enabled.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ipc: Option<ipc::Params>,
+    pub ipc: Option<ipc::GatewayParams>,
 }
 
 /// Wrapper around [`Address`] to provide human readable serialization in JSON format.
@@ -116,7 +116,7 @@ pub struct Validator {
 }
 
 /// IPC related data structures.
-mod ipc {
+pub mod ipc {
     use fendermint_vm_encoding::IsHumanReadable;
     use fvm_shared::econ::TokenAmount;
     use ipc_sdk::subnet_id::SubnetID;
@@ -125,7 +125,7 @@ mod ipc {
 
     #[serde_as]
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-    pub struct Params {
+    pub struct GatewayParams {
         #[serde_as(as = "IsHumanReadable")]
         pub subnet_id: SubnetID,
         pub bottom_up_check_period: u64,

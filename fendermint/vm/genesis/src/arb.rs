@@ -88,7 +88,7 @@ impl Arbitrary for Genesis {
             validators: (0..nv).map(|_| Arbitrary::arbitrary(g)).collect(),
             accounts: (0..na).map(|_| Arbitrary::arbitrary(g)).collect(),
             ipc: if bool::arbitrary(g) {
-                Some(crate::ipc::Params::arbitrary(g))
+                Some(crate::ipc::GatewayParams::arbitrary(g))
             } else {
                 None
             },
@@ -111,7 +111,7 @@ impl Arbitrary for ArbSubnetID {
     }
 }
 
-impl Arbitrary for crate::ipc::Params {
+impl Arbitrary for crate::ipc::GatewayParams {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
         Self {
             subnet_id: ArbSubnetID::arbitrary(g).0,

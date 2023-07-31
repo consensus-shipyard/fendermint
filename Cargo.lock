@@ -2230,6 +2230,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
+ "ipc-sdk",
  "k256 0.11.6",
  "libsecp256k1",
  "num-traits",
