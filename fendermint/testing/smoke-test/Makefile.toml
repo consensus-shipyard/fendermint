@@ -11,6 +11,7 @@ ACTORS_BUNDLE = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/../builtin-actors/out
 CMT_HOST_PORT = 26657
 ETHAPI_HOST_PORT = 8545
 CARGO_MAKE_WAIT_MILLISECONDS = 5000
+CMT_WAIT_MILLIS = 20000
 
 # smoke-test infrastructure:
 # cargo install cargo-make
@@ -40,6 +41,7 @@ dependencies = [
   "fendermint-init",
   "fendermint-start",
   "cometbft-start",
+  "cometbft-wait",
   "ethapi-start",
   "wait",
 ]
@@ -103,6 +105,10 @@ env = { "CMD" = "init", "FLAGS" = "-a STDOUT -a STDERR" }
 [tasks.cometbft-start]
 extend = "cometbft-run"
 env = { "CMD" = "start", "FLAGS" = "-d" }
+
+[tasks.cometbft-wait]
+extend = "wait"
+env = { "CARGO_MAKE_WAIT_MILLISECONDS" = "${CMT_WAIT_MILLIS}" }
 
 [tasks.cometbft-run]
 script = """
