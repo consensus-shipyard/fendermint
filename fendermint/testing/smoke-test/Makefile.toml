@@ -48,7 +48,9 @@ dependencies = [
   "cometbft-start",
   "cometbft-wait",
   "ethapi-start",
-  "wait",
+  "fendermint-logs",
+  "cometbft-logs",
+  "ethapi-logs",
 ]
 
 [tasks.test]
@@ -218,6 +220,18 @@ env = { "CONTAINER_NAME" = "${ETHAPI_CONTAINER_NAME}" }
 extend = "docker-stop"
 env = { "CONTAINER_NAME" = "${ETHAPI_CONTAINER_NAME}" }
 
+[tasks.ethapi-logs]
+extend = "docker-logs"
+env = { "CONTAINER_NAME" = "${ETHAPI_CONTAINER_NAME}" }
+
+[tasks.fendermint-logs]
+extend = "docker-logs"
+env = { "CONTAINER_NAME" = "${FM_CONTAINER_NAME}" }
+
+[tasks.cometbft-logs]
+extend = "docker-logs"
+env = { "CONTAINER_NAME" = "${CMT_CONTAINER_NAME}" }
+
 [tasks.docker-stop]
 command = "docker"
 args = ["stop", "${CONTAINER_NAME}"]
@@ -226,4 +240,9 @@ ignore_errors = true
 [tasks.docker-rm]
 command = "docker"
 args = ["rm", "--force", "${CONTAINER_NAME}"]
+ignore_errors = true
+
+[tasks.docker-logs]
+command = "docker"
+args = ["logs", "${CONTAINER_NAME}"]
 ignore_errors = true
