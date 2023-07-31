@@ -4,7 +4,7 @@
 //! Helper methods to convert between Ethereum and FVM data formats.
 
 use anyhow::Context;
-use ethers_core::types::{transaction::eip2718::TypedTransaction, Eip1559TransactionRequest, H256};
+use ethers_core::types::{transaction::eip2718::TypedTransaction, H256};
 
 pub use fendermint_vm_message::conv::from_eth::*;
 use fvm_shared::{error::ExitCode, message::Message};
@@ -22,14 +22,14 @@ pub fn to_fvm_message(tx: TypedTransaction, accept_legacy: bool) -> JsonRpcResul
             Ok(fendermint_vm_message::conv::from_eth::to_fvm_message(tx)?)
         }
         TypedTransaction::Legacy(_) if accept_legacy => {
-            // legacy transactions are only accepted for gas estimation purposes.
+            // legacy transactions are only accepted for gas estimation purposes
+            // (when accept_legacy is explicitly set)
             // eth_sendRawTransaction should fail for legacy transactions.
-
-            let mut tx_1559: Eip1559TransactionRequest = tx.into();
-            // We should keep information about gas_premium or not???
-            // tx_1559.gas_premium = 0;
+            // For this purpose it os OK to not set `max_fee_per_gas` and
+            // `max_priority_fee_per_gas`. Legacy transactions don't include
+            // that information
             Ok(fendermint_vm_message::conv::from_eth::to_fvm_message(
-                &tx_1559,
+                &tx.into(),
             )?)
         }
         TypedTransaction::Legacy(_) | TypedTransaction::Eip2930(_) => error(
