@@ -66,19 +66,19 @@ where
                 FvmQueryRet::Call(ret)
             }
             FvmQuery::EstimateGas(mut msg) => {
-                // Setting BlockGasLimit as initial limit for gas estimation
-                msg.gas_limit = BLOCK_GAS_LIMIT;
-
                 // Populate gas message parameters.
-                // If message fails with BLOCK_GAS_LIMIT as the message gas limit
-                // it means that there is an error in the execution of the message
-                // we could optionally propagate that error if needed as done in Lotus.
-                // (but why would you want to estimate the gas of a message that can't
-                // be executed?)
-                let mut msg = self.estimate_gassed_msg(&state, msg)?;
-
-                // perform a gas search for an accurate value
-                let est = self.gas_search(&state, &mut msg)?;
+                let est = match self.estimate_gassed_msg(&state, &mut msg)? {
+                    Some(ret) => {
+                        // return immediately if there is something is returned,
+                        // it means that the message failed to execute so there's
+                        // no point on estimating the gas.
+                        ret
+                    }
+                    None => {
+                        // perform a gas search for an accurate value
+                        self.gas_search(&state, &*msg)?
+                    }
+                };
 
                 FvmQueryRet::EstimateGas(est)
             }
@@ -114,32 +114,38 @@ where
     fn estimate_gassed_msg(
         &self,
         state: &FvmQueryState<DB>,
-        msg: Box<Message>,
-    ) -> anyhow::Result<Message> {
-        let mut out = (*msg).clone();
+        msg: &mut Message,
+    ) -> anyhow::Result<Option<GasEstimate>> {
+        // Setting BlockGasLimit as initial limit for gas estimation
+        msg.gas_limit = BLOCK_GAS_LIMIT;
+
         // estimate the gas limit and assign it to the message
         // do not reuse the cache
-        let ret = state.call_with_cache(*msg.clone(), false)?;
-        if ret.msg_receipt.exit_code != ExitCode::OK {
-            return Err(anyhow::anyhow!(
-                "message execution failed with error code {}",
-                ret.msg_receipt.exit_code
-            ));
+        let ret = state.call_with_cache(msg.clone(), false)?;
+        if !ret.msg_receipt.exit_code.is_success() {
+            // if the message fail we can't estimate the gas.
+            return Ok(Some(GasEstimate {
+                exit_code: ret.msg_receipt.exit_code,
+                info: ret.failure_info.map(|x| x.to_string()).unwrap_or_default(),
+                gas_limit: 0,
+            }));
         }
-        out.gas_limit = (ret.msg_receipt.gas_used as f64 * Self::GAS_OVERESTIMATION_RATE) as u64;
-        if out.gas_premium.is_zero() {
+        msg.gas_limit = (ret.msg_receipt.gas_used as f64 * Self::GAS_OVERESTIMATION_RATE) as u64;
+        if msg.gas_premium.is_zero() {
             // TODO: Instead of assigning a default value here, we should analyze historical
             // blocks from the current height to estimate an accurate value for this premium.
             // To achieve this we would need to perform a set of ABCI queries.
             // In the meantime, this value should be good enough to make sure that the
             // message is included in a block.
-            out.gas_premium = TokenAmount::from_nano(BigInt::from(Self::DEFAULT_GAS_PREMIUM));
+            // this is triggered only if the user hasn't specified a gas premium, `ethers` and
+            // tooling would generally set this themselves.
+            msg.gas_premium = TokenAmount::from_nano(BigInt::from(Self::DEFAULT_GAS_PREMIUM));
         }
-        if out.gas_fee_cap.is_zero() {
+        if msg.gas_fee_cap.is_zero() {
             // Compute the fee cap from gas premium and applying an additional overestimation.
-            let overestimated_limit = (out.gas_limit as f64 * Self::GAS_OVERESTIMATION_RATE) as u64;
-            out.gas_fee_cap = std::cmp::min(
-                TokenAmount::from_atto(BigInt::from(overestimated_limit)) + &out.gas_premium,
+            let overestimated_limit = (msg.gas_limit as f64 * Self::GAS_OVERESTIMATION_RATE) as u64;
+            msg.gas_fee_cap = std::cmp::min(
+                TokenAmount::from_atto(BigInt::from(overestimated_limit)) + &msg.gas_premium,
                 TokenAmount::from_atto(BLOCK_GAS_LIMIT),
             );
 
@@ -147,21 +153,17 @@ where
             // for the fee cap. If we issues with messages going through let's consider the historical analysis.
         }
 
-        Ok(out)
+        Ok(None)
     }
 
     // This function performs a simpler implementation of the gas search than the one used in Lotus.
     // Instead of using historical information of the gas limit for other messages, it searches
     // for a valid gas limit for the current message in isolation.
-    fn gas_search(
-        &self,
-        state: &FvmQueryState<DB>,
-        msg: &mut Message,
-    ) -> anyhow::Result<GasEstimate> {
+    fn gas_search(&self, state: &FvmQueryState<DB>, msg: &Message) -> anyhow::Result<GasEstimate> {
         let mut curr_limit = msg.gas_limit;
 
-        while {
-            if let Some(ret) = self.estimation_call_with_limit(state, msg, curr_limit)? {
+        loop {
+            if let Some(ret) = self.estimation_call_with_limit(state, msg.clone(), curr_limit)? {
                 return Ok(ret);
             }
 
@@ -173,27 +175,21 @@ where
                     gas_limit: BLOCK_GAS_LIMIT,
                 });
             }
-            true
-        } {}
+        }
 
         // TODO: For a more accurate gas estimation we could track the low and the high
         // of the search and make higher steps (e.g. `GAS_SEARCH_STEP = 2`).
         // Once an interval is found of [low, high] for which the message
         // succeeds, we make a finer-grained within that interval.
         // At this point, I don't think is worth being that accurate as long as it works.
-
-        Err(anyhow::anyhow!(
-            "gas search failed. no valid gas limit found"
-        ))
     }
 
     fn estimation_call_with_limit(
         &self,
         state: &FvmQueryState<DB>,
-        msg: &Message,
+        mut msg: Message,
         limit: u64,
     ) -> anyhow::Result<Option<GasEstimate>> {
-        let mut msg = msg.clone();
         msg.gas_limit = limit;
         // set message nonce to zero so the right one is picked up
         msg.sequence = 0;
@@ -209,15 +205,11 @@ where
             gas_limit: apply_ret.msg_receipt.gas_used,
         };
 
-        if ret.exit_code == ExitCode::OK {
+        // if the message succeeded or failed with a different error than `SYS_OUT_OF_GAS`,
+        // immediately return as we either succeeded finding the right gas estimation,
+        // or something non-related happened.
+        if ret.exit_code == ExitCode::OK || ret.exit_code != ExitCode::SYS_OUT_OF_GAS {
             return Ok(Some(ret));
-        }
-
-        if ret.exit_code != ExitCode::SYS_OUT_OF_GAS {
-            return Err(anyhow::anyhow!(
-                "message execution failed in gas search with error code {:?}",
-                ret.exit_code
-            ));
         }
 
         Ok(None)

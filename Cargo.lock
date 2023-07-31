@@ -3628,7 +3628,8 @@ dependencies = [
 [[package]]
 name = "jsonrpc-v2"
 version = "0.11.0"
-source = "git+https://github.com/cryptoAtwill/jsonrpc-v2?branch=expose_inner_error#887262b2816fea3362c425209196005daa0c00f6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e9b2a38e4b2dc33f5bfe487781a5e82d0c60ab2b7f2fa1f132cbac177e9c708"
 dependencies = [
  "async-trait",
  "bytes",

@@ -541,7 +541,7 @@ where
         };
 
         if response.code != 0.into() {
-            tracing::error!(
+            tracing::info!(
                 "deliver_tx failed: {:?} - {:?}",
                 response.code,
                 response.info

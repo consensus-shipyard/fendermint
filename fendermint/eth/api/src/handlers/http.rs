@@ -20,7 +20,7 @@ pub async fn handle(
 
     // NOTE: Any authorization can come here.
 
-    tracing::info!("RPC request: {request:?}");
+    tracing::debug!("RPC request: {request:?}");
 
     let id = request.id_ref().map(id_to_string).unwrap_or_default();
     let method = request.method_ref().to_owned();
@@ -37,7 +37,6 @@ pub async fn handle(
         Ok(result) => {
             tracing::debug!(method, id, result, "RPC call success");
 
-            tracing::debug!("RPC response success: {method:?} - {result:?}");
             (StatusCode::OK, response_headers, result)
         }
         Err(err) => {

@@ -82,6 +82,3 @@ tendermint = {version = "0.31", features = ["secp256k1"]}
 tendermint-proto = {version = "0.31"}
 tendermint-rpc = {version = "0.31", features = ["secp256k1", "http-client", "websocket-client"]}
 tower-abci = {version = "0.7"}
-
-[patch.crates-io]
-jsonrpc-v2 = {git = "https://github.com/cryptoAtwill/jsonrpc-v2", branch = "expose_inner_error"}
