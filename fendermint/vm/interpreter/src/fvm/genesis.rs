@@ -195,7 +195,7 @@ mod tests {
             .await
             .expect("failed to create state");
 
-        let interpreter = FvmMessageInterpreter::new();
+        let interpreter = FvmMessageInterpreter::new(1.05, 1.05);
 
         let (state, out) = interpreter
             .init(state, genesis.clone())
