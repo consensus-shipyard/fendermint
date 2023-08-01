@@ -2536,7 +2536,7 @@ dependencies = [
 [[package]]
 name = "fil_actors_evm_shared"
 version = "11.0.0"
-source = "git+https://github.com/filecoin-project/builtin-actors?branch=next#421855a7b968114ac59422c1faeca968482eccf4"
+source = "git+https://github.com/filecoin-project/builtin-actors?tag=v11.0.0#cd9ac2bb0afcca7a59465e57cee6569e69070d7a"
 dependencies = [
  "fil_actors_runtime 11.0.0",
  "fvm_ipld_encoding 0.3.3",
@@ -2587,7 +2587,7 @@ dependencies = [
 [[package]]
 name = "fil_actors_runtime"
 version = "11.0.0"
-source = "git+https://github.com/filecoin-project/builtin-actors?branch=next#421855a7b968114ac59422c1faeca968482eccf4"
+source = "git+https://github.com/filecoin-project/builtin-actors?tag=v11.0.0#cd9ac2bb0afcca7a59465e57cee6569e69070d7a"
 dependencies = [
  "anyhow",
  "byteorder",
