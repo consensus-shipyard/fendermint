@@ -6,7 +6,7 @@
 // Solidity contracts during genesis.
 
 define_id!(GATEWAY { id: 20 });
-define_id!(SUBNETREGISTRY { id: 21 });
+define_id!(SUBNETREGISTRY { id: 65 });
 
 pub mod gateway {
     use ethers::contract::{EthAbiCodec, EthAbiType};
