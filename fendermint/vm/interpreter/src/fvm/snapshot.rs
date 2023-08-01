@@ -57,7 +57,7 @@ where
 
     /// Write the snapshot to file
     pub fn write_to_file(&self, path: impl AsRef<PathBuf>) -> anyhow::Result<()> {
-        let file = File::open(path)?;
+        let file = File::create(path.as_ref())?;
         let mut file = LineWriter::new(file);
 
         self.write_state_tree(&mut file)?;
@@ -79,6 +79,7 @@ where
 
             Ok(())
         };
+
         let mut pairs = Vec::with_capacity(ACTOR_STATE_PER_ROW);
         self.state_tree.for_each(|(addr, state)| {
             if pairs.len() == ACTOR_STATE_PER_ROW {
@@ -88,6 +89,9 @@ where
                 Ok(())
             }
         })?;
+
+        // flush again for left over pairs
+        flush(file, &mut pairs)?;
 
         Ok(())
     }
