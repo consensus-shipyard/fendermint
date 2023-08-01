@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_core::Timestamp;
 use fendermint_vm_genesis::{
-    Account, Actor, ActorMeta, Genesis, Multisig, Power, SignerAddr, Validator, ValidatorKey,
+    ipc, Account, Actor, ActorMeta, Genesis, Multisig, Power, SignerAddr, Validator, ValidatorKey,
 };
 
 use crate::cmd;
@@ -219,7 +219,7 @@ fn into_tendermint(genesis_file: &PathBuf, args: &GenesisIntoTendermintArgs) -> 
 
 fn set_ipc_gateway(genesis_file: &PathBuf, args: &GenesisIpcGatewayArgs) -> anyhow::Result<()> {
     update_genesis(genesis_file, |mut genesis| {
-        let params = fendermint_vm_genesis::ipc::GatewayParams {
+        let gateway_params = ipc::GatewayParams {
             subnet_id: args.subnet_id.clone(),
             bottom_up_check_period: args.bottom_up_check_period,
             top_down_check_period: args.top_down_check_period,
@@ -227,7 +227,17 @@ fn set_ipc_gateway(genesis_file: &PathBuf, args: &GenesisIpcGatewayArgs) -> anyh
             majority_percentage: args.majority_percentage,
         };
 
-        genesis.ipc = Some(params);
+        let ipc_params = match genesis.ipc {
+            Some(mut ipc) => {
+                ipc.gateway = gateway_params;
+                ipc
+            }
+            None => ipc::IpcParams {
+                gateway: gateway_params,
+            },
+        };
+
+        genesis.ipc = Some(ipc_params);
 
         Ok(genesis)
     })

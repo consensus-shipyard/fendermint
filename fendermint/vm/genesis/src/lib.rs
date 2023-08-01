@@ -33,7 +33,7 @@ pub struct Genesis {
     pub accounts: Vec<Actor>,
     /// IPC related configuration, if enabled.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ipc: Option<ipc::GatewayParams>,
+    pub ipc: Option<ipc::IpcParams>,
 }
 
 /// Wrapper around [`Address`] to provide human readable serialization in JSON format.
@@ -122,6 +122,11 @@ pub mod ipc {
     use ipc_sdk::subnet_id::SubnetID;
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
+
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+    pub struct IpcParams {
+        pub gateway: GatewayParams,
+    }
 
     #[serde_as]
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
