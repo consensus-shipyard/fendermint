@@ -7,7 +7,7 @@ use fvm_shared::address::Address;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::fs::File;
-use std::io::Write;
+use std::io::{LineWriter, Write};
 use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
 
@@ -57,7 +57,8 @@ where
 
     /// Write the snapshot to file
     pub fn write_to_file(&self, path: impl AsRef<PathBuf>) -> anyhow::Result<()> {
-        let mut file = fs::File::open(path)?;
+        let file = File::open(path)?;
+        let mut file = LineWriter::new(file);
 
         self.write_state_tree(&mut file)?;
         self.write_block_height(&mut file)?;
@@ -66,13 +67,13 @@ where
         Ok(())
     }
 
-    fn write_state_tree(&self, file: &mut File) -> anyhow::Result<()> {
+    fn write_state_tree(&self, file: &mut impl Write) -> anyhow::Result<()> {
         let flush = |file, pairs| {
             let bytes =
                 serde_json::to_vec(&SnapshotRow::StateTree(fvm_ipld_encoding::to_vec(pairs)?))?;
 
-            // TODO: we should write line by line
             file.write_all(&bytes)?;
+            file.write_all(b"\n")?;
 
             pairs.clear();
 
@@ -91,18 +92,20 @@ where
         Ok(())
     }
 
-    fn write_block_height(&self, _file: &mut File) -> anyhow::Result<()> {
+    fn write_block_height(&self, file: &mut impl Write) -> anyhow::Result<()> {
         let bytes =
             serde_json::to_vec(&SnapshotRow::BlockHeight(self.block_height))?;
         file.write_all(&bytes)?;
+        file.write_all(b"\n")?;
 
         Ok(())
     }
 
-    fn write_state_params(&self, _file: &mut File) -> anyhow::Result<()> {
+    fn write_state_params(&self, file: &mut impl Write) -> anyhow::Result<()> {
         let bytes =
             serde_json::to_vec(&SnapshotRow::StateParams(fvm_ipld_encoding::to_vec(&self.state_params)?))?;
         file.write_all(&bytes)?;
+        file.write_all(b"\n")?;
 
         Ok(())
     }
