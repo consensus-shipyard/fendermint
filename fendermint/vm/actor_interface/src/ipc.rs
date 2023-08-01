@@ -13,8 +13,9 @@ pub mod gateway {
     use ethers::core::types::{H160, U256};
     use fendermint_vm_genesis::ipc::GatewayParams;
     use fendermint_vm_ipc_actors::gateway::SubnetID;
+    use fvm_shared::address::Payload;
 
-    use crate::eam::EthAddress;
+    use crate::eam::{self, EthAddress};
 
     // Constructor parameters aren't generated as part of the Rust bindings.
 
@@ -36,8 +37,15 @@ pub mod gateway {
         fn try_from(value: GatewayParams) -> Result<Self, Self::Error> {
             let mut route = Vec::new();
             for addr in value.subnet_id.children() {
-                let id = addr.id()?;
-                let addr = EthAddress::from_id(id);
+                let addr = match addr.payload() {
+                    Payload::ID(id) => EthAddress::from_id(*id),
+                    Payload::Delegated(da)
+                        if da.namespace() == eam::EAM_ACTOR_ID && da.subaddress().len() == 20 =>
+                    {
+                        EthAddress(da.subaddress().try_into().expect("checked length"))
+                    }
+                    _ => return Err(fvm_shared::address::Error::InvalidPayload),
+                };
                 route.push(H160::from(addr.0))
             }
             Ok(Self {

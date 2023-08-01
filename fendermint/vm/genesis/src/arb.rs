@@ -4,7 +4,7 @@ use crate::{
     ipc, Account, Actor, ActorMeta, Genesis, Multisig, Power, SignerAddr, Validator, ValidatorKey,
 };
 use cid::multihash::MultihashDigest;
-use fendermint_testing::arb::{ArbAddress, ArbTokenAmount};
+use fendermint_testing::arb::ArbTokenAmount;
 use fendermint_vm_core::Timestamp;
 use fvm_shared::{address::Address, version::NetworkVersion};
 use ipc_sdk::subnet_id::SubnetID;
@@ -104,7 +104,15 @@ impl Arbitrary for ArbSubnetID {
         let child_count = usize::arbitrary(g) % 4;
 
         let children = (0..child_count)
-            .map(|_| ArbAddress::arbitrary(g).0)
+            .map(|_| {
+                if bool::arbitrary(g) {
+                    Address::new_id(u64::arbitrary(g))
+                } else {
+                    // Only expectign EAM managed delegated addresses.
+                    let subaddr: [u8; 20] = std::array::from_fn(|_| Arbitrary::arbitrary(g));
+                    Address::new_delegated(10, &subaddr).unwrap()
+                }
+            })
             .collect::<Vec<_>>();
 
         Self(SubnetID::new(u64::arbitrary(g), children))
