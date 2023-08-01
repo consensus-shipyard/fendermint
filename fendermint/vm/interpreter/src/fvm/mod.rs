@@ -12,6 +12,7 @@ mod store;
 
 #[cfg(any(test, feature = "bundle"))]
 pub mod bundle;
+mod snapshot;
 
 pub use check::FvmCheckRet;
 pub use exec::FvmApplyRet;
