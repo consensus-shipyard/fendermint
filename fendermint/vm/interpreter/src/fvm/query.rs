@@ -72,15 +72,11 @@ where
                         // return immediately if there is something is returned,
                         // it means that the message failed to execute so there's
                         // no point on estimating the gas.
-                        println!(">>>>>>>> RETURNING AFTER ESTIMATE GASSED MSG");
                         ret
                     }
                     None => {
                         // perform a gas search for an accurate value
-                        println!(">>>>>>>> RETURNING BEFORE GAS SEARCH: {:?}", &msg.gas_limit);
-                        let ret = self.gas_search(&state, &msg)?;
-                        println!(">>>>>>>> RETURNING AFTER GAS SEARCH: {:?}", &ret.gas_limit);
-                        ret
+                        self.gas_search(&state, &msg)?
                     }
                 };
 
@@ -158,12 +154,10 @@ where
 
         loop {
             if let Some(ret) = self.estimation_call_with_limit(state, msg.clone(), curr_limit)? {
-                println!(">>> RETURNED LIMIT IN GAS_SEARCH: {:?}", ret.gas_limit);
                 return Ok(ret);
             }
 
             curr_limit = (curr_limit as f64 * self.gas_search_step) as u64;
-            println!(">>> CURRENT LIMIT IN GAS_SEARCH: {:?}", curr_limit);
             if curr_limit > BLOCK_GAS_LIMIT {
                 return Ok(GasEstimate {
                     exit_code: ExitCode::OK,
