@@ -5,7 +5,8 @@
 // Here we define stable IDs for them, so we can deploy the
 // Solidity contracts during genesis.
 
-define_id!(GATEWAY { id: 20 });
+define_id!(GATEWAY { id: 64 });
+```
 define_id!(SUBNETREGISTRY { id: 65 });
 
 pub mod gateway {
