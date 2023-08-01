@@ -10,8 +10,11 @@ define_id!(SUBNETREGISTRY { id: 65 });
 
 pub mod gateway {
     use ethers::contract::{EthAbiCodec, EthAbiType};
-    use ethers::core::types::U256;
+    use ethers::core::types::{H160, U256};
+    use fendermint_vm_genesis::ipc::GatewayParams;
     use fendermint_vm_ipc_actors::gateway::SubnetID;
+
+    use crate::eam::EthAddress;
 
     // Constructor parameters aren't generated as part of the Rust bindings.
 
@@ -25,6 +28,30 @@ pub mod gateway {
         pub top_down_check_period: u64,
         pub msg_fee: U256,
         pub majority_percentage: u8,
+    }
+
+    impl TryFrom<GatewayParams> for ConstructorParameters {
+        type Error = fvm_shared::address::Error;
+
+        fn try_from(value: GatewayParams) -> Result<Self, Self::Error> {
+            let mut route = Vec::new();
+            for addr in value.subnet_id.children() {
+                let id = addr.id()?;
+                let addr = EthAddress::from_id(id);
+                route.push(H160::from(addr.0))
+            }
+            Ok(Self {
+                network_name: SubnetID {
+                    root: value.subnet_id.root_id(),
+                    route,
+                },
+                bottom_up_check_period: value.bottom_up_check_period,
+                top_down_check_period: value.top_down_check_period,
+                // XXX: Ignoring any error resulting from larger fee than what fits into U256. This is in genesis after all.
+                msg_fee: U256::from_big_endian(&value.msg_fee.atto().to_bytes_be().1),
+                majority_percentage: value.majority_percentage,
+            })
+        }
     }
 
     #[cfg(test)]

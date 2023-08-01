@@ -87,7 +87,7 @@ impl Arbitrary for Genesis {
             base_fee: ArbTokenAmount::arbitrary(g).0,
             validators: (0..nv).map(|_| Arbitrary::arbitrary(g)).collect(),
             accounts: (0..na).map(|_| Arbitrary::arbitrary(g)).collect(),
-            ipc: if bool::arbitrary(g) || true {
+            ipc: if bool::arbitrary(g) {
                 Some(ipc::IpcParams::arbitrary(g))
             } else {
                 None
