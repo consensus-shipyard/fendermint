@@ -98,7 +98,7 @@ where
 
         // Only allocate IDs if the contracts are deployed.
         if genesis.ipc.is_some() {
-            eth_contract_ids.insert("Gateway", ipc::GATEWAY_ACTOR_ID);
+            eth_contract_ids.insert("GatewayDiamond", ipc::GATEWAY_ACTOR_ID);
             eth_contract_ids.insert("SubnetRegistry", ipc::SUBNETREGISTRY_ACTOR_ID);
         }
 
@@ -245,7 +245,7 @@ where
         if let Some(ipc_params) = genesis.ipc {
             // IPC Gateway actor.
             let gateway_addr = {
-                use fendermint_vm_ipc_actors::gateway::GATEWAY_ABI;
+                use fendermint_vm_ipc_actors::gateway_diamond::GATEWAYDIAMOND_ABI;
                 use ipc::gateway::ConstructorParameters;
 
                 let params = ConstructorParameters::try_from(ipc_params.gateway)
@@ -254,9 +254,9 @@ where
                 deployer.deploy_contract(
                     &mut state,
                     &eth_contract_ids,
-                    "Gateway.sol",
-                    "Gateway",
-                    &GATEWAY_ABI,
+                    "GatewayDiamond.sol",
+                    "GatewayDiamond",
+                    &GATEWAYDIAMOND_ABI,
                     (params,),
                 )?
             };
@@ -388,7 +388,7 @@ fn circ_supply(g: &Genesis) -> TokenAmount {
 mod tests {
     use std::sync::Arc;
 
-    use fendermint_vm_genesis::Genesis;
+    use fendermint_vm_genesis::{ipc::IpcParams, Genesis};
     use fvm::engine::MultiEngine;
     use quickcheck::Arbitrary;
 
@@ -406,7 +406,9 @@ mod tests {
     #[tokio::test]
     async fn load_genesis() {
         let mut g = quickcheck::Gen::new(5);
-        let genesis = Genesis::arbitrary(&mut g);
+        let mut genesis = Genesis::arbitrary(&mut g);
+        genesis.ipc = Some(IpcParams::arbitrary(&mut g));
+
         let bundle = std::fs::read(bundle_path()).expect("failed to read bundle");
         let store = MemoryBlockstore::new();
         let multi_engine = Arc::new(MultiEngine::default());
