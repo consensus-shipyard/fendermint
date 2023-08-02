@@ -16,6 +16,7 @@ use fendermint_vm_actor_interface::{
 };
 use fendermint_vm_core::{chainid, Timestamp};
 use fendermint_vm_genesis::{ActorMeta, Genesis, Validator};
+use fendermint_vm_ipc_actors as ia;
 use fendermint_vm_ipc_actors::i_diamond::FacetCut;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::chainid::ChainID;
@@ -53,11 +54,20 @@ lazy_static! {
                 "GatewayDiamond",
                 EthContract {
                     actor_id: ipc::GATEWAY_ACTOR_ID,
-                    abi: fendermint_vm_ipc_actors::gateway_diamond::GATEWAYDIAMOND_ABI.to_owned(),
+                    abi: ia::gateway_diamond::GATEWAYDIAMOND_ABI.to_owned(),
                     facets: vec![
-                        EthFacet { name: "GatewayGetterFacet", abi: fendermint_vm_ipc_actors::gateway_getter_facet::GATEWAYGETTERFACET_ABI.to_owned() },
-                        EthFacet { name: "GatewayManagerFacet", abi:fendermint_vm_ipc_actors::gateway_manager_facet::GATEWAYMANAGERFACET_ABI.to_owned() },
-                        EthFacet { name: "GatewayRouterFacet", abi: fendermint_vm_ipc_actors::gateway_router_facet::GATEWAYROUTERFACET_ABI.to_owned()},
+                        EthFacet {
+                            name: "GatewayGetterFacet",
+                            abi: ia::gateway_getter_facet::GATEWAYGETTERFACET_ABI.to_owned(),
+                        },
+                        EthFacet {
+                            name: "GatewayManagerFacet",
+                            abi: ia::gateway_manager_facet::GATEWAYMANAGERFACET_ABI.to_owned(),
+                        },
+                        EthFacet {
+                            name: "GatewayRouterFacet",
+                            abi: ia::gateway_router_facet::GATEWAYROUTERFACET_ABI.to_owned(),
+                        },
                     ],
                 },
             ),
@@ -65,8 +75,20 @@ lazy_static! {
                 "SubnetRegistry",
                 EthContract {
                     actor_id: ipc::SUBNETREGISTRY_ACTOR_ID,
-                    abi: fendermint_vm_ipc_actors::subnet_registry::SUBNETREGISTRY_ABI.to_owned(),
-                    facets: vec![],
+                    abi: ia::subnet_registry::SUBNETREGISTRY_ABI.to_owned(),
+                    // The registry incorporates the SubnetActor facets.
+                    facets: vec![
+                        EthFacet {
+                            name: "SubnetActorGetterFacet",
+                            abi: ia::subnet_actor_getter_facet::SUBNETACTORGETTERFACET_ABI
+                                .to_owned(),
+                        },
+                        EthFacet {
+                            name: "SubnetActorManagerFacet",
+                            abi: ia::subnet_actor_manager_facet::SUBNETACTORMANAGERFACET_ABI
+                                .to_owned(),
+                        },
+                    ],
                 },
             ),
         ]
@@ -146,13 +168,13 @@ where
 
         // Pre-defined IDs for top-level Ethereum contracts.
         let mut eth_builtin_ids = HashSet::new();
-        let mut eth_top_levels = Vec::new();
+        let mut eth_root_contracts = Vec::new();
 
         // Only allocate IDs if the contracts are deployed.
         if genesis.ipc.is_some() {
             eth_builtin_ids.extend(ETH_CONTRACTS.values().map(|c| c.actor_id));
-            eth_top_levels.extend(ETH_CONTRACTS.keys());
-            eth_top_levels.extend(
+            eth_root_contracts.extend(ETH_CONTRACTS.keys());
+            eth_root_contracts.extend(
                 ETH_CONTRACTS
                     .values()
                     .flat_map(|c| c.facets.iter().map(|f| f.name)),
@@ -160,15 +182,18 @@ where
         }
 
         // Collect dependencies of the main IPC actors.
-        let eth_libs = self
+        let mut eth_libs = self
             .contracts
-            .library_dependencies(
-                &eth_top_levels
+            .dependencies(
+                &eth_root_contracts
                     .iter()
                     .map(|n| (contract_src(n), *n))
                     .collect::<Vec<_>>(),
             )
             .context("failed to collect EVM contract dependencies")?;
+
+        // Only keep library dependencies.
+        eth_libs.retain(|(_, d)| !ETH_CONTRACTS.contains_key(d.as_str()));
 
         // STAGE 1: First we initialize native built-in actors.
 
@@ -316,7 +341,26 @@ where
 
             // IPC SubnetRegistry actory.
             {
-                deployer.deploy_contract(&mut state, "SubnetRegistry", (gateway_addr,))?;
+                let mut facets = deployer
+                    .facets("SubnetRegistry")
+                    .context("failed to collect registry facets")?;
+
+                let manager_facet = facets.remove(1);
+                let getter_facet = facets.remove(0);
+
+                assert!(facets.is_empty(), "SubnetRegistry has 2 facets");
+
+                deployer.deploy_contract(
+                    &mut state,
+                    "SubnetRegistry",
+                    (
+                        gateway_addr,
+                        getter_facet.facet_address,
+                        manager_facet.facet_address,
+                        getter_facet.function_selectors,
+                        manager_facet.function_selectors,
+                    ),
+                )?;
             };
         }
 
@@ -510,6 +554,7 @@ mod tests {
             .expect("failed to create actors");
 
         let _state_root = state.commit().expect("failed to commit");
+
         assert_eq!(out.validators, genesis.validators);
     }
 }
