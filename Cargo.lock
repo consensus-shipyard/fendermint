@@ -2468,6 +2468,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
+ "lazy_static",
  "num-traits",
  "quickcheck 1.0.3",
  "serde",
