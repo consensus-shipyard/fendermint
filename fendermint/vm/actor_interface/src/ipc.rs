@@ -14,6 +14,7 @@ pub mod gateway {
     use fendermint_vm_genesis::ipc::GatewayParams;
     use fendermint_vm_ipc_actors::gateway::SubnetID;
     use fvm_shared::address::Payload;
+    use fvm_shared::econ::TokenAmount;
 
     use crate::eam::{self, EthAddress};
 
@@ -55,22 +56,29 @@ pub mod gateway {
                 },
                 bottom_up_check_period: value.bottom_up_check_period,
                 top_down_check_period: value.top_down_check_period,
-                // XXX: Ignoring any error resulting from larger fee than what fits into U256. This is in genesis after all.
-                msg_fee: U256::from_big_endian(&value.msg_fee.atto().to_bytes_be().1),
+                msg_fee: tokens_to_u256(value.msg_fee),
                 majority_percentage: value.majority_percentage,
             })
         }
     }
 
+    fn tokens_to_u256(value: TokenAmount) -> U256 {
+        // XXX: Ignoring any error resulting from larger fee than what fits into U256. This is in genesis after all.
+        U256::from_big_endian(&value.atto().to_bytes_be().1)
+    }
+
     #[cfg(test)]
     mod tests {
+        use std::str::FromStr;
+
         use ethers::core::types::U256;
         use ethers_core::abi::Tokenize;
         use fendermint_vm_ipc_actors::gateway::SubnetID;
+        use fvm_shared::{bigint::BigInt, econ::TokenAmount};
 
         use crate::ipc::tests::{check_param_types, constructor_param_types};
 
-        use super::ConstructorParameters;
+        use super::{tokens_to_u256, ConstructorParameters};
 
         #[test]
         fn tokenize_constructor_params() {
@@ -101,6 +109,15 @@ pub mod gateway {
 
             cons.encode_input(vec![], &tokens)
                 .expect("should encode constructor input");
+        }
+
+        #[test]
+        #[should_panic]
+        fn max_fee_exceeded() {
+            let mut value = BigInt::from_str(&U256::MAX.to_string()).unwrap();
+            value += 1;
+            let value = TokenAmount::from_atto(value);
+            let _ = tokens_to_u256(value);
         }
     }
 }
