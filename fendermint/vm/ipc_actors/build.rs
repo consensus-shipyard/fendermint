@@ -31,6 +31,7 @@ fn main() {
     // With the diamond pattern, there is a contract that holds state, and there are these facets which have the code,
     // so we need bindings for the facets, but well (I think) use the same address with all of them.
     for contract_name in [
+        "IDiamond",
         "GatewayDiamond",
         "GatewayManagerFacet",
         "GatewayGetterFacet",
