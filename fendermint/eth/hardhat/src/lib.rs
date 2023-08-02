@@ -107,14 +107,10 @@ impl Hardhat {
     ) -> anyhow::Result<Vec<ContractSourceAndName>> {
         let mut deps: DependencyTree<ContractSourceAndName> = Default::default();
 
-        let mut queue: VecDeque<ContractSourceAndName> = VecDeque::new();
-
-        let root_contracts = root_contracts
+        let mut queue = root_contracts
             .iter()
             .map(|(s, c)| (PathBuf::from(s.as_ref()), c.to_string()))
-            .collect::<Vec<_>>();
-
-        queue.extend(root_contracts.clone());
+            .collect::<VecDeque<_>>();
 
         // Construct dependency tree by recursive traversal.
         while let Some(sc) = queue.pop_front() {
@@ -352,7 +348,7 @@ mod tests {
             .expect("failed to compute dependencies");
 
         // For the sake of testing, let's remove top libraries from the dependency list.
-        lib_deps.retain(|(_, d)| root_contracts.iter().find(|(_, c)| c == d).is_none());
+        lib_deps.retain(|(_, d)| !root_contracts.iter().any(|(_, c)| c == d));
 
         eprintln!("IPC dependencies: {lib_deps:?}");
 
