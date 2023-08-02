@@ -125,7 +125,7 @@ pub mod gateway {
 
     #[cfg(test)]
     mod tests {
-        use ethers::core::types::U256;
+        use ethers::core::types::{Selector, U256};
         use ethers_core::abi::Tokenize;
         use fvm_shared::{bigint::BigInt, econ::TokenAmount};
         use std::str::FromStr;
@@ -149,7 +149,7 @@ pub mod gateway {
 
             // It looks like if we pass just the record then it will be passed as 5 tokens,
             // but the constructor only expects one parameter, and it has to be a tuple.
-            let cp = (cp,);
+            let cp = (Vec::<Selector>::new(), cp);
 
             let tokens = cp.into_tokens();
 
