@@ -32,10 +32,16 @@ fvm_ipld_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 fvm_ipld_car = { workspace = true }
 
+futures-core = "0.3.28"
+futures-util = "0.3.28"
+libipld = { version = "0.14", default-features = false, features = ["dag-cbor"] }
+tokio = { workspace = true }
+tokio-stream = "0.1.14"
+pin-project = "1.1.2"
+
 [dev-dependencies]
 quickcheck = { workspace = true }
-tokio = { workspace = true }
-
+fvm = { version = "~3.3", default-features = false, features=["arb", "testing"] }
 fendermint_vm_genesis = { path = "../genesis", features = ["arb"] }
 
 [features]
