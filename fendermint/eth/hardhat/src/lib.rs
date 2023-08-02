@@ -289,8 +289,8 @@ mod tests {
         Hardhat::new(contracts_path())
     }
 
-    // Based on the `scripts/deploy-libraries.ts` in `ipc-solidity-actors`.
-    const GATEWAY_DEPS: [&str; 7] = [
+    // These are all the libraries based on the `scripts/deploy-libraries.ts` in `ipc-solidity-actors`.
+    const IPC_DEPS: [&str; 7] = [
         "AccountHelper",
         "CheckpointHelper",
         "EpochVoteSubmissionHelper",
@@ -306,12 +306,13 @@ mod tests {
 
         let mut libraries = HashMap::new();
 
-        for lib in GATEWAY_DEPS {
+        for lib in IPC_DEPS {
             libraries.insert(lib.to_owned(), et::Address::default());
         }
 
+        // This one requires a subset of above libraries.
         let _bytecode = hardhat
-            .bytecode("Gateway.sol", "Gateway", &libraries)
+            .bytecode("GatewayManagerFacet.sol", "GatewayManagerFacet", &libraries)
             .unwrap();
     }
 
@@ -319,7 +320,8 @@ mod tests {
     fn bytecode_missing_link() {
         let hardhat = test_hardhat();
 
-        let result = hardhat.bytecode("Gateway.sol", "Gateway", &Default::default());
+        // Not giving any dependency should result in a failure.
+        let result = hardhat.bytecode("GatewayDiamond.sol", "GatewayDiamond", &Default::default());
 
         assert!(result.is_err());
         assert!(result
@@ -332,16 +334,30 @@ mod tests {
     fn library_dependencies() {
         let hardhat = test_hardhat();
 
+        // TODO: How do we deploy SubnetActor and its facets now?
+        let top_contracts: Vec<(String, &str)> = vec![
+            "GatewayDiamond",
+            "GatewayManagerFacet",
+            "GatewayGetterFacet",
+            "GatewayRouterFacet",
+            "SubnetRegistry",
+        ]
+        .into_iter()
+        .map(|c| (format!("{c}.sol"), c))
+        .collect();
+
+        // Name our top level contracts and gather all required libraries.
         let lib_deps = hardhat
-            .library_dependencies(&[
-                ("Gateway.sol", "Gateway"),
-                ("SubnetRegistry.sol", "SubnetRegistry"),
-            ])
+            .library_dependencies(&top_contracts)
             .expect("failed to compute dependencies");
 
-        eprintln!("Gateway dependencies: {lib_deps:?}");
+        eprintln!("IPC dependencies: {lib_deps:?}");
 
-        assert_eq!(lib_deps.len(), GATEWAY_DEPS.len());
+        assert_eq!(
+            lib_deps.len(),
+            IPC_DEPS.len(),
+            "should discover the same dependencies as expected"
+        );
 
         let mut libs = HashMap::default();
 
@@ -353,13 +369,15 @@ mod tests {
             libs.insert(hardhat.fqn(&s, &c), et::Address::default());
         }
 
-        hardhat
-            .bytecode("Gateway.sol", "Gateway", &libs)
-            .expect("failed to produce contract bytecode in topo order");
+        for (src, name) in top_contracts {
+            hardhat
+                .bytecode(src, name, &libs)
+                .expect("failed to produce contract bytecode in topo order");
+        }
     }
 
     #[test]
-    fn sorting() {
+    fn topo_sorting() {
         let mut tree: DependencyTree<u8> = Default::default();
 
         for (k, ds) in [
