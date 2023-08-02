@@ -7,99 +7,28 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
-use ethers::abi::{Abi, Tokenize};
+use ethers::abi::Tokenize;
 use ethers::core::types as et;
 use fendermint_eth_hardhat::{Hardhat, FQN};
+use fendermint_vm_actor_interface::diamond::{EthContract, EthContractMap};
 use fendermint_vm_actor_interface::eam::EthAddress;
+use fendermint_vm_actor_interface::ipc::IPC_CONTRACTS;
 use fendermint_vm_actor_interface::{
     account, burntfunds, cron, eam, init, ipc, reward, system, EMPTY_ARR,
 };
 use fendermint_vm_core::{chainid, Timestamp};
 use fendermint_vm_genesis::{ActorMeta, Genesis, Validator};
-use fendermint_vm_ipc_actors as ia;
 use fendermint_vm_ipc_actors::i_diamond::FacetCut;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::ActorID;
-use lazy_static::lazy_static;
 use num_traits::Zero;
 
 use crate::GenesisInterpreter;
 
 use super::state::FvmGenesisState;
 use super::FvmMessageInterpreter;
-
-struct EthFacet {
-    pub name: &'static str,
-    pub abi: Abi,
-}
-
-/// Top level Ethereum contract with a pre-determined ID.
-struct EthContract {
-    /// Pre-determined ID for the contract.
-    pub actor_id: ActorID,
-    pub abi: Abi,
-    /// List of facets if the contract is using the diamond pattern.
-    pub facets: Vec<EthFacet>,
-}
-
-type EthContractMap = HashMap<&'static str, EthContract>;
-
-lazy_static! {
-    static ref ETH_CONTRACTS: EthContractMap = {
-        [
-            (
-                "GatewayDiamond",
-                EthContract {
-                    actor_id: ipc::GATEWAY_ACTOR_ID,
-                    abi: ia::gateway_diamond::GATEWAYDIAMOND_ABI.to_owned(),
-                    facets: vec![
-                        EthFacet {
-                            name: "GatewayGetterFacet",
-                            abi: ia::gateway_getter_facet::GATEWAYGETTERFACET_ABI.to_owned(),
-                        },
-                        EthFacet {
-                            name: "GatewayManagerFacet",
-                            abi: ia::gateway_manager_facet::GATEWAYMANAGERFACET_ABI.to_owned(),
-                        },
-                        EthFacet {
-                            name: "GatewayRouterFacet",
-                            abi: ia::gateway_router_facet::GATEWAYROUTERFACET_ABI.to_owned(),
-                        },
-                    ],
-                },
-            ),
-            (
-                "SubnetRegistry",
-                EthContract {
-                    actor_id: ipc::SUBNETREGISTRY_ACTOR_ID,
-                    abi: ia::subnet_registry::SUBNETREGISTRY_ABI.to_owned(),
-                    // The registry incorporates the SubnetActor facets.
-                    facets: vec![
-                        EthFacet {
-                            name: "SubnetActorGetterFacet",
-                            abi: ia::subnet_actor_getter_facet::SUBNETACTORGETTERFACET_ABI
-                                .to_owned(),
-                        },
-                        EthFacet {
-                            name: "SubnetActorManagerFacet",
-                            abi: ia::subnet_actor_manager_facet::SUBNETACTORMANAGERFACET_ABI
-                                .to_owned(),
-                        },
-                    ],
-                },
-            ),
-        ]
-        .into_iter()
-        .collect()
-    };
-}
-
-fn contract_src(name: &str) -> PathBuf {
-    PathBuf::from(format!("{name}.sol"))
-}
 
 pub struct FvmGenesisOutput {
     pub chain_id: ChainID,
@@ -169,18 +98,20 @@ where
         // Pre-defined IDs for top-level Ethereum contracts.
         let mut eth_builtin_ids = HashSet::new();
         let mut eth_root_contracts = Vec::new();
+        let mut eth_contracts = EthContractMap::default();
 
         // Only allocate IDs if the contracts are deployed.
         if genesis.ipc.is_some() {
-            eth_builtin_ids.extend(ETH_CONTRACTS.values().map(|c| c.actor_id));
-            eth_root_contracts.extend(ETH_CONTRACTS.keys());
-            eth_root_contracts.extend(
-                ETH_CONTRACTS
-                    .values()
-                    .flat_map(|c| c.facets.iter().map(|f| f.name)),
-            );
+            eth_contracts.extend(IPC_CONTRACTS.clone().into_iter());
         }
 
+        eth_builtin_ids.extend(eth_contracts.values().map(|c| c.actor_id));
+        eth_root_contracts.extend(eth_contracts.keys());
+        eth_root_contracts.extend(
+            eth_contracts
+                .values()
+                .flat_map(|c| c.facets.iter().map(|f| f.name)),
+        );
         // Collect dependencies of the main IPC actors.
         let mut eth_libs = self
             .contracts
@@ -192,8 +123,8 @@ where
             )
             .context("failed to collect EVM contract dependencies")?;
 
-        // Only keep library dependencies.
-        eth_libs.retain(|(_, d)| !ETH_CONTRACTS.contains_key(d.as_str()));
+        // Only keep library dependencies, not contracts with constructors.
+        eth_libs.retain(|(_, d)| !eth_contracts.contains_key(d.as_str()));
 
         // STAGE 1: First we initialize native built-in actors.
 
@@ -317,7 +248,7 @@ where
             )
             .context("failed to init exec state")?;
 
-        let mut deployer = ContractDeployer::<DB>::new(&self.contracts, &ETH_CONTRACTS);
+        let mut deployer = ContractDeployer::<DB>::new(&self.contracts, &eth_contracts);
 
         // Deploy Ethereum libraries.
         for (lib_src, lib_name) in eth_libs {
@@ -366,6 +297,10 @@ where
 
         Ok((state, out))
     }
+}
+
+fn contract_src(name: &str) -> PathBuf {
+    PathBuf::from(format!("{name}.sol"))
 }
 
 struct ContractDeployer<'a, DB> {

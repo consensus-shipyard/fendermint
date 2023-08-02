@@ -5,10 +5,64 @@
 // Here we define stable IDs for them, so we can deploy the
 // Solidity contracts during genesis.
 
+use fendermint_vm_ipc_actors as ia;
+pub use fendermint_vm_ipc_actors::gateway_manager_facet::SubnetID;
+use lazy_static::lazy_static;
+
+use crate::diamond::{EthContract, EthContractMap, EthFacet};
+
 define_id!(GATEWAY { id: 64 });
 define_id!(SUBNETREGISTRY { id: 65 });
 
-pub use fendermint_vm_ipc_actors::gateway_manager_facet::SubnetID;
+lazy_static! {
+    pub static ref IPC_CONTRACTS: EthContractMap = {
+        [
+            (
+                "GatewayDiamond",
+                EthContract {
+                    actor_id: GATEWAY_ACTOR_ID,
+                    abi: ia::gateway_diamond::GATEWAYDIAMOND_ABI.to_owned(),
+                    facets: vec![
+                        EthFacet {
+                            name: "GatewayGetterFacet",
+                            abi: ia::gateway_getter_facet::GATEWAYGETTERFACET_ABI.to_owned(),
+                        },
+                        EthFacet {
+                            name: "GatewayManagerFacet",
+                            abi: ia::gateway_manager_facet::GATEWAYMANAGERFACET_ABI.to_owned(),
+                        },
+                        EthFacet {
+                            name: "GatewayRouterFacet",
+                            abi: ia::gateway_router_facet::GATEWAYROUTERFACET_ABI.to_owned(),
+                        },
+                    ],
+                },
+            ),
+            (
+                "SubnetRegistry",
+                EthContract {
+                    actor_id: SUBNETREGISTRY_ACTOR_ID,
+                    abi: ia::subnet_registry::SUBNETREGISTRY_ABI.to_owned(),
+                    // The registry incorporates the SubnetActor facets.
+                    facets: vec![
+                        EthFacet {
+                            name: "SubnetActorGetterFacet",
+                            abi: ia::subnet_actor_getter_facet::SUBNETACTORGETTERFACET_ABI
+                                .to_owned(),
+                        },
+                        EthFacet {
+                            name: "SubnetActorManagerFacet",
+                            abi: ia::subnet_actor_manager_facet::SUBNETACTORMANAGERFACET_ABI
+                                .to_owned(),
+                        },
+                    ],
+                },
+            ),
+        ]
+        .into_iter()
+        .collect()
+    };
+}
 
 pub mod gateway {
     use super::SubnetID;
