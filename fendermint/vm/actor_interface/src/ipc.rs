@@ -8,11 +8,13 @@
 define_id!(GATEWAY { id: 64 });
 define_id!(SUBNETREGISTRY { id: 65 });
 
+pub use fendermint_vm_ipc_actors::gateway_manager_facet::SubnetID;
+
 pub mod gateway {
+    use super::SubnetID;
     use ethers::contract::{EthAbiCodec, EthAbiType};
     use ethers::core::types::{H160, U256};
     use fendermint_vm_genesis::ipc::GatewayParams;
-    use fendermint_vm_ipc_actors::gateway::SubnetID;
     use fvm_shared::address::Payload;
 
     use crate::eam::{self, EthAddress};
@@ -64,9 +66,9 @@ pub mod gateway {
 
     #[cfg(test)]
     mod tests {
+        use super::SubnetID;
         use ethers::core::types::U256;
         use ethers_core::abi::Tokenize;
-        use fendermint_vm_ipc_actors::gateway::SubnetID;
 
         use crate::ipc::tests::{check_param_types, constructor_param_types};
 
@@ -91,7 +93,7 @@ pub mod gateway {
 
             let tokens = cp.into_tokens();
 
-            let cons = fendermint_vm_ipc_actors::gateway::GATEWAY_ABI
+            let cons = fendermint_vm_ipc_actors::gateway_diamond::GATEWAYDIAMOND_ABI
                 .constructor()
                 .expect("Gateway has a constructor");
 
@@ -104,8 +106,6 @@ pub mod gateway {
         }
     }
 }
-
-pub mod subnet_registry {}
 
 #[cfg(test)]
 mod tests {
