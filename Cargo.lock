@@ -3724,7 +3724,7 @@ dependencies = [
 [[package]]
 name = "ipc-sdk"
 version = "0.0.1"
-source = "git+https://github.com/consensus-shipyard/ipc-actors.git?branch=fm-162-fil-actor-feature#9fd553aabfcc70e65a14aff242a4f5d692522340"
+source = "git+https://github.com/consensus-shipyard/ipc-actors.git?branch=main#a4e7c2c95912d094fd3ebbb7602fe742cbfae793"
 dependencies = [
  "anyhow",
  "fnv",
