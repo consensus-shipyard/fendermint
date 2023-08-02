@@ -520,12 +520,12 @@ where
 /// Executes a new message call immediately without creating a transaction on the block chain.
 pub async fn call<C>(
     data: JsonRpcData<C>,
-    Params((tx, block_id)): Params<(TypedTransaction, et::BlockId)>,
+    Params((tx, block_id)): Params<(TypedTransactionCompat, et::BlockId)>,
 ) -> JsonRpcResult<et::Bytes>
 where
     C: Client + Sync + Send,
 {
-    let msg = to_fvm_message(tx, false)?;
+    let msg = to_fvm_message(tx.into(), true)?;
     let header = data.header_by_id(block_id).await?;
     let response = data.client.call(msg, Some(header.height)).await?;
     let deliver_tx = response.value;
@@ -915,6 +915,8 @@ pub async fn unsubscribe<C>(
 }
 
 use params::{EstimateGasParams, SubscribeParams};
+
+use self::params::TypedTransactionCompat;
 
 mod params {
     use ethers_core::types::transaction::eip2718::TypedTransaction;
