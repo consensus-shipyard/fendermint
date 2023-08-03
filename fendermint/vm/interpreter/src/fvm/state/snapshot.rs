@@ -17,7 +17,7 @@ use std::collections::VecDeque;
 use std::path::Path;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use tokio::io::AsyncWrite;
+use tokio_util::compat::TokioAsyncWriteCompatExt;
 
 pub type BlockHeight = u64;
 
@@ -109,7 +109,8 @@ where
         state_params: FvmStateParams,
         block_height: BlockHeight,
     ) -> anyhow::Result<Self> {
-        let state_tree = StateTree::new_from_root(ReadOnlyBlockstore::new(store), &state_params.state_root)?;
+        let state_tree =
+            StateTree::new_from_root(ReadOnlyBlockstore::new(store), &state_params.state_root)?;
         let state_tree_root = state_params.state_root;
 
         let block_state_params = BlockStateParams {
@@ -143,7 +144,7 @@ where
         let write_task = tokio::spawn(async move {
             let mut streamer =
                 StateTreeStreamer::new(self.state_tree_root, self.state_tree.into_store());
-            let mut write = AsyncWriteWrapper { w: write };
+            let mut write = write.compat_write();
 
             car.write_stream_async(&mut Pin::new(&mut write), &mut streamer)
                 .await
@@ -228,34 +229,6 @@ fn walk_ipld_cids(ipld: Ipld, dfs: &mut VecDeque<Cid>) {
         }
         Ipld::Link(cid) => dfs.push_back(cid),
         _ => {}
-    }
-}
-
-/// We need this wrapper to be compatible with the current version of CarHeader.
-#[pin_project::pin_project]
-struct AsyncWriteWrapper<W: AsyncWrite> {
-    #[pin]
-    w: W,
-}
-
-impl<W: AsyncWrite> futures_util::AsyncWrite for AsyncWriteWrapper<W> {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<std::io::Result<usize>> {
-        let this = self.project();
-        this.w.poll_write(cx, buf)
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        let this = self.project();
-        this.w.poll_flush(cx)
-    }
-
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        let this = self.project();
-        this.w.poll_shutdown(cx)
     }
 }
 
