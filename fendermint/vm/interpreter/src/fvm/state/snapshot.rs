@@ -10,16 +10,18 @@ use fvm::state_tree::StateTree;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_car::CarHeader;
 use fvm_ipld_encoding::{from_slice, DAG_CBOR};
+
 use libipld::Ipld;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-use std::path::PathBuf;
+use std::path::Path;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::io::AsyncWrite;
 
 pub type BlockHeight = u64;
 
+/// Taking snapshot of the current blockchain state
 pub enum Snapshot<DB> {
     V1(V1Snapshot<DB>),
 }
@@ -61,13 +63,13 @@ where
     }
 
     /// Read the snapshot from file
-    pub async fn read_from_file(_path: impl Into<PathBuf>) -> anyhow::Result<Self> {
+    pub async fn read_car(_path: impl AsRef<Path>) -> anyhow::Result<Self> {
         todo!()
     }
 
     /// Write the snapshot to car file
-    pub async fn write_car(self, path: impl AsRef<PathBuf>) -> anyhow::Result<()> {
-        let file = tokio::fs::File::create(path.as_ref()).await?;
+    pub async fn write_car(self, path: impl AsRef<Path>) -> anyhow::Result<()> {
+        let file = tokio::fs::File::create(path).await?;
 
         // derive the car header roots
         let car = CarHeader::new(self.car_header_roots()?, self.version());
@@ -268,6 +270,10 @@ mod tests {
     use fvm_shared::state::StateTreeVersion;
     use quickcheck::{Arbitrary, Gen};
     use std::collections::VecDeque;
+    use fvm_shared::version::NetworkVersion;
+    use fendermint_vm_core::Timestamp;
+    use crate::fvm::state::{FvmStateParams, Snapshot};
+    use crate::fvm::store::ReadOnlyBlockstore;
 
     fn prepare_state_tree(items: u64) -> (Cid, StateTree<MemoryBlockstore>) {
         let store = MemoryBlockstore::new();
@@ -322,5 +328,28 @@ mod tests {
 
         assert_tree2_contains_tree1(&old_state_tree, &new_state_tree);
         assert_tree2_contains_tree1(&new_state_tree, &old_state_tree);
+    }
+
+
+    #[tokio::test]
+    async fn test_write_to_car() {
+        let (state_root, state_tree) = prepare_state_tree(100);
+        let state_params = FvmStateParams{
+            state_root,
+            timestamp: Timestamp(100),
+            network_version: NetworkVersion::V1,
+            base_fee: Default::default(),
+            circ_supply: Default::default(),
+            chain_id: 1024,
+        };
+        let block_height = 2048;
+
+        let bs = state_tree.into_store();
+        let db = ReadOnlyBlockstore::new(bs);
+        let snapshot = Snapshot::new(db, state_params, block_height).unwrap();
+
+        let tmp_file = tempfile::NamedTempFile::new().unwrap();
+        let r = snapshot.write_car(tmp_file.path()).await;
+        assert!(r.is_ok());
     }
 }

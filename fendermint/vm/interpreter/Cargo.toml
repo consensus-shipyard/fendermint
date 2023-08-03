@@ -43,6 +43,7 @@ pin-project = "1.1.2"
 quickcheck = { workspace = true }
 fvm = { version = "~3.3", default-features = false, features=["arb", "testing"] }
 fendermint_vm_genesis = { path = "../genesis", features = ["arb"] }
+tempfile = "3.7.0"
 
 [features]
 default = []
