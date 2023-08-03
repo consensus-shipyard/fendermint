@@ -22,10 +22,6 @@ pub use query::FvmQueryRet;
 
 pub type FvmMessage = fvm_shared::message::Message;
 
-/// Default gas overestimation and search step
-/// default value
-pub const DEFAULT_GAS_RATE: f64 = 1.25;
-
 /// Interpreter working on already verified unsigned messages.
 #[derive(Clone)]
 pub struct FvmMessageInterpreter<DB> {
