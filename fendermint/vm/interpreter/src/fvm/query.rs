@@ -129,19 +129,18 @@ where
             // the case but after a lot of testing, setting this value to zero rejects the transaction)
             msg.gas_premium = TokenAmount::from_nano(BigInt::from(1));
         }
-        if msg.gas_fee_cap.is_zero() {
-            // Compute the fee cap from gas premium and applying an additional overestimation.
-            let overestimated_limit = (msg.gas_limit as f64 * self.gas_overestimation_rate) as u64;
-            msg.gas_fee_cap = std::cmp::min(
-                TokenAmount::from_atto(BigInt::from(overestimated_limit)) + &msg.gas_premium,
-                TokenAmount::from_atto(BLOCK_GAS_LIMIT),
-            );
 
+        // Same for the gas_fee_cap, not setting the fee cap leads to the message
+        // being sent after the estimation to fail.
+        if msg.gas_fee_cap.is_zero() {
             // TODO: In Lotus historical values of the base fee and a more accurate overestimation is performed
             // for the fee cap. If we issues with messages going through let's consider the historical analysis.
+            // For now we are disregarding the base_fee so I don't think this is needed here.
+            // Filecoin clamps the gas premium at GasFeeCap - BaseFee, if lower than the
+            // specified premium. Returns 0 if GasFeeCap is less than BaseFee.
+            // see https://spec.filecoin.io/#section-systems.filecoin_vm.message.message-semantic-validation
+            msg.gas_fee_cap = msg.gas_premium.clone();
         }
-        // TODO: Set an optimal `gas_premium` and `gas_fee_cap` if they are not set
-        // according to the current base_fee?
 
         Ok(None)
     }

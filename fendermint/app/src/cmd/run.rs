@@ -6,9 +6,7 @@ use fendermint_abci::ApplicationService;
 use fendermint_app::{App, AppStore};
 use fendermint_rocksdb::{blockstore::NamespaceBlockstore, namespaces, RocksDb, RocksDbConfig};
 use fendermint_vm_interpreter::{
-    bytes::BytesMessageInterpreter,
-    chain::ChainMessageInterpreter,
-    fvm::{FvmMessageInterpreter, DEFAULT_GAS_RATE},
+    bytes::BytesMessageInterpreter, chain::ChainMessageInterpreter, fvm::FvmMessageInterpreter,
     signed::SignedMessageInterpreter,
 };
 use tracing::info;
@@ -22,8 +20,10 @@ cmd! {
 }
 
 async fn run(settings: Settings) -> anyhow::Result<()> {
-    let interpreter =
-        FvmMessageInterpreter::<NamespaceBlockstore>::new(DEFAULT_GAS_RATE, DEFAULT_GAS_RATE);
+    let interpreter = FvmMessageInterpreter::<NamespaceBlockstore>::new(
+        settings.fvm.gas_overestimation_rate,
+        settings.fvm.gas_search_step,
+    );
     let interpreter = SignedMessageInterpreter::new(interpreter);
     let interpreter = ChainMessageInterpreter::new(interpreter);
     let interpreter = BytesMessageInterpreter::new(interpreter);
