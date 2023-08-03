@@ -53,7 +53,7 @@ where
                 let method_num = msg.method_num;
                 let gas_limit = msg.gas_limit;
 
-                let apply_ret = state.call(*msg)?;
+                let apply_ret = state.call(*msg, true)?;
 
                 let ret = FvmApplyRet {
                     apply_ret,
@@ -121,7 +121,7 @@ where
 
         // estimate the gas limit and assign it to the message
         // do not reuse the cache
-        let ret = state.call_with_cache(msg.clone(), false)?;
+        let ret = state.call(msg.clone(), false)?;
         if !ret.msg_receipt.exit_code.is_success() {
             // if the message fail we can't estimate the gas.
             return Ok(Some(GasEstimate {
@@ -194,7 +194,7 @@ where
         // set message nonce to zero so the right one is picked up
         msg.sequence = 0;
 
-        let apply_ret = state.call_with_cache(msg, false)?;
+        let apply_ret = state.call(msg, false)?;
 
         let ret = GasEstimate {
             exit_code: apply_ret.msg_receipt.exit_code,
