@@ -359,10 +359,14 @@ mod tests {
         {
             Snapshot::V1(s) => s,
         };
+
         assert_eq!(state_root, loaded_snapshot.state_tree_root);
         assert_tree2_contains_tree1(
             &StateTree::new_from_root(bs, &state_root).unwrap(),
             &loaded_snapshot.state_tree,
         );
+
+        let state_params_bytes = fvm_ipld_encoding::to_vec(&(state_params, block_height)).unwrap();
+        assert_eq!(state_params_bytes, loaded_snapshot.block_state_params_bytes);
     }
 }
