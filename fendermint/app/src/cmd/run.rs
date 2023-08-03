@@ -20,7 +20,10 @@ cmd! {
 }
 
 async fn run(settings: Settings) -> anyhow::Result<()> {
-    let interpreter = FvmMessageInterpreter::<NamespaceBlockstore>::new();
+    let interpreter = FvmMessageInterpreter::<NamespaceBlockstore>::new(
+        settings.fvm.gas_overestimation_rate,
+        settings.fvm.gas_search_step,
+    );
     let interpreter = SignedMessageInterpreter::new(interpreter);
     let interpreter = ChainMessageInterpreter::new(interpreter);
     let interpreter = BytesMessageInterpreter::new(interpreter);
