@@ -40,7 +40,7 @@ where
     DB: Blockstore + Clone + 'static + Send,
 {
     pub fn new(
-        store: ReadOnlyBlockstore<DB>,
+        store: DB,
         state_params: FvmStateParams,
         block_height: BlockHeight,
     ) -> anyhow::Result<Self> {
@@ -105,11 +105,11 @@ where
 {
     /// Creates a new V2Snapshot struct. Caller ensure store
     pub fn new(
-        store: ReadOnlyBlockstore<DB>,
+        store: DB,
         state_params: FvmStateParams,
         block_height: BlockHeight,
     ) -> anyhow::Result<Self> {
-        let state_tree = StateTree::new_from_root(store, &state_params.state_root)?;
+        let state_tree = StateTree::new_from_root(ReadOnlyBlockstore::new(store), &state_params.state_root)?;
         let state_tree_root = state_params.state_root;
 
         let block_state_params = BlockStateParams {
