@@ -76,7 +76,7 @@ where
                     }
                     None => {
                         // perform a gas search for an accurate value
-                        self.gas_search(&state, &*msg)?
+                        self.gas_search(&state, &msg)?
                     }
                 };
 
@@ -101,16 +101,6 @@ impl<DB> FvmMessageInterpreter<DB>
 where
     DB: Blockstore + 'static + Send + Sync + Clone,
 {
-    /// Overestimation rate applied to gas to ensure that the
-    /// message goes through in the gas estimation.
-    const GAS_OVERESTIMATION_RATE: f64 = 1.25;
-    /// Default gas premium value. Inferred through a quick search through
-    /// InvokeEVM messages in filfox. The default value is only used if
-    /// the user hasn't specified a gas premium.
-    const DEFAULT_GAS_PREMIUM: u64 = 20000;
-    /// Gas search step increase used to find the optimal gas limit.
-    const GAS_SEARCH_STEP: f64 = 1.2;
-
     fn estimate_gassed_msg(
         &self,
         state: &FvmQueryState<DB>,
@@ -130,20 +120,18 @@ where
                 gas_limit: 0,
             }));
         }
-        msg.gas_limit = (ret.msg_receipt.gas_used as f64 * Self::GAS_OVERESTIMATION_RATE) as u64;
+
+        msg.gas_limit = (ret.msg_receipt.gas_used as f64 * self.gas_overestimation_rate) as u64;
+
         if msg.gas_premium.is_zero() {
-            // TODO: Instead of assigning a default value here, we should analyze historical
-            // blocks from the current height to estimate an accurate value for this premium.
-            // To achieve this we would need to perform a set of ABCI queries.
-            // In the meantime, this value should be good enough to make sure that the
-            // message is included in a block.
-            // this is triggered only if the user hasn't specified a gas premium, `ethers` and
-            // tooling would generally set this themselves.
-            msg.gas_premium = TokenAmount::from_nano(BigInt::from(Self::DEFAULT_GAS_PREMIUM));
+            // We need to set the gas_premium to some value other than zero for the
+            // gas estimation to work accurately (I really don't know why this is
+            // the case but after a lot of testing, setting this value to zero rejects the transaction)
+            msg.gas_premium = TokenAmount::from_nano(BigInt::from(1));
         }
         if msg.gas_fee_cap.is_zero() {
             // Compute the fee cap from gas premium and applying an additional overestimation.
-            let overestimated_limit = (msg.gas_limit as f64 * Self::GAS_OVERESTIMATION_RATE) as u64;
+            let overestimated_limit = (msg.gas_limit as f64 * self.gas_overestimation_rate) as u64;
             msg.gas_fee_cap = std::cmp::min(
                 TokenAmount::from_atto(BigInt::from(overestimated_limit)) + &msg.gas_premium,
                 TokenAmount::from_atto(BLOCK_GAS_LIMIT),
@@ -152,6 +140,8 @@ where
             // TODO: In Lotus historical values of the base fee and a more accurate overestimation is performed
             // for the fee cap. If we issues with messages going through let's consider the historical analysis.
         }
+        // TODO: Set an optimal `gas_premium` and `gas_fee_cap` if they are not set
+        // according to the current base_fee?
 
         Ok(None)
     }
@@ -167,7 +157,7 @@ where
                 return Ok(ret);
             }
 
-            curr_limit = (curr_limit as f64 * Self::GAS_SEARCH_STEP) as u64;
+            curr_limit = (curr_limit as f64 * self.gas_search_step) as u64;
             if curr_limit > BLOCK_GAS_LIMIT {
                 return Ok(GasEstimate {
                     exit_code: ExitCode::OK,
