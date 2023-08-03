@@ -1,14 +1,15 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
-//!
+
 use crate::fvm::state::FvmStateParams;
 use crate::fvm::store::ReadOnlyBlockstore;
+use anyhow::anyhow;
 use cid::multihash::{Code, MultihashDigest};
 use cid::Cid;
 use futures_core::Stream;
 use fvm::state_tree::StateTree;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_car::CarHeader;
+use fvm_ipld_car::{load_car_unchecked, CarHeader};
 use fvm_ipld_encoding::{from_slice, DAG_CBOR};
 
 use libipld::Ipld;
@@ -17,7 +18,8 @@ use std::collections::VecDeque;
 use std::path::Path;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use tokio_util::compat::TokioAsyncWriteCompatExt;
+use tokio_stream::StreamExt;
+use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 pub type BlockHeight = u64;
 
@@ -51,20 +53,11 @@ where
         )?))
     }
 
-    pub fn version(&self) -> u64 {
-        match self {
-            Snapshot::V1(_) => 1,
-        }
-    }
-
-    /// Init the block chain from the snapshot
-    pub fn init_chain(&self) -> anyhow::Result<()> {
-        todo!()
-    }
-
-    /// Read the snapshot from file
-    pub async fn read_car(_path: impl AsRef<Path>) -> anyhow::Result<Self> {
-        todo!()
+    /// Read the snapshot from file and load all the data into the store
+    pub async fn read_car(path: impl AsRef<Path>, store: DB) -> anyhow::Result<Self> {
+        let file = tokio::fs::File::open(path).await?;
+        let snapshot = V1Snapshot::read_car(file, store).await?;
+        Ok(Self::V1(snapshot))
     }
 
     /// Write the snapshot to car file
@@ -79,6 +72,17 @@ where
         }
 
         Ok(())
+    }
+
+    pub fn version(&self) -> u64 {
+        match self {
+            Snapshot::V1(_) => 1,
+        }
+    }
+
+    /// Init the block chain from the snapshot
+    pub fn init_chain(&self) -> anyhow::Result<()> {
+        todo!()
     }
 
     fn car_header_roots(&self) -> anyhow::Result<Vec<Cid>> {
@@ -129,6 +133,33 @@ where
         })
     }
 
+    async fn read_car(file: tokio::fs::File, store: DB) -> anyhow::Result<Self> {
+        let roots = load_car_unchecked(&store, file.compat()).await?;
+
+        if roots.len() != 2 {
+            return Err(anyhow!("invalid v1 snapshot, should have 2 root cids"));
+        }
+
+        let state_tree_root = roots[0];
+        let block_state_params_cid = roots[1];
+
+        let block_state_params_bytes = if let Some(bytes) = store.get(&block_state_params_cid)? {
+            bytes
+        } else {
+            return Err(anyhow!(
+                "invalid v1 snapshot, block state params cid not found: {}",
+                block_state_params_cid
+            ));
+        };
+
+        Ok(Self {
+            state_tree_root,
+            state_tree: StateTree::new_from_root(ReadOnlyBlockstore::new(store), &state_tree_root)?,
+            block_state_params_bytes,
+            block_state_params_cid,
+        })
+    }
+
     /// For V1 snapshot, we are putting two components into the CAR file: the state tree and latest
     /// state params. One header is for the state tree root. The other header root cid is for the
     /// serialized block state params.
@@ -142,18 +173,15 @@ where
 
     async fn write_car(self, car: CarHeader, write: tokio::fs::File) -> anyhow::Result<()> {
         let write_task = tokio::spawn(async move {
-            let mut streamer =
+            let state_tree_streamer =
                 StateTreeStreamer::new(self.state_tree_root, self.state_tree.into_store());
-            let mut write = write.compat_write();
-
-            car.write_stream_async(&mut Pin::new(&mut write), &mut streamer)
-                .await
-                .unwrap();
-
-            let mut streamer = tokio_stream::iter(vec![(
+            let block_state_streamer = tokio_stream::iter(vec![(
                 self.block_state_params_cid,
                 self.block_state_params_bytes,
             )]);
+            let mut streamer = state_tree_streamer.merge(block_state_streamer);
+
+            let mut write = write.compat_write();
             car.write_stream_async(&mut Pin::new(&mut write), &mut streamer)
                 .await
                 .unwrap();
@@ -261,9 +289,9 @@ mod tests {
         (root_cid, state_tree)
     }
 
-    fn assert_tree2_contains_tree1(
-        tree1: &StateTree<MemoryBlockstore>,
-        tree2: &StateTree<MemoryBlockstore>,
+    fn assert_tree2_contains_tree1<Store1: Blockstore, Store2: Blockstore>(
+        tree1: &StateTree<Store1>,
+        tree2: &StateTree<Store2>,
     ) {
         tree1
             .for_each(|addr, state| {
@@ -304,7 +332,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_write_to_car() {
+    async fn test_car() {
         let (state_root, state_tree) = prepare_state_tree(100);
         let state_params = FvmStateParams {
             state_root,
@@ -317,11 +345,24 @@ mod tests {
         let block_height = 2048;
 
         let bs = state_tree.into_store();
-        let db = ReadOnlyBlockstore::new(bs);
-        let snapshot = Snapshot::new(db, state_params, block_height).unwrap();
+        let db = ReadOnlyBlockstore::new(bs.clone());
+        let snapshot = Snapshot::new(db, state_params.clone(), block_height).unwrap();
 
         let tmp_file = tempfile::NamedTempFile::new().unwrap();
         let r = snapshot.write_car(tmp_file.path()).await;
         assert!(r.is_ok());
+
+        let new_store = MemoryBlockstore::new();
+        let loaded_snapshot = match Snapshot::read_car(tmp_file.path(), new_store)
+            .await
+            .unwrap()
+        {
+            Snapshot::V1(s) => s,
+        };
+        assert_eq!(state_root, loaded_snapshot.state_tree_root);
+        assert_tree2_contains_tree1(
+            &StateTree::new_from_root(bs, &state_root).unwrap(),
+            &loaded_snapshot.state_tree,
+        );
     }
 }
