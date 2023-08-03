@@ -262,18 +262,18 @@ impl<W: AsyncWrite> futures_util::AsyncWrite for AsyncWriteWrapper<W> {
 #[cfg(test)]
 mod tests {
     use crate::fvm::state::snapshot::StateTreeStreamer;
+    use crate::fvm::state::{FvmStateParams, Snapshot};
     use crate::fvm::store::memory::MemoryBlockstore;
+    use crate::fvm::store::ReadOnlyBlockstore;
     use cid::Cid;
+    use fendermint_vm_core::Timestamp;
     use futures_util::StreamExt;
     use fvm::state_tree::{ActorState, StateTree};
     use fvm_ipld_blockstore::Blockstore;
     use fvm_shared::state::StateTreeVersion;
+    use fvm_shared::version::NetworkVersion;
     use quickcheck::{Arbitrary, Gen};
     use std::collections::VecDeque;
-    use fvm_shared::version::NetworkVersion;
-    use fendermint_vm_core::Timestamp;
-    use crate::fvm::state::{FvmStateParams, Snapshot};
-    use crate::fvm::store::ReadOnlyBlockstore;
 
     fn prepare_state_tree(items: u64) -> (Cid, StateTree<MemoryBlockstore>) {
         let store = MemoryBlockstore::new();
@@ -330,11 +330,10 @@ mod tests {
         assert_tree2_contains_tree1(&new_state_tree, &old_state_tree);
     }
 
-
     #[tokio::test]
     async fn test_write_to_car() {
         let (state_root, state_tree) = prepare_state_tree(100);
-        let state_params = FvmStateParams{
+        let state_params = FvmStateParams {
             state_root,
             timestamp: Timestamp(100),
             network_version: NetworkVersion::V1,
