@@ -98,8 +98,10 @@ where
         F: FnOnce(&mut FvmExecState<ReadOnlyBlockstore<DB>>) -> anyhow::Result<T>,
     {
         let mut cache = self.exec_state.borrow_mut();
-        if let Some(exec_state) = cache.as_mut() {
-            return f(exec_state);
+        if use_cache {
+            if let Some(exec_state) = cache.as_mut() {
+                return f(exec_state);
+            }
         }
 
         let mut exec_state = FvmExecState::new(
