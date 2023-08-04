@@ -1,3 +1,6 @@
+// Copyright 2022-2023 Protocol Labs
+// SPDX-License-Identifier: Apache-2.0, MIT
+
 use crate::BlockHeight;
 use fendermint_vm_interpreter::fvm::state::{FvmStateParams, Snapshot};
 use fvm_ipld_blockstore::Blockstore;
