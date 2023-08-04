@@ -103,7 +103,11 @@ where
     }
 
     /// Get the state of an actor, if it exists.
-    pub fn actor_state(&self, use_cache: bool, addr: &Address) -> anyhow::Result<Option<(ActorID, ActorState)>> {
+    pub fn actor_state(
+        &self,
+        use_cache: bool,
+        addr: &Address,
+    ) -> anyhow::Result<Option<(ActorID, ActorState)>> {
         self.with_exec_state(use_cache, |exec_state| {
             let state_tree = exec_state.state_tree_mut();
             if let Some(id) = state_tree.lookup_id(addr)? {
