@@ -135,13 +135,17 @@ where
     /// `use_cache` is enabled. If `use_cache` is not enabled, the results of the
     /// execution are not cached.
     pub fn call(&self, mut msg: FvmMessage, use_cache: bool) -> anyhow::Result<ApplyRet> {
-        // If the sequence is zero, treat it as a signal to use whatever is in the state.
-        if msg.sequence.is_zero() {
-            if let Some((_, state)) = self.actor_state(use_cache, &msg.from)? {
-                msg.sequence = state.sequence;
-            }
-        }
         self.with_exec_state(use_cache, |s| {
+            // If the sequence is zero, treat it as a signal to use whatever is in the state.
+            if msg.sequence.is_zero() {
+                let state_tree = s.state_tree_mut();
+                if let Some(id) = state_tree.lookup_id(&msg.from)? {
+                    state_tree.get_actor(id)?.map(|st| {
+                        msg.sequence = st.sequence;
+                        st
+                    });
+                }
+            }
             if msg.from == SYSTEM_ACTOR_ADDR {
                 // Explicit execution requires `from` to be an account kind.
                 s.execute_implicit(msg)
