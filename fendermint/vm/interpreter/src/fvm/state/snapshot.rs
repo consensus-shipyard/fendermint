@@ -10,8 +10,7 @@ use futures_core::Stream;
 use fvm::state_tree::StateTree;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_car::{load_car_unchecked, CarHeader};
-use fvm_ipld_encoding::{from_slice, DAG_CBOR};
-
+use fvm_ipld_encoding::{from_slice, DAG_CBOR, CborStore};
 use libipld::Ipld;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -28,14 +27,15 @@ pub enum Snapshot<DB> {
     V1(V1Snapshot<DB>),
 }
 
-/// The block height with state paramsThe block height with state params
+/// Contains the overall metadata for the snapshot
 #[derive(Serialize, Deserialize)]
-struct BlockStateParams {
-    /// The latest state params of the blockchain
-    state_params: FvmStateParams,
-    /// The latest block height
-    block_height: BlockHeight,
+struct SnapShotMetadata {
+    version: u8,
+    data_root_cid: Cid,
 }
+
+/// The streamer that streams the snapshot into (Cid, Vec<u8>) for car file.
+type SnapshotStreamer = Box<dyn Send + Unpin + Stream<Item = (Cid, Vec<u8>)>>;
 
 impl<DB> Snapshot<DB>
 where
@@ -56,52 +56,78 @@ where
     /// Read the snapshot from file and load all the data into the store
     pub async fn read_car(path: impl AsRef<Path>, store: DB) -> anyhow::Result<Self> {
         let file = tokio::fs::File::open(path).await?;
-        let snapshot = V1Snapshot::read_car(file, store).await?;
-        Ok(Self::V1(snapshot))
+
+        let roots = load_car_unchecked(&store, file.compat()).await?;
+        if roots.len() != 1 {
+            return Err(anyhow!("invalid snapshot, should have 1 root cid"));
+        }
+
+        let metadata_cid = roots[0];
+        let metadata = if let Some(metadata) = store.get_cbor::<SnapShotMetadata>(&metadata_cid)? {
+            metadata
+        } else {
+            return Err(anyhow!("invalid snapshot, metadata not found"));
+        };
+
+        match metadata.version {
+            1 => Ok(Self::V1(V1Snapshot::from_root(
+                store,
+                metadata.data_root_cid,
+            )?)),
+            v => Err(anyhow!("unknown snapshot version: {v}")),
+        }
     }
 
     /// Write the snapshot to car file
     pub async fn write_car(self, path: impl AsRef<Path>) -> anyhow::Result<()> {
         let file = tokio::fs::File::create(path).await?;
 
-        // derive the car header roots
-        let car = CarHeader::new(self.car_header_roots()?, self.version());
+        // derive the metadata for the car file, so that the snapshot version can be recorded.
+        let (metadata, snapshot_streamer) = self.into_streamer()?;
+        let (metadata_cid, metadata_bytes) = derive_cid(&metadata)?;
 
-        match self {
-            Snapshot::V1(s) => s.write_car(car, file).await?,
-        }
+        // create the target car header with the metadata cid as the only root
+        let car = CarHeader::new(vec![metadata_cid], 1);
+
+        // create the stream to stream all the data into the car file
+        let mut streamer =
+            tokio_stream::iter(vec![(metadata_cid, metadata_bytes)]).merge(snapshot_streamer);
+
+        let write_task = tokio::spawn(async move {
+            let mut write = file.compat_write();
+            car.write_stream_async(&mut Pin::new(&mut write), &mut streamer)
+                .await
+        });
+
+        write_task.await??;
 
         Ok(())
     }
 
-    pub fn version(&self) -> u64 {
+    fn into_streamer(self) -> anyhow::Result<(SnapShotMetadata, SnapshotStreamer)> {
         match self {
-            Snapshot::V1(_) => 1,
-        }
-    }
-
-    /// Init the block chain from the snapshot
-    pub fn init_chain(&self) -> anyhow::Result<()> {
-        todo!()
-    }
-
-    fn car_header_roots(&self) -> anyhow::Result<Vec<Cid>> {
-        match self {
-            Snapshot::V1(s) => s.car_header_roots(),
+            Snapshot::V1(inner) => {
+                let (data_root_cid, streamer) = inner.into_streamer()?;
+                Ok((
+                    SnapShotMetadata {
+                        version: 1,
+                        data_root_cid,
+                    },
+                    streamer,
+                ))
+            }
         }
     }
 }
 
 pub struct V1Snapshot<DB> {
-    /// The root cid of the state tree
-    state_tree_root: Cid,
     /// The state tree of the current blockchain
     state_tree: StateTree<ReadOnlyBlockstore<DB>>,
-    /// The latest block height with state params serialized to bytes
-    block_state_params_bytes: Vec<u8>,
-    /// Block state params cid derived from block state params bytes
-    block_state_params_cid: Cid,
+    state_params: FvmStateParams,
+    block_height: BlockHeight,
 }
+
+type BlockStateParams = (FvmStateParams, BlockHeight);
 
 impl<DB> V1Snapshot<DB>
 where
@@ -115,81 +141,46 @@ where
     ) -> anyhow::Result<Self> {
         let state_tree =
             StateTree::new_from_root(ReadOnlyBlockstore::new(store), &state_params.state_root)?;
-        let state_tree_root = state_params.state_root;
 
-        let block_state_params = BlockStateParams {
+        Ok(Self {
+            state_tree,
             state_params,
             block_height,
-        };
-        let block_state_params_bytes = fvm_ipld_encoding::to_vec(&block_state_params)?;
-        let block_state_params_cid =
-            Cid::new_v1(DAG_CBOR, Code::Blake2b256.digest(&block_state_params_bytes));
-
-        Ok(Self {
-            state_tree_root,
-            state_tree,
-            block_state_params_bytes,
-            block_state_params_cid,
         })
     }
 
-    async fn read_car(file: tokio::fs::File, store: DB) -> anyhow::Result<Self> {
-        let roots = load_car_unchecked(&store, file.compat()).await?;
-
-        if roots.len() != 2 {
-            return Err(anyhow!("invalid v1 snapshot, should have 2 root cids"));
-        }
-
-        let state_tree_root = roots[0];
-        let block_state_params_cid = roots[1];
-
-        let block_state_params_bytes = if let Some(bytes) = store.get(&block_state_params_cid)? {
-            bytes
+    fn from_root(store: DB, root_cid: Cid) -> anyhow::Result<Self> {
+        if let Some((state_params, block_height)) = store.get_cbor::<BlockStateParams>(&root_cid)? {
+            let state_tree_root = state_params.state_root;
+            Ok(Self {
+                state_tree: StateTree::new_from_root(
+                    ReadOnlyBlockstore::new(store),
+                    &state_tree_root,
+                )?,
+                state_params,
+                block_height,
+            })
         } else {
-            return Err(anyhow!(
-                "invalid v1 snapshot, block state params cid not found: {}",
-                block_state_params_cid
-            ));
-        };
-
-        Ok(Self {
-            state_tree_root,
-            state_tree: StateTree::new_from_root(ReadOnlyBlockstore::new(store), &state_tree_root)?,
-            block_state_params_bytes,
-            block_state_params_cid,
-        })
+            Err(anyhow!(
+                "invalid v1 snapshot, root cid not found: {}",
+                root_cid
+            ))
+        }
     }
 
-    /// For V1 snapshot, we are putting two components into the CAR file: the state tree and latest
-    /// state params. One header is for the state tree root. The other header root cid is for the
-    /// serialized block state params.
-    fn car_header_roots(&self) -> anyhow::Result<Vec<Cid>> {
-        Ok(vec![self.state_tree_root, self.block_state_params_cid])
-    }
+    fn into_streamer(self) -> anyhow::Result<(Cid, SnapshotStreamer)> {
+        let state_tree_root = self.state_params.state_root;
 
-    pub fn init_chain(&self) -> anyhow::Result<()> {
-        todo!()
-    }
+        let block_state_params = (self.state_params, self.block_height);
+        let bytes = fvm_ipld_encoding::to_vec(&block_state_params)?;
+        let root_cid = Cid::new_v1(DAG_CBOR, Code::Blake2b256.digest(&bytes));
 
-    async fn write_car(self, car: CarHeader, write: tokio::fs::File) -> anyhow::Result<()> {
-        let write_task = tokio::spawn(async move {
-            let state_tree_streamer =
-                StateTreeStreamer::new(self.state_tree_root, self.state_tree.into_store());
-            let block_state_streamer = tokio_stream::iter(vec![(
-                self.block_state_params_cid,
-                self.block_state_params_bytes,
-            )]);
-            let mut streamer = state_tree_streamer.merge(block_state_streamer);
+        let state_tree_streamer =
+            StateTreeStreamer::new(state_tree_root, self.state_tree.into_store());
+        let root_streamer = tokio_stream::iter(vec![(root_cid, bytes)]);
+        let streamer: SnapshotStreamer = Box::new(state_tree_streamer.merge(root_streamer));
 
-            let mut write = write.compat_write();
-            car.write_stream_async(&mut Pin::new(&mut write), &mut streamer)
-                .await
-                .unwrap();
-        });
-
-        write_task.await?;
-
-        Ok(())
+        Ok((root_cid, streamer))
     }
 }
 
@@ -260,6 +251,12 @@ fn walk_ipld_cids(ipld: Ipld, dfs: &mut VecDeque<Cid>) {
     }
 }
 
+fn derive_cid<T: Serialize>(t: &T) -> anyhow::Result<(Cid, Vec<u8>)> {
+    let bytes = fvm_ipld_encoding::to_vec(&t)?;
+    let cid = Cid::new_v1(DAG_CBOR, Code::Blake2b256.digest(&bytes));
+    Ok((cid, bytes))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::fvm::state::snapshot::StateTreeStreamer;
@@ -315,7 +312,7 @@ mod tests {
         let (root_cid, state_tree) = prepare_state_tree(100);
         let bs = state_tree.into_store();
         let mut stream = StateTreeStreamer {
-            dfs: VecDeque::from(vec![root_cid.clone()]),
+            dfs: VecDeque::from(vec![root_cid]),
             bs: bs.clone(),
         };
 
@@ -353,20 +350,16 @@ mod tests {
         assert!(r.is_ok());
 
         let new_store = MemoryBlockstore::new();
-        let loaded_snapshot = match Snapshot::read_car(tmp_file.path(), new_store)
-            .await
-            .unwrap()
-        {
-            Snapshot::V1(s) => s,
-        };
+        let Snapshot::V1(loaded_snapshot) =
+            Snapshot::read_car(tmp_file.path(), new_store)
+                .await
+                .unwrap();
 
-        assert_eq!(state_root, loaded_snapshot.state_tree_root);
+        assert_eq!(state_params, loaded_snapshot.state_params);
+        assert_eq!(block_height, loaded_snapshot.block_height);
         assert_tree2_contains_tree1(
-            &StateTree::new_from_root(bs, &state_root).unwrap(),
+            &StateTree::new_from_root(bs, &loaded_snapshot.state_params.state_root).unwrap(),
             &loaded_snapshot.state_tree,
         );
-
-        let state_params_bytes = fvm_ipld_encoding::to_vec(&(state_params, block_height)).unwrap();
-        assert_eq!(state_params_bytes, loaded_snapshot.block_state_params_bytes);
     }
 }
