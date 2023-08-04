@@ -10,7 +10,7 @@ use futures_core::Stream;
 use fvm::state_tree::StateTree;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_car::{load_car_unchecked, CarHeader};
-use fvm_ipld_encoding::{from_slice, DAG_CBOR, CborStore};
+use fvm_ipld_encoding::{from_slice, CborStore, DAG_CBOR};
 use libipld::Ipld;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -350,10 +350,9 @@ mod tests {
         assert!(r.is_ok());
 
         let new_store = MemoryBlockstore::new();
-        let Snapshot::V1(loaded_snapshot) =
-            Snapshot::read_car(tmp_file.path(), new_store)
-                .await
-                .unwrap();
+        let Snapshot::V1(loaded_snapshot) = Snapshot::read_car(tmp_file.path(), new_store)
+            .await
+            .unwrap();
 
         assert_eq!(state_params, loaded_snapshot.state_params);
         assert_eq!(block_height, loaded_snapshot.block_height);
