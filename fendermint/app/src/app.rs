@@ -35,6 +35,7 @@ use tendermint::abci::request::CheckTxKind;
 use tendermint::abci::{request, response};
 use tendermint::block::Height;
 
+use crate::snapshot::{SnapshotConfig, SnapshotManager};
 use crate::{tmconv::*, VERSION};
 use crate::{BlockHeight, APP_VERSION};
 
@@ -102,6 +103,9 @@ where
     ///
     /// Only loaded once during genesis; later comes from the [`StateTree`].
     builtin_actors_bundle: PathBuf,
+    /// Manages snapshot taking for the blockchain. If None, it will not trigger snapshot of the
+    /// current block chain
+    snapshot: Option<SnapshotManager>,
     /// Namespace to store app state.
     namespace: S::Namespace,
     /// Collection of past state parameters.
@@ -151,6 +155,35 @@ where
             state_store: Arc::new(state_store),
             multi_engine: Arc::new(MultiEngine::new(1)),
             builtin_actors_bundle,
+            snapshot: None,
+            namespace: app_namespace,
+            state_hist: KVCollection::new(state_hist_namespace),
+            state_hist_size,
+            interpreter: Arc::new(interpreter),
+            exec_state: Arc::new(Mutex::new(None)),
+            check_state: Arc::new(tokio::sync::Mutex::new(None)),
+        };
+        app.init_committed_state()?;
+        Ok(app)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_snapshot(
+        db: DB,
+        state_store: SS,
+        snapshot_config: SnapshotConfig,
+        builtin_actors_bundle: PathBuf,
+        app_namespace: S::Namespace,
+        state_hist_namespace: S::Namespace,
+        state_hist_size: u64,
+        interpreter: I,
+    ) -> Result<Self> {
+        let app = Self {
+            db: Arc::new(db),
+            state_store: Arc::new(state_store),
+            multi_engine: Arc::new(MultiEngine::new(1)),
+            builtin_actors_bundle,
+            snapshot: Some(SnapshotManager::new(snapshot_config)),
             namespace: app_namespace,
             state_hist: KVCollection::new(state_hist_namespace),
             state_hist_size,
@@ -561,6 +594,14 @@ where
             .modify_exec_state(|s| self.interpreter.end(s))
             .await
             .context("end failed")?;
+
+        if let Some(snapshot) = &self.snapshot {
+            if snapshot.should_run(request.height as BlockHeight) {
+                let (state_params, block_height) =
+                    self.state_params_at_height(Height::try_from(request.height)?)?;
+                snapshot.start(block_height, state_params, self.state_store_clone());
+            }
+        }
 
         Ok(to_end_block(ret))
     }

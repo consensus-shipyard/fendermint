@@ -23,8 +23,8 @@ use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 pub type BlockHeight = u64;
 
 /// Taking snapshot of the current blockchain state
-pub enum Snapshot<DB> {
-    V1(V1Snapshot<DB>),
+pub enum Snapshot<BS> {
+    V1(V1Snapshot<BS>),
 }
 
 /// Contains the overall metadata for the snapshot
@@ -37,12 +37,12 @@ struct SnapShotMetadata {
 /// The streamer that streams the snapshot into (Cid, Vec<u8>) for car file.
 type SnapshotStreamer = Box<dyn Send + Unpin + Stream<Item = (Cid, Vec<u8>)>>;
 
-impl<DB> Snapshot<DB>
+impl<BS> Snapshot<BS>
 where
-    DB: Blockstore + Clone + 'static + Send,
+    BS: Blockstore + 'static + Send,
 {
     pub fn new(
-        store: DB,
+        store: BS,
         state_params: FvmStateParams,
         block_height: BlockHeight,
     ) -> anyhow::Result<Self> {
@@ -54,7 +54,7 @@ where
     }
 
     /// Read the snapshot from file and load all the data into the store
-    pub async fn read_car(path: impl AsRef<Path>, store: DB) -> anyhow::Result<Self> {
+    pub async fn read_car(path: impl AsRef<Path>, store: BS) -> anyhow::Result<Self> {
         let file = tokio::fs::File::open(path).await?;
 
         let roots = load_car_unchecked(&store, file.compat()).await?;
@@ -120,22 +120,22 @@ where
     }
 }
 
-pub struct V1Snapshot<DB> {
+pub struct V1Snapshot<BS> {
     /// The state tree of the current blockchain
-    state_tree: StateTree<ReadOnlyBlockstore<DB>>,
+    state_tree: StateTree<ReadOnlyBlockstore<BS>>,
     state_params: FvmStateParams,
     block_height: BlockHeight,
 }
 
 type BlockStateParams = (FvmStateParams, BlockHeight);
 
-impl<DB> V1Snapshot<DB>
+impl<BS> V1Snapshot<BS>
 where
-    DB: Blockstore + Clone + 'static + Send,
+    BS: Blockstore + 'static + Send,
 {
     /// Creates a new V2Snapshot struct. Caller ensure store
     pub fn new(
-        store: DB,
+        store: BS,
         state_params: FvmStateParams,
         block_height: BlockHeight,
     ) -> anyhow::Result<Self> {
@@ -149,7 +149,7 @@ where
         })
     }
 
-    fn from_root(store: DB, root_cid: Cid) -> anyhow::Result<Self> {
+    fn from_root(store: BS, root_cid: Cid) -> anyhow::Result<Self> {
         if let Some((state_params, block_height)) = store.get_cbor::<BlockStateParams>(&root_cid)? {
             let state_tree_root = state_params.state_root;
             Ok(Self {
@@ -185,23 +185,23 @@ where
 }
 
 #[pin_project::pin_project]
-struct StateTreeStreamer<BlockStore> {
+struct StateTreeStreamer<BS> {
     /// The list of cids to pull from the blockstore
     #[pin]
     dfs: VecDeque<Cid>,
     /// The block store
-    bs: BlockStore,
+    bs: BS,
 }
 
-impl<BlockStore> StateTreeStreamer<BlockStore> {
-    pub fn new(state_root_cid: Cid, bs: BlockStore) -> Self {
+impl<BS> StateTreeStreamer<BS> {
+    pub fn new(state_root_cid: Cid, bs: BS) -> Self {
         let mut dfs = VecDeque::new();
         dfs.push_back(state_root_cid);
         Self { dfs, bs }
     }
 }
 
-impl<BlockStore: Blockstore> Stream for StateTreeStreamer<BlockStore> {
+impl<BS: Blockstore> Stream for StateTreeStreamer<BS> {
     type Item = (Cid, Vec<u8>);
 
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
