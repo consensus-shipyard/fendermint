@@ -36,9 +36,9 @@ futures-core = "0.3.28"
 futures-util = "0.3.28"
 libipld = { version = "0.14", default-features = false, features = ["dag-cbor"] }
 tokio = { workspace = true }
-tokio-stream = "0.1.14"
-tokio-util = {version = "0.7.8", features = ["compat"]}
-pin-project = "1.1.2"
+tokio-stream = { workspace = true }
+tokio-util = { workspace = true }
+pin-project = { workspace = true }
 
 [dev-dependencies]
 quickcheck = { workspace = true }
