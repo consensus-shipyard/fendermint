@@ -30,6 +30,7 @@ rand = { workspace = true, optional = true }
 fendermint_vm_encoding = { path = "../encoding" }
 fendermint_vm_actor_interface = { path = "../actor_interface" }
 fendermint_testing = { path = "../../testing", optional = true }
+fendermint_ipc = { path = "../../ipc" }
 
 [dev-dependencies]
 ethers = { workspace = true }

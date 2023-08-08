@@ -34,6 +34,9 @@ use serde::{Deserialize, Serialize};
 use tendermint::abci::request::CheckTxKind;
 use tendermint::abci::{request, response};
 use tendermint::block::Height;
+use fendermint_ipc::IPCMessage;
+use fendermint_ipc::pof::ProofOfFinality;
+use fendermint_vm_message::chain::ChainMessage;
 
 use crate::{tmconv::*, VERSION};
 use crate::{BlockHeight, APP_VERSION};
@@ -125,6 +128,8 @@ where
     ///
     /// Zero means unlimited.
     state_hist_size: u64,
+    /// The top down parent finality.
+    parent_finality: ProofOfFinality,
 }
 
 impl<DB, SS, S, I> App<DB, SS, S, I>
@@ -157,6 +162,7 @@ where
             interpreter: Arc::new(interpreter),
             exec_state: Arc::new(Mutex::new(None)),
             check_state: Arc::new(tokio::sync::Mutex::new(None)),
+            parent_finality: (),
         };
         app.init_committed_state()?;
         Ok(app)
@@ -488,6 +494,29 @@ where
         };
 
         Ok(response)
+    }
+
+    async fn prepare_proposal(
+        &self,
+        request: request::PrepareProposal,
+    ) -> AbciResult<response::PrepareProposal> {
+        let max_tx_bytes: usize = request.max_tx_bytes.try_into().unwrap();
+        let mut size: usize = 0;
+        let mut txs = Vec::new();
+        for tx in request.txs {
+            if size.saturating_add(tx.len()) > max_tx_bytes {
+                break;
+            }
+            size += tx.len();
+            txs.push(tx);
+        }
+
+        let proof = self.parent_finality.get_proof();
+        let bytes = serde_json::to_vec(&ChainMessage::IPC(IPCMessage::TopDown(proof)))
+            .expect("should not have failed");
+        txs.push(bytes.into());
+
+        Ok(response::PrepareProposal { txs })
     }
 
     /// Signals the beginning of a new block, prior to any `DeliverTx` calls.

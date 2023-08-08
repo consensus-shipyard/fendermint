@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 use cid::Cid;
 use serde::{Deserialize, Serialize};
+use fendermint_ipc::IPCMessage;
 
 use crate::signed::SignedMessage;
 
@@ -31,6 +32,8 @@ pub enum ChainMessage {
     // This should ensure that even if low-power validator poposed a CID, the others aren't neglecting it.
     // To remember after a restart who the original proposer was, the proposed CIDs have to go onto the ledger.
     ForExecution(Cid),
+
+    IPC(IPCMessage)
 }
 
 #[cfg(feature = "arb")]
