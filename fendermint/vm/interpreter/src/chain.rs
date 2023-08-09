@@ -17,7 +17,7 @@ pub struct IllegalMessage;
 pub enum ChainMessageApplyRet {
     Signed(SignedMessageApplyRet),
     /// IPC message execution
-    IPC
+    IPC,
 }
 
 /// We only allow signed messages into the mempool.

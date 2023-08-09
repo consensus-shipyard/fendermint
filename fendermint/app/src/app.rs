@@ -9,6 +9,8 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use cid::Cid;
 use fendermint_abci::{AbciResult, Application};
+use fendermint_ipc::pof::ProofOfFinality;
+use fendermint_ipc::IPCMessage;
 use fendermint_storage::{
     Codec, Encode, KVCollection, KVRead, KVReadable, KVStore, KVWritable, KVWrite,
 };
@@ -25,6 +27,7 @@ use fendermint_vm_interpreter::signed::InvalidSignature;
 use fendermint_vm_interpreter::{
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, QueryInterpreter,
 };
+use fendermint_vm_message::chain::ChainMessage;
 use fvm::engine::MultiEngine;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::chainid::ChainID;
@@ -35,9 +38,6 @@ use serde::{Deserialize, Serialize};
 use tendermint::abci::request::CheckTxKind;
 use tendermint::abci::{request, response};
 use tendermint::block::Height;
-use fendermint_ipc::IPCMessage;
-use fendermint_ipc::pof::ProofOfFinality;
-use fendermint_vm_message::chain::ChainMessage;
 
 use crate::{tmconv::*, VERSION};
 use crate::{BlockHeight, APP_VERSION};
@@ -301,10 +301,8 @@ where
 
     async fn verify_ipc_message(&self, ipc_message: IPCMessage) -> bool {
         match ipc_message {
-            IPCMessage::TopDown(finality) => {
-                self.parent_finality.check_finality(&finality).await
-            }
-            IPCMessage::BottomUp => unimplemented!()
+            IPCMessage::TopDown(finality) => self.parent_finality.check_finality(&finality).await,
+            IPCMessage::BottomUp => unimplemented!(),
         }
     }
 
@@ -315,15 +313,17 @@ where
             let is_ok = match serde_json::from_slice::<ChainMessage>(tx) {
                 Err(_) => {
                     tracing::info!("cannot deserialized transaction: {tx:?}");
-                    continue
-                },
+                    continue;
+                }
                 Ok(message) => match message {
                     ChainMessage::IPC(ipc) => self.verify_ipc_message(ipc).await,
                     _ => continue,
-                }
+                },
             };
 
-            if !is_ok { return false; }
+            if !is_ok {
+                return false;
+            }
         }
 
         true
