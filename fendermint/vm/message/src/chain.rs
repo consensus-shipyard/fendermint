@@ -1,8 +1,8 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 use cid::Cid;
-use serde::{Deserialize, Serialize};
 use fendermint_ipc::IPCMessage;
+use serde::{Deserialize, Serialize};
 
 use crate::signed::SignedMessage;
 
@@ -33,7 +33,7 @@ pub enum ChainMessage {
     // To remember after a restart who the original proposer was, the proposed CIDs have to go onto the ledger.
     ForExecution(Cid),
 
-    IPC(IPCMessage)
+    IPC(IPCMessage),
 }
 
 #[cfg(feature = "arb")]
