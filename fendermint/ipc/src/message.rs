@@ -3,7 +3,7 @@
 use crate::pof::IPCParentFinality;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IPCMessage {
     TopDown(IPCParentFinality),
     BottomUp,

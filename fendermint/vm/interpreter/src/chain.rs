@@ -16,6 +16,8 @@ pub struct IllegalMessage;
 // For now this is the only option, later we can expand.
 pub enum ChainMessageApplyRet {
     Signed(SignedMessageApplyRet),
+    /// IPC message execution
+    IPC
 }
 
 /// We only allow signed messages into the mempool.
@@ -61,6 +63,11 @@ where
                 Err(anyhow!(
                     "The handling of ForExecution and ForResolution is not yet implemented."
                 ))
+            }
+            ChainMessage::IPC(msg) => {
+                tracing::info!("executed ipc message: {msg:?}");
+                // TODO: implement the full execution with implicit gateway actor execution
+                Ok((state, ChainMessageApplyRet::IPC))
             }
         }
     }

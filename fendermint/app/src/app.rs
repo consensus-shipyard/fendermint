@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use bytes::Bytes;
 use cid::Cid;
 use fendermint_abci::{AbciResult, Application};
 use fendermint_storage::{
@@ -297,6 +298,36 @@ where
         let state = self.committed_state()?;
         Ok((state.state_params, state.block_height))
     }
+
+    async fn verify_ipc_message(&self, ipc_message: IPCMessage) -> bool {
+        match ipc_message {
+            IPCMessage::TopDown(finality) => {
+                self.parent_finality.check_finality(&finality).await
+            }
+            IPCMessage::BottomUp => unimplemented!()
+        }
+    }
+
+    /// Verifies the list of transactions to see if they are valid. Returns true if all the txns
+    /// are valid and false if any one of the txns is invalid.
+    async fn verify_messages(&self, txns: &Vec<Bytes>) -> bool {
+        for tx in txns {
+            let is_ok = match serde_json::from_slice::<ChainMessage>(tx) {
+                Err(_) => {
+                    tracing::info!("cannot deserialized transaction: {tx:?}");
+                    continue
+                },
+                Ok(message) => match message {
+                    ChainMessage::IPC(ipc) => self.verify_ipc_message(ipc).await,
+                    _ => continue,
+                }
+            };
+
+            if !is_ok { return false; }
+        }
+
+        true
+    }
 }
 
 // NOTE: The `Application` interface doesn't allow failures at the moment. The protobuf
@@ -511,12 +542,23 @@ where
             txs.push(tx);
         }
 
-        let proof = self.parent_finality.get_proof();
+        let proof = self.parent_finality.get_finality();
         let bytes = serde_json::to_vec(&ChainMessage::IPC(IPCMessage::TopDown(proof)))
             .expect("should not have failed");
         txs.push(bytes.into());
 
         Ok(response::PrepareProposal { txs })
+    }
+
+    async fn process_proposal(
+        &self,
+        request: request::ProcessProposal,
+    ) -> AbciResult<response::ProcessProposal> {
+        if !self.verify_messages(&request.txs).await {
+            Ok(response::ProcessProposal::Reject)
+        } else {
+            Ok(response::ProcessProposal::Accept)
+        }
     }
 
     /// Signals the beginning of a new block, prior to any `DeliverTx` calls.
