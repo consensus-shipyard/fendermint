@@ -9,7 +9,8 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use cid::Cid;
 use fendermint_abci::{AbciResult, Application};
-use fendermint_ipc::pof::ProofOfFinality;
+use fendermint_ipc::parent::PollingParentSyncer;
+use fendermint_ipc::pof::ParentFinalityProvider;
 use fendermint_ipc::IPCMessage;
 use fendermint_storage::{
     Codec, Encode, KVCollection, KVRead, KVReadable, KVStore, KVWritable, KVWrite,
@@ -130,7 +131,7 @@ where
     /// Zero means unlimited.
     state_hist_size: u64,
     /// The top down parent finality.
-    parent_finality: ProofOfFinality,
+    parent_finality: ParentFinalityProvider<PollingParentSyncer>,
 }
 
 impl<DB, SS, S, I> App<DB, SS, S, I>
@@ -299,24 +300,25 @@ where
         Ok((state.state_params, state.block_height))
     }
 
-    async fn verify_ipc_message(&self, ipc_message: IPCMessage) -> bool {
+    fn verify_ipc_message(&self, ipc_message: IPCMessage) -> bool {
         match ipc_message {
-            IPCMessage::TopDown(finality) => self.parent_finality.check_finality(&finality).await,
+            IPCMessage::TopDown(finality) => self.parent_finality.check_finality(&finality),
             IPCMessage::BottomUp => unimplemented!(),
         }
     }
 
     /// Verifies the list of transactions to see if they are valid. Returns true if all the txns
     /// are valid and false if any one of the txns is invalid.
-    async fn verify_messages(&self, txns: &Vec<Bytes>) -> bool {
+    fn verify_messages(&self, txns: &Vec<Bytes>) -> bool {
         for tx in txns {
             let is_ok = match serde_json::from_slice::<ChainMessage>(tx) {
                 Err(_) => {
+                    // FIXME: maybe we can reject the proposal when the transaction cannot be deserialized
                     tracing::info!("cannot deserialized transaction: {tx:?}");
                     continue;
                 }
                 Ok(message) => match message {
-                    ChainMessage::IPC(ipc) => self.verify_ipc_message(ipc).await,
+                    ChainMessage::IPC(ipc) => self.verify_ipc_message(ipc),
                     _ => continue,
                 },
             };
@@ -527,6 +529,8 @@ where
         Ok(response)
     }
 
+    /// 1. Prepare txns
+    /// 2. Prepare parent finality proposal
     async fn prepare_proposal(
         &self,
         request: request::PrepareProposal,
@@ -542,10 +546,14 @@ where
             txs.push(tx);
         }
 
-        let proof = self.parent_finality.get_finality();
-        let bytes = serde_json::to_vec(&ChainMessage::IPC(IPCMessage::TopDown(proof)))
-            .expect("should not have failed");
-        txs.push(bytes.into());
+        if let Some(finality_proposal) = self
+            .parent_finality
+            .next_finality_proposal()
+            .map_err(|e| anyhow!("cannot get next finality to propose due to: {e}"))? {
+
+            let bytes = serde_json::to_vec(&ChainMessage::IPC(IPCMessage::TopDown(finality_proposal)))?;
+            txs.push(bytes.into());
+        }
 
         Ok(response::PrepareProposal { txs })
     }
@@ -554,7 +562,7 @@ where
         &self,
         request: request::ProcessProposal,
     ) -> AbciResult<response::ProcessProposal> {
-        if !self.verify_messages(&request.txs).await {
+        if !self.verify_messages(&request.txs) {
             Ok(response::ProcessProposal::Reject)
         } else {
             Ok(response::ProcessProposal::Accept)
@@ -609,6 +617,7 @@ where
                     );
                     to_deliver_tx(ret)
                 }
+                _ => todo!(),
             },
         };
 

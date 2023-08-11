@@ -106,6 +106,9 @@ where
                 // Users cannot send these messages, only validators can propose them in blocks.
                 Ok((state, Err(IllegalMessage)))
             }
+            ChainMessage::IPC(_msg) => {
+                todo!()
+            }
         }
     }
 }
