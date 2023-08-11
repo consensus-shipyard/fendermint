@@ -69,7 +69,7 @@ pub trait Application {
         Ok(response::PrepareProposal { txs })
     }
 
-    /// Opporunity for the application to inspect the proposal before voting on it.
+    /// Opportunity for the application to inspect the proposal before voting on it.
     ///
     /// The application should accept the proposal unless there's something wrong with it.
     ///

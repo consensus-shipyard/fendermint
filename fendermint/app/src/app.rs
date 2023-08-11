@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use cid::Cid;
+use fendermint_abci::util::take_until_max_size;
 use fendermint_abci::{AbciResult, Application};
 use fendermint_storage::{
     Codec, Encode, KVCollection, KVRead, KVReadable, KVStore, KVWritable, KVWrite,
@@ -492,6 +493,45 @@ where
         };
 
         Ok(response)
+    }
+
+    /// Amend which transactions to put into the next block proposal.
+    async fn prepare_proposal(
+        &self,
+        request: request::PrepareProposal,
+    ) -> AbciResult<response::PrepareProposal> {
+        let txs = request.txs.into_iter().map(|tx| tx.to_vec()).collect();
+
+        let txs = self
+            .interpreter
+            .prepare((), txs)
+            .await
+            .context("failed to prepare proposal")?;
+
+        let txs = txs.into_iter().map(bytes::Bytes::from).collect();
+        let txs = take_until_max_size(txs, request.max_tx_bytes.try_into().unwrap());
+
+        Ok(response::PrepareProposal { txs })
+    }
+
+    /// Inspect a proposal and decide whether to vote on it.
+    async fn process_proposal(
+        &self,
+        request: request::ProcessProposal,
+    ) -> AbciResult<response::ProcessProposal> {
+        let txs = request.txs.into_iter().map(|tx| tx.to_vec()).collect();
+
+        let accept = self
+            .interpreter
+            .process((), txs)
+            .await
+            .context("failed to process proposal")?;
+
+        if accept {
+            Ok(response::ProcessProposal::Accept)
+        } else {
+            Ok(response::ProcessProposal::Reject)
+        }
     }
 
     /// Signals the beginning of a new block, prior to any `DeliverTx` calls.
