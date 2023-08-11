@@ -78,7 +78,9 @@ where
         }
     }
 
-    /// Write the snapshot to car file
+    /// Write the snapshot to car file.
+    /// The root cid points to the metadata, i.e `SnapshotMetadata` struct. From the snapshot metadata
+    /// one can query the version and have access to the state tree and other data in the snapshot.
     pub async fn write_car(self, path: impl AsRef<Path>) -> anyhow::Result<()> {
         let file = tokio::fs::File::create(path).await?;
 
