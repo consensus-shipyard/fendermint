@@ -22,7 +22,7 @@ use fendermint_vm_interpreter::fvm::state::{
 use fendermint_vm_interpreter::fvm::{FvmApplyRet, FvmGenesisOutput};
 use fendermint_vm_interpreter::signed::InvalidSignature;
 use fendermint_vm_interpreter::{
-    CheckInterpreter, ExecInterpreter, GenesisInterpreter, QueryInterpreter,
+    CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
 use fvm::engine::MultiEngine;
 use fvm_ipld_blockstore::Blockstore;
@@ -309,6 +309,15 @@ where
     S::Namespace: Sync + Send,
     DB: KVWritable<S> + KVReadable<S> + Clone + Send + Sync + 'static,
     SS: Blockstore + Clone + Send + Sync + 'static,
+    I: GenesisInterpreter<
+        State = FvmGenesisState<SS>,
+        Genesis = Vec<u8>,
+        Output = FvmGenesisOutput,
+    >,
+    I: ProposalInterpreter<
+        State = (), // TODO
+        Message = Vec<u8>,
+    >,
     I: ExecInterpreter<
         State = FvmExecState<SS>,
         Message = Vec<u8>,
@@ -325,11 +334,6 @@ where
         State = FvmQueryState<SS>,
         Query = BytesMessageQuery,
         Output = BytesMessageQueryRet,
-    >,
-    I: GenesisInterpreter<
-        State = FvmGenesisState<SS>,
-        Genesis = Vec<u8>,
-        Output = FvmGenesisOutput,
     >,
 {
     /// Provide information about the ABCI application.

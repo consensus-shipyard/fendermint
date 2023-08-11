@@ -1,6 +1,6 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use cid::Cid;
 use fendermint_vm_genesis::Genesis;
@@ -9,7 +9,7 @@ use fendermint_vm_message::chain::ChainMessage;
 use crate::{
     chain::{ChainMessageApplyRet, ChainMessageCheckRet},
     fvm::{FvmQuery, FvmQueryRet},
-    CheckInterpreter, ExecInterpreter, GenesisInterpreter, QueryInterpreter,
+    CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
 
 pub type BytesMessageApplyRet = Result<ChainMessageApplyRet, fvm_ipld_encoding::Error>;
@@ -28,6 +28,73 @@ pub struct BytesMessageInterpreter<I> {
 impl<I> BytesMessageInterpreter<I> {
     pub fn new(inner: I) -> Self {
         Self { inner }
+    }
+}
+
+#[async_trait]
+impl<I> ProposalInterpreter for BytesMessageInterpreter<I>
+where
+    I: ProposalInterpreter<Message = ChainMessage>,
+{
+    type State = I::State;
+    type Message = Vec<u8>;
+
+    /// Parse messages in the mempool and pass them into the inner `ChainMessage` interpreter.
+    async fn prepare(
+        &self,
+        state: Self::State,
+        msgs: Vec<Self::Message>,
+    ) -> anyhow::Result<Vec<Self::Message>> {
+        // We could include a flag to disable this parsing if we know that the inner interpreter
+        // does not care about proposals, but in our case we know that we'll eventually want to
+        // consult the IPLD Resolver.
+
+        let mut chain_msgs = Vec::new();
+
+        for msg in msgs {
+            match fvm_ipld_encoding::from_slice::<ChainMessage>(&msg) {
+                Err(e) => {
+                    // This should not happen because the `CheckInterpreter` implementation below would
+                    // have rejected any such user transaction.
+                    tracing::warn!(
+                        error = e.to_string(),
+                        "failed to decode message in mempool as ChainMessage"
+                    );
+                }
+                Ok(msg) => chain_msgs.push(msg),
+            }
+        }
+
+        let chain_msgs = self.inner.prepare(state, chain_msgs).await?;
+
+        chain_msgs
+            .into_iter()
+            .map(|msg| {
+                fvm_ipld_encoding::to_vec(&msg).context("failed to encode ChainMessage as IPLD")
+            })
+            .collect()
+    }
+
+    /// Parse messages in the block, reject if unknown format. Pass the rest to the inner `ChainMessage` interpreter.
+    async fn process(&self, state: Self::State, msgs: Vec<Self::Message>) -> anyhow::Result<bool> {
+        let mut chain_msgs = Vec::new();
+
+        for msg in msgs {
+            match fvm_ipld_encoding::from_slice::<ChainMessage>(&msg) {
+                Err(e) => {
+                    // This would indicate a Byzantine validator which includes rubbish in their proposal.
+                    // We could reject the proposal here, or we can accept it and punish the validator during
+                    // block execution, so that their power is reduced.
+                    tracing::debug!(
+                        error = e.to_string(),
+                        "failed to decode messsage in proposal as ChainMessage"
+                    );
+                }
+                Ok(msg) => chain_msgs.push(msg),
+            }
+        }
+
+        self.inner.process(state, chain_msgs).await
     }
 }
 
