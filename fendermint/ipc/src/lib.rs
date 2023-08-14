@@ -3,16 +3,16 @@
 //! Interfacing with IPC, provides utility functions
 
 mod agent;
+mod cache;
 mod message;
 pub mod parent;
 pub mod pof;
 
+use crate::pof::IPCParentFinality;
 use async_trait::async_trait;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::ValidatorSet;
 pub use message::IPCMessage;
-use crate::parent::PollingParentSyncer;
-use crate::pof::IPCParentFinality;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -26,6 +26,7 @@ pub struct Config {
 }
 
 type BlockHeight = u64;
+type Nonce = u64;
 
 /// Obtain the latest state information required for IPC from the parent subnet
 pub trait ParentViewProvider {
@@ -36,7 +37,7 @@ pub trait ParentViewProvider {
     /// Get the top down messages from the nonce of a height
     fn top_down_msgs(&self, height: BlockHeight, nonce: u64) -> Vec<CrossMsg>;
     /// Get the latest membership information
-   fn membership(&self) -> Optioin<ValidatorSet>;
+    fn membership(&self) -> Option<ValidatorSet>;
 
     /// Called when finality is committed
     fn on_finality_committed(&self, finality: &IPCParentFinality);
@@ -50,7 +51,8 @@ pub trait ParentViewQuery {
     /// Fetch the block hash at target height
     async fn block_hash(&self, height: BlockHeight) -> anyhow::Result<Option<Vec<u8>>>;
     /// Get the top down messages from the nonce of a height
-    async fn top_down_msgs(&self, height: BlockHeight, nonce: u64) -> anyhow::Result<Vec<CrossMsg>>;
+    async fn top_down_msgs(&self, height: BlockHeight, nonce: u64)
+        -> anyhow::Result<Vec<CrossMsg>>;
     /// Get the latest membership information
     async fn membership(&self) -> anyhow::Result<ValidatorSet>;
 }

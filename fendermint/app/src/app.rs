@@ -549,9 +549,10 @@ where
         if let Some(finality_proposal) = self
             .parent_finality
             .next_finality_proposal()
-            .map_err(|e| anyhow!("cannot get next finality to propose due to: {e}"))? {
-
-            let bytes = serde_json::to_vec(&ChainMessage::IPC(IPCMessage::TopDown(finality_proposal)))?;
+            .map_err(|e| anyhow!("cannot get next finality to propose due to: {e}"))?
+        {
+            let bytes =
+                serde_json::to_vec(&ChainMessage::IPC(IPCMessage::TopDown(finality_proposal)))?;
             txs.push(bytes.into());
         }
 

@@ -4,18 +4,16 @@
 //! Parent view related functions
 
 use crate::agent::AgentProxy;
+use crate::cache::RangeKeyCache;
 use crate::pof::IPCParentFinality;
-use crate::{BlockHeight, Config, ParentViewProvider};
+use crate::{BlockHeight, Config, Nonce, ParentViewProvider};
 use anyhow::anyhow;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::ValidatorSet;
-use std::cmp::{max, min};
-use std::collections::{HashMap, VecDeque};
-use std::hash::Hash;
+use std::cmp::max;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use num_traits::{Num, PrimInt};
 use tokio::task::JoinHandle;
 
 /// Constantly syncing with parent through polling
@@ -24,29 +22,49 @@ pub struct PollingParentSyncer {
     started: Arc<AtomicBool>,
     cache: LockedCache,
     ipc_agent_proxy: Arc<AgentProxy>,
-    handle: Option<JoinHandle<anyhow::Result<()>>>
+    handle: Option<JoinHandle<anyhow::Result<()>>>,
+}
+
+impl PollingParentSyncer {
+    pub fn new(config: Config) -> Self {
+        Self {
+            config,
+            started: Arc::new(AtomicBool::new(false)),
+            cache: Arc::new(RwLock::new(ParentSyncerCache {
+                block_hash: RangeKeyCache::new(),
+                top_down_message: RangeKeyCache::new(),
+                membership: None,
+            })),
+            ipc_agent_proxy: Arc::new(AgentProxy {}),
+            handle: None,
+        }
+    }
 }
 
 impl ParentViewProvider for PollingParentSyncer {
-    fn latest_height(&self) -> BlockHeight {
-        self.read_cache(|cache| cache.latest_key())
+    fn latest_height(&self) -> Option<BlockHeight> {
+        self.read_cache(|cache| cache.block_hash.upper_bound())
     }
 
-    fn block_hash(&self, height: u64) -> Option<Vec<u8>> {
-        self.read_cache(|cache| cache.get_value(height).map(|v| v.to_vec()))
+    fn block_hash(&self, height: BlockHeight) -> Option<Vec<u8>> {
+        self.read_cache(|cache| cache.block_hash.get_value(height).map(|v| v.to_vec()))
     }
 
-    fn top_down_msgs(&self, _height: BlockHeight, _nonce: u64) -> Vec<CrossMsg> {
-        todo!()
+    fn top_down_msgs(&self, _height: BlockHeight, nonce: Nonce) -> Vec<CrossMsg> {
+        self.read_cache(|cache| {
+            let v = cache.top_down_message.values_within_range(nonce, None);
+            // FIXME: avoid clone here, return references, let caller clone on demand
+            v.into_iter().cloned().collect()
+        })
     }
 
-    fn membership(&self) -> Optioin<ValidatorSet> {
-        todo!()
+    fn membership(&self) -> Option<ValidatorSet> {
+        self.read_cache(|cache| cache.membership.clone())
     }
 
     fn on_finality_committed(&self, finality: &IPCParentFinality) {
         let mut cache = self.cache.write().unwrap();
-        cache.remove_key_till(finality.height);
+        cache.block_hash.remove_key_till(finality.height);
     }
 }
 
@@ -57,96 +75,23 @@ impl Clone for PollingParentSyncer {
             started: Arc::new(AtomicBool::new(false)),
             cache: self.cache.clone(),
             ipc_agent_proxy: self.ipc_agent_proxy.clone(),
-            handle: None
+            handle: None,
         }
     }
 }
 
-/// The cache for parent syncer
-struct RangeKeyCache<Key, Value> {
-    /// Stores the data in a hashmap.
-    data: HashMap<Key, Value>,
-    lower_bound: Key,
-    upper_bound: Key
+struct ParentSyncerCache {
+    block_hash: RangeKeyCache<BlockHeight, Vec<u8>>,
+    top_down_message: RangeKeyCache<Nonce, CrossMsg>,
+    membership: Option<ValidatorSet>,
 }
 
-impl <Key: PrimInt + Hash, Value> RangeKeyCache<Key, Value> {
-    pub fn new(mut key_pairs: Vec<(Key, Value)>) -> Self {
-        if key_pairs.is_empty() {
-
-        }
-
-        let mut data = HashMap::new();
-        let (mut lower, mut upper) = match key_pairs.pop() {
-            None => {
-                return Self {
-                    data,
-                    lower_bound: Key::zero(),
-                    upper_bound: Key::zero()
-                };
-            }
-            Some((key, val)) => {
-                data.insert(key, val);
-                (key, key)
-            }
-        };
-
-        for (key, val) in key_pairs {
-            if key < lower {
-                lower = key;
-            } else if key > upper {
-                upper = key;
-            }
-            data.insert(key, val);
-        }
-
-        Self { data, lower_bound: lower, upper_bound: upper }
-    }
-
-    pub fn latest_key(&self) -> Key {
-        self.upper_bound
-    }
-
-    pub fn get_value(&self, key: Key) -> Option<&Value> {
-        if self.lower_bound > key || self.upper_bound < key {
-            return None;
-        }
-        return self.data.get(&key);
-    }
-
-    /// Removes the block hashes stored till the specified height, exclusive.
-    pub fn remove_key_till(&mut self, key: Key) {
-        if self.lower_bound > key || self.upper_bound < key {
-            return;
-        }
-
-        let mut i = self.lower_bound;
-        while i < key {
-            self.data.remove(&i);
-            i = i + Key::one();
-        }
-    }
-
-    /// Insert the block hash at the next height
-    pub fn insert_after_lower_bound(&mut self, key: Key, val: Value) -> bool {
-        if self.lower_bound > key {
-            return false;
-        }
-        if self.upper_bound < key {
-            self.upper_bound = key;
-        }
-
-        self.data.insert(key, val);
-        true
-    }
-}
-
-type LockedCache = Arc<RwLock<RangeKeyCache<BlockHeight, Vec<u8>>>>;
+type LockedCache = Arc<RwLock<ParentSyncerCache>>;
 
 impl PollingParentSyncer {
     fn read_cache<F, T>(&self, f: F) -> T
     where
-        F: Fn(&RangeKeyCache<BlockHeight, Vec<u8>>) -> T,
+        F: Fn(&ParentSyncerCache) -> T,
     {
         let cache = self.cache.read().unwrap();
         f(&cache)
@@ -190,7 +135,7 @@ async fn sync_with_parent(
 
         let mut cache = lock.write().unwrap();
         for r in hashes {
-            cache.insert_after_lower_bound(r.0, r.1);
+            cache.block_hash.insert_after_lower_bound(r.0, r.1);
         }
     }
 }
@@ -235,8 +180,11 @@ async fn fetch_block_hashes(
         let cache = lock.read().unwrap();
         // if cache.latest_height() is None, it means we have not started fetching any heights
         // we just use the latest height minus a lower bound as the parent view
-        let starting_height = cache.latest_key();
-        tracing::debug!("polling parent from {starting_height:} till {latest_height:}");
+        let starting_height = cache.block_hash.upper_bound().unwrap_or(max(
+            1,
+            latest_height.saturating_sub(config.chain_head_lower_bound),
+        ));
+        tracing::debug!("polling parent from {starting_height} till {latest_height}");
 
         starting_height
 
