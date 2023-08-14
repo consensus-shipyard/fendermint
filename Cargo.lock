@@ -2521,6 +2521,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
+ "ipc-sdk",
  "lazy_static",
  "libsecp256k1",
  "num-traits",
