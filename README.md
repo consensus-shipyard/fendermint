@@ -42,3 +42,15 @@ To test whether the genesis process works, we can run the following unit test:
 ```bash
 cargo test --release -p fendermint_vm_interpreter load_genesis
 ```
+
+
+## Pre-built Docker Image
+
+The CI build publishes Docker images to the [Github Container Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry) upon a successful build on the `main` branch. The image can be pulled with the following command:
+
+
+```bash
+docker pull ghcr.io/consensus-shipyard/fendermint:latest
+```
+
+This is the same image as the one used in the End-to-End tests. It contains the built-in actor bundle and IPC Solidity actors, ready to be deployed during genesis.
