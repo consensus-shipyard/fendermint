@@ -95,12 +95,14 @@ where
 
                 Ok((state, Ok(ret)))
             }
-            ChainMessage::Ipc(IpcMessage::BottomUp(_msg)) => {
+            ChainMessage::Ipc(IpcMessage::BottomUpResolve(_msg)) => {
                 // TODO: Check the relayer signature and nonce. Don't have to check the quorum certificate, if it's invalid, make the relayer pay.
-                // This is currently sperad out over the `Signed` and the `FvmMessage` interpreters, so think about a way to reuse.
+                // For `ChainMessage::Signed` this is currently sperad out over the `SignedMessageInterpreter` and the `FvmMessageInterpreter`,
+                // so think about a way to reuse. For now returning illegal as a placeholder.
                 Ok((state, Err(IllegalMessage)))
             }
-            ChainMessage::Ipc(IpcMessage::TopDown) => {
+            ChainMessage::Ipc(IpcMessage::TopDown)
+            | ChainMessage::Ipc(IpcMessage::BottomUpExec(_)) => {
                 // Users cannot send some of these messages, only validators can propose them in blocks.
                 Ok((state, Err(IllegalMessage)))
             }

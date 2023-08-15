@@ -10,11 +10,18 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)]
 pub enum IpcMessage {
-    /// A bottom-up checkpoint coming from a child subnet, relayed by a user of the parent subnet for a reward.
+    /// A bottom-up checkpoint coming from a child subnet "for resolution", relayed by a user of the parent subnet for a reward.
     ///
     /// The reward can be given immediately upon the validation of the quorum certificate in the checkpoint,
     /// or later during execution, once data availability has been confirmed.
-    BottomUp(SignedRelayedMessage<SignedBottomUpCheckpoint>),
+    BottomUpResolve(SignedRelayedMessage<CertifiedMessage<BottomUpCheckpoint>>),
+
+    /// A bottom-up checkpoint proposed "for execution" by the parent subnet validators, provided that the majority of them
+    /// have the data available to them, already resolved.
+    ///
+    /// To prove that the data is available, we can either use the ABCI++ "process proposal" mechanism,
+    /// or we can gossip votes using the _IPLD Resolver_ and attach them as a quorum certificate.
+    BottomUpExec(CertifiedMessage<BottomUpCheckpoint>),
 
     // TODO
     TopDown,
@@ -43,6 +50,27 @@ pub struct SignedRelayedMessage<T> {
     pub signature: Signature,
 }
 
+/// A message with a quorum certificate from a group of validators.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CertifiedMessage<T> {
+    /// The message the validators signed.
+    pub message: T,
+    /// The quorum certificate.
+    pub certificate: MultiSig,
+}
+
+/// A quorum certificate consisting of a simple multi-sig.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MultiSig {
+    pub signatures: Vec<ValidatorSignature>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ValidatorSignature {
+    pub validator: Address,
+    pub signature: Signature,
+}
+
 /// A periodic bottom-up checkpoints contains the source subnet ID (to protect against replay attacks),
 /// a block height (for sequencing), any potential handover to the next validator set, and a pointer
 /// to the messages that need to be resolved and executed by the parent validators.
@@ -59,19 +87,6 @@ pub struct BottomUpCheckpoint {
     pub bottom_up_messages: Cid, // TODO: Use TCid
 }
 
-/// A bottom-up checkpoint with a quroum certificate.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SignedBottomUpCheckpoint {
-    pub checkpoint: BottomUpCheckpoint,
-    pub signatures: Vec<ValidatorSignature>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ValidatorSignature {
-    pub validator: Address,
-    pub signature: Signature,
-}
-
 #[cfg(feature = "arb")]
 mod arb {
 
@@ -80,14 +95,15 @@ mod arb {
     use quickcheck::{Arbitrary, Gen};
 
     use super::{
-        BottomUpCheckpoint, IpcMessage, RelayedMessage, SignedBottomUpCheckpoint,
+        BottomUpCheckpoint, CertifiedMessage, IpcMessage, MultiSig, RelayedMessage,
         SignedRelayedMessage, ValidatorSignature,
     };
 
     impl Arbitrary for IpcMessage {
         fn arbitrary(g: &mut Gen) -> Self {
-            match u8::arbitrary(g) % 2 {
-                0 => IpcMessage::BottomUp(Arbitrary::arbitrary(g)),
+            match u8::arbitrary(g) % 3 {
+                0 => IpcMessage::BottomUpResolve(Arbitrary::arbitrary(g)),
+                1 => IpcMessage::BottomUpExec(Arbitrary::arbitrary(g)),
                 _ => IpcMessage::TopDown,
             }
         }
@@ -112,15 +128,11 @@ mod arb {
         }
     }
 
-    impl Arbitrary for SignedBottomUpCheckpoint {
+    impl<T: Arbitrary> Arbitrary for CertifiedMessage<T> {
         fn arbitrary(g: &mut Gen) -> Self {
-            let mut signatures = Vec::new();
-            for _ in 0..*g.choose(&[1, 3, 5]).unwrap() {
-                signatures.push(ValidatorSignature::arbitrary(g));
-            }
             Self {
-                checkpoint: BottomUpCheckpoint::arbitrary(g),
-                signatures,
+                message: T::arbitrary(g),
+                certificate: Arbitrary::arbitrary(g),
             }
         }
     }
@@ -131,6 +143,16 @@ mod arb {
                 validator: ArbAddress::arbitrary(g).0,
                 signature: Signature::arbitrary(g),
             }
+        }
+    }
+
+    impl Arbitrary for MultiSig {
+        fn arbitrary(g: &mut Gen) -> Self {
+            let mut signatures = Vec::new();
+            for _ in 0..*g.choose(&[1, 3, 5]).unwrap() {
+                signatures.push(ValidatorSignature::arbitrary(g));
+            }
+            Self { signatures }
         }
     }
 
