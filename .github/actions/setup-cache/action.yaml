@@ -1,15 +1,11 @@
 name: Setup Cache
 description: "Setup Rust artifact caching"
 inputs:
-  name:
-    description: "Name of the step from the Makefile"
+  cache-key:
+    description: "Caching key used for invalidation and uploading"
     required: true
-  os:
-    description: "Name of the OS"
-    required: true
-  rust:
-    description: "Name of the Rust version"
-    required: true
+  cache-update:
+    description: "Whether to overwrite existing caches"
 
 runs:
   using: "composite"
@@ -20,7 +16,7 @@ runs:
       with:
         release-name: v0.3.1
         # Caching everything separately, in case they don't ask for the same things to be compiled.
-        cache-key: ${{ inputs.name }}-${{ inputs.os }}-${{ inputs.rust }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain', 'rust-toolchain.toml') }}
+        cache-key: ${{ inputs.cache-key }}
         # Not sure why we should ever update a cache that has the hash of the lock file in it.
         # In Forest it only contains the rust-toolchain, so it makes sense to update because dependencies could have changed.
-        cache-update: false
+        cache-update: ${{ inputs.cache-update }}
