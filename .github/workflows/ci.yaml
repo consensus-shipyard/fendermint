@@ -100,6 +100,10 @@ jobs:
     # if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
+    permissions:
+      packages: write
+      contents: read
+
     steps:
       - name: Check out the project
         uses: actions/checkout@v3

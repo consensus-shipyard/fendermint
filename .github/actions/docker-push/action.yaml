@@ -20,16 +20,13 @@ inputs:
 runs:
   using: "composite"
 
-  permissions:
-    packages: write
-    contents: read
-
-
   steps:
     - name: Log in to registry
+      shell: bash
       run: echo "${{ inputs.repo-token }}" | docker login ghcr.io -u $ --password-stdin
 
     - name: Push image
+      shell: bash
       run: |
         IMAGE_ID=ghcr.io/${{ inputs.repo-owner }}/${{ inputs.image-name }}
 
