@@ -1,5 +1,5 @@
-name: Installs
-description: "Install dependencies and tools"
+name: Install Tools
+description: "Install platform dependencies and tools"
 inputs:
   repo-token:
     description: "secrets.GITHUB_TOKEN"

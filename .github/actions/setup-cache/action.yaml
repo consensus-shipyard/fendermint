@@ -1,0 +1,26 @@
+name: Setup Cache
+description: "Setup Rust artifact caching"
+inputs:
+  name:
+    description: "Name of the step from the Makefile"
+    required: true
+  os:
+    description: "Name of the OS"
+    required: true
+  rust:
+    description: "Name of the Rust version"
+    required: true
+
+runs:
+  using: "composite"
+
+  steps:
+    - name: Setup sccache
+      uses: hanabi1224/sccache-action@v1.2.0 # https://github.com/hanabi1224/sccache-action used by Forest.
+      with:
+        release-name: v0.3.1
+        # Caching everything separately, in case they don't ask for the same things to be compiled.
+        cache-key: ${{ inputs.name }}-${{ inputs.os }}-${{ inputs.rust }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain', 'rust-toolchain.toml') }}
+        # Not sure why we should ever update a cache that has the hash of the lock file in it.
+        # In Forest it only contains the rust-toolchain, so it makes sense to update because dependencies could have changed.
+        cache-update: false
