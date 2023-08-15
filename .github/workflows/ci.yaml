@@ -92,8 +92,8 @@ jobs:
 
 
   # Publish Docker image on the main branch
-  docker-publish:
-    name: Publish Docker Image
+  publish:
+    name: Publish artifacts
     # needs: [tests]
     # if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -108,13 +108,12 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           rust: stable
 
-      # Try to reuse the cache from the tests which built the docker image already.
       - name: Setup Cache
         uses: ./.github/actions/setup-cache
         timeout-minutes: 5
         continue-on-error: true
         with:
-          name: e2e
+          name: publish
           os:   ubuntu-latest
           rust: stable
 
