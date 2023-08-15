@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
     branches:
       - '**'
@@ -29,6 +29,7 @@ jobs:
 
   # Test matrix, running tasks from the Makefile.
   tests:
+    if: github.ref == 'refs/heads/main'
     needs: [pre-compile-checks]
     name: ${{ matrix.make.name }} (${{ matrix.os }}, ${{ matrix.rust }})
     runs-on: ${{ matrix.os }}
@@ -81,3 +82,39 @@ jobs:
 
       - name: ${{ matrix.make.name }}
         run: make ${{ matrix.make.task }}
+
+
+  # Publish Docker image on the main branch
+  docker-publish:
+    name: Publish Docker Image
+    # needs: [tests]
+    # if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the project
+        uses: actions/checkout@v3
+
+      - name: Install Tools
+        uses: ./.github/actions/install-tools
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Try to reuse the cache from the tests which built the docker image already.
+      - name: Setup Cache
+        uses: ./.github/actions/setup-cache
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          name: e2e
+          os:   ubuntu-latest
+          rust: stable
+
+      - name: Docker Build
+        run: make docker-build
+
+      - name: Docker Push
+        uses: ./.github/actions/docker-push
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          repo-owner: ${{ github.repository_owner }}
+          image-name: ${{ github.event.repository.name }}
