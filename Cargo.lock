@@ -2380,6 +2380,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
+ "ipc-sdk",
  "quickcheck 1.0.3",
  "rand 0.8.5",
  "serde",
@@ -2415,6 +2416,7 @@ dependencies = [
 name = "fendermint_vm_core"
 version = "0.1.0"
 dependencies = [
+ "arbitrary",
  "cid",
  "fnv",
  "fvm_shared",

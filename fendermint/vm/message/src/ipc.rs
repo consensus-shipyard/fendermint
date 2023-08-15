@@ -8,12 +8,13 @@ use serde::{Deserialize, Serialize};
 
 /// Messages involved in InterPlanetary Consensus.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
 pub enum IpcMessage {
     /// A bottom-up checkpoint coming from a child subnet, relayed by a user of the parent subnet for a reward.
     ///
     /// The reward can be given immediately upon the validation of the quorum certificate in the checkpoint,
     /// or later during execution, once data availability has been confirmed.
-    BottomUp(SignedRelayedMessage<BottomUpCheckpoint>),
+    BottomUp(SignedRelayedMessage<SignedBottomUpCheckpoint>),
 
     // TODO
     TopDown,
@@ -74,14 +75,72 @@ pub struct ValidatorSignature {
 #[cfg(feature = "arb")]
 mod arb {
 
+    use fendermint_testing::arb::{ArbAddress, ArbCid, ArbSubnetID};
+    use fvm_shared::crypto::signature::Signature;
     use quickcheck::{Arbitrary, Gen};
 
-    use super::IpcMessage;
+    use super::{
+        BottomUpCheckpoint, IpcMessage, RelayedMessage, SignedBottomUpCheckpoint,
+        SignedRelayedMessage, ValidatorSignature,
+    };
 
     impl Arbitrary for IpcMessage {
         fn arbitrary(g: &mut Gen) -> Self {
-            match u8::arbitrary(g) % 1 {
-                _ => todo!(),
+            match u8::arbitrary(g) % 2 {
+                0 => IpcMessage::BottomUp(Arbitrary::arbitrary(g)),
+                _ => IpcMessage::TopDown,
+            }
+        }
+    }
+
+    impl<T: Arbitrary> Arbitrary for SignedRelayedMessage<T> {
+        fn arbitrary(g: &mut Gen) -> Self {
+            Self {
+                message: RelayedMessage::arbitrary(g),
+                signature: Signature::arbitrary(g),
+            }
+        }
+    }
+
+    impl<T: Arbitrary> Arbitrary for RelayedMessage<T> {
+        fn arbitrary(g: &mut Gen) -> Self {
+            Self {
+                message: T::arbitrary(g),
+                relayer: ArbAddress::arbitrary(g).0,
+                sequence: u64::arbitrary(g),
+            }
+        }
+    }
+
+    impl Arbitrary for SignedBottomUpCheckpoint {
+        fn arbitrary(g: &mut Gen) -> Self {
+            let mut signatures = Vec::new();
+            for _ in 0..*g.choose(&[1, 3, 5]).unwrap() {
+                signatures.push(ValidatorSignature::arbitrary(g));
+            }
+            Self {
+                checkpoint: BottomUpCheckpoint::arbitrary(g),
+                signatures,
+            }
+        }
+    }
+
+    impl Arbitrary for ValidatorSignature {
+        fn arbitrary(g: &mut Gen) -> Self {
+            Self {
+                validator: ArbAddress::arbitrary(g).0,
+                signature: Signature::arbitrary(g),
+            }
+        }
+    }
+
+    impl Arbitrary for BottomUpCheckpoint {
+        fn arbitrary(g: &mut Gen) -> Self {
+            Self {
+                subnet_id: ArbSubnetID::arbitrary(g).0,
+                height: u32::arbitrary(g).into(),
+                next_validator_set_id: Arbitrary::arbitrary(g),
+                bottom_up_messages: ArbCid::arbitrary(g).0,
             }
         }
     }

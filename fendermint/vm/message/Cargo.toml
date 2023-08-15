@@ -46,4 +46,11 @@ fendermint_vm_message = { path = ".", features = ["arb"] }
 fendermint_testing = { path = "../../testing", features = ["golden"] }
 
 [features]
-arb = ["arbitrary", "quickcheck", "fvm_shared/arb", "cid/arb", "rand", "fendermint_testing/arb"]
+arb = [
+  "arbitrary",
+  "quickcheck",
+  "fvm_shared/arb",
+  "cid/arb",
+  "rand",
+  "fendermint_testing/arb",
+]
