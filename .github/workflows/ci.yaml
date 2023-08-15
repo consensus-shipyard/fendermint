@@ -65,26 +65,10 @@ jobs:
       - name: Check out the project
         uses: actions/checkout@v3
 
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          target: wasm32-unknown-unknown
-          toolchain: ${{ matrix.rust }}
-          components: rustfmt,clippy
-
-      - name: Install Cargo Make
-        uses: davidB/rust-cargo-make@v1
-
-      # Protobuf compiler required by libp2p-core
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v1
+      - name: Install Tools
+        uses: ./.github/actions/install-tools.yaml
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      # For compiling Solidity contracts
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
 
       - name: Setup sccache
         uses: hanabi1224/sccache-action@v1.2.0 # https://github.com/hanabi1224/sccache-action used by Forest.
