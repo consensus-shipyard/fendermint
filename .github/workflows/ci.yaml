@@ -8,6 +8,13 @@ on:
     branches:
       - '**'
 
+env:
+  CARGO_INCREMENTAL: '0'
+  SCCACHE_CACHE_SIZE: 10G
+  CC: "sccache clang"
+  CXX: "sccache clang++"
+  PROFILE: "ci"
+
 jobs:
   # Check code formatting; anything that doesn't require compilation.
   pre-compile-checks:
@@ -16,16 +23,20 @@ jobs:
     steps:
       - name: Check out the project
         uses: actions/checkout@v3
+
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: nightly
           components: rustfmt
+
       - name: Check code formatting
         run: make check-fmt
+
       - name: Check license headers
         run: make license
+
 
   # Test matrix, running tasks from the Makefile.
   tests:
@@ -56,11 +67,6 @@ jobs:
     env:
       RUST_BACKTRACE: full
       RUSTFLAGS: -Dwarnings
-      CARGO_INCREMENTAL: '0'
-      SCCACHE_CACHE_SIZE: 10G
-      CC: "sccache clang"
-      CXX: "sccache clang++"
-      PROFILE: "ci"
 
     steps:
       - name: Check out the project
@@ -70,6 +76,7 @@ jobs:
         uses: ./.github/actions/install-tools
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+          rust: ${{ matrix.rust }}
 
       - name: Setup Cache
         uses: ./.github/actions/setup-cache
@@ -90,6 +97,7 @@ jobs:
     # needs: [tests]
     # if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+
     steps:
       - name: Check out the project
         uses: actions/checkout@v3
@@ -98,6 +106,7 @@ jobs:
         uses: ./.github/actions/install-tools
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+          rust: stable
 
       # Try to reuse the cache from the tests which built the docker image already.
       - name: Setup Cache

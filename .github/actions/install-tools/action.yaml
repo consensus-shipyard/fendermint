@@ -4,6 +4,9 @@ inputs:
   repo-token:
     description: "secrets.GITHUB_TOKEN"
     required: true
+  rust:
+    description: "Rust toolchain name"
+    required: true
 
 runs:
   using: "composite"
@@ -14,7 +17,7 @@ runs:
       with:
         profile: minimal
         target: wasm32-unknown-unknown
-        toolchain: ${{ matrix.rust }}
+        toolchain: ${{ inputs.rust }}
         components: rustfmt,clippy
 
     - name: Install Cargo Make
