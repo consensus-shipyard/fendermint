@@ -41,7 +41,6 @@ runs:
 
         # This uses the Docker `latest` tag convention.
         [ "$VERSION" == "main" ] && VERSION=latest
-        VERSION=latest
 
         echo IMAGE_ID=$IMAGE_ID
         echo VERSION=$VERSION
