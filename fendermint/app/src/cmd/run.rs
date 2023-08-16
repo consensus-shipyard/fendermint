@@ -6,7 +6,9 @@ use fendermint_abci::ApplicationService;
 use fendermint_app::{App, AppStore};
 use fendermint_rocksdb::{blockstore::NamespaceBlockstore, namespaces, RocksDb, RocksDbConfig};
 use fendermint_vm_interpreter::{
-    bytes::BytesMessageInterpreter, chain::ChainMessageInterpreter, fvm::FvmMessageInterpreter,
+    bytes::{BytesMessageInterpreter, ProposalPrepareMode},
+    chain::ChainMessageInterpreter,
+    fvm::FvmMessageInterpreter,
     signed::SignedMessageInterpreter,
 };
 use tracing::info;
