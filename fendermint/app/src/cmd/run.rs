@@ -9,6 +9,7 @@ use fendermint_vm_interpreter::{
     bytes::{BytesMessageInterpreter, ProposalPrepareMode},
     chain::ChainMessageInterpreter,
     fvm::FvmMessageInterpreter,
+    ipc::IpcMessageInterpreter,
     signed::SignedMessageInterpreter,
 };
 use tracing::info;
@@ -22,15 +23,17 @@ cmd! {
 }
 
 async fn run(settings: Settings) -> anyhow::Result<()> {
-    let interpreter = FvmMessageInterpreter::<NamespaceBlockstore>::new(
-        settings.contracts_dir(),
-        settings.fvm.gas_overestimation_rate,
-        settings.fvm.gas_search_step,
-    );
-    let interpreter = SignedMessageInterpreter::new(interpreter);
-    let interpreter = ChainMessageInterpreter::new(interpreter);
-    let interpreter =
-        BytesMessageInterpreter::new(interpreter, ProposalPrepareMode::AppendOnly, false);
+    let interpreter = {
+        let fvm = FvmMessageInterpreter::<NamespaceBlockstore>::new(
+            settings.contracts_dir(),
+            settings.fvm.gas_overestimation_rate,
+            settings.fvm.gas_search_step,
+        );
+        let signed = SignedMessageInterpreter::new(fvm.clone());
+        let ipc = IpcMessageInterpreter::new(fvm);
+        let chain = ChainMessageInterpreter::new(signed, ipc);
+        BytesMessageInterpreter::new(chain, ProposalPrepareMode::AppendOnly, false)
+    };
 
     let ns = Namespaces::default();
     let db = open_db(&settings, &ns).context("error opening DB")?;

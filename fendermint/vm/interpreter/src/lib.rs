@@ -5,6 +5,7 @@ use async_trait::async_trait;
 pub mod bytes;
 pub mod chain;
 pub mod fvm;
+pub mod ipc;
 pub mod signed;
 
 /// Initialize the chain state.

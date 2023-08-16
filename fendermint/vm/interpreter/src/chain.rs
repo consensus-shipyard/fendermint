@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 use async_trait::async_trait;
@@ -6,12 +5,10 @@ use async_trait::async_trait;
 use fendermint_vm_message::{chain::ChainMessage, ipc::IpcMessage, signed::SignedMessage};
 
 use crate::{
+    ipc::IpcMessageCheckRet,
     signed::{SignedMessageApplyRet, SignedMessageCheckRet},
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
-
-/// A message a user is not supposed to send.
-pub struct IllegalMessage;
 
 // For now this is the only option, later we can expand.
 pub enum ChainMessageApplyRet {
@@ -19,25 +16,30 @@ pub enum ChainMessageApplyRet {
 }
 
 /// We only allow signed messages into the mempool.
-pub type ChainMessageCheckRet = Result<SignedMessageCheckRet, IllegalMessage>;
+pub enum ChainMessageCheckRet {
+    Signed(SignedMessageCheckRet),
+    Ipc(IpcMessageCheckRet),
+}
 
 /// Interpreter working on chain messages; in the future it will schedule
 /// CID lookups to turn references into self-contained user or cross messages.
 #[derive(Clone)]
-pub struct ChainMessageInterpreter<I> {
-    inner: I,
+pub struct ChainMessageInterpreter<S, I> {
+    signed: S,
+    ipc: I,
 }
 
-impl<I> ChainMessageInterpreter<I> {
-    pub fn new(inner: I) -> Self {
-        Self { inner }
+impl<I, C> ChainMessageInterpreter<I, C> {
+    pub fn new(signed: I, ipc: C) -> Self {
+        Self { signed, ipc }
     }
 }
 
 #[async_trait]
-impl<I> ProposalInterpreter for ChainMessageInterpreter<I>
+impl<I, C> ProposalInterpreter for ChainMessageInterpreter<I, C>
 where
     I: Sync + Send,
+    C: Sync + Send,
 {
     // TODO: The state can include the IPLD Resolver mempool, for example by using STM
     // to implement a shared memory space.
@@ -69,9 +71,10 @@ where
 }
 
 #[async_trait]
-impl<I> ExecInterpreter for ChainMessageInterpreter<I>
+impl<I, C> ExecInterpreter for ChainMessageInterpreter<I, C>
 where
     I: ExecInterpreter<Message = SignedMessage, DeliverOutput = SignedMessageApplyRet>,
+    C: Sync + Send,
 {
     type State = I::State;
     type Message = ChainMessage;
@@ -86,32 +89,33 @@ where
     ) -> anyhow::Result<(Self::State, Self::DeliverOutput)> {
         match msg {
             ChainMessage::Signed(msg) => {
-                let (state, ret) = self.inner.deliver(state, msg).await?;
+                let (state, ret) = self.signed.deliver(state, msg).await?;
                 Ok((state, ChainMessageApplyRet::Signed(ret)))
             }
             ChainMessage::Ipc(_) => {
                 // This only happens if a validator is malicious or we have made a programming error.
                 // I expect for now that we don't run with untrusted validators, so it's okay to quit.
-                Err(anyhow!(
-                    "The handling of IPC messages is not yet implemented."
-                ))
+                todo!("#191: implement execution handling for IPC")
             }
         }
     }
 
     async fn begin(&self, state: Self::State) -> anyhow::Result<(Self::State, Self::BeginOutput)> {
-        self.inner.begin(state).await
+        // TODO #191: Return a tuple from both signed and ipc interpreters.
+        self.signed.begin(state).await
     }
 
     async fn end(&self, state: Self::State) -> anyhow::Result<(Self::State, Self::EndOutput)> {
-        self.inner.end(state).await
+        // TODO #191: Return a tuple from both signed and ipc interpreters.
+        self.signed.end(state).await
     }
 }
 
 #[async_trait]
-impl<I> CheckInterpreter for ChainMessageInterpreter<I>
+impl<I, C> CheckInterpreter for ChainMessageInterpreter<I, C>
 where
     I: CheckInterpreter<Message = SignedMessage, Output = SignedMessageCheckRet>,
+    C: CheckInterpreter<Message = IpcMessage, Output = IpcMessageCheckRet, State = I::State>,
 {
     type State = I::State;
     type Message = ChainMessage;
@@ -125,29 +129,24 @@ where
     ) -> anyhow::Result<(Self::State, Self::Output)> {
         match msg {
             ChainMessage::Signed(msg) => {
-                let (state, ret) = self.inner.check(state, msg, is_recheck).await?;
+                let (state, ret) = self.signed.check(state, msg, is_recheck).await?;
 
-                Ok((state, Ok(ret)))
+                Ok((state, ChainMessageCheckRet::Signed(ret)))
             }
-            ChainMessage::Ipc(IpcMessage::BottomUpResolve(_msg)) => {
-                // TODO: Check the relayer signature and nonce. Don't have to check the quorum certificate, if it's invalid, make the relayer pay.
-                // For `ChainMessage::Signed` this is currently sperad out over the `SignedMessageInterpreter` and the `FvmMessageInterpreter`,
-                // so think about a way to reuse. For now returning illegal as a placeholder.
-                Ok((state, Err(IllegalMessage)))
-            }
-            ChainMessage::Ipc(IpcMessage::TopDown)
-            | ChainMessage::Ipc(IpcMessage::BottomUpExec(_)) => {
-                // Users cannot send some of these messages, only validators can propose them in blocks.
-                Ok((state, Err(IllegalMessage)))
+            ChainMessage::Ipc(msg) => {
+                let (state, ret) = self.ipc.check(state, msg, is_recheck).await?;
+
+                Ok((state, ChainMessageCheckRet::Ipc(ret)))
             }
         }
     }
 }
 
 #[async_trait]
-impl<I> QueryInterpreter for ChainMessageInterpreter<I>
+impl<I, C> QueryInterpreter for ChainMessageInterpreter<I, C>
 where
     I: QueryInterpreter,
+    C: Sync + Send,
 {
     type State = I::State;
     type Query = I::Query;
@@ -158,14 +157,15 @@ where
         state: Self::State,
         qry: Self::Query,
     ) -> anyhow::Result<(Self::State, Self::Output)> {
-        self.inner.query(state, qry).await
+        self.signed.query(state, qry).await
     }
 }
 
 #[async_trait]
-impl<I> GenesisInterpreter for ChainMessageInterpreter<I>
+impl<I, C> GenesisInterpreter for ChainMessageInterpreter<I, C>
 where
     I: GenesisInterpreter,
+    C: Sync + Send,
 {
     type State = I::State;
     type Genesis = I::Genesis;
@@ -176,6 +176,6 @@ where
         state: Self::State,
         genesis: Self::Genesis,
     ) -> anyhow::Result<(Self::State, Self::Output)> {
-        self.inner.init(state, genesis).await
+        self.signed.init(state, genesis).await
     }
 }
