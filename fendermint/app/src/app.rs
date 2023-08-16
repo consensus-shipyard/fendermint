@@ -16,12 +16,11 @@ use fendermint_vm_core::Timestamp;
 use fendermint_vm_interpreter::bytes::{
     BytesMessageApplyRet, BytesMessageCheckRet, BytesMessageQuery, BytesMessageQueryRet,
 };
-use fendermint_vm_interpreter::chain::{ChainMessageApplyRet, ChainMessageCheckRet};
+use fendermint_vm_interpreter::chain::{ChainMessageApplyRet, IllegalMessage};
 use fendermint_vm_interpreter::fvm::state::{
     empty_state_tree, FvmCheckState, FvmExecState, FvmGenesisState, FvmQueryState, FvmStateParams,
 };
 use fendermint_vm_interpreter::fvm::{FvmApplyRet, FvmGenesisOutput};
-use fendermint_vm_interpreter::ipc::IpcMessageError;
 use fendermint_vm_interpreter::signed::InvalidSignature;
 use fendermint_vm_interpreter::{
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
@@ -485,17 +484,9 @@ where
         let response = match result {
             Err(e) => invalid_check_tx(AppError::InvalidEncoding, e.description),
             Ok(result) => match result {
-                ChainMessageCheckRet::Ipc(Ok(ret)) => to_check_tx(ret),
-                ChainMessageCheckRet::Ipc(Err(IpcMessageError::Illegal)) => {
-                    invalid_check_tx(AppError::IllegalMessage, "".to_owned())
-                }
-                ChainMessageCheckRet::Ipc(Err(IpcMessageError::InvalidRelayerSignature(d))) => {
-                    invalid_check_tx(AppError::InvalidSignature, d)
-                }
-                ChainMessageCheckRet::Signed(Ok(ret)) => to_check_tx(ret),
-                ChainMessageCheckRet::Signed(Err(InvalidSignature(d))) => {
-                    invalid_check_tx(AppError::InvalidSignature, d)
-                }
+                Err(IllegalMessage) => invalid_check_tx(AppError::IllegalMessage, "".to_owned()),
+                Ok(Err(InvalidSignature(d))) => invalid_check_tx(AppError::InvalidSignature, d),
+                Ok(Ok(ret)) => to_check_tx(ret),
             },
         };
 

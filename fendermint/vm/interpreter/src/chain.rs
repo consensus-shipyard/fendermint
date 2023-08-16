@@ -5,10 +5,12 @@ use async_trait::async_trait;
 use fendermint_vm_message::{chain::ChainMessage, ipc::IpcMessage, signed::SignedMessage};
 
 use crate::{
-    ipc::IpcMessageCheckRet,
     signed::{SignedMessageApplyRet, SignedMessageCheckRet},
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
+
+/// A user sent a transaction which they are not allowed to do.
+pub struct IllegalMessage;
 
 // For now this is the only option, later we can expand.
 pub enum ChainMessageApplyRet {
@@ -16,30 +18,25 @@ pub enum ChainMessageApplyRet {
 }
 
 /// We only allow signed messages into the mempool.
-pub enum ChainMessageCheckRet {
-    Signed(SignedMessageCheckRet),
-    Ipc(IpcMessageCheckRet),
-}
+pub type ChainMessageCheckRet = Result<SignedMessageCheckRet, IllegalMessage>;
 
 /// Interpreter working on chain messages; in the future it will schedule
 /// CID lookups to turn references into self-contained user or cross messages.
 #[derive(Clone)]
-pub struct ChainMessageInterpreter<S, I> {
-    signed: S,
-    ipc: I,
+pub struct ChainMessageInterpreter<I> {
+    inner: I,
 }
 
-impl<I, C> ChainMessageInterpreter<I, C> {
-    pub fn new(signed: I, ipc: C) -> Self {
-        Self { signed, ipc }
+impl<I> ChainMessageInterpreter<I> {
+    pub fn new(inner: I) -> Self {
+        Self { inner }
     }
 }
 
 #[async_trait]
-impl<I, C> ProposalInterpreter for ChainMessageInterpreter<I, C>
+impl<I> ProposalInterpreter for ChainMessageInterpreter<I>
 where
     I: Sync + Send,
-    C: Sync + Send,
 {
     // TODO: The state can include the IPLD Resolver mempool, for example by using STM
     // to implement a shared memory space.
@@ -71,10 +68,9 @@ where
 }
 
 #[async_trait]
-impl<I, C> ExecInterpreter for ChainMessageInterpreter<I, C>
+impl<I> ExecInterpreter for ChainMessageInterpreter<I>
 where
     I: ExecInterpreter<Message = SignedMessage, DeliverOutput = SignedMessageApplyRet>,
-    C: Sync + Send,
 {
     type State = I::State;
     type Message = ChainMessage;
@@ -89,7 +85,7 @@ where
     ) -> anyhow::Result<(Self::State, Self::DeliverOutput)> {
         match msg {
             ChainMessage::Signed(msg) => {
-                let (state, ret) = self.signed.deliver(state, msg).await?;
+                let (state, ret) = self.inner.deliver(state, msg).await?;
                 Ok((state, ChainMessageApplyRet::Signed(ret)))
             }
             ChainMessage::Ipc(_) => {
@@ -101,21 +97,18 @@ where
     }
 
     async fn begin(&self, state: Self::State) -> anyhow::Result<(Self::State, Self::BeginOutput)> {
-        // TODO #191: Return a tuple from both signed and ipc interpreters.
-        self.signed.begin(state).await
+        self.inner.begin(state).await
     }
 
     async fn end(&self, state: Self::State) -> anyhow::Result<(Self::State, Self::EndOutput)> {
-        // TODO #191: Return a tuple from both signed and ipc interpreters.
-        self.signed.end(state).await
+        self.inner.end(state).await
     }
 }
 
 #[async_trait]
-impl<I, C> CheckInterpreter for ChainMessageInterpreter<I, C>
+impl<I> CheckInterpreter for ChainMessageInterpreter<I>
 where
     I: CheckInterpreter<Message = SignedMessage, Output = SignedMessageCheckRet>,
-    C: CheckInterpreter<Message = IpcMessage, Output = IpcMessageCheckRet, State = I::State>,
 {
     type State = I::State;
     type Message = ChainMessage;
@@ -129,24 +122,29 @@ where
     ) -> anyhow::Result<(Self::State, Self::Output)> {
         match msg {
             ChainMessage::Signed(msg) => {
-                let (state, ret) = self.signed.check(state, msg, is_recheck).await?;
+                let (state, ret) = self.inner.check(state, msg, is_recheck).await?;
 
-                Ok((state, ChainMessageCheckRet::Signed(ret)))
+                Ok((state, Ok(ret)))
             }
             ChainMessage::Ipc(msg) => {
-                let (state, ret) = self.ipc.check(state, msg, is_recheck).await?;
-
-                Ok((state, ChainMessageCheckRet::Ipc(ret)))
+                match msg {
+                    IpcMessage::BottomUpResolve(_msg) => {
+                        todo!("pass some syntetic message to the inner interpreter")
+                    }
+                    IpcMessage::TopDown | IpcMessage::BottomUpExec(_) => {
+                        // Users cannot send these messages, only validators can propose them in blocks.
+                        Ok((state, Err(IllegalMessage)))
+                    }
+                }
             }
         }
     }
 }
 
 #[async_trait]
-impl<I, C> QueryInterpreter for ChainMessageInterpreter<I, C>
+impl<I> QueryInterpreter for ChainMessageInterpreter<I>
 where
     I: QueryInterpreter,
-    C: Sync + Send,
 {
     type State = I::State;
     type Query = I::Query;
@@ -157,15 +155,14 @@ where
         state: Self::State,
         qry: Self::Query,
     ) -> anyhow::Result<(Self::State, Self::Output)> {
-        self.signed.query(state, qry).await
+        self.inner.query(state, qry).await
     }
 }
 
 #[async_trait]
-impl<I, C> GenesisInterpreter for ChainMessageInterpreter<I, C>
+impl<I> GenesisInterpreter for ChainMessageInterpreter<I>
 where
     I: GenesisInterpreter,
-    C: Sync + Send,
 {
     type State = I::State;
     type Genesis = I::Genesis;
@@ -176,6 +173,6 @@ where
         state: Self::State,
         genesis: Self::Genesis,
     ) -> anyhow::Result<(Self::State, Self::Output)> {
-        self.signed.init(state, genesis).await
+        self.inner.init(state, genesis).await
     }
 }
