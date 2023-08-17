@@ -98,11 +98,29 @@ where
                     .await?;
                 Ok((state, ChainMessageApplyRet::Signed(ret)))
             }
-            ChainMessage::Ipc(_) => {
-                // This only happens if a validator is malicious or we have made a programming error.
-                // I expect for now that we don't run with untrusted validators, so it's okay to quit.
-                todo!("#191: implement execution handling for IPC")
-            }
+            ChainMessage::Ipc(msg) => match msg {
+                IpcMessage::BottomUpResolve(msg) => {
+                    let msg = relayed_bottom_up_ckpt_to_fvm(&msg)
+                        .context("failed to syntesize FVM message")?;
+
+                    // Let the FVM validate the checkpoint quorum certificate and take not of the relayer for rewards.
+                    let (state, ret) = self
+                        .inner
+                        .deliver(state, VerifiableMessage::Synthetic(msg))
+                        .await?;
+
+                    // TODO: if successful, add the CID to the background resolution pool
+
+                    // We can use the same result type for now, it's isomorphic.
+                    Ok((state, ChainMessageApplyRet::Signed(ret)))
+                }
+                IpcMessage::BottomUpExec(_) => {
+                    todo!("#197: implement BottomUp checkpoint execution")
+                }
+                IpcMessage::TopDown => {
+                    todo!("implement TopDown handling; this is just a placeholder")
+                }
+            },
         }
     }
 
@@ -144,6 +162,7 @@ where
                     IpcMessage::BottomUpResolve(msg) => {
                         let msg = relayed_bottom_up_ckpt_to_fvm(&msg)
                             .context("failed to syntesize FVM message")?;
+
                         let (state, ret) = self
                             .inner
                             .check(state, VerifiableMessage::Synthetic(msg), is_recheck)
