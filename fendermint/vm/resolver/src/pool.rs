@@ -1,30 +1,45 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::hash::Hash;
+
 use async_stm::{
     queues::{tchan::TChan, TQueueLike},
     StmResult, TVar,
 };
 use cid::Cid;
-use im::hashmap::Entry;
 use ipc_sdk::subnet_id::SubnetID;
 
 /// CIDs we need to resolve from a specific source subnet, or our own.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct ResolveItem {
-    /// The source subnet, from which the data originated from.
-    pub subnet_id: SubnetID,
-    /// The root content identifier.
-    pub cid: Cid,
-}
+pub type ResolveKey = (SubnetID, Cid);
 
 /// Ongoing status of a resolution.
-#[derive(Clone, Default)]
-pub struct ResolveStatus {
+///
+/// The status also keeps track of which original items mapped to the same resolution key.
+/// These could be for example checkpoint of the same data with slightly different signatories.
+/// Once resolved, they all become available at the same time.
+#[derive(Clone)]
+pub struct ResolveStatus<T> {
+    /// Indicate whether the content has been resolved.
     is_resolved: TVar<bool>,
+    /// The collection of items that all resolve to the same root CID and subnet.
+    items: TVar<im::HashSet<T>>,
 }
 
-impl ResolveStatus {
+impl<T> ResolveStatus<T>
+where
+    T: Clone + Hash + Eq + PartialEq + Sync + Send + 'static,
+{
+    pub fn new(item: T) -> Self {
+        let mut items = im::HashSet::new();
+        items.insert(item);
+
+        Self {
+            is_resolved: TVar::new(false),
+            items: TVar::new(items),
+        }
+    }
+
     pub fn is_resolved(&self) -> StmResult<bool> {
         self.is_resolved.read_clone()
     }
@@ -34,40 +49,55 @@ impl ResolveStatus {
 /// between the resolver running in the background and the application waiting
 /// for the results.
 #[derive(Clone, Default)]
-pub struct ResolvePool {
+pub struct ResolvePool<T>
+where
+    T: Clone + Sync + Send + 'static,
+{
     /// The resolution status of each item.
-    items: TVar<im::HashMap<ResolveItem, ResolveStatus>>,
+    items: TVar<im::HashMap<ResolveKey, ResolveStatus<T>>>,
     /// Items queued for resolution.
-    queue: TChan<(ResolveItem, ResolveStatus)>,
+    queue: TChan<(ResolveKey, ResolveStatus<T>)>,
 }
 
-impl ResolvePool {
+impl<T> ResolvePool<T>
+where
+    for<'a> ResolveKey: From<&'a T>,
+    T: Sync + Send + Clone + Hash + Eq + PartialEq + 'static,
+{
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            items: Default::default(),
+            queue: Default::default(),
+        }
     }
 
     /// Add an item to the resolution targets.
     ///
     /// If the item is new, enqueue it from background resolution, otherwise just return its existing status.
-    pub fn add(&self, item: ResolveItem) -> StmResult<ResolveStatus> {
-        let (status, is_new) = self.items.modify(|mut items| {
-            let ret = match items.entry(item.clone()) {
-                Entry::Occupied(e) => (e.get().clone(), false),
-                Entry::Vacant(e) => (e.insert(ResolveStatus::default()).clone(), true),
-            };
-            (items, ret)
-        })?;
+    pub fn add(&self, item: T) -> StmResult<ResolveStatus<T>> {
+        let key = ResolveKey::from(&item);
+        let mut items = self.items.read_clone()?;
 
-        if is_new {
-            self.queue.write((item, status.clone()))?;
+        if items.contains_key(&key) {
+            let status = items.get(&key).cloned().unwrap();
+            status.items.update(|mut items| {
+                items.insert(item);
+                items
+            })?;
+            Ok(status)
+        } else {
+            let status = ResolveStatus::new(item);
+            items.insert(key.clone(), status.clone());
+            self.items.write(items)?;
+            self.queue.write((key, status.clone()))?;
+            Ok(status)
         }
-
-        Ok(status)
     }
 
     /// Return the status of an item. It can be queried for completion.
-    pub fn get_status(&self, item: &ResolveItem) -> StmResult<Option<ResolveStatus>> {
-        Ok(self.items.read()?.get(item).cloned())
+    pub fn get_status(&self, item: &T) -> StmResult<Option<ResolveStatus<T>>> {
+        let key = ResolveKey::from(item);
+        Ok(self.items.read()?.get(&key).cloned())
     }
 }
 
@@ -77,25 +107,39 @@ mod tests {
     use cid::Cid;
     use ipc_sdk::subnet_id::SubnetID;
 
-    use super::{ResolveItem, ResolvePool};
+    #[derive(Clone, Hash, Eq, PartialEq)]
+    struct TestItem {
+        subnet_id: SubnetID,
+        cid: Cid,
+    }
 
-    fn dummy_resolve_item(root_id: u64) -> ResolveItem {
-        ResolveItem {
-            subnet_id: SubnetID::new_root(root_id),
-            cid: Cid::default(),
+    impl TestItem {
+        pub fn dummy(root_id: u64) -> Self {
+            Self {
+                subnet_id: SubnetID::new_root(root_id),
+                cid: Cid::default(),
+            }
         }
     }
+
+    impl From<&TestItem> for ResolveKey {
+        fn from(value: &TestItem) -> Self {
+            (value.subnet_id.clone(), value.cid)
+        }
+    }
+
+    use super::{ResolveKey, ResolvePool};
 
     #[tokio::test]
     async fn add_new_item() {
         let pool = ResolvePool::new();
-        let item = dummy_resolve_item(0);
+        let item = TestItem::dummy(0);
 
         atomically(|| pool.add(item.clone())).await;
         atomically(|| {
-            assert!(pool.items.read()?.contains_key(&item));
+            assert!(pool.get_status(&item)?.is_some());
             assert!(!pool.queue.is_empty()?);
-            assert_eq!(pool.queue.read()?.0, item);
+            assert_eq!(pool.queue.read()?.0, ResolveKey::from(&item));
             Ok(())
         })
         .await;
@@ -104,7 +148,7 @@ mod tests {
     #[tokio::test]
     async fn add_existing_item() {
         let pool = ResolvePool::new();
-        let item = dummy_resolve_item(0);
+        let item = TestItem::dummy(0);
 
         // Add once.
         atomically(|| pool.add(item.clone())).await;
@@ -112,7 +156,8 @@ mod tests {
         // Consume it from the queue.
         atomically(|| {
             assert!(!pool.queue.is_empty()?);
-            pool.queue.read()
+            let _ = pool.queue.read()?;
+            Ok(())
         })
         .await;
 
@@ -121,7 +166,7 @@ mod tests {
 
         // Should not be queued a second time.
         atomically(|| {
-            assert!(pool.items.read()?.contains_key(&item));
+            assert!(pool.get_status(&item)?.is_some());
             assert!(pool.queue.is_empty()?);
             Ok(())
         })
@@ -131,7 +176,7 @@ mod tests {
     #[tokio::test]
     async fn get_status() {
         let pool = ResolvePool::new();
-        let item = dummy_resolve_item(0);
+        let item = TestItem::dummy(0);
 
         let status1 = atomically(|| pool.add(item.clone())).await;
         let status2 = atomically(|| pool.get_status(&item))
@@ -148,6 +193,7 @@ mod tests {
 
         // Check status.
         atomically(|| {
+            assert!(status1.items.read()?.contains(&item));
             assert!(status1.is_resolved()?);
             assert!(status2.is_resolved()?);
             Ok(())

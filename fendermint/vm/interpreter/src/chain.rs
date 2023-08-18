@@ -12,10 +12,32 @@ use fendermint_vm_message::{
     chain::ChainMessage,
     ipc::{BottomUpCheckpoint, CertifiedMessage, IpcMessage, SignedRelayedMessage},
 };
-use fendermint_vm_resolver::pool::ResolvePool;
+use fendermint_vm_resolver::pool::{ResolveKey, ResolvePool};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
+
+/// A resolution pool for bottom-up and top-down checkpoints.
+pub type CheckpointPool = ResolvePool<CheckpointPoolItem>;
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub enum CheckpointPoolItem {
+    /// BottomUp checkpoints to be resolved from the originating subnet or the current one.
+    BottomUp(CertifiedMessage<BottomUpCheckpoint>),
+    // We can extend this to include top-down checkpoints as well, with slightly
+    // different resolution semantics (resolving it from a trusted parent, and
+    // awaiting finality before declaring it available).
+}
+
+impl From<&CheckpointPoolItem> for ResolveKey {
+    fn from(value: &CheckpointPoolItem) -> Self {
+        match value {
+            CheckpointPoolItem::BottomUp(cp) => {
+                (cp.message.subnet_id.clone(), cp.message.bottom_up_messages)
+            }
+        }
+    }
+}
 
 /// A user sent a transaction which they are not allowed to do.
 pub struct IllegalMessage;
@@ -84,7 +106,7 @@ where
     // state which the inner interpreter uses. This is a technical solution because the pool doesn't
     // fit with the state we use for execution messages further down the stack, which depend on block
     // height and are used in queries as well.
-    type State = (ResolvePool, I::State);
+    type State = (CheckpointPool, I::State);
     type Message = ChainMessage;
     type BeginOutput = I::BeginOutput;
     type DeliverOutput = ChainMessageApplyRet;

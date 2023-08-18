@@ -16,7 +16,7 @@ use fendermint_vm_core::Timestamp;
 use fendermint_vm_interpreter::bytes::{
     BytesMessageApplyRet, BytesMessageCheckRet, BytesMessageQuery, BytesMessageQueryRet,
 };
-use fendermint_vm_interpreter::chain::{ChainMessageApplyRet, IllegalMessage};
+use fendermint_vm_interpreter::chain::{ChainMessageApplyRet, CheckpointPool, IllegalMessage};
 use fendermint_vm_interpreter::fvm::state::{
     empty_state_tree, FvmCheckState, FvmExecState, FvmGenesisState, FvmQueryState, FvmStateParams,
 };
@@ -25,7 +25,6 @@ use fendermint_vm_interpreter::signed::InvalidSignature;
 use fendermint_vm_interpreter::{
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
-use fendermint_vm_resolver::pool::ResolvePool;
 use fvm::engine::MultiEngine;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::chainid::ChainID;
@@ -84,6 +83,15 @@ impl AppState {
     }
 }
 
+pub struct AppConfig<S: KVStore> {
+    /// Namespace to store the current app state.
+    pub app_namespace: S::Namespace,
+    /// Namespace to store the app state history.
+    pub state_hist_namespace: S::Namespace,
+    /// Size of state history to keep; 0 means unlimited.
+    pub state_hist_size: u64,
+}
+
 /// Handle ABCI requests.
 #[derive(Clone)]
 pub struct App<DB, SS, S, I>
@@ -121,7 +129,7 @@ where
     /// Interpreter for block lifecycle events.
     interpreter: Arc<I>,
     /// CID resolution pool.
-    resolve_pool: ResolvePool,
+    resolve_pool: CheckpointPool,
     /// State accumulating changes during block execution.
     exec_state: Arc<Mutex<Option<FvmExecState<SS>>>>,
     /// Projected partial state accumulating during transaction checks.
@@ -143,23 +151,21 @@ where
     SS: Blockstore + Clone + 'static,
 {
     pub fn new(
+        config: AppConfig<S>,
         db: DB,
         state_store: SS,
         builtin_actors_bundle: PathBuf,
-        app_namespace: S::Namespace,
-        state_hist_namespace: S::Namespace,
-        state_hist_size: u64,
         interpreter: I,
-        resolve_pool: ResolvePool,
+        resolve_pool: CheckpointPool,
     ) -> Result<Self> {
         let app = Self {
             db: Arc::new(db),
             state_store: Arc::new(state_store),
             multi_engine: Arc::new(MultiEngine::new(1)),
             builtin_actors_bundle,
-            namespace: app_namespace,
-            state_hist: KVCollection::new(state_hist_namespace),
-            state_hist_size,
+            namespace: config.app_namespace,
+            state_hist: KVCollection::new(config.state_hist_namespace),
+            state_hist_size: config.state_hist_size,
             interpreter: Arc::new(interpreter),
             resolve_pool,
             exec_state: Arc::new(Mutex::new(None)),
@@ -265,8 +271,8 @@ where
     /// Take the execution state, update it, put it back, return the output.
     async fn modify_exec_state<T, F, R>(&self, f: F) -> Result<T>
     where
-        F: FnOnce((ResolvePool, FvmExecState<SS>)) -> R,
-        R: Future<Output = Result<((ResolvePool, FvmExecState<SS>), T)>>,
+        F: FnOnce((CheckpointPool, FvmExecState<SS>)) -> R,
+        R: Future<Output = Result<((CheckpointPool, FvmExecState<SS>), T)>>,
     {
         let state = self.take_exec_state();
         let ((_pool, state), ret) = f((self.resolve_pool.clone(), state)).await?;
@@ -326,7 +332,7 @@ where
         Message = Vec<u8>,
     >,
     I: ExecInterpreter<
-        State = (ResolvePool, FvmExecState<SS>),
+        State = (CheckpointPool, FvmExecState<SS>),
         Message = Vec<u8>,
         BeginOutput = FvmApplyRet,
         DeliverOutput = BytesMessageApplyRet,
