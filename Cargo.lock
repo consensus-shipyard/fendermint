@@ -3061,7 +3061,11 @@ name = "fendermint_vm_resolver"
 version = "0.1.0"
 dependencies = [
  "async-stm",
+ "cid",
+ "im",
+ "ipc-sdk",
  "ipc_ipld_resolver",
+ "tokio",
 ]
 
 [[package]]

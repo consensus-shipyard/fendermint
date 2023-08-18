@@ -37,6 +37,7 @@ ethers-core = { version = "2.0" }
 fnv = "1.0"
 futures = "0.3"
 hex = "0.4"
+im = "15.1.0"
 jsonrpc-v2 = { version = "0.11", default-features = false, features = ["bytes-v10"] }
 k256 = "0.11" # Same as tendermint-rs
 lazy_static = "1.4"
