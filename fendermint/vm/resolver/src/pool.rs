@@ -48,6 +48,16 @@ where
 /// A data structure used to communicate resolution requirements and outcomes
 /// between the resolver running in the background and the application waiting
 /// for the results.
+///
+/// It is designed to resolve a single CID from a single subnet, per item,
+/// with the possibility of multiple items mapping to the same CID.
+///
+/// If items needed to have multiple CIDs, the completion of all resolutions
+/// culminating in the availability of the item, then we have to refactor this
+/// component to track dependencies in a different way. For now I am assuming
+/// that we can always design our messages in a way that there is a single root.
+/// We can also use technical wrappers to submit the same item under different
+/// guises and track the completion elsewhere.
 #[derive(Clone, Default)]
 pub struct ResolvePool<T>
 where
