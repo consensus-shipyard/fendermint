@@ -45,10 +45,10 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
             app_namespace: ns.app,
             state_hist_namespace: ns.state_hist,
             state_hist_size: settings.db.state_hist_size,
+            builtin_actors_bundle: settings.builtin_actors_bundle(),
         },
         db,
         state_store,
-        settings.builtin_actors_bundle(),
         interpreter,
         resolve_pool,
     )?;

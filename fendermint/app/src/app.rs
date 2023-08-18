@@ -90,6 +90,10 @@ pub struct AppConfig<S: KVStore> {
     pub state_hist_namespace: S::Namespace,
     /// Size of state history to keep; 0 means unlimited.
     pub state_hist_size: u64,
+    /// Path to the Wasm bundle.
+    ///
+    /// Only loaded once during genesis; later comes from the [`StateTree`].
+    pub builtin_actors_bundle: PathBuf,
 }
 
 /// Handle ABCI requests.
@@ -154,7 +158,6 @@ where
         config: AppConfig<S>,
         db: DB,
         state_store: SS,
-        builtin_actors_bundle: PathBuf,
         interpreter: I,
         resolve_pool: CheckpointPool,
     ) -> Result<Self> {
@@ -162,7 +165,7 @@ where
             db: Arc::new(db),
             state_store: Arc::new(state_store),
             multi_engine: Arc::new(MultiEngine::new(1)),
-            builtin_actors_bundle,
+            builtin_actors_bundle: config.builtin_actors_bundle,
             namespace: config.app_namespace,
             state_hist: KVCollection::new(config.state_hist_namespace),
             state_hist_size: config.state_hist_size,
