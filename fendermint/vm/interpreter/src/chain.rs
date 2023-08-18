@@ -6,6 +6,7 @@ use crate::{
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
 use anyhow::Context;
+use async_stm::atomically;
 use async_trait::async_trait;
 use fendermint_vm_actor_interface::ipc;
 use fendermint_vm_message::{
@@ -129,13 +130,13 @@ where
             }
             ChainMessage::Ipc(msg) => match msg {
                 IpcMessage::BottomUpResolve(msg) => {
-                    let msg = relayed_bottom_up_ckpt_to_fvm(&msg)
+                    let smsg = relayed_bottom_up_ckpt_to_fvm(&msg)
                         .context("failed to syntesize FVM message")?;
 
                     // Let the FVM validate the checkpoint quorum certificate and take not of the relayer for rewards.
                     let (state, ret) = self
                         .inner
-                        .deliver(state, VerifiableMessage::Synthetic(msg))
+                        .deliver(state, VerifiableMessage::Synthetic(smsg))
                         .await?;
 
                     // If successful, add the CID to the background resolution pool.
@@ -145,7 +146,10 @@ where
                     };
 
                     if is_success {
-                        todo!("add to the resolve pool");
+                        atomically(|| {
+                            pool.add(CheckpointPoolItem::BottomUp(msg.message.message.clone()))
+                        })
+                        .await;
                     }
 
                     // We can use the same result type for now, it's isomorphic.

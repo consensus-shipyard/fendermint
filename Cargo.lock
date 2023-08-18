@@ -2988,6 +2988,7 @@ name = "fendermint_vm_interpreter"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-stm",
  "async-trait",
  "cid",
  "ethers",

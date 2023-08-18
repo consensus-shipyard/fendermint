@@ -18,6 +18,7 @@ fendermint_vm_resolver = { path = "../resolver" }
 fendermint_eth_hardhat = { path = "../../eth/hardhat" }
 
 async-trait = { workspace = true }
+async-stm = { workspace = true }
 anyhow = { workspace = true }
 ethers = { workspace = true }
 hex = { workspace = true }
