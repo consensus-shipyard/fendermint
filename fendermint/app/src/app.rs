@@ -25,6 +25,7 @@ use fendermint_vm_interpreter::signed::InvalidSignature;
 use fendermint_vm_interpreter::{
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
+use fendermint_vm_resolver::pool::ResolvePool;
 use fvm::engine::MultiEngine;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::chainid::ChainID;
@@ -59,6 +60,7 @@ pub enum AppError {
     NotInitialized = 54,
 }
 
+/// The application state record we keep a history of in the database.
 #[derive(Serialize, Deserialize)]
 pub struct AppState {
     /// Last committed block height.
@@ -118,6 +120,8 @@ where
     state_hist: KVCollection<S, BlockHeight, FvmStateParams>,
     /// Interpreter for block lifecycle events.
     interpreter: Arc<I>,
+    /// CID resolution pool.
+    resolve_pool: ResolvePool,
     /// State accumulating changes during block execution.
     exec_state: Arc<Mutex<Option<FvmExecState<SS>>>>,
     /// Projected partial state accumulating during transaction checks.
@@ -146,6 +150,7 @@ where
         state_hist_namespace: S::Namespace,
         state_hist_size: u64,
         interpreter: I,
+        resolve_pool: ResolvePool,
     ) -> Result<Self> {
         let app = Self {
             db: Arc::new(db),
@@ -156,6 +161,7 @@ where
             state_hist: KVCollection::new(state_hist_namespace),
             state_hist_size,
             interpreter: Arc::new(interpreter),
+            resolve_pool,
             exec_state: Arc::new(Mutex::new(None)),
             check_state: Arc::new(tokio::sync::Mutex::new(None)),
         };
@@ -259,11 +265,11 @@ where
     /// Take the execution state, update it, put it back, return the output.
     async fn modify_exec_state<T, F, R>(&self, f: F) -> Result<T>
     where
-        F: FnOnce(FvmExecState<SS>) -> R,
-        R: Future<Output = Result<(FvmExecState<SS>, T)>>,
+        F: FnOnce((ResolvePool, FvmExecState<SS>)) -> R,
+        R: Future<Output = Result<((ResolvePool, FvmExecState<SS>), T)>>,
     {
         let state = self.take_exec_state();
-        let (state, ret) = f(state).await?;
+        let ((_pool, state), ret) = f((self.resolve_pool.clone(), state)).await?;
         self.put_exec_state(state);
         Ok(ret)
     }
@@ -320,7 +326,7 @@ where
         Message = Vec<u8>,
     >,
     I: ExecInterpreter<
-        State = FvmExecState<SS>,
+        State = (ResolvePool, FvmExecState<SS>),
         Message = Vec<u8>,
         BeginOutput = FvmApplyRet,
         DeliverOutput = BytesMessageApplyRet,
@@ -611,6 +617,7 @@ where
     async fn commit(&self) -> AbciResult<response::Commit> {
         let exec_state = self.take_exec_state();
 
+        // Commit the execution state to the datastore.
         let mut state = self.committed_state()?;
         state.block_height = exec_state.block_height().try_into()?;
         state.state_params.timestamp = exec_state.timestamp();
@@ -624,6 +631,22 @@ where
             "commit state"
         );
 
+        // TODO: We can defer committing changes the resolution pool to this point.
+        // For example if a checkpoint is successfully executed, that's when we want to remove
+        // that checkpoint from the pool, and not propose it to other validators again.
+        // However, once Tendermint starts delivering the transactions, the commit will surely
+        // follow at the end, so we can also remove these checkpoints from memory at the time
+        // the transaction is delivered, rather than when the whole thing is committed.
+        // It is only important to the persistent database changes as an atomic step in the
+        // commit in case the block execution fails somewhere in the middle for uknown reasons.
+        // But if that happened, we will have to restart the application again anyway, and
+        // repopulate the in-memory checkpoints based on the last committed ledger.
+        // So, while the pool is theoretically part of the evolving state and we can pass
+        // it in and out, unless we want to defer commit to here (which the interpreters aren't
+        // notified about), we could add it to the `ChainMessageInterpreter` as a constructor argument,
+        // a sort of "ambient state", and not worry about in in the `App` at all.
+
+        // Commit app state to the datastore.
         self.set_committed_state(state)?;
 
         // Reset check state.

@@ -11,6 +11,7 @@ use fendermint_vm_interpreter::{
     fvm::FvmMessageInterpreter,
     signed::SignedMessageInterpreter,
 };
+use fendermint_vm_resolver::pool::ResolvePool;
 use tracing::info;
 
 use crate::{cmd, options::run::RunArgs, settings::Settings};
@@ -38,6 +39,8 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
     let state_store =
         NamespaceBlockstore::new(db.clone(), ns.state_store).context("error creating state DB")?;
 
+    let resolve_pool = ResolvePool::new();
+
     let app: App<_, _, AppStore, _> = App::new(
         db,
         state_store,
@@ -46,6 +49,7 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         ns.state_hist,
         settings.db.state_hist_size,
         interpreter,
+        resolve_pool,
     )?;
 
     let service = ApplicationService(app);

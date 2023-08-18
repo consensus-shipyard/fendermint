@@ -12,6 +12,7 @@ use fendermint_vm_message::{
     chain::ChainMessage,
     ipc::{BottomUpCheckpoint, CertifiedMessage, IpcMessage, SignedRelayedMessage},
 };
+use fendermint_vm_resolver::pool::ResolvePool;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
@@ -79,7 +80,11 @@ impl<I> ExecInterpreter for ChainMessageInterpreter<I>
 where
     I: ExecInterpreter<Message = VerifiableMessage, DeliverOutput = SignedMessageApplyRet>,
 {
-    type State = I::State;
+    // The state consists of the resolver pool, which this interpreter needs, and the rest of the
+    // state which the inner interpreter uses. This is a technical solution because the pool doesn't
+    // fit with the state we use for execution messages further down the stack, which depend on block
+    // height and are used in queries as well.
+    type State = (ResolvePool, I::State);
     type Message = ChainMessage;
     type BeginOutput = I::BeginOutput;
     type DeliverOutput = ChainMessageApplyRet;
@@ -90,13 +95,15 @@ where
         state: Self::State,
         msg: Self::Message,
     ) -> anyhow::Result<(Self::State, Self::DeliverOutput)> {
+        let (pool, state) = state;
+
         match msg {
             ChainMessage::Signed(msg) => {
                 let (state, ret) = self
                     .inner
                     .deliver(state, VerifiableMessage::Signed(msg))
                     .await?;
-                Ok((state, ChainMessageApplyRet::Signed(ret)))
+                Ok(((pool, state), ChainMessageApplyRet::Signed(ret)))
             }
             ChainMessage::Ipc(msg) => match msg {
                 IpcMessage::BottomUpResolve(msg) => {
@@ -109,10 +116,18 @@ where
                         .deliver(state, VerifiableMessage::Synthetic(msg))
                         .await?;
 
-                    // TODO: if successful, add the CID to the background resolution pool
+                    // If successful, add the CID to the background resolution pool.
+                    let is_success = match ret {
+                        Ok(ref ret) => ret.apply_ret.msg_receipt.exit_code.is_success(),
+                        Err(_) => false,
+                    };
+
+                    if is_success {
+                        todo!("add to the resolve pool");
+                    }
 
                     // We can use the same result type for now, it's isomorphic.
-                    Ok((state, ChainMessageApplyRet::Signed(ret)))
+                    Ok(((pool, state), ChainMessageApplyRet::Signed(ret)))
                 }
                 IpcMessage::BottomUpExec(_) => {
                     todo!("#197: implement BottomUp checkpoint execution")
@@ -125,11 +140,15 @@ where
     }
 
     async fn begin(&self, state: Self::State) -> anyhow::Result<(Self::State, Self::BeginOutput)> {
-        self.inner.begin(state).await
+        let (pool, state) = state;
+        let (state, out) = self.inner.begin(state).await?;
+        Ok(((pool, state), out))
     }
 
     async fn end(&self, state: Self::State) -> anyhow::Result<(Self::State, Self::EndOutput)> {
-        self.inner.end(state).await
+        let (pool, state) = state;
+        let (state, out) = self.inner.end(state).await?;
+        Ok(((pool, state), out))
     }
 }
 
