@@ -109,6 +109,9 @@ where
         let key = ResolveKey::from(item);
         Ok(self.items.read()?.get(&key).cloned())
     }
+
+    // TODO #195: Implement methods to collect resolved items, ready for execution.
+    // TODO #197: Implement methods to remove executed items.
 }
 
 #[cfg(test)]
