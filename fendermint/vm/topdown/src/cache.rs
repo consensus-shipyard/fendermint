@@ -4,7 +4,6 @@
 use num_traits::PrimInt;
 use std::collections::VecDeque;
 use std::fmt::Debug;
-use std::path::Iter;
 
 /// The key value cache such that:
 /// 1. Key must be numeric

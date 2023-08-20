@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 mod cache;
+mod error;
 mod finality;
 
+use crate::error::Error;
 use async_trait::async_trait;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::ValidatorSet;
@@ -42,10 +44,12 @@ pub struct IPCParentFinality {
 
 #[async_trait]
 pub trait ParentFinalityProvider {
+    /// Obtains the last committed finality
+    async fn last_committed_finality(&self) -> Result<IPCParentFinality, Error>;
     /// Latest proposal
-    async fn next_proposal(&self) -> anyhow::Result<IPCParentFinality>;
+    async fn next_proposal(&self) -> Result<IPCParentFinality, Error>;
     /// Check if the target proposal is valid
-    async fn check_proposal(&self, proposal: &IPCParentFinality) -> anyhow::Result<bool>;
+    async fn check_proposal(&self, proposal: &IPCParentFinality) -> Result<(), Error>;
     /// Called when finality is committed
-    async fn on_finality_committed(&self, finality: &IPCParentFinality) -> anyhow::Result<()>;
+    async fn on_finality_committed(&self, finality: &IPCParentFinality) -> Result<(), Error>;
 }
