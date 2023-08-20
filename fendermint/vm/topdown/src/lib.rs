@@ -4,6 +4,7 @@
 mod cache;
 mod error;
 mod finality;
+mod sync;
 
 use crate::error::Error;
 use async_trait::async_trait;
