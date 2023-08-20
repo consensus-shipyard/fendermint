@@ -3,12 +3,14 @@
 
 use crate::cache::{SequentialCacheInsert, SequentialKeyCache};
 use crate::error::Error;
-use crate::{BlockHeight, Bytes, Config, IPCParentFinality, Nonce, ParentFinalityProvider};
+use crate::{
+    BlockHeight, Bytes, Config, IPCParentFinality, Nonce, ParentFinalityProvider,
+    ParentViewProvider,
+};
 use async_stm::{atomically, StmResult, TVar};
 use async_trait::async_trait;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::ValidatorSet;
-use std::sync::Arc;
 
 /// The default parent finality provider
 pub struct DefaultFinalityProvider {
@@ -28,10 +30,10 @@ struct ParentViewData {
 }
 
 impl ParentViewData {
-    fn latest_height(&self) -> StmResult<BlockHeight> {
+    fn latest_height(&self) -> StmResult<Option<BlockHeight>> {
         let cache = self.height_data.read()?;
         // safe to unwrap, we dont allow no upper bound
-        Ok(cache.upper_bound().unwrap())
+        Ok(cache.upper_bound())
     }
 
     fn block_hash(&self, height: BlockHeight) -> StmResult<Option<Bytes>> {
@@ -51,6 +53,58 @@ impl ParentViewData {
 }
 
 #[async_trait]
+impl ParentViewProvider for DefaultFinalityProvider {
+    async fn latest_height(&self) -> Option<BlockHeight> {
+        atomically(|| {
+            self.parent_view_data.latest_height()
+        }).await
+    }
+
+    async fn new_parent_view(
+        &self,
+        block_info: Option<(BlockHeight, Bytes, ValidatorSet)>,
+        top_down_msgs: Vec<CrossMsg>,
+    ) -> Result<(), Error> {
+        ensure_sequential(&top_down_msgs)?;
+
+        atomically(|| {
+            if let Some((height, hash, validator_set)) = &block_info {
+                let insert_res = self.parent_view_data.height_data.modify(|mut cache| {
+                    let r = cache.insert(*height, (hash.clone(), validator_set.clone()));
+                    (cache, r)
+                })?;
+                match insert_res {
+                    SequentialCacheInsert::Ok => {}
+                    // now the inserted height is not the next expected block height, could be a chain
+                    // reorg if the caller is behaving correctly.
+                    _ => return Ok(Err(Error::ParentReorgDetected(*height))),
+                };
+            }
+
+            if top_down_msgs.is_empty() {
+                // not processing if there are no top down msgs
+                return Ok(Ok(()));
+            }
+
+            // get the min nonce from the list of top down msgs and purge all the msgs with nonce
+            // about the min nonce in cache, as the data should be newer and more accurate.
+            let min_nonce = top_down_msgs.first().unwrap().msg.nonce;
+            self.parent_view_data.top_down_msgs.modify(|mut cache| {
+                cache.remove_key_above(min_nonce);
+
+                for msg in top_down_msgs.clone() {
+                    cache.insert(msg.msg.nonce, msg);
+                }
+                (cache, ())
+            })?;
+
+            Ok(Ok(()))
+        })
+        .await
+    }
+}
+
+#[async_trait]
 impl ParentFinalityProvider for DefaultFinalityProvider {
     async fn last_committed_finality(&self) -> Result<IPCParentFinality, Error> {
         Ok(atomically(|| {
@@ -62,7 +116,11 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
 
     async fn next_proposal(&self) -> Result<IPCParentFinality, Error> {
         atomically(|| {
-            let latest_height = self.parent_view_data.latest_height()?;
+            let latest_height = if let Some(h) = self.parent_view_data.latest_height()? {
+                h
+            } else {
+                return Ok(Err(Error::HeightNotReady));
+            };
 
             // latest height has not reached, we should wait or abort
             if latest_height < self.config.chain_head_delay {
@@ -112,49 +170,6 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
         .await
     }
 
-    async fn new_parent_view(
-        &self,
-        height: BlockHeight,
-        hash: Bytes,
-        top_down_msgs: Vec<CrossMsg>,
-        validator_set: ValidatorSet,
-    ) -> Result<(), Error> {
-        ensure_sequential(&top_down_msgs)?;
-
-        atomically(|| {
-            let insert_res = self.parent_view_data.height_data.modify(|mut cache| {
-                let r = cache.insert(height, (hash.clone(), validator_set.clone()));
-                (cache, r)
-            })?;
-            match insert_res {
-                SequentialCacheInsert::Ok => {}
-                // now the inserted height is not the next expected block height, could be a chain
-                // reorg if the caller is behaving correctly.
-                _ => return Ok(Err(Error::ParentReorgDetected(height))),
-            };
-
-            if top_down_msgs.is_empty() {
-                // not processing if there are no top down msgs
-                return Ok(Ok(()));
-            }
-
-            // get the min nonce from the list of top down msgs and purge all the msgs with nonce
-            // about the min nonce in cache, as the data should be newer and more accurate.
-            let min_nonce = top_down_msgs.first().unwrap().msg.nonce;
-            self.parent_view_data.top_down_msgs.modify(|mut cache| {
-                cache.remove_key_above(min_nonce);
-
-                for msg in top_down_msgs.clone() {
-                    cache.insert(msg.msg.nonce, msg);
-                }
-                (cache, ())
-            })?;
-
-            Ok(Ok(()))
-        })
-        .await
-    }
-
     async fn on_finality_committed(&self, finality: &IPCParentFinality) -> Result<(), Error> {
         // the nonce to clear
         let nonce = if !finality.top_down_msgs.is_empty() {
@@ -190,7 +205,12 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
 
 impl DefaultFinalityProvider {
     fn check_height(&self, proposal: &IPCParentFinality) -> StmResult<Result<(), Error>> {
-        let latest_height = self.parent_view_data.latest_height()?;
+        let latest_height = if let Some(h) = self.parent_view_data.latest_height()? {
+            h
+        } else {
+            return Ok(Err(Error::HeightNotReady));
+        };
+
         if latest_height < proposal.height {
             return Ok(Err(Error::ExceedingLatestHeight {
                 proposal: proposal.height,

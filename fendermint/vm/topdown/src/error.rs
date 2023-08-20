@@ -5,6 +5,8 @@ use crate::{BlockHeight, Bytes, Nonce};
 
 /// The errors for top down checkpointing
 pub enum Error {
+    /// The latest height of the parent view is not ready
+    HeightNotReady,
     HeightThresholdNotReached,
     /// The data specified in this height is not found in cache
     HeightNotFoundInCache(BlockHeight),
