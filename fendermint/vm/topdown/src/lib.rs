@@ -45,8 +45,10 @@ pub struct IPCParentFinality {
 
 #[async_trait]
 pub trait ParentViewProvider {
-    /// Get the latest height of the parent
+    /// Get the latest height of the parent recorded
     async fn latest_height(&self) -> Option<BlockHeight>;
+    /// Get latest nonce recorded
+    async fn latest_nonce(&self) -> Option<Nonce>;
     /// There is a new incoming parent view to be updated
     async fn new_parent_view(
         &self,

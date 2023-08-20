@@ -55,9 +55,15 @@ impl ParentViewData {
 #[async_trait]
 impl ParentViewProvider for DefaultFinalityProvider {
     async fn latest_height(&self) -> Option<BlockHeight> {
+        atomically(|| self.parent_view_data.latest_height()).await
+    }
+
+    async fn latest_nonce(&self) -> Option<Nonce> {
         atomically(|| {
-            self.parent_view_data.latest_height()
-        }).await
+            let top_down_msgs = self.parent_view_data.top_down_msgs.read()?;
+            Ok(top_down_msgs.upper_bound())
+        })
+        .await
     }
 
     async fn new_parent_view(
