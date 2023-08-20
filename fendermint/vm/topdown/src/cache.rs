@@ -82,10 +82,21 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
     }
 
     /// Removes the all the keys below the target value, exclusive.
-    pub fn remove_key_till(&mut self, key: K) {
+    pub fn remove_key_below(&mut self, key: K) {
         while let Some((k, _)) = self.data.front() {
             if *k < key {
                 self.data.pop_front();
+                continue;
+            }
+            break;
+        }
+    }
+
+    /// Removes the all the keys above the target value, exclusive.
+    pub fn remove_key_above(&mut self, key: K) {
+        while let Some((k, _)) = self.data.back() {
+            if *k > key {
+                self.data.pop_back();
                 continue;
             }
             break;
