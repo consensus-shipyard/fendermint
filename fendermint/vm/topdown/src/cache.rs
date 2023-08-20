@@ -8,6 +8,7 @@ use std::fmt::Debug;
 /// The key value cache such that:
 /// 1. Key must be numeric
 /// 2. Keys must be sequential
+#[derive(Clone)]
 pub(crate) struct SequentialKeyCache<K, V> {
     /// The underlying data
     data: VecDeque<(K, V)>,

@@ -6575,6 +6575,7 @@ name = "topdown"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-stm",
  "async-trait",
  "cid",
  "fvm_ipld_encoding",
