@@ -3,7 +3,7 @@
 //! A constant running process that fetch or listener to parent state
 
 
-use crate::{BlockHeight, Config, Nonce};
+use crate::{BlockHeight, Config, Nonce, ParentFinalityProvider};
 use anyhow::anyhow;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::ValidatorSet;
@@ -13,84 +13,23 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 /// Constantly syncing with parent through polling
-pub struct PollingParentSyncer {
+pub struct PollingParentSyncer<T> {
     config: Config,
     started: Arc<AtomicBool>,
-    cache: LockedCache,
+    parent_view_provider: Arc<T>,
 }
 
-impl PollingParentSyncer {
-    pub fn new(config: Config) -> Self {
+impl <T> PollingParentSyncer<T> {
+    pub fn new(config: Config, parent_view_provider: Arc<T>) -> Self {
         Self {
             config,
             started: Arc::new(AtomicBool::new(false)),
-            cache: Arc::new(RwLock::new(ParentSyncerCache {
-                block_hash: RangeKeyCache::new(),
-                top_down_message: RangeKeyCache::new(),
-                membership: None,
-            })),
-            ipc_agent_proxy: Arc::new(AgentProxy {}),
-            handle: None,
+            parent_view_provider
         }
     }
 }
 
-impl ParentViewProvider for PollingParentSyncer {
-    fn latest_height(&self) -> Option<BlockHeight> {
-        self.read_cache(|cache| cache.block_hash.upper_bound())
-    }
-
-    fn block_hash(&self, height: BlockHeight) -> Option<Vec<u8>> {
-        self.read_cache(|cache| cache.block_hash.get_value(height).map(|v| v.to_vec()))
-    }
-
-    fn top_down_msgs(&self, _height: BlockHeight, nonce: Nonce) -> Vec<CrossMsg> {
-        self.read_cache(|cache| {
-            let v = cache.top_down_message.values_within_range(nonce, None);
-            // FIXME: avoid clone here, return references, let caller clone on demand
-            v.into_iter().cloned().collect()
-        })
-    }
-
-    fn membership(&self) -> Option<ValidatorSet> {
-        self.read_cache(|cache| cache.membership.clone())
-    }
-
-    fn on_finality_committed(&self, finality: &IPCParentFinality) {
-        let mut cache = self.cache.write().unwrap();
-        cache.block_hash.remove_key_till(finality.height);
-    }
-}
-
-impl Clone for PollingParentSyncer {
-    fn clone(&self) -> Self {
-        Self {
-            config: self.config.clone(),
-            started: Arc::new(AtomicBool::new(false)),
-            cache: self.cache.clone(),
-            ipc_agent_proxy: self.ipc_agent_proxy.clone(),
-            handle: None,
-        }
-    }
-}
-
-struct ParentSyncerCache {
-    block_hash: RangeKeyCache<BlockHeight, Vec<u8>>,
-    top_down_message: RangeKeyCache<Nonce, CrossMsg>,
-    membership: Option<ValidatorSet>,
-}
-
-type LockedCache = Arc<RwLock<ParentSyncerCache>>;
-
-impl PollingParentSyncer {
-    fn read_cache<F, T>(&self, f: F) -> T
-        where
-            F: Fn(&ParentSyncerCache) -> T,
-    {
-        let cache = self.cache.read().unwrap();
-        f(&cache)
-    }
-
+impl <T: ParentFinalityProvider + Send + Sync + 'static> PollingParentSyncer<T> {
     /// Start the proof of finality listener in the background
     pub fn start(&mut self) -> anyhow::Result<()> {
         match self
@@ -101,12 +40,11 @@ impl PollingParentSyncer {
             Err(_) => return Err(anyhow!("already started")),
         }
 
-        let parent_syncer = self.ipc_agent_proxy.clone();
         let config = self.config.clone();
-        let cache = self.cache.clone();
+        let provider = self.parent_view_provider.clone();
 
         let handle =
-            tokio::spawn(async move { sync_with_parent(config, parent_syncer, cache).await });
+            tokio::spawn(async move { sync_with_parent(config, parent_syncer, provider).await });
         self.handle = Some(handle);
 
         Ok(())
@@ -193,4 +131,28 @@ async fn fetch_block_hashes(
     }
 
     Ok(results)
+}
+
+struct IPCAgentProxy {}
+
+impl IPCAgentProxy {
+    pub async fn get_chain_head_height(&self) -> anyhow::Result<BlockHeight> {
+        todo!()
+    }
+
+    pub async fn get_block_hash(&self, _height: BlockHeight) -> anyhow::Result<Vec<u8>> {
+        todo!()
+    }
+
+    pub async fn get_top_down_msgs(
+        &self,
+        _height: BlockHeight,
+        _nonce: u64,
+    ) -> anyhow::Result<Vec<CrossMsg>> {
+        todo!()
+    }
+
+    pub async fn get_validator_set(&self) -> anyhow::Result<ValidatorSet> {
+        todo!()
+    }
 }
