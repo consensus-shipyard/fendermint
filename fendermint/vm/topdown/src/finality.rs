@@ -119,25 +119,40 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
         top_down_msgs: Vec<CrossMsg>,
         validator_set: ValidatorSet,
     ) -> Result<(), Error> {
+        ensure_sequential(&top_down_msgs)?;
+
         atomically(|| {
             let insert_res = self.parent_view_data.height_data.modify(|mut cache| {
-                let r = cache.insert(height, (hash, validator_set));
+                let r = cache.insert(height, (hash.clone(), validator_set.clone()));
                 (cache, r)
             })?;
             match insert_res {
                 SequentialCacheInsert::Ok => {}
                 // now the inserted height is not the next expected block height, could be a chain
                 // reorg if the caller is behaving correctly.
-                _ => {
-                    return Ok(Err(Error::ParentReorgDetected(height)))
-                }
+                _ => return Ok(Err(Error::ParentReorgDetected(height))),
             };
 
-            self.parent_view_data.top_down_msgs.modify(|mut cache| {
+            if top_down_msgs.is_empty() {
+                // not processing if there are no top down msgs
+                return Ok(Ok(()));
+            }
 
-            })
+            // get the min nonce from the list of top down msgs and purge all the msgs with nonce
+            // about the min nonce in cache, as the data should be newer and more accurate.
+            let min_nonce = top_down_msgs.first().unwrap().msg.nonce;
+            self.parent_view_data.top_down_msgs.modify(|mut cache| {
+                cache.remove_key_above(min_nonce);
+
+                for msg in top_down_msgs.clone() {
+                    cache.insert(msg.msg.nonce, msg);
+                }
+                (cache, ())
+            })?;
+
             Ok(Ok(()))
-        }).await
+        })
+        .await
     }
 
     async fn on_finality_committed(&self, finality: &IPCParentFinality) -> Result<(), Error> {
@@ -154,12 +169,12 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
 
         atomically(|| {
             self.parent_view_data.height_data.modify(|mut cache| {
-                cache.remove_key_till(height + 1);
+                cache.remove_key_below(height + 1);
                 (cache, ())
             })?;
 
             self.parent_view_data.top_down_msgs.modify(|mut cache| {
-                cache.remove_key_till(nonce + 1);
+                cache.remove_key_below(nonce + 1);
                 (cache, ())
             })?;
 
@@ -174,13 +189,6 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
 }
 
 impl DefaultFinalityProvider {
-    pub fn new(
-        config: Config,
-        starting_cached_finality: IPCParentFinality,
-        last_committed_finality: IPCParentFinality,
-    ) -> Self {
-    }
-
     fn check_height(&self, proposal: &IPCParentFinality) -> StmResult<Result<(), Error>> {
         let latest_height = self.parent_view_data.latest_height()?;
         if latest_height < proposal.height {
@@ -242,4 +250,17 @@ impl DefaultFinalityProvider {
 
         Ok(Ok(()))
     }
+}
+
+fn ensure_sequential(msgs: &[CrossMsg]) -> Result<(), Error> {
+    if !msgs.is_empty() {
+        let mut nonce = msgs.first().unwrap().msg.nonce;
+        for i in 2..msgs.len() {
+            if msgs.get(i).unwrap().msg.nonce != nonce + 1 {
+                return Err(Error::NonceNotSequential);
+            }
+            nonce += 1;
+        }
+    }
+    Ok(())
 }

@@ -40,4 +40,6 @@ pub enum Error {
     },
     /// Parent block chain reorg detected
     ParentReorgDetected(BlockHeight),
+    /// Incoming top down messages are not order by nonce sequentially
+    NonceNotSequential,
 }
