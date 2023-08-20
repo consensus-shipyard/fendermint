@@ -50,6 +50,14 @@ pub trait ParentFinalityProvider {
     async fn next_proposal(&self) -> Result<IPCParentFinality, Error>;
     /// Check if the target proposal is valid
     async fn check_proposal(&self, proposal: &IPCParentFinality) -> Result<(), Error>;
+    /// There is a new incoming parent view to be updated
+    async fn new_parent_view(
+        &self,
+        height: BlockHeight,
+        hash: Bytes,
+        top_down_msgs: Vec<CrossMsg>,
+        validator_set: ValidatorSet,
+    ) -> Result<(), Error>;
     /// Called when finality is committed
     async fn on_finality_committed(&self, finality: &IPCParentFinality) -> Result<(), Error>;
 }

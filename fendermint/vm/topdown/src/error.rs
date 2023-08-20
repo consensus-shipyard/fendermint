@@ -38,4 +38,6 @@ pub enum Error {
         parent: Nonce,
         block: BlockHeight,
     },
+    /// Parent block chain reorg detected
+    ParentReorgDetected(BlockHeight),
 }

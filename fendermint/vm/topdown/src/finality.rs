@@ -1,18 +1,19 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use crate::cache::SequentialKeyCache;
+use crate::cache::{SequentialCacheInsert, SequentialKeyCache};
 use crate::error::Error;
 use crate::{BlockHeight, Bytes, Config, IPCParentFinality, Nonce, ParentFinalityProvider};
 use async_stm::{atomically, StmResult, TVar};
 use async_trait::async_trait;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::ValidatorSet;
+use std::sync::Arc;
 
 /// The default parent finality provider
 pub struct DefaultFinalityProvider {
     config: Config,
-    parent_view_data: ParentViewData,
+    parent_view_data: Arc<ParentViewData>,
     /// This is a in memory view of the committed parent finality,
     /// it should be synced with the store committed finality, owner of the struct should enforce
     /// this.
@@ -111,6 +112,34 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
         .await
     }
 
+    async fn new_parent_view(
+        &self,
+        height: BlockHeight,
+        hash: Bytes,
+        top_down_msgs: Vec<CrossMsg>,
+        validator_set: ValidatorSet,
+    ) -> Result<(), Error> {
+        atomically(|| {
+            let insert_res = self.parent_view_data.height_data.modify(|mut cache| {
+                let r = cache.insert(height, (hash, validator_set));
+                (cache, r)
+            })?;
+            match insert_res {
+                SequentialCacheInsert::Ok => {}
+                // now the inserted height is not the next expected block height, could be a chain
+                // reorg if the caller is behaving correctly.
+                _ => {
+                    return Ok(Err(Error::ParentReorgDetected(height)))
+                }
+            };
+
+            self.parent_view_data.top_down_msgs.modify(|mut cache| {
+
+            })
+            Ok(Ok(()))
+        }).await
+    }
+
     async fn on_finality_committed(&self, finality: &IPCParentFinality) -> Result<(), Error> {
         // the nonce to clear
         let nonce = if !finality.top_down_msgs.is_empty() {
@@ -145,6 +174,13 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
 }
 
 impl DefaultFinalityProvider {
+    pub fn new(
+        config: Config,
+        starting_cached_finality: IPCParentFinality,
+        last_committed_finality: IPCParentFinality,
+    ) -> Self {
+    }
+
     fn check_height(&self, proposal: &IPCParentFinality) -> StmResult<Result<(), Error>> {
         let latest_height = self.parent_view_data.latest_height()?;
         if latest_height < proposal.height {
