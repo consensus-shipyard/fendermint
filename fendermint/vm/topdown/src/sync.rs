@@ -17,14 +17,16 @@ pub struct PollingParentSyncer<T> {
     config: Config,
     started: Arc<AtomicBool>,
     parent_view_provider: Arc<T>,
+    agent: Arc<IPCAgentProxy>,
 }
 
 impl <T> PollingParentSyncer<T> {
-    pub fn new(config: Config, parent_view_provider: Arc<T>) -> Self {
+    pub fn new(config: Config, parent_view_provider: Arc<T>, agent: Arc<IPCAgentProxy>) -> Self {
         Self {
             config,
             started: Arc::new(AtomicBool::new(false)),
-            parent_view_provider
+            parent_view_provider,
+            agent
         }
     }
 }
@@ -42,25 +44,27 @@ impl <T: ParentFinalityProvider + Send + Sync + 'static> PollingParentSyncer<T> 
 
         let config = self.config.clone();
         let provider = self.parent_view_provider.clone();
+        let agent = self.agent.clone();
 
         let handle =
-            tokio::spawn(async move { sync_with_parent(config, parent_syncer, provider).await });
+            tokio::spawn(async move { sync_with_parent(config, agent, provider).await });
         self.handle = Some(handle);
 
         Ok(())
     }
 }
 
-async fn sync_with_parent(
+async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
     config: Config,
-    agent_proxy: Arc<AgentProxy>,
-    lock: LockedCache,
+    agent_proxy: Arc<IPCAgentProxy>,
+    provider: Arc<T>,
 ) -> anyhow::Result<()> {
     let mut interval = tokio::time::interval(Duration::from_secs(config.polling_interval));
 
     loop {
         interval.tick().await;
 
+        let
         let hashes = fetch_block_hashes(&config, &agent_proxy, &lock).await?;
         update_top_down_msgs(&config, &agent_proxy, &lock).await?;
         update_membership(&config, &agent_proxy, &lock).await?;
