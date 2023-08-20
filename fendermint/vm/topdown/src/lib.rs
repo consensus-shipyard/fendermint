@@ -43,21 +43,25 @@ pub struct IPCParentFinality {
 }
 
 #[async_trait]
-pub trait ParentFinalityProvider {
-    /// Obtains the last committed finality
-    async fn last_committed_finality(&self) -> Result<IPCParentFinality, Error>;
-    /// Latest proposal
-    async fn next_proposal(&self) -> Result<IPCParentFinality, Error>;
-    /// Check if the target proposal is valid
-    async fn check_proposal(&self, proposal: &IPCParentFinality) -> Result<(), Error>;
+pub trait ParentViewProvider {
+    /// Get the latest height of the parent
+    async fn latest_height(&self) -> Option<BlockHeight>;
     /// There is a new incoming parent view to be updated
     async fn new_parent_view(
         &self,
-        height: BlockHeight,
-        hash: Bytes,
+        block_info: Option<(BlockHeight, Bytes, ValidatorSet)>,
         top_down_msgs: Vec<CrossMsg>,
-        validator_set: ValidatorSet,
     ) -> Result<(), Error>;
+}
+
+#[async_trait]
+pub trait ParentFinalityProvider: ParentViewProvider {
+    /// Obtains the last committed finality
+    async fn last_committed_finality(&self) -> Result<IPCParentFinality, Error>;
+    /// Latest proposal for parent finality
+    async fn next_proposal(&self) -> Result<IPCParentFinality, Error>;
+    /// Check if the target proposal is valid
+    async fn check_proposal(&self, proposal: &IPCParentFinality) -> Result<(), Error>;
     /// Called when finality is committed
     async fn on_finality_committed(&self, finality: &IPCParentFinality) -> Result<(), Error>;
 }
