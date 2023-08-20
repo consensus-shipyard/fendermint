@@ -4,6 +4,7 @@
 use num_traits::PrimInt;
 use std::collections::VecDeque;
 use std::fmt::Debug;
+use std::path::Iter;
 
 /// The key value cache such that:
 /// 1. Key must be numeric
@@ -75,6 +76,10 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
         }
 
         results
+    }
+
+    pub fn values(&self) -> Vec<&V> {
+        self.data.iter().map(|i| &i.1).collect()
     }
 
     /// Removes the all the keys below the target value, exclusive.
