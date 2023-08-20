@@ -13,7 +13,7 @@ use std::sync::Arc;
 /// The default parent finality provider
 pub struct DefaultFinalityProvider {
     config: Config,
-    parent_view_data: Arc<ParentViewData>,
+    parent_view_data: ParentViewData,
     /// This is a in memory view of the committed parent finality,
     /// it should be synced with the store committed finality, owner of the struct should enforce
     /// this.
