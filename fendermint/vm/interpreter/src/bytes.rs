@@ -19,15 +19,32 @@ pub type BytesMessageQueryRet = Result<FvmQueryRet, fvm_ipld_encoding::Error>;
 /// Close to what the ABCI sends: (Path, Bytes).
 pub type BytesMessageQuery = (String, Vec<u8>);
 
+/// Behavour of proposal preparation. It's an otimisation to cut down needless serialization
+/// when we know we aren't doing anything with the messages.
+#[derive(Debug, Default, Clone)]
+pub enum ProposalPrepareMode {
+    /// Deserialize all messages and pass them to the inner interpreter.
+    #[default]
+    PassThrough,
+    /// Does not pass messages to the inner interpreter, only appends what is returned from it.
+    AppendOnly,
+    /// Does not pass messages to the inner interpreter, only prepends what is returned from it.
+    PrependOnly,
+}
+
 /// Interpreter working on raw bytes.
 #[derive(Clone)]
 pub struct BytesMessageInterpreter<I> {
     inner: I,
+    prepare_mode: ProposalPrepareMode,
 }
 
 impl<I> BytesMessageInterpreter<I> {
-    pub fn new(inner: I) -> Self {
-        Self { inner }
+    pub fn new(inner: I, prepare_mode: ProposalPrepareMode) -> Self {
+        Self {
+            inner,
+            prepare_mode,
+        }
     }
 }
 
@@ -45,34 +62,42 @@ where
         state: Self::State,
         msgs: Vec<Self::Message>,
     ) -> anyhow::Result<Vec<Self::Message>> {
-        // We could include a flag to disable this parsing if we know that the inner interpreter
-        // does not care about proposals, but in our case we know that we'll eventually want to
-        // consult the IPLD Resolver.
-
-        let mut chain_msgs = Vec::new();
-
-        for msg in msgs {
-            match fvm_ipld_encoding::from_slice::<ChainMessage>(&msg) {
-                Err(e) => {
-                    // This should not happen because the `CheckInterpreter` implementation below would
-                    // have rejected any such user transaction.
-                    tracing::warn!(
-                        error = e.to_string(),
-                        "failed to decode message in mempool as ChainMessage"
-                    );
+        // Collect the messages to pass to the inner interpreter.
+        let chain_msgs = match self.prepare_mode {
+            ProposalPrepareMode::PassThrough => {
+                let mut chain_msgs = Vec::new();
+                for msg in msgs.iter() {
+                    match fvm_ipld_encoding::from_slice::<ChainMessage>(msg) {
+                        Err(e) => {
+                            // This should not happen because the `CheckInterpreter` implementation below would
+                            // have rejected any such user transaction.
+                            tracing::warn!(
+                                error = e.to_string(),
+                                "failed to decode message in mempool as ChainMessage"
+                            );
+                        }
+                        Ok(msg) => chain_msgs.push(msg),
+                    }
                 }
-                Ok(msg) => chain_msgs.push(msg),
+                chain_msgs
             }
-        }
+            ProposalPrepareMode::AppendOnly | ProposalPrepareMode::PrependOnly => Vec::new(),
+        };
 
         let chain_msgs = self.inner.prepare(state, chain_msgs).await?;
 
-        chain_msgs
+        let chain_msgs = chain_msgs
             .into_iter()
             .map(|msg| {
                 fvm_ipld_encoding::to_vec(&msg).context("failed to encode ChainMessage as IPLD")
             })
-            .collect()
+            .collect::<anyhow::Result<Vec<Self::Message>>>()?;
+
+        match self.prepare_mode {
+            ProposalPrepareMode::PassThrough => Ok(chain_msgs),
+            ProposalPrepareMode::AppendOnly => Ok(vec![msgs, chain_msgs].concat()),
+            ProposalPrepareMode::PrependOnly => Ok(vec![chain_msgs, msgs].concat()),
+        }
     }
 
     /// Parse messages in the block, reject if unknown format. Pass the rest to the inner `ChainMessage` interpreter.
