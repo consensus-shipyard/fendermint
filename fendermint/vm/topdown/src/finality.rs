@@ -112,12 +112,12 @@ impl ParentViewProvider for DefaultFinalityProvider {
 
 #[async_trait]
 impl ParentFinalityProvider for DefaultFinalityProvider {
-    async fn last_committed_finality(&self) -> Result<IPCParentFinality, Error> {
-        Ok(atomically(|| {
+    async fn last_committed_finality(&self) -> IPCParentFinality {
+        atomically(|| {
             let finality = self.last_committed_finality.read_clone()?;
             Ok(finality)
         })
-        .await)
+        .await
     }
 
     async fn next_proposal(&self) -> Result<IPCParentFinality, Error> {
@@ -176,7 +176,7 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
         .await
     }
 
-    async fn on_finality_committed(&self, finality: &IPCParentFinality) -> Result<(), Error> {
+    async fn on_finality_committed(&self, finality: &IPCParentFinality) {
         // the nonce to clear
         let nonce = if !finality.top_down_msgs.is_empty() {
             let idx = finality.top_down_msgs.len() - 1;
@@ -204,12 +204,25 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
             Ok(())
         })
         .await;
-
-        Ok(())
     }
 }
 
 impl DefaultFinalityProvider {
+    pub fn new(config: Config, committed_finality: IPCParentFinality) -> Self {
+        let height_data = SequentialKeyCache::new(config.block_interval);
+        // nonce should be cached with increment 1
+        let top_down_msgs = SequentialKeyCache::new(1);
+
+        Self {
+            config,
+            parent_view_data: ParentViewData {
+                height_data: TVar::new(height_data),
+                top_down_msgs: TVar::new(top_down_msgs),
+            },
+            last_committed_finality: TVar::new(committed_finality),
+        }
+    }
+
     fn check_height(&self, proposal: &IPCParentFinality) -> StmResult<Result<(), Error>> {
         let latest_height = if let Some(h) = self.parent_view_data.latest_height()? {
             h
@@ -289,4 +302,154 @@ fn ensure_sequential(msgs: &[CrossMsg]) -> Result<(), Error> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::error::Error;
+    use crate::{
+        Config, DefaultFinalityProvider, IPCParentFinality, ParentFinalityProvider,
+        ParentViewProvider,
+    };
+    use ipc_sdk::ValidatorSet;
+
+    fn new_provider() -> DefaultFinalityProvider {
+        let config = Config {
+            chain_head_delay: 20,
+            chain_head_lower_bound: 100,
+            block_interval: 1,
+            polling_interval: 10,
+        };
+
+        let genesis_finality = IPCParentFinality {
+            height: 0,
+            block_hash: vec![0; 32],
+            top_down_msgs: vec![],
+            validator_set: Default::default(),
+        };
+
+        DefaultFinalityProvider::new(config, genesis_finality)
+    }
+
+    #[tokio::test]
+    async fn test_next_proposal_works() {
+        let provider = new_provider();
+
+        let r = provider.next_proposal().await;
+        assert!(r.is_err());
+        assert_eq!(r.unwrap_err(), Error::HeightNotReady);
+
+        provider
+            .new_parent_view(
+                Some((10, vec![1u8; 32], ValidatorSet::new(vec![], 10))),
+                vec![],
+            )
+            .await
+            .unwrap();
+        let r = provider.next_proposal().await;
+        assert!(r.is_err());
+        assert_eq!(r.unwrap_err(), Error::HeightThresholdNotReached);
+
+        // inject data
+        for i in 11..=100 {
+            provider
+                .new_parent_view(
+                    Some((i, vec![1u8; 32], ValidatorSet::new(vec![], i))),
+                    vec![],
+                )
+                .await
+                .unwrap();
+        }
+
+        let proposal = provider.next_proposal().await.unwrap();
+        let target_block = 100 - 20; // deduct chain head delay
+        assert_eq!(
+            proposal,
+            IPCParentFinality {
+                height: target_block,
+                block_hash: vec![1u8; 32],
+                top_down_msgs: vec![],
+                validator_set: ValidatorSet::new(vec![], target_block),
+            }
+        );
+
+        assert_eq!(provider.latest_height().await, Some(100));
+    }
+
+    #[tokio::test]
+    async fn test_finality_works() {
+        let provider = new_provider();
+
+        // inject data
+        for i in 10..=100 {
+            provider
+                .new_parent_view(
+                    Some((i, vec![1u8; 32], ValidatorSet::new(vec![], i))),
+                    vec![],
+                )
+                .await
+                .unwrap();
+        }
+
+        let target_block = 120;
+        let finality = IPCParentFinality {
+            height: target_block,
+            block_hash: vec![1u8; 32],
+            top_down_msgs: vec![],
+            validator_set: ValidatorSet::new(vec![], target_block),
+        };
+        provider.on_finality_committed(&finality).await;
+
+        // all cache should be cleared
+        let r = provider.next_proposal().await;
+        assert!(r.is_err());
+        assert_eq!(r.unwrap_err(), Error::HeightNotReady);
+
+        let f = provider.last_committed_finality().await;
+        assert_eq!(f, finality);
+    }
+
+    #[tokio::test]
+    async fn test_check_proposal_works() {
+        let provider = new_provider();
+
+        // inject data
+        for i in 20..=100 {
+            provider
+                .new_parent_view(
+                    Some((i, vec![1u8; 32], ValidatorSet::new(vec![], i))),
+                    vec![],
+                )
+                .await
+                .unwrap();
+        }
+
+        let target_block = 120;
+        let finality = IPCParentFinality {
+            height: target_block,
+            block_hash: vec![1u8; 32],
+            top_down_msgs: vec![],
+            validator_set: ValidatorSet::new(vec![], target_block),
+        };
+
+        let r = provider.check_proposal(&finality).await;
+        assert!(r.is_err());
+        assert_eq!(
+            r.unwrap_err(),
+            Error::ExceedingLatestHeight {
+                proposal: 120,
+                parent: 100
+            }
+        );
+
+        let target_block = 100;
+        let finality = IPCParentFinality {
+            height: target_block,
+            block_hash: vec![1u8; 32],
+            top_down_msgs: vec![],
+            validator_set: ValidatorSet::new(vec![], target_block),
+        };
+
+        assert!(provider.check_proposal(&finality).await.is_ok());
+    }
 }

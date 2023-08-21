@@ -10,6 +10,7 @@ use std::fmt::Debug;
 /// 2. Keys must be sequential
 #[derive(Clone)]
 pub(crate) struct SequentialKeyCache<K, V> {
+    increment: K,
     /// The underlying data
     data: VecDeque<(K, V)>,
 }
@@ -24,8 +25,9 @@ pub(crate) enum SequentialCacheInsert {
 }
 
 impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
-    pub fn new() -> Self {
+    pub fn new(increment: K) -> Self {
         Self {
+            increment,
             data: Default::default(),
         }
     }
@@ -55,7 +57,7 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
 
         let lower = self.lower_bound().unwrap();
         // safe to unwrap as index must be uint
-        let index = (key - lower).to_usize().unwrap();
+        let index = ((key - lower) / self.increment).to_usize().unwrap();
 
         self.data.get(index).map(|entry| &entry.1)
     }
@@ -67,7 +69,7 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
 
         let lower = self.lower_bound().unwrap();
         // safe to unwrap as index must be uint
-        let index = (start - lower).to_usize().unwrap();
+        let index = ((start - lower) / self.increment).to_usize().unwrap();
 
         let mut results = vec![];
         for i in index..self.data.len() {
@@ -106,7 +108,7 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
     /// Insert the key and value pair only if the key is upper_bound + 1
     pub fn insert(&mut self, key: K, val: V) -> SequentialCacheInsert {
         if let Some(upper) = self.upper_bound() {
-            if upper.add(K::one()) == key {
+            if upper.add(self.increment) == key {
                 self.data.push_back((key, val));
                 return SequentialCacheInsert::Ok;
             } else if upper < key {
@@ -123,5 +125,82 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
 
         self.data.push_back((key, val));
         SequentialCacheInsert::Ok
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::cache::SequentialKeyCache;
+
+    #[test]
+    fn insert_works() {
+        let mut cache = SequentialKeyCache::new(1);
+
+        for k in 9..100 {
+            cache.insert(k, k);
+        }
+
+        for i in 9..100 {
+            assert_eq!(cache.get_value(i), Some(&i));
+        }
+
+        assert_eq!(cache.get_value(100), None);
+        assert_eq!(cache.lower_bound(), Some(9));
+        assert_eq!(cache.upper_bound(), Some(99));
+    }
+
+    #[test]
+    fn range_works() {
+        let mut cache = SequentialKeyCache::new(1);
+
+        for k in 0..100 {
+            cache.insert(k, k);
+        }
+
+        let range = cache.values_from(50);
+        assert_eq!(
+            range.into_iter().cloned().collect::<Vec<_>>(),
+            (50..100).collect::<Vec<_>>()
+        );
+
+        let values = cache.values();
+        assert_eq!(
+            values.into_iter().cloned().collect::<Vec<_>>(),
+            (0..100).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn remove_works() {
+        let mut cache = SequentialKeyCache::new(1);
+
+        for k in 0..100 {
+            cache.insert(k, k);
+        }
+
+        cache.remove_key_below(10);
+        cache.remove_key_above(50);
+
+        let values = cache.values();
+        assert_eq!(
+            values.into_iter().cloned().collect::<Vec<_>>(),
+            (10..51).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn diff_increment_works() {
+        let incre = 101;
+        let mut cache = SequentialKeyCache::new(101);
+
+        for k in 0..100 {
+            cache.insert(k * incre, k);
+        }
+
+        let values = cache.values_from(incre + 1);
+        assert_eq!(
+            values.into_iter().cloned().collect::<Vec<_>>(),
+            (1..100).collect::<Vec<_>>()
+        );
     }
 }
