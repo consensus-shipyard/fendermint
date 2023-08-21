@@ -69,9 +69,11 @@ impl ParentViewProvider for DefaultFinalityProvider {
     async fn new_parent_view(
         &self,
         block_info: Option<(BlockHeight, Bytes, ValidatorSet)>,
-        top_down_msgs: Vec<CrossMsg>,
+        mut top_down_msgs: Vec<CrossMsg>,
     ) -> Result<(), Error> {
-        ensure_sequential(&top_down_msgs)?;
+        top_down_msgs.sort_unstable_by(|a, b| {
+            a.msg.nonce.cmp(&b.msg.nonce)
+        });
 
         atomically(|| {
             if let Some((height, hash, validator_set)) = &block_info {
@@ -289,19 +291,6 @@ impl DefaultFinalityProvider {
 
         Ok(Ok(()))
     }
-}
-
-fn ensure_sequential(msgs: &[CrossMsg]) -> Result<(), Error> {
-    if !msgs.is_empty() {
-        let mut nonce = msgs.first().unwrap().msg.nonce;
-        for i in 2..msgs.len() {
-            if msgs.get(i).unwrap().msg.nonce != nonce + 1 {
-                return Err(Error::NonceNotSequential);
-            }
-            nonce += 1;
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]
