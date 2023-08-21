@@ -4,6 +4,7 @@
 use crate::{BlockHeight, Bytes, Nonce};
 
 /// The errors for top down checkpointing
+#[derive(Debug, Eq, PartialEq)]
 pub enum Error {
     /// The latest height of the parent view is not ready
     HeightNotReady,

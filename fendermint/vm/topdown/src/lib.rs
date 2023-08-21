@@ -59,11 +59,11 @@ pub trait ParentViewProvider {
 #[async_trait]
 pub trait ParentFinalityProvider: ParentViewProvider {
     /// Obtains the last committed finality
-    async fn last_committed_finality(&self) -> Result<IPCParentFinality, Error>;
+    async fn last_committed_finality(&self) -> IPCParentFinality;
     /// Latest proposal for parent finality
     async fn next_proposal(&self) -> Result<IPCParentFinality, Error>;
     /// Check if the target proposal is valid
     async fn check_proposal(&self, proposal: &IPCParentFinality) -> Result<(), Error>;
     /// Called when finality is committed
-    async fn on_finality_committed(&self, finality: &IPCParentFinality) -> Result<(), Error>;
+    async fn on_finality_committed(&self, finality: &IPCParentFinality);
 }
