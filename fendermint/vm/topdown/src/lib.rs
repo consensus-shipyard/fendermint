@@ -13,6 +13,7 @@ use ipc_sdk::ValidatorSet;
 use serde::{Deserialize, Serialize};
 
 pub use crate::finality::DefaultFinalityProvider;
+pub use crate::sync::{IPCAgentProxy, PollingParentSyncer};
 
 type BlockHeight = u64;
 type Nonce = u64;

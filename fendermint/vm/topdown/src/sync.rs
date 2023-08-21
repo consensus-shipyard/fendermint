@@ -2,16 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 //! A constant running process that fetch or listener to parent state
 
-
-use crate::{BlockHeight, Config, Nonce, ParentFinalityProvider};
+use crate::error::Error;
+use crate::{BlockHeight, Config, ParentFinalityProvider};
 use anyhow::anyhow;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::ValidatorSet;
 use std::cmp::max;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
-use crate::error::Error;
 
 /// Constantly syncing with parent through polling
 pub struct PollingParentSyncer<T> {
@@ -21,18 +20,18 @@ pub struct PollingParentSyncer<T> {
     agent: Arc<IPCAgentProxy>,
 }
 
-impl <T> PollingParentSyncer<T> {
+impl<T> PollingParentSyncer<T> {
     pub fn new(config: Config, parent_view_provider: Arc<T>, agent: Arc<IPCAgentProxy>) -> Self {
         Self {
             config,
             started: Arc::new(AtomicBool::new(false)),
             parent_view_provider,
-            agent
+            agent,
         }
     }
 }
 
-impl <T: ParentFinalityProvider + Send + Sync + 'static> PollingParentSyncer<T> {
+impl<T: ParentFinalityProvider + Send + Sync + 'static> PollingParentSyncer<T> {
     /// Start the proof of finality listener in the background
     pub fn start(&mut self) -> anyhow::Result<()> {
         match self
@@ -47,9 +46,11 @@ impl <T: ParentFinalityProvider + Send + Sync + 'static> PollingParentSyncer<T> 
         let provider = self.parent_view_provider.clone();
         let agent = self.agent.clone();
 
-        let handle =
-            tokio::spawn(async move { sync_with_parent(config, agent, provider).await });
-        self.handle = Some(handle);
+        tokio::spawn(async move {
+            if let Err(e) = sync_with_parent(config, agent, provider).await {
+                tracing::info!("sync with parent encountered error: {e}");
+            }
+        });
 
         Ok(())
     }
@@ -65,6 +66,7 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
     loop {
         interval.tick().await;
 
+        // update block hash and validator set
         let latest_height = match agent_proxy.get_chain_head_height().await {
             Ok(h) => h,
             Err(e) => {
@@ -85,26 +87,43 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
         } else {
             // if latest_recorded_height is None, it means we have not started fetching any heights
             // we just use the latest height minus a lower bound as the parent view
-            max(1, latest_height.saturating_sub(config.chain_head_lower_bound))
+            max(
+                1,
+                latest_height.saturating_sub(config.chain_head_lower_bound),
+            )
         };
 
         for h in starting_height..=latest_height {
             let block_hash = agent_proxy.get_block_hash(h).await?;
             let validator_set = agent_proxy.get_validator_set(h).await?;
 
-            match provider.new_parent_view(Some((h, block_hash, validator_set)), vec![]).await {
+            match provider
+                .new_parent_view(Some((h, block_hash, validator_set)), vec![])
+                .await
+            {
                 Ok(_) => {}
                 Err(e) => match e {
-                    Error::ParentReorgDetected(_) => { todo!() }
-                    _ => unreachable!()
-                }
+                    Error::ParentReorgDetected(_) => {
+                        todo!()
+                    }
+                    _ => unreachable!(),
+                },
             }
         }
 
+        // now get the top down messages
+        let nonce = provider.latest_nonce().await.unwrap_or(0);
+        let top_down_msgs = agent_proxy.get_top_down_msgs(latest_height, nonce).await?;
+        match provider.new_parent_view(None, top_down_msgs).await {
+            Ok(_) => {}
+            Err(_) => {
+                todo!()
+            }
+        }
     }
 }
 
-struct IPCAgentProxy {}
+pub struct IPCAgentProxy {}
 
 impl IPCAgentProxy {
     pub async fn get_chain_head_height(&self) -> anyhow::Result<BlockHeight> {
