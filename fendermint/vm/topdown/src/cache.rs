@@ -141,6 +141,7 @@ mod tests {
             assert_eq!(cache.get_value(i), Some(&i));
         }
 
+        assert_eq!(cache.get_value(100), None);
         assert_eq!(cache.lower_bound(), Some(9));
         assert_eq!(cache.upper_bound(), Some(99));
     }
