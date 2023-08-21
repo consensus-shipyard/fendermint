@@ -47,8 +47,12 @@ impl<T: ParentFinalityProvider + Send + Sync + 'static> PollingParentSyncer<T> {
         let agent = self.agent.clone();
 
         tokio::spawn(async move {
-            if let Err(e) = sync_with_parent(config, agent, provider).await {
-                tracing::info!("sync with parent encountered error: {e}");
+            loop {
+                if let Err(e) = sync_with_parent(&config, &agent, &provider).await {
+                    tracing::info!("sync with parent encountered error: {e}");
+                }
+
+                // TODO: add termination channel?
             }
         });
 
@@ -57,9 +61,9 @@ impl<T: ParentFinalityProvider + Send + Sync + 'static> PollingParentSyncer<T> {
 }
 
 async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
-    config: Config,
-    agent_proxy: Arc<IPCAgentProxy>,
-    provider: Arc<T>,
+    config: &Config,
+    agent_proxy: &Arc<IPCAgentProxy>,
+    provider: &Arc<T>,
 ) -> anyhow::Result<()> {
     let mut interval = tokio::time::interval(Duration::from_secs(config.polling_interval));
 
