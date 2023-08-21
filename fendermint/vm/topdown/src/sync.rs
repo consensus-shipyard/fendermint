@@ -108,12 +108,8 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
         // now get the top down messages
         let nonce = provider.latest_nonce().await.unwrap_or(0);
         let top_down_msgs = agent_proxy.get_top_down_msgs(latest_height, nonce).await?;
-        match provider.new_parent_view(None, top_down_msgs).await {
-            Ok(_) => {}
-            Err(_) => {
-                todo!()
-            }
-        }
+        // safe to unwrap as updating top down msgs will not trigger error
+        provider.new_parent_view(None, top_down_msgs).await.unwrap();
     }
 }
 
