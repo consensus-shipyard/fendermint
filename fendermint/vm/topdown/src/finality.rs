@@ -71,9 +71,7 @@ impl ParentViewProvider for DefaultFinalityProvider {
         block_info: Option<(BlockHeight, Bytes, ValidatorSet)>,
         mut top_down_msgs: Vec<CrossMsg>,
     ) -> Result<(), Error> {
-        top_down_msgs.sort_unstable_by(|a, b| {
-            a.msg.nonce.cmp(&b.msg.nonce)
-        });
+        top_down_msgs.sort_unstable_by(|a, b| a.msg.nonce.cmp(&b.msg.nonce));
 
         atomically(|| {
             if let Some((height, hash, validator_set)) = &block_info {
