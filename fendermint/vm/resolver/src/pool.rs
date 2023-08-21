@@ -91,9 +91,8 @@ where
 
         if items.contains_key(&key) {
             let status = items.get(&key).cloned().unwrap();
-            status.items.update(|mut items| {
+            status.items.update_mut(|items| {
                 items.insert(item);
-                items
             })?;
             Ok(status)
         } else {
