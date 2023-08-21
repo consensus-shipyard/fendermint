@@ -124,3 +124,63 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
         SequentialCacheInsert::Ok
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::cache::SequentialKeyCache;
+
+    #[test]
+    fn insert_works() {
+        let mut cache = SequentialKeyCache::new();
+
+        for k in 0..100 {
+            cache.insert(k, k);
+        }
+
+        for i in 0..100 {
+            assert_eq!(cache.get_value(i), Some(&i));
+        }
+
+        assert_eq!(cache.lower_bound(), Some(0));
+        assert_eq!(cache.upper_bound(), Some(99));
+    }
+
+    #[test]
+    fn range_works() {
+        let mut cache = SequentialKeyCache::new();
+
+        for k in 0..100 {
+            cache.insert(k, k);
+        }
+
+        let range = cache.values_from(50);
+        assert_eq!(
+            range.into_iter().cloned().collect::<Vec<_>>(),
+            (50..100).collect::<Vec<_>>()
+        );
+
+        let values = cache.values();
+        assert_eq!(
+            values.into_iter().cloned().collect::<Vec<_>>(),
+            (0..100).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn remove_works() {
+        let mut cache = SequentialKeyCache::new();
+
+        for k in 0..100 {
+            cache.insert(k, k);
+        }
+
+        cache.remove_key_below(10);
+        cache.remove_key_above(50);
+
+        let values = cache.values();
+        assert_eq!(
+            values.into_iter().cloned().collect::<Vec<_>>(),
+            (10..51).collect::<Vec<_>>()
+        );
+    }
+}
