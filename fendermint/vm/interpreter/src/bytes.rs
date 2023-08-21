@@ -36,14 +36,22 @@ pub enum ProposalPrepareMode {
 #[derive(Clone)]
 pub struct BytesMessageInterpreter<I> {
     inner: I,
+    /// Should we parse and pass on all messages during prepare.
     prepare_mode: ProposalPrepareMode,
+    /// Should we reject proposals with transactions we cannot parse.
+    reject_malformed_proposal: bool,
 }
 
 impl<I> BytesMessageInterpreter<I> {
-    pub fn new(inner: I, prepare_mode: ProposalPrepareMode) -> Self {
+    pub fn new(
+        inner: I,
+        prepare_mode: ProposalPrepareMode,
+        reject_malformed_proposal: bool,
+    ) -> Self {
         Self {
             inner,
             prepare_mode,
+            reject_malformed_proposal,
         }
     }
 }
@@ -107,13 +115,22 @@ where
         for msg in msgs {
             match fvm_ipld_encoding::from_slice::<ChainMessage>(&msg) {
                 Err(e) => {
-                    // This would indicate a Byzantine validator which includes rubbish in their proposal.
-                    // We could reject the proposal here, or we can accept it and punish the validator during
-                    // block execution, so that their power is reduced.
-                    tracing::debug!(
+                    // If we cannot parse a message, then either:
+                    // * The proposer is Byzantine - as an attack this isn't very effective as they could just not send a proposal and cause a timeout.
+                    // * Our or the proposer node have different versions, or contain bugs
+                    // We can either vote for it or not:
+                    // * If we accept, we can punish the validator during block execution, and if it turns out we had a bug, we will have a consensus failure.
+                    // * If we accept, then the serialization error will become visible in the transaction results through RPC.
+                    // * If we reject, the majority can still accept the block, which indicates we had the bug (that way we might even panic during delivery, since we know it got voted on),
+                    //   but a buggy transaction format that fails for everyone would cause liveness issues.
+                    // * If we reject, then the serialization error will only be visible in the logs (and potentially earlier check_tx results).
+                    tracing::warn!(
                         error = e.to_string(),
-                        "failed to decode messsage in proposal as ChainMessage"
+                        "failed to decode message in proposal as ChainMessage"
                     );
+                    if self.reject_malformed_proposal {
+                        return Ok(false);
+                    }
                 }
                 Ok(msg) => chain_msgs.push(msg),
             }
@@ -145,6 +162,14 @@ where
             // There is always the possibility that our codebase is incompatible,
             // but then we'll have a consensus failure later when we don't agree on the ledger.
             {
+                if self.reject_malformed_proposal {
+                    // We could consider panicking here, otherwise if the majority executes this transaction (they voted for it)
+                    // then we will just get a consensu failure after the block.
+                    tracing::warn!(
+                        error = e.to_string(),
+                        "failed to decode delivered message as ChainMessage; we did not vote for it, maybe our node is buggy?"
+                    );
+                }
                 Ok((state, Err(e)))
             }
             Ok(msg) => {

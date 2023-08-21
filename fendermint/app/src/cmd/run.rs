@@ -29,7 +29,8 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
     );
     let interpreter = SignedMessageInterpreter::new(interpreter);
     let interpreter = ChainMessageInterpreter::new(interpreter);
-    let interpreter = BytesMessageInterpreter::new(interpreter, ProposalPrepareMode::AppendOnly);
+    let interpreter =
+        BytesMessageInterpreter::new(interpreter, ProposalPrepareMode::AppendOnly, false);
 
     let ns = Namespaces::default();
     let db = open_db(&settings, &ns).context("error opening DB")?;
