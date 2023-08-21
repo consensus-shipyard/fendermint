@@ -4,7 +4,7 @@
 
 use crate::error::Error;
 use crate::{BlockHeight, Config, ParentFinalityProvider};
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::ValidatorSet;
 use std::cmp::max;
@@ -67,15 +67,7 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
         interval.tick().await;
 
         // update block hash and validator set
-        let latest_height = match agent_proxy.get_chain_head_height().await {
-            Ok(h) => h,
-            Err(e) => {
-                tracing::warn!("cannot fetch parent chain head due to {e}");
-
-                // not throw errors, caller will retry
-                continue;
-            }
-        };
+        let latest_height = agent_proxy.get_chain_head_height().await.context("cannot fetch parent chain head")?;
 
         if latest_height < config.chain_head_delay {
             tracing::debug!("latest height not more than the chain head delay");
@@ -94,8 +86,8 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
         };
 
         for h in starting_height..=latest_height {
-            let block_hash = agent_proxy.get_block_hash(h).await?;
-            let validator_set = agent_proxy.get_validator_set(h).await?;
+            let block_hash = agent_proxy.get_block_hash(h).await.context("cannot fetch block hash")?;
+            let validator_set = agent_proxy.get_validator_set(h).await.context("cannot fetch validator set")?;
 
             match provider
                 .new_parent_view(Some((h, block_hash, validator_set)), vec![])
@@ -104,6 +96,8 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
                 Ok(_) => {}
                 Err(e) => match e {
                     Error::ParentReorgDetected(_) => {
+                        // FIXME: the most brutal way is to clear all the cache in `provider` and
+                        // FIXME: start from scratch.
                         todo!()
                     }
                     _ => unreachable!(),
