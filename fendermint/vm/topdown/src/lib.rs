@@ -23,6 +23,8 @@ pub struct Config {
     chain_head_delay: BlockHeight,
     /// The lower bound for the chain head height in parent view
     chain_head_lower_bound: BlockHeight,
+    /// The cache storage block height interval
+    block_interval: BlockHeight,
 
     /// Parent syncing cron period, in seconds
     polling_interval: u64,
