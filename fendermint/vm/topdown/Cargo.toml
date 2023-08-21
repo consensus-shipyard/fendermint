@@ -1,5 +1,5 @@
 [package]
-name = "topdown"
+name = "fendermint_vm_topdown"
 version = "0.1.0"
 edition = "2021"
 
