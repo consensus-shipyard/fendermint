@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 type BlockHeight = u64;
 
-/// The finality proof for IPC parent at certain height.
+/// The finality view for IPC parent at certain height.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct IPCParentFinality {
     /// The latest chain height
