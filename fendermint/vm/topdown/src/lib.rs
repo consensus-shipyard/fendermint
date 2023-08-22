@@ -5,6 +5,7 @@ mod cache;
 mod error;
 mod finality;
 
+use async_stm::StmDynResult;
 use crate::error::Error;
 use async_trait::async_trait;
 use ipc_sdk::cross::CrossMsg;
@@ -12,10 +13,12 @@ use ipc_sdk::ValidatorSet;
 use serde::{Deserialize, Serialize};
 
 pub use crate::finality::DefaultFinalityProvider;
+pub use crate::cache::{SequentialAppendError, SequentialKeyCache, ValueIter};
 
 type BlockHeight = u64;
 type Nonce = u64;
 type Bytes = Vec<u8>;
+type BlockHash = Bytes;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -30,7 +33,7 @@ pub struct Config {
     polling_interval: u64,
 }
 
-/// The finality proof for IPC parent at certain height.
+/// The finality view for IPC parent at certain height.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct IPCParentFinality {
     /// The latest chain height
@@ -47,25 +50,31 @@ pub struct IPCParentFinality {
 #[async_trait]
 pub trait ParentViewProvider {
     /// Get the latest height of the parent recorded
-    async fn latest_height(&self) -> Option<BlockHeight>;
+    async fn latest_height(&self) -> StmDynResult<Option<BlockHeight>>;
     /// Get latest nonce recorded
-    async fn latest_nonce(&self) -> Option<Nonce>;
-    /// There is a new incoming parent view to be updated
-    async fn new_parent_view(
+    async fn latest_nonce(&self) -> StmDynResult<Option<Nonce>>;
+    /// There is a new block produced
+    async fn new_block_height(
         &self,
-        block_info: Option<(BlockHeight, Bytes, ValidatorSet)>,
+        height: BlockHeight,
+        block_hash: BlockHash,
+        validator_set: ValidatorSet,
+    ) -> StmDynResult<()>;
+    /// There are new top down messages recorded
+    async fn new_top_down_msgs(
+        &self,
         top_down_msgs: Vec<CrossMsg>,
-    ) -> Result<(), Error>;
+    ) -> StmDynResult<()>;
 }
 
 #[async_trait]
 pub trait ParentFinalityProvider: ParentViewProvider {
     /// Obtains the last committed finality
-    async fn last_committed_finality(&self) -> IPCParentFinality;
+    async fn last_committed_finality(&self) -> StmDynResult<IPCParentFinality>;
     /// Latest proposal for parent finality
-    async fn next_proposal(&self) -> Result<IPCParentFinality, Error>;
+    async fn next_proposal(&self) -> StmDynResult<IPCParentFinality>;
     /// Check if the target proposal is valid
-    async fn check_proposal(&self, proposal: &IPCParentFinality) -> Result<(), Error>;
+    async fn check_proposal(&self, proposal: &IPCParentFinality) -> StmDynResult<()>;
     /// Called when finality is committed
-    async fn on_finality_committed(&self, finality: &IPCParentFinality);
+    async fn on_finality_committed(&self, finality: &IPCParentFinality) -> StmDynResult<()>;
 }
