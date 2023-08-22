@@ -7,6 +7,8 @@ use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::ValidatorSet;
 use serde::{Deserialize, Serialize};
 
+pub use crate::cache::{SequentialAppendError, SequentialKeyCache};
+
 type BlockHeight = u64;
 
 /// The finality view for IPC parent at certain height.

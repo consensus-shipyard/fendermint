@@ -2,24 +2,24 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use num_traits::PrimInt;
-use std::collections::VecDeque;
+use std::collections::{vec_deque, VecDeque};
 use std::fmt::Debug;
 
 /// The key value cache such that:
 /// 1. Key must be numeric
 /// 2. Keys must be sequential
-pub(crate) struct SequentialKeyCache<K, V> {
+pub struct SequentialKeyCache<K, V> {
     increment: K,
     /// The underlying data
     data: VecDeque<(K, V)>,
 }
 
 /// The result enum for sequential cache insertion
-pub(crate) enum SequentialCacheInsert {
-    Ok,
+#[derive(Debug)]
+pub enum SequentialAppendError {
     AboveBound,
-    /// Not the next expect key value
-    NotNext,
+    /// The key has already been inserted
+    AlreadyInserted,
     BelowBound,
 }
 
@@ -29,6 +29,10 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
             increment,
             data: Default::default(),
         }
+    }
+
+    pub fn increment(&self) -> K {
+        self.increment
     }
 
     pub fn upper_bound(&self) -> Option<K> {
@@ -61,25 +65,27 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
         self.data.get(index).map(|entry| &entry.1)
     }
 
-    pub fn values_from(&self, start: K) -> Vec<&V> {
+    pub fn values_from(&self, start: K) -> ValueIter<K, V> {
         if !self.within_bound(start) {
-            return vec![];
+            // empty iter from self.data
+            return ValueIter {
+                i: self.data.iter(),
+            };
         }
 
         let lower = self.lower_bound().unwrap();
         // safe to unwrap as index must be uint
         let index = ((start - lower) / self.increment).to_usize().unwrap();
 
-        let mut results = vec![];
-        for i in index..self.data.len() {
-            results.push(&self.data.get(i).unwrap().1);
+        ValueIter {
+            i: self.data.range(index..),
         }
-
-        results
     }
 
-    pub fn values(&self) -> Vec<&V> {
-        self.data.iter().map(|i| &i.1).collect()
+    pub fn values(&self) -> ValueIter<K, V> {
+        ValueIter {
+            i: self.data.iter(),
+        }
     }
 
     /// Removes the all the keys below the target value, exclusive.
@@ -105,25 +111,43 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
     }
 
     /// Insert the key and value pair only if the key is upper_bound + 1
-    pub fn insert(&mut self, key: K, val: V) -> SequentialCacheInsert {
-        if let Some(upper) = self.upper_bound() {
-            if upper.add(self.increment) == key {
-                self.data.push_back((key, val));
-                return SequentialCacheInsert::Ok;
-            } else if upper < key {
-                tracing::debug!("key: {key:?} greater than upper bound: {upper:?}");
-                return SequentialCacheInsert::AboveBound;
-            }
+    pub fn append(&mut self, key: K, val: V) -> Result<(), SequentialAppendError> {
+        let expected_next_key = if let Some(upper) = self.upper_bound() {
+            upper.add(self.increment)
+        } else {
+            // no upper bound means no data yet, push back directly
+            self.data.push_back((key, val));
+            return Ok(());
+        };
 
-            let lower = self.lower_bound().unwrap();
-            if key < lower {
-                return SequentialCacheInsert::BelowBound;
-            }
-            return SequentialCacheInsert::NotNext;
+        if expected_next_key == key {
+            self.data.push_back((key, val));
+            return Ok(());
         }
 
-        self.data.push_back((key, val));
-        SequentialCacheInsert::Ok
+        if expected_next_key < key {
+            return Err(SequentialAppendError::AboveBound);
+        }
+
+        // safe to unwrap as we must have lower bound at this stage
+        let lower = self.lower_bound().unwrap();
+        if key < lower {
+            Err(SequentialAppendError::BelowBound)
+        } else {
+            Err(SequentialAppendError::AlreadyInserted)
+        }
+    }
+}
+
+pub struct ValueIter<'a, K, V> {
+    i: vec_deque::Iter<'a, (K, V)>,
+}
+
+impl<'a, K, V> Iterator for ValueIter<'a, K, V> {
+    type Item = &'a V;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.i.next().map(|entry| &entry.1)
     }
 }
 
@@ -136,7 +160,7 @@ mod tests {
         let mut cache = SequentialKeyCache::new(1);
 
         for k in 9..100 {
-            cache.insert(k, k);
+            cache.append(k, k).unwrap();
         }
 
         for i in 9..100 {
@@ -153,7 +177,7 @@ mod tests {
         let mut cache = SequentialKeyCache::new(1);
 
         for k in 0..100 {
-            cache.insert(k, k);
+            cache.append(k, k).unwrap();
         }
 
         let range = cache.values_from(50);
@@ -164,7 +188,7 @@ mod tests {
 
         let values = cache.values();
         assert_eq!(
-            values.into_iter().cloned().collect::<Vec<_>>(),
+            values.cloned().collect::<Vec<_>>(),
             (0..100).collect::<Vec<_>>()
         );
     }
@@ -174,7 +198,7 @@ mod tests {
         let mut cache = SequentialKeyCache::new(1);
 
         for k in 0..100 {
-            cache.insert(k, k);
+            cache.append(k, k).unwrap();
         }
 
         cache.remove_key_below(10);
@@ -193,7 +217,7 @@ mod tests {
         let mut cache = SequentialKeyCache::new(101);
 
         for k in 0..100 {
-            cache.insert(k * incre, k);
+            cache.append(k * incre, k).unwrap();
         }
 
         let values = cache.values_from(incre + 1);

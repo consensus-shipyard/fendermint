@@ -2470,6 +2470,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "fendermint_vm_topdown"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "cid",
+ "fvm_ipld_encoding",
+ "ipc-sdk",
+ "num-traits",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "ff"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6568,22 +6584,6 @@ dependencies = [
  "serde_spanned",
  "toml_datetime",
  "winnow",
-]
-
-[[package]]
-name = "topdown"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "cid",
- "fvm_ipld_encoding",
- "ipc-sdk",
- "num-traits",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
 ]
 
 [[package]]
