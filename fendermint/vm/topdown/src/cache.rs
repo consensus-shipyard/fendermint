@@ -8,6 +8,7 @@ use std::fmt::Debug;
 /// The key value cache such that:
 /// 1. Key must be numeric
 /// 2. Keys must be sequential
+#[derive(Clone)]
 pub struct SequentialKeyCache<K, V> {
     increment: K,
     /// The underlying data
