@@ -16,7 +16,7 @@ impl Arbitrary for ArbSubnetID {
                 if bool::arbitrary(g) {
                     Address::new_id(u64::arbitrary(g))
                 } else {
-                    // Only expectign EAM managed delegated addresses.
+                    // Only expecting EAM managed delegated addresses.
                     let subaddr: [u8; 20] = std::array::from_fn(|_| Arbitrary::arbitrary(g));
                     Address::new_delegated(10, &subaddr).unwrap()
                 }
