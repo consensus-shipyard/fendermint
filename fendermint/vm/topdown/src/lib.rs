@@ -7,7 +7,7 @@ use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::ValidatorSet;
 use serde::{Deserialize, Serialize};
 
-pub use crate::cache::{SequentialAppendError, SequentialKeyCache};
+pub use crate::cache::{SequentialAppendError, SequentialKeyCache, ValueIter};
 
 type BlockHeight = u64;
 
