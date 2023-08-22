@@ -18,11 +18,6 @@ pub enum Error {
         proposal: BlockHeight,
         parent: BlockHeight,
     },
-    #[error("The proposal's height is not greater than last committed")]
-    HeightTooLow {
-        incoming: BlockHeight,
-        parent: BlockHeight,
-    },
     #[error("The block height in the proposal is already committed")]
     HeightAlreadyCommitted(BlockHeight),
     #[error("Proposal's block hash and parent's block hash not match")]
@@ -47,4 +42,6 @@ pub enum Error {
     ParentReorgDetected(BlockHeight),
     #[error("Incoming top down messages are not order by nonce sequentially")]
     NonceNotSequential,
+    #[error("First ever top down message does not have starting nonce")]
+    NotStartingNonce(Nonce),
 }
