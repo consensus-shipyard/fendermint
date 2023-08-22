@@ -19,7 +19,7 @@ pub type BytesMessageQueryRet = Result<FvmQueryRet, fvm_ipld_encoding::Error>;
 /// Close to what the ABCI sends: (Path, Bytes).
 pub type BytesMessageQuery = (String, Vec<u8>);
 
-/// Behavour of proposal preparation. It's an otimisation to cut down needless serialization
+/// Behavour of proposal preparation. It's an optimisation to cut down needless serialization
 /// when we know we aren't doing anything with the messages.
 #[derive(Debug, Default, Clone)]
 pub enum ProposalPrepareMode {
