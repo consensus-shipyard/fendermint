@@ -6,33 +6,34 @@ mod error;
 mod finality;
 mod sync;
 
-use crate::error::Error;
-use async_trait::async_trait;
+use async_stm::StmDynResult;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::ValidatorSet;
 use serde::{Deserialize, Serialize};
 
+pub use crate::cache::{SequentialAppendError, SequentialKeyCache, ValueIter};
 pub use crate::finality::DefaultFinalityProvider;
 pub use crate::sync::{IPCAgentProxy, PollingParentSyncer};
 
 type BlockHeight = u64;
 type Nonce = u64;
 type Bytes = Vec<u8>;
+type BlockHash = Bytes;
 
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// The number of blocks to delay reporting when creating the pof
+    /// The number of blocks to delay before reporting a height as final on the parent chain.
+    /// To propose a certain number of epochs delayed from the latest height, we see to be
+    /// conservative and avoid other from rejecting the proposal because they don't see the
+    /// height as final yet.
     chain_head_delay: BlockHeight,
-    /// The lower bound for the chain head height in parent view
-    chain_head_lower_bound: BlockHeight,
-    /// The cache storage block height interval
+    /// The top-down block proposal height interval. Anything in-between these heights is ignored.
     block_interval: BlockHeight,
-
     /// Parent syncing cron period, in seconds
-    polling_interval: u64,
+    polling_interval_secs: u64,
 }
 
-/// The finality proof for IPC parent at certain height.
+/// The finality view for IPC parent at certain height.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct IPCParentFinality {
     /// The latest chain height
@@ -46,28 +47,29 @@ pub struct IPCParentFinality {
     pub validator_set: ValidatorSet,
 }
 
-#[async_trait]
 pub trait ParentViewProvider {
     /// Get the latest height of the parent recorded
-    async fn latest_height(&self) -> Option<BlockHeight>;
+    fn latest_height(&self) -> StmDynResult<Option<BlockHeight>>;
     /// Get latest nonce recorded
-    async fn latest_nonce(&self) -> Option<Nonce>;
-    /// There is a new incoming parent view to be updated
-    async fn new_parent_view(
+    fn latest_nonce(&self) -> StmDynResult<Option<Nonce>>;
+    /// There is a new block produced
+    fn new_block_height(
         &self,
-        block_info: Option<(BlockHeight, Bytes, ValidatorSet)>,
-        top_down_msgs: Vec<CrossMsg>,
-    ) -> Result<(), Error>;
+        height: BlockHeight,
+        block_hash: BlockHash,
+        validator_set: ValidatorSet,
+    ) -> StmDynResult<()>;
+    /// There are new top down messages recorded
+    fn new_top_down_msgs(&self, top_down_msgs: Vec<CrossMsg>) -> StmDynResult<()>;
 }
 
-#[async_trait]
 pub trait ParentFinalityProvider: ParentViewProvider {
     /// Obtains the last committed finality
-    async fn last_committed_finality(&self) -> IPCParentFinality;
+    fn last_committed_finality(&self) -> StmDynResult<IPCParentFinality>;
     /// Latest proposal for parent finality
-    async fn next_proposal(&self) -> Result<IPCParentFinality, Error>;
+    fn next_proposal(&self) -> StmDynResult<IPCParentFinality>;
     /// Check if the target proposal is valid
-    async fn check_proposal(&self, proposal: &IPCParentFinality) -> Result<(), Error>;
+    fn check_proposal(&self, proposal: &IPCParentFinality) -> StmDynResult<()>;
     /// Called when finality is committed
-    async fn on_finality_committed(&self, finality: &IPCParentFinality);
+    fn on_finality_committed(&self, finality: &IPCParentFinality) -> StmDynResult<()>;
 }

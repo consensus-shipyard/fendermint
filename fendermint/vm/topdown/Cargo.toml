@@ -1,9 +1,10 @@
 [package]
-name = "topdown"
+name = "fendermint_vm_topdown"
+description = "The top down checkpoint mechanism for ipc protocol integration"
 version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 
 [dependencies]
 tokio = { workspace = true }
@@ -17,3 +18,4 @@ cid = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 num-traits = { workspace = true }
 async-stm = { workspace = true }
+thiserror = { workspace = true }

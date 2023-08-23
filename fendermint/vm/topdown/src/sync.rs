@@ -11,11 +11,11 @@ use std::cmp::max;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use async_stm::{atomically, atomically_or_err};
 
 /// Constantly syncing with parent through polling
 pub struct PollingParentSyncer<T> {
     config: Config,
-    started: Arc<AtomicBool>,
     parent_view_provider: Arc<T>,
     agent: Arc<IPCAgentProxy>,
 }
@@ -24,7 +24,6 @@ impl<T> PollingParentSyncer<T> {
     pub fn new(config: Config, parent_view_provider: Arc<T>, agent: Arc<IPCAgentProxy>) -> Self {
         Self {
             config,
-            started: Arc::new(AtomicBool::new(false)),
             parent_view_provider,
             agent,
         }
@@ -33,15 +32,7 @@ impl<T> PollingParentSyncer<T> {
 
 impl<T: ParentFinalityProvider + Send + Sync + 'static> PollingParentSyncer<T> {
     /// Start the proof of finality listener in the background
-    pub fn start(&mut self) -> anyhow::Result<()> {
-        match self
-            .started
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        {
-            Ok(_) => {}
-            Err(_) => return Err(anyhow!("already started")),
-        }
-
+    pub fn start(self) -> anyhow::Result<()> {
         let config = self.config.clone();
         let provider = self.parent_view_provider.clone();
         let agent = self.agent.clone();
@@ -51,8 +42,6 @@ impl<T: ParentFinalityProvider + Send + Sync + 'static> PollingParentSyncer<T> {
                 if let Err(e) = sync_with_parent(&config, &agent, &provider).await {
                     tracing::info!("sync with parent encountered error: {e}");
                 }
-
-                // TODO: add termination channel?
             }
         });
 
@@ -65,7 +54,7 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
     agent_proxy: &Arc<IPCAgentProxy>,
     provider: &Arc<T>,
 ) -> anyhow::Result<()> {
-    let mut interval = tokio::time::interval(Duration::from_secs(config.polling_interval));
+    let mut interval = tokio::time::interval(Duration::from_secs(config.polling_interval_secs));
 
     loop {
         interval.tick().await;
@@ -81,16 +70,14 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
             continue;
         }
 
-        let starting_height = if let Some(h) = provider.latest_height().await {
-            h + 1
-        } else {
-            // if latest_recorded_height is None, it means we have not started fetching any heights
-            // we just use the latest height minus a lower bound as the parent view
-            max(
-                1,
-                latest_height.saturating_sub(config.chain_head_lower_bound),
-            )
-        };
+        let starting_height = atomically_or_err(|| {
+            Ok(if let Some(h) = provider.latest_height()? {
+                h + 1
+            } else {
+                let last_committed_finality = provider.last_committed_finality()?;
+                last_committed_finality.height + 1
+            })
+        }).await?;
 
         for h in starting_height..=latest_height {
             let block_hash = agent_proxy
