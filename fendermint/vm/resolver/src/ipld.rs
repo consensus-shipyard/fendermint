@@ -1,10 +1,11 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::time::Duration;
+use std::{future::Future, time::Duration};
 
 use async_stm::{atomically, queues::TQueueLike};
 use ipc_ipld_resolver::Client as ResolverClient;
+use ipc_sdk::subnet_id::SubnetID;
 
 use crate::pool::{ResolveQueue, ResolveTask};
 
@@ -14,27 +15,44 @@ pub struct IpldResolver {
     client: ResolverClient,
     queue: ResolveQueue,
     retry_delay: Duration,
+    own_subnet_id: SubnetID,
 }
 
 impl IpldResolver {
-    pub fn new(client: ResolverClient, queue: ResolveQueue, retry_delay: Duration) -> Self {
+    pub fn new(
+        client: ResolverClient,
+        queue: ResolveQueue,
+        retry_delay: Duration,
+        own_subnet_id: SubnetID,
+    ) -> Self {
         Self {
             client,
             queue,
             retry_delay,
+            own_subnet_id,
         }
     }
 
     /// Start taking tasks from the resolver pool and resolving them using the IPLD Resolver.
     pub async fn run(self) {
         loop {
-            let task = atomically(|| self.queue.read()).await;
+            let (task, use_own_subnet) = atomically(|| {
+                let task = self.queue.read()?;
+                let use_own_subnet = task.use_own_subnet()?;
+                Ok((task, use_own_subnet))
+            })
+            .await;
 
             start_resolve(
                 task,
                 self.client.clone(),
                 self.queue.clone(),
                 self.retry_delay,
+                if use_own_subnet {
+                    Some(self.own_subnet_id.clone())
+                } else {
+                    None
+                },
             );
         }
     }
@@ -47,31 +65,51 @@ fn start_resolve(
     client: ResolverClient,
     queue: ResolveQueue,
     retry_delay: Duration,
+    own_subnet_id: Option<SubnetID>,
 ) {
     tokio::spawn(async move {
-        match client.resolve(task.cid(), task.subnet_id()).await {
-            Err(e) => {
+        let from_theirs = client.resolve(task.cid(), task.subnet_id());
+        let from_own = own_subnet_id.map(|subnet_id| client.resolve(task.cid(), subnet_id));
+
+        let (theirs, own) = tokio::join!(from_theirs, future_opt(from_own));
+
+        let err = match (theirs, own) {
+            (Err(e), _) => {
                 tracing::error!(error = e.to_string(), "failed to submit resolution task");
-                // The service is no longer listening, we might as well quit.
-                // By not quitting we should see this error every time there is a new task.
-                // We could send some feedback, but it's really fatal.
+                // The service is no longer listening, we might as well stop taking new tasks from the queue.
+                // By not quitting we should see this error every time there is a new task, which is at least is a constant reminder.
+                return;
             }
-            Ok(result) => match result {
-                Ok(()) => {
-                    tracing::debug!(cid = ?task.cid(), "content resolved");
-                    atomically(|| task.set_resolved()).await;
-                }
-                Err(e) => {
-                    tracing::error!(
-                        cid = ?task.cid(),
-                        error = e.to_string(),
-                        "content resolution failed; retrying later"
-                    );
-                    schedule_retry(task, queue, retry_delay);
-                }
-            },
+            (Ok(Ok(())), _) | (_, Some(Ok(Ok(())))) => None,
+            (Ok(Err(e)), _) => Some(e),
+        };
+
+        match err {
+            None => {
+                tracing::debug!(cid = ?task.cid(), "content resolved");
+                atomically(|| task.set_resolved()).await;
+            }
+            Some(e) => {
+                tracing::error!(
+                    cid = ?task.cid(),
+                    error = e.to_string(),
+                    "content resolution failed; retrying later"
+                );
+                schedule_retry(task, queue, retry_delay);
+            }
         }
     });
+}
+
+/// Run a future option, returning the optional result.
+async fn future_opt<F, T>(f: Option<F>) -> Option<T>
+where
+    F: Future<Output = T>,
+{
+    match f {
+        None => None,
+        Some(f) => Some(f.await),
+    }
 }
 
 /// Part of error handling.

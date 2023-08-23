@@ -24,6 +24,8 @@ pub struct ResolveStatus<T> {
     ///
     /// If needed we can expand on this to include failure states.
     is_resolved: TVar<bool>,
+    /// Indicate whether our peers in our own subnet should be contacted.
+    use_own_subnet: TVar<bool>,
     /// The collection of items that all resolve to the same root CID and subnet.
     items: TVar<im::HashSet<T>>,
 }
@@ -32,11 +34,12 @@ impl<T> ResolveStatus<T>
 where
     T: Clone + Hash + Eq + PartialEq + Sync + Send + 'static,
 {
-    pub fn new(item: T) -> Self {
+    pub fn new(item: T, use_own_subnet: bool) -> Self {
         let mut items = im::HashSet::new();
         items.insert(item);
         Self {
             is_resolved: TVar::new(false),
+            use_own_subnet: TVar::new(use_own_subnet),
             items: TVar::new(items),
         }
     }
@@ -53,6 +56,9 @@ pub struct ResolveTask {
     key: ResolveKey,
     /// Flag to flip when the task is done.
     is_resolved: TVar<bool>,
+    /// Flag to flip if consensus reached a state on its own
+    /// where the majority of our own peers should have an item.
+    use_own_subnet: TVar<bool>,
 }
 
 impl ResolveTask {
@@ -66,6 +72,10 @@ impl ResolveTask {
 
     pub fn set_resolved(&self) -> Stm<()> {
         self.is_resolved.write(true)
+    }
+
+    pub fn use_own_subnet(&self) -> Stm<bool> {
+        self.use_own_subnet.read_clone()
     }
 }
 
@@ -117,23 +127,25 @@ where
     /// Add an item to the resolution targets.
     ///
     /// If the item is new, enqueue it from background resolution, otherwise just return its existing status.
-    pub fn add(&self, item: T) -> Stm<ResolveStatus<T>> {
+    pub fn add(&self, item: T, use_own_subnet: bool) -> Stm<ResolveStatus<T>> {
         let key = ResolveKey::from(&item);
         let mut items = self.items.read_clone()?;
 
         if items.contains_key(&key) {
             let status = items.get(&key).cloned().unwrap();
+            status.use_own_subnet.update(|u| u || use_own_subnet)?;
             status.items.update_mut(|items| {
                 items.insert(item);
             })?;
             Ok(status)
         } else {
-            let status = ResolveStatus::new(item);
+            let status = ResolveStatus::new(item, use_own_subnet);
             items.insert(key.clone(), status.clone());
             self.items.write(items)?;
             self.queue.write(ResolveTask {
                 key,
                 is_resolved: status.is_resolved.clone(),
+                use_own_subnet: status.use_own_subnet.clone(),
             })?;
             Ok(status)
         }
@@ -202,7 +214,7 @@ mod tests {
         let pool = ResolvePool::new();
         let item = TestItem::dummy(0);
 
-        atomically(|| pool.add(item.clone())).await;
+        atomically(|| pool.add(item.clone(), false)).await;
         atomically(|| {
             assert!(pool.get_status(&item)?.is_some());
             assert!(!pool.queue.is_empty()?);
@@ -218,7 +230,7 @@ mod tests {
         let item = TestItem::dummy(0);
 
         // Add once.
-        atomically(|| pool.add(item.clone())).await;
+        atomically(|| pool.add(item.clone(), false)).await;
 
         // Consume it from the queue.
         atomically(|| {
@@ -229,11 +241,13 @@ mod tests {
         .await;
 
         // Add again.
-        atomically(|| pool.add(item.clone())).await;
+        atomically(|| pool.add(item.clone(), true)).await;
 
         // Should not be queued a second time.
         atomically(|| {
-            assert!(pool.get_status(&item)?.is_some());
+            let status = pool.get_status(&item)?;
+            assert!(status.is_some());
+            assert!(status.unwrap().use_own_subnet.read_clone()?);
             assert!(pool.queue.is_empty()?);
             Ok(())
         })
@@ -245,7 +259,7 @@ mod tests {
         let pool = ResolvePool::new();
         let item = TestItem::dummy(0);
 
-        let status1 = atomically(|| pool.add(item.clone())).await;
+        let status1 = atomically(|| pool.add(item.clone(), false)).await;
         let status2 = atomically(|| pool.get_status(&item))
             .await
             .expect("status exists");
@@ -274,7 +288,7 @@ mod tests {
         let item = TestItem::dummy(0);
 
         atomically(|| {
-            let status = pool.add(item.clone())?;
+            let status = pool.add(item.clone(), false)?;
             status.is_resolved.write(true)?;
 
             let resolved1 = pool.collect_resolved()?;
