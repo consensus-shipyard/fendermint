@@ -11,11 +11,14 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
+cid = { workspace = true }
 clap = { workspace = true }
 config = { workspace = true }
 dirs = { workspace = true }
 hex = { workspace = true }
 k256 = { workspace = true }
+libipld = { workspace = true }
+libp2p-bitswap = { workspace = true }
 libsecp256k1 = { workspace = true }
 num-traits = { workspace = true }
 prost = { workspace = true }
@@ -43,13 +46,13 @@ fendermint_vm_message = { path = "../vm/message" }
 fendermint_vm_genesis = { path = "../vm/genesis" }
 fendermint_vm_resolver = { path = "../vm/resolver" }
 
-cid = { workspace = true }
 fvm = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
 fvm_ipld_car = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 fvm_shared = { workspace = true }
 ipc-sdk = { workspace = true }
+ipc_ipld_resolver = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

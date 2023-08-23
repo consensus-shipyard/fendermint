@@ -3,7 +3,7 @@
 
 use anyhow::{anyhow, Context};
 use fendermint_abci::ApplicationService;
-use fendermint_app::{App, AppConfig, AppStore};
+use fendermint_app::{App, AppConfig, AppStore, BitswapBlockstore};
 use fendermint_rocksdb::{blockstore::NamespaceBlockstore, namespaces, RocksDb, RocksDbConfig};
 use fendermint_vm_interpreter::{
     bytes::{BytesMessageInterpreter, ProposalPrepareMode},
@@ -21,6 +21,9 @@ cmd! {
   }
 }
 
+/// Run the Fendermint ABCI Application.
+///
+/// This method acts as our composition root.
 async fn run(settings: Settings) -> anyhow::Result<()> {
     let interpreter = FvmMessageInterpreter::<NamespaceBlockstore>::new(
         settings.contracts_dir(),
@@ -38,6 +41,11 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
 
     let state_store =
         NamespaceBlockstore::new(db.clone(), ns.state_store).context("error creating state DB")?;
+
+    let bit_store =
+        NamespaceBlockstore::new(db.clone(), ns.bit_store).context("error creating bit DB")?;
+
+    let _bitswap_store = BitswapBlockstore::new(state_store.clone(), bit_store);
 
     let resolve_pool = CheckpointPool::new();
 
@@ -82,7 +90,8 @@ namespaces! {
     Namespaces {
         app,
         state_hist,
-        state_store
+        state_store,
+        bit_store
     }
 }
 
