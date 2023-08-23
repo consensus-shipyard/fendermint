@@ -133,7 +133,7 @@ where
                     let smsg = relayed_bottom_up_ckpt_to_fvm(&msg)
                         .context("failed to syntesize FVM message")?;
 
-                    // Let the FVM validate the checkpoint quorum certificate and take not of the relayer for rewards.
+                    // Let the FVM validate the checkpoint quorum certificate and take note of the relayer for rewards.
                     let (state, ret) = self
                         .inner
                         .deliver(state, VerifiableMessage::Synthetic(smsg))
