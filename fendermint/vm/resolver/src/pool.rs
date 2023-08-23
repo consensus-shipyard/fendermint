@@ -46,6 +46,31 @@ where
     }
 }
 
+/// Tasks emitted by the pool for background resolution.
+#[derive(Clone)]
+pub struct ResolveTask {
+    /// Content to resolve.
+    key: ResolveKey,
+    /// Flag to flip when the task is done.
+    is_resolved: TVar<bool>,
+}
+
+impl ResolveTask {
+    pub fn cid(&self) -> Cid {
+        self.key.1
+    }
+
+    pub fn subnet_id(&self) -> SubnetID {
+        self.key.0.clone()
+    }
+
+    pub fn set_resolved(&self) -> Stm<()> {
+        self.is_resolved.write(true)
+    }
+}
+
+pub type ResolveQueue = TChan<ResolveTask>;
+
 /// A data structure used to communicate resolution requirements and outcomes
 /// between the resolver running in the background and the application waiting
 /// for the results.
@@ -67,7 +92,7 @@ where
     /// The resolution status of each item.
     items: TVar<im::HashMap<ResolveKey, ResolveStatus<T>>>,
     /// Items queued for resolution.
-    queue: TChan<(ResolveKey, ResolveStatus<T>)>,
+    queue: ResolveQueue,
 }
 
 impl<T> ResolvePool<T>
@@ -80,6 +105,13 @@ where
             items: Default::default(),
             queue: Default::default(),
         }
+    }
+
+    /// Queue to consume for task items.
+    ///
+    /// Exposed as-is to allow re-queueing items.
+    pub fn queue(&self) -> ResolveQueue {
+        self.queue.clone()
     }
 
     /// Add an item to the resolution targets.
@@ -99,7 +131,10 @@ where
             let status = ResolveStatus::new(item);
             items.insert(key.clone(), status.clone());
             self.items.write(items)?;
-            self.queue.write((key, status.clone()))?;
+            self.queue.write(ResolveTask {
+                key,
+                is_resolved: status.is_resolved.clone(),
+            })?;
             Ok(status)
         }
     }
@@ -112,7 +147,7 @@ where
 
     /// Collect resolved items, ready for execution.
     ///
-    /// The items removed are not removed, in case they need to be proposed again.
+    /// The items collected are not removed, in case they need to be proposed again.
     pub fn collect_resolved(&self) -> Stm<HashSet<T>> {
         let mut resolved = HashSet::new();
         let items = self.items.read()?;
@@ -123,6 +158,11 @@ where
             }
         }
         Ok(resolved)
+    }
+
+    /// Await the next item to be resolved.
+    pub fn next(&self) -> Stm<ResolveTask> {
+        self.queue.read()
     }
 
     // TODO #197: Implement methods to remove executed items.
@@ -166,7 +206,7 @@ mod tests {
         atomically(|| {
             assert!(pool.get_status(&item)?.is_some());
             assert!(!pool.queue.is_empty()?);
-            assert_eq!(pool.queue.read()?.0, ResolveKey::from(&item));
+            assert_eq!(pool.queue.read()?.key, ResolveKey::from(&item));
             Ok(())
         })
         .await;
@@ -213,8 +253,8 @@ mod tests {
         // Complete the item.
         atomically(|| {
             assert!(!pool.queue.is_empty()?);
-            let (_, status) = pool.queue.read()?;
-            status.is_resolved.write(true)
+            let task = pool.queue.read()?;
+            task.is_resolved.write(true)
         })
         .await;
 

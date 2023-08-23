@@ -3069,6 +3069,7 @@ dependencies = [
  "ipc-sdk",
  "ipc_ipld_resolver",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
