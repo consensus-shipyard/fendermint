@@ -8,7 +8,6 @@ use crate::{
     ParentViewProvider,
 };
 use async_stm::{abort, StmDynResult, StmResult, TVar};
-use async_trait::async_trait;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::ValidatorSet;
 
@@ -54,7 +53,6 @@ impl ParentViewData {
     }
 }
 
-#[async_trait]
 impl ParentViewProvider for DefaultFinalityProvider {
     fn latest_height(&self) -> StmDynResult<Option<BlockHeight>> {
         let h = self.parent_view_data.latest_height()?;
@@ -112,7 +110,6 @@ impl ParentViewProvider for DefaultFinalityProvider {
     }
 }
 
-#[async_trait]
 impl ParentFinalityProvider for DefaultFinalityProvider {
     fn last_committed_finality(&self) -> StmDynResult<IPCParentFinality> {
         let finality = self.last_committed_finality.read_clone()?;
