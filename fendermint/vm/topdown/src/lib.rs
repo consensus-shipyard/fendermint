@@ -21,6 +21,9 @@ type BlockHash = Bytes;
 #[derive(Debug, Clone)]
 pub struct Config {
     /// The number of blocks to delay before reporting a height as final on the parent chain.
+    /// To propose a certain number of epochs delayed from the latest height, we see to be
+    /// conservative and avoid other from rejecting the proposal because they don't see the
+    /// height as final yet.
     chain_head_delay: BlockHeight,
     /// The top-down block proposal height interval. Anything in-between these heights is ignored.
     block_interval: BlockHeight,
