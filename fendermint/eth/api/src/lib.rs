@@ -8,6 +8,7 @@ use std::{net::ToSocketAddrs, sync::Arc, time::Duration};
 use tendermint_rpc::WebSocketClient;
 
 mod apis;
+mod cache;
 mod conv;
 mod error;
 mod filters;
