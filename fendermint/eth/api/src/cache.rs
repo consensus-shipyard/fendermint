@@ -9,7 +9,10 @@ use std::{
 use anyhow::Context;
 use fendermint_rpc::client::FendermintClient;
 use fendermint_rpc::query::QueryClient;
-use fvm_shared::{address::Address, ActorID};
+use fvm_shared::{
+    address::{Address, Payload},
+    ActorID,
+};
 use tendermint_rpc::Client;
 
 /// Facilitate Ethereum address <-> Actor ID lookups.
@@ -48,14 +51,18 @@ where
             .context("failed to lookup actor state")?;
 
         match res.value {
-            Some((actor_id, _)) => {
-                self.set_id(*addr, actor_id);
-                Ok(Some(actor_id))
+            Some((id, _)) => {
+                self.set_id(*addr, id);
+                if let Payload::Delegated(_) = addr.payload() {
+                    self.set_addr(id, *addr)
+                }
+                Ok(Some(id))
             }
             None => Ok(None),
         }
     }
 
+    /// Look up the delegated address of an ID, if any.
     pub async fn lookup_addr(&self, id: &ActorID) -> anyhow::Result<Option<Address>> {
         if let Some(addr) = self.get_addr(id) {
             return Ok(Some(addr));
@@ -70,6 +77,7 @@ where
         if let Some((_, actor_state)) = res.value {
             if let Some(addr) = actor_state.delegated_address {
                 self.set_addr(*id, addr);
+                self.set_id(addr, *id);
                 return Ok(Some(addr));
             }
         }
