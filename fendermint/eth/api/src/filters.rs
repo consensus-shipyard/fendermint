@@ -8,12 +8,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, bail, Context};
 use ethers_core::types as et;
 use fendermint_rpc::client::FendermintClient;
 use fendermint_vm_actor_interface::eam::EthAddress;
 use futures::{Future, StreamExt};
-use fvm_shared::{address::Address, error::ExitCode};
+use fvm_shared::{address::Address, error::ExitCode, ActorID};
 use serde::Serialize;
 use tendermint_rpc::{
     event::{Event, EventData},
@@ -88,7 +88,10 @@ impl FilterKind {
     /// cartesian product of all conditions in it and subscribe individually.
     ///
     /// https://docs.tendermint.com/v0.34/rpc/#/Websocket/subscribe
-    pub fn to_queries(&self) -> anyhow::Result<Vec<Query>> {
+    pub async fn to_queries<F>(&self, get_actor_id: F) -> anyhow::Result<Vec<Query>>
+    where
+        F: Fn(Address) -> Pin<Box<dyn Future<Output = anyhow::Result<Option<ActorID>>>>>,
+    {
         match self {
             FilterKind::NewBlocks => Ok(vec![Query::from(EventType::NewBlock)]),
             // Testing indicates that `EventType::Tx` might only be raised
@@ -115,22 +118,33 @@ impl FilterKind {
                     Some(et::ValueOrArray::Array(addrs)) => addrs.clone(),
                 };
 
+                // We need to turn the Ethereum addresses into ActorIDs because that's
+                // how the event emitter can be filtered.
                 let addrs = addrs
                     .into_iter()
-                    .map(|addr| {
-                        Address::from(EthAddress(addr.0))
-                            .id()
-                            .context("only f0 type addresses are supported")
-                    })
-                    .collect::<Result<Vec<u64>, _>>()?;
+                    .map(|addr| Address::from(EthAddress(addr.0)))
+                    .collect::<Vec<_>>();
 
-                if !addrs.is_empty() {
-                    queries = addrs
+                let mut actor_ids = Vec::new();
+                for addr in addrs {
+                    let actor_id = get_actor_id(addr)
+                        .await
+                        .context("failed to look up actor ID")?;
+
+                    if let Some(actor_id) = actor_id {
+                        actor_ids.push(actor_id);
+                    } else {
+                        bail!("cannot find actor {}", addr);
+                    }
+                }
+
+                if !actor_ids.is_empty() {
+                    queries = actor_ids
                         .iter()
-                        .flat_map(|addr| {
+                        .flat_map(|actor_id| {
                             queries
                                 .iter()
-                                .map(|q| q.clone().and_eq("message.emitter", addr.to_string()))
+                                .map(|q| q.clone().and_eq("message.emitter", actor_id.to_string()))
                         })
                         .collect();
                 };
@@ -655,12 +669,13 @@ pub async fn run_subscription(id: FilterId, mut sub: Subscription, tx: Sender<Fi
 
 #[cfg(test)]
 mod tests {
+    use anyhow::anyhow;
     use ethers_core::types as et;
 
     use super::FilterKind;
 
-    #[test]
-    fn filter_to_query() {
+    #[tokio::test]
+    async fn filter_to_query() {
         fn hash(s: &str) -> et::H256 {
             et::H256::from(ethers_core::utils::keccak256(s))
         }
@@ -696,7 +711,10 @@ mod tests {
         );
 
         let queries = FilterKind::Logs(Box::new(filter))
-            .to_queries()
+            .to_queries(|addr| {
+                Box::pin(async { Err(anyhow!("there is only ID address in this test")) })
+            })
+            .await
             .expect("failed to convert");
 
         assert_eq!(queries.len(), 4);

@@ -341,7 +341,14 @@ where
         ws_sender: Option<WebSocketSender>,
     ) -> anyhow::Result<FilterId> {
         let queries = kind
-            .to_queries()
+            .to_queries(|addr| {
+                let client = self.client.clone();
+                Box::pin(async move {
+                    let res = client.actor_state(&addr, None).await?;
+                    Ok(res.value.map(|(actor_id, _)| actor_id))
+                })
+            })
+            .await
             .context("failed to convert filter to queries")?;
 
         let mut subs = Vec::new();
