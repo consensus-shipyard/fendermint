@@ -347,8 +347,7 @@ mod tests {
 
             assert_eq!(downcast_err!(r).unwrap_err(), Error::HeightNotReady);
 
-            provider
-                .new_block_height(10, vec![1u8; 32], ValidatorSet::new(vec![], 10))?;
+            provider.new_block_height(10, vec![1u8; 32], ValidatorSet::new(vec![], 10))?;
 
             let r = provider.next_proposal();
             assert!(r.is_err());
@@ -359,8 +358,7 @@ mod tests {
 
             // inject data
             for i in 11..=100 {
-                provider
-                    .new_block_height(i, vec![1u8; 32], ValidatorSet::new(vec![], i))?;
+                provider.new_block_height(i, vec![1u8; 32], ValidatorSet::new(vec![], i))?;
             }
 
             let proposal = provider.next_proposal()?;
@@ -378,7 +376,9 @@ mod tests {
             assert_eq!(provider.latest_height()?, Some(100));
 
             Ok(())
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
@@ -388,8 +388,7 @@ mod tests {
         atomically_or_err(|| {
             // inject data
             for i in 10..=100 {
-                provider
-                    .new_block_height(i, vec![1u8; 32], ValidatorSet::new(vec![], i))?;
+                provider.new_block_height(i, vec![1u8; 32], ValidatorSet::new(vec![], i))?;
             }
 
             let target_block = 120;
@@ -422,8 +421,7 @@ mod tests {
         atomically_or_err(|| {
             // inject data
             for i in 20..=100 {
-                provider
-                    .new_block_height(i, vec![1u8; 32], ValidatorSet::new(vec![], i))?;
+                provider.new_block_height(i, vec![1u8; 32], ValidatorSet::new(vec![], i))?;
             }
 
             let target_block = 120;
@@ -455,6 +453,8 @@ mod tests {
             assert!(provider.check_proposal(&finality).is_ok());
 
             Ok(())
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
     }
 }

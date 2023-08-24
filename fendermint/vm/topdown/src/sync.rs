@@ -3,15 +3,13 @@
 //! A constant running process that fetch or listener to parent state
 
 use crate::error::Error;
-use crate::{BlockHeight, Config, ParentFinalityProvider};
-use anyhow::{anyhow, Context};
+use crate::{BlockHash, BlockHeight, Config, ParentFinalityProvider};
+use anyhow::Context;
+use async_stm::atomically_or_err;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::ValidatorSet;
-use std::cmp::max;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use async_stm::{atomically, atomically_or_err};
 
 /// Constantly syncing with parent through polling
 pub struct PollingParentSyncer<T> {
@@ -31,7 +29,7 @@ impl<T> PollingParentSyncer<T> {
 }
 
 impl<T: ParentFinalityProvider + Send + Sync + 'static> PollingParentSyncer<T> {
-    /// Start the proof of finality listener in the background
+    /// Start the parent finality listener in the background
     pub fn start(self) -> anyhow::Result<()> {
         let config = self.config.clone();
         let provider = self.parent_view_provider.clone();
@@ -47,6 +45,19 @@ impl<T: ParentFinalityProvider + Send + Sync + 'static> PollingParentSyncer<T> {
 
         Ok(())
     }
+}
+
+/// Extract the actual error from Box
+macro_rules! downcast_err {
+    ($r:expr) => {
+        match $r {
+            Ok(v) => Ok(v),
+            Err(e) => match e.downcast_ref::<Error>() {
+                None => unreachable!(),
+                Some(e) => Err(e.clone()),
+            },
+        }
+    };
 }
 
 async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
@@ -70,15 +81,24 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
             continue;
         }
 
-        let starting_height = atomically_or_err(|| {
+        let r = atomically_or_err(|| {
             Ok(if let Some(h) = provider.latest_height()? {
-                h + 1
+                h + config.block_interval
             } else {
                 let last_committed_finality = provider.last_committed_finality()?;
-                last_committed_finality.height + 1
+                last_committed_finality.height + config.block_interval
             })
-        }).await?;
+        })
+        .await;
+        let starting_height = downcast_err!(r)?;
 
+        if starting_height > latest_height {
+            // FIXME: the most brutal way is to clear all the cache in `provider` and
+            // FIXME: start from scratch.
+            todo!()
+        }
+
+        let mut block_height_to_update = vec![];
         for h in starting_height..=latest_height {
             let block_hash = agent_proxy
                 .get_block_hash(h)
@@ -89,38 +109,53 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
                 .await
                 .context("cannot fetch validator set")?;
 
-            match provider
-                .new_parent_view(Some((h, block_hash, validator_set)), vec![])
-                .await
-            {
-                Ok(_) => {}
-                Err(e) => match e {
-                    Error::ParentReorgDetected(_) => {
-                        // FIXME: the most brutal way is to clear all the cache in `provider` and
-                        // FIXME: start from scratch.
-                        todo!()
-                    }
-                    _ => unreachable!(),
-                },
-            }
+            block_height_to_update.push((h, block_hash, validator_set));
         }
 
+        let r = atomically_or_err(|| {
+            for (height, block_hash, validator_set) in block_height_to_update {
+                provider.new_block_height(height, block_hash, validator_set)?;
+            }
+            Ok(())
+        })
+        .await;
+        downcast_err!(r)?;
+
         // now get the top down messages
-        let nonce = provider.latest_nonce().await.unwrap_or(0);
+        let nonce = downcast_err!(
+            atomically_or_err(|| {
+                let nonce = if let Some(nonce) = provider.latest_nonce()? {
+                    nonce
+                } else {
+                    let finality = provider.last_committed_finality()?;
+                    if finality.top_down_msgs.is_empty() {
+                        0
+                    } else {
+                        finality.top_down_msgs.last().unwrap().msg.nonce
+                    }
+                };
+
+                Ok(nonce + 1)
+            })
+            .await
+        )?;
+
         let top_down_msgs = agent_proxy.get_top_down_msgs(latest_height, nonce).await?;
         // safe to unwrap as updating top down msgs will not trigger error
-        provider.new_parent_view(None, top_down_msgs).await.unwrap();
+        downcast_err!(atomically_or_err(|| provider.new_top_down_msgs(top_down_msgs)).await);
     }
 }
 
-pub struct IPCAgentProxy {}
+pub struct IPCAgentProxy {
+    agent_client:
+}
 
 impl IPCAgentProxy {
     pub async fn get_chain_head_height(&self) -> anyhow::Result<BlockHeight> {
         todo!()
     }
 
-    pub async fn get_block_hash(&self, _height: BlockHeight) -> anyhow::Result<Vec<u8>> {
+    pub async fn get_block_hash(&self, _height: BlockHeight) -> anyhow::Result<BlockHash> {
         todo!()
     }
 
