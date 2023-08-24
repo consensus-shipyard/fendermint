@@ -210,9 +210,15 @@ where
     }
 
     /// Accumulate the events.
-    async fn update<F>(&mut self, event: Event, f: F) -> anyhow::Result<()>
+    async fn update<F, C>(
+        &mut self,
+        event: Event,
+        to_block: F,
+        client: &FendermintClient<C>,
+    ) -> anyhow::Result<()>
     where
         F: FnOnce(tendermint::Block) -> Pin<Box<dyn Future<Output = anyhow::Result<B>> + Send>>,
+        C: Client + Sync + Send,
     {
         match (self, event.data) {
             (
@@ -221,7 +227,7 @@ where
                     block: Some(block), ..
                 },
             ) => {
-                let b: B = f(block).await?;
+                let b: B = to_block(block).await?;
                 blocks.push(b);
             }
             (
@@ -293,13 +299,15 @@ where
                 let log_index_start = Default::default();
 
                 let tx_logs = from_tm::to_logs(
+                    client,
                     &tx_result.result.events,
                     block_hash,
                     block_number,
                     transaction_hash,
                     transaction_index,
                     log_index_start,
-                )?;
+                )
+                .await?;
 
                 logs.extend(tx_logs)
             }
@@ -326,14 +334,15 @@ pub struct FilterDriver<C> {
 }
 
 enum FilterState<C> {
-    Poll(PollState),
+    Poll(PollState<C>),
     Subscription(SubscriptionState<C>),
 }
 
 /// Accumulate changes between polls.
 ///
 /// Polling returns batches.
-struct PollState {
+struct PollState<C> {
+    client: FendermintClient<C>,
     timeout: Duration,
     last_poll: Instant,
     finished: Option<Option<anyhow::Error>>,
@@ -367,6 +376,7 @@ where
                 client,
             }),
             None => FilterState::Poll(PollState {
+                client,
                 timeout,
                 last_poll: Instant::now(),
                 finished: None,
@@ -406,11 +416,17 @@ where
 
                             let res = state
                                 .records
-                                .update(event, |block| {
-                                    Box::pin(async move {
-                                        Ok(et::H256::from_slice(block.header().hash().as_bytes()))
-                                    })
-                                })
+                                .update(
+                                    event,
+                                    |block| {
+                                        Box::pin(async move {
+                                            Ok(et::H256::from_slice(
+                                                block.header().hash().as_bytes(),
+                                            ))
+                                        })
+                                    },
+                                    &state.client,
+                                )
                                 .await;
 
                             if let Err(err) = res {
@@ -444,16 +460,21 @@ where
                     FilterCommand::Update(event) => {
                         let mut records = FilterRecords::<et::Block<et::TxHash>>::new(&state.kind);
 
+                        let client = state.client.clone();
+
                         let res = records
-                            .update(event, |block| {
-                                let client = state.client.clone();
-                                Box::pin(async move {
-                                    let block = enrich_block(&client, block).await?;
-                                    let block: anyhow::Result<et::Block<et::TxHash>> =
-                                        map_rpc_block_txs(block, |tx| Ok(tx.hash()));
-                                    block
-                                })
-                            })
+                            .update(
+                                event,
+                                |block| {
+                                    Box::pin(async move {
+                                        let block = enrich_block(&client, block).await?;
+                                        let block: anyhow::Result<et::Block<et::TxHash>> =
+                                            map_rpc_block_txs(block, |tx| Ok(tx.hash()));
+                                        block
+                                    })
+                                },
+                                &state.client,
+                            )
                             .await;
 
                         match res {
@@ -547,7 +568,7 @@ fn notification(subscription: FilterId, result: serde_json::Value) -> MethodNoti
     }
 }
 
-impl PollState {
+impl<C> PollState<C> {
     /// Take all the accumulated changes.
     ///
     /// If there are no changes but there was an error, return that.
