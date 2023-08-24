@@ -58,9 +58,9 @@ impl<C> JsonRpcState<C>
 where
     C: Client + Send + Sync + Clone,
 {
-    pub fn new(client: C, filter_timeout: Duration) -> Self {
+    pub fn new(client: C, filter_timeout: Duration, cache_capacity: usize) -> Self {
         let client = FendermintClient::new(client);
-        let addr_cache = AddressCache::new(client.clone());
+        let addr_cache = AddressCache::new(client.clone(), cache_capacity);
         Self {
             client,
             addr_cache,

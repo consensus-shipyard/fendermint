@@ -723,7 +723,7 @@ mod tests {
 
         let (client, _driver) = tendermint_rpc::MockClient::new(NeverCall);
         let client = FendermintClient::new(client);
-        let addr_cache = AddressCache::new(client);
+        let addr_cache = AddressCache::new(client, 0);
 
         let queries = FilterKind::Logs(Box::new(filter))
             .to_queries(&addr_cache)

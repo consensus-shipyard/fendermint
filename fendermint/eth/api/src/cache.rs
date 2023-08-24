@@ -1,10 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
 use fendermint_rpc::client::FendermintClient;
@@ -13,25 +10,26 @@ use fvm_shared::{
     address::{Address, Payload},
     ActorID,
 };
+use lru_time_cache::LruCache;
 use tendermint_rpc::Client;
 
 /// Facilitate Ethereum address <-> Actor ID lookups.
 #[derive(Clone)]
 pub struct AddressCache<C> {
     client: FendermintClient<C>,
-    addr_to_id: Arc<RwLock<HashMap<Address, ActorID>>>,
-    id_to_addr: Arc<RwLock<HashMap<ActorID, Address>>>,
+    addr_to_id: Arc<Mutex<LruCache<Address, ActorID>>>,
+    id_to_addr: Arc<Mutex<LruCache<ActorID, Address>>>,
 }
 
 impl<C> AddressCache<C>
 where
     C: Client + Sync + Send,
 {
-    pub fn new(client: FendermintClient<C>) -> Self {
+    pub fn new(client: FendermintClient<C>, capacity: usize) -> Self {
         Self {
             client,
-            addr_to_id: Default::default(),
-            id_to_addr: Default::default(),
+            addr_to_id: Arc::new(Mutex::new(LruCache::with_capacity(capacity))),
+            id_to_addr: Arc::new(Mutex::new(LruCache::with_capacity(capacity))),
         }
     }
 
@@ -86,22 +84,22 @@ where
     }
 
     fn get_id(&self, addr: &Address) -> Option<ActorID> {
-        let c = self.addr_to_id.read().unwrap();
+        let mut c = self.addr_to_id.lock().unwrap();
         c.get(addr).cloned()
     }
 
     fn set_id(&self, addr: Address, id: ActorID) {
-        let mut c = self.addr_to_id.write().unwrap();
+        let mut c = self.addr_to_id.lock().unwrap();
         c.insert(addr, id);
     }
 
     fn get_addr(&self, id: &ActorID) -> Option<Address> {
-        let c = self.id_to_addr.read().unwrap();
+        let mut c = self.id_to_addr.lock().unwrap();
         c.get(id).cloned()
     }
 
     fn set_addr(&self, id: ActorID, addr: Address) {
-        let mut c = self.id_to_addr.write().unwrap();
+        let mut c = self.id_to_addr.lock().unwrap();
         c.insert(id, addr);
     }
 }

@@ -36,9 +36,10 @@ pub async fn listen<A: ToSocketAddrs>(
     listen_addr: A,
     client: WebSocketClient,
     filter_timeout: Duration,
+    cache_capacity: usize,
 ) -> anyhow::Result<()> {
     if let Some(listen_addr) = listen_addr.to_socket_addrs()?.next() {
-        let rpc_state = Arc::new(JsonRpcState::new(client, filter_timeout));
+        let rpc_state = Arc::new(JsonRpcState::new(client, filter_timeout, cache_capacity));
         let rpc_server = make_server(rpc_state.clone());
         let app_state = AppState {
             rpc_server,
