@@ -351,10 +351,14 @@ fn maybe_contract_address(deliver_tx: &DeliverTx) -> Option<EthAddress> {
     fendermint_rpc::response::decode_fevm_create(deliver_tx)
         .ok()
         .map(|cr| {
-            // We can return `cr.eth_address` here and that's an address usable for calling the contract.
-            // However, the events are reported using the actor ID, so unless we want to translate those
-            // to ETH addresses on the fly, we can return a masked address here and see if that works.
-            EthAddress::from_id(cr.actor_id)
+            // We can return either `cr.actor_id` as a masked address,
+            // or `cr.eth_address`. Both addresses are usable for calling the contract.
+            // However, the masked ID doesn't work with some of the Ethereum tooling which check some hash properties.
+            // We also have to make sure to use the same kind of address that we do in the filtering and event logs,
+            // otherwise the two doesn't align and it makes the API difficult to use. It's impossible(?) to find out
+            // the actor ID just using the Ethereum API, so best use the same.
+            // EthAddress::from_id(cr.actor_id)
+            cr.eth_address
         })
 }
 
