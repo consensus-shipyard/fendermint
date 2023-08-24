@@ -4,14 +4,14 @@
 use crate::cache::SequentialKeyCache;
 use crate::error::Error;
 use crate::{
-    BlockHash, BlockHeight, Bytes, Config, IPCParentFinality, Nonce, ParentFinalityProvider,
+    BlockHash, BlockHeight, Config, IPCParentFinality, Nonce, ParentFinalityProvider,
     ParentViewProvider,
 };
 use async_stm::{abort, StmDynResult, StmResult, TVar};
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::ValidatorSet;
 
-type ParentViewPayload = (Bytes, ValidatorSet, Vec<CrossMsg>);
+type ParentViewPayload = (BlockHash, ValidatorSet, Vec<CrossMsg>);
 
 /// The default parent finality provider
 pub struct DefaultFinalityProvider {
@@ -44,7 +44,7 @@ impl ParentViewData {
         Ok(cache.upper_bound())
     }
 
-    fn block_hash(&self, height: BlockHeight) -> StmResult<Option<Bytes>> {
+    fn block_hash(&self, height: BlockHeight) -> StmResult<Option<BlockHash>> {
         let cache = self.height_data.read()?;
         Ok(cache.get_value(height).map(|i| i.0.clone()))
     }

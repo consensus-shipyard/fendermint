@@ -1,7 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use crate::{BlockHeight, Bytes, Nonce, SequentialAppendError};
+use crate::{BlockHash, BlockHeight, Nonce, SequentialAppendError};
 use thiserror::Error;
 
 /// The errors for top down checkpointing
@@ -22,8 +22,8 @@ pub enum Error {
     HeightAlreadyCommitted(BlockHeight),
     #[error("Proposal's block hash and parent's block hash not match")]
     BlockHashNotMatch {
-        proposal: Bytes,
-        parent: Bytes,
+        proposal: BlockHash,
+        parent: BlockHash,
         height: BlockHeight,
     },
     #[error("Proposal's block hash at height not found in parent view")]

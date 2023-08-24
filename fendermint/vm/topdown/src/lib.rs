@@ -39,7 +39,7 @@ pub struct IPCParentFinality {
     pub height: BlockHeight,
     /// The block hash. For FVM, it is a Cid. For Evm, it is bytes32 as one can now potentially
     /// deploy a subnet on EVM.
-    pub block_hash: Vec<u8>,
+    pub block_hash: BlockHash,
     /// new top-down messages finalized in this PoF
     pub top_down_msgs: Vec<CrossMsg>,
     /// The next top down nonce for top down messages. If there are not top down messages in the
