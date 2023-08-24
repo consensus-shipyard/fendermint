@@ -10,10 +10,10 @@ use std::{
 
 use anyhow::{anyhow, bail, Context};
 use ethers_core::types as et;
-use fendermint_rpc::client::FendermintClient;
+use fendermint_rpc::{client::FendermintClient, query::QueryClient};
 use fendermint_vm_actor_interface::eam::EthAddress;
 use futures::{Future, StreamExt};
-use fvm_shared::{address::Address, error::ExitCode, ActorID};
+use fvm_shared::{address::Address, error::ExitCode};
 use serde::Serialize;
 use tendermint_rpc::{
     event::{Event, EventData},
@@ -88,9 +88,9 @@ impl FilterKind {
     /// cartesian product of all conditions in it and subscribe individually.
     ///
     /// https://docs.tendermint.com/v0.34/rpc/#/Websocket/subscribe
-    pub async fn to_queries<F>(&self, get_actor_id: F) -> anyhow::Result<Vec<Query>>
+    pub async fn to_queries<C>(&self, client: &FendermintClient<C>) -> anyhow::Result<Vec<Query>>
     where
-        F: Fn(Address) -> Pin<Box<dyn Future<Output = anyhow::Result<Option<ActorID>>>>>,
+        C: Client + Sync + Send,
     {
         match self {
             FilterKind::NewBlocks => Ok(vec![Query::from(EventType::NewBlock)]),
@@ -127,14 +127,19 @@ impl FilterKind {
 
                 let mut actor_ids = Vec::new();
                 for addr in addrs {
-                    let actor_id = get_actor_id(addr)
-                        .await
-                        .context("failed to look up actor ID")?;
-
-                    if let Some(actor_id) = actor_id {
-                        actor_ids.push(actor_id);
+                    if let Ok(id) = addr.id() {
+                        actor_ids.push(id);
                     } else {
-                        bail!("cannot find actor {}", addr);
+                        let res = client
+                            .actor_state(&addr, None)
+                            .await
+                            .context("failed to look up actor state")?;
+
+                        if let Some((actor_id, _)) = res.value {
+                            actor_ids.push(actor_id);
+                        } else {
+                            bail!("cannot find actor {}", addr);
+                        }
                     }
                 }
 
@@ -669,8 +674,9 @@ pub async fn run_subscription(id: FilterId, mut sub: Subscription, tx: Sender<Fi
 
 #[cfg(test)]
 mod tests {
-    use anyhow::anyhow;
     use ethers_core::types as et;
+    use fendermint_rpc::client::FendermintClient;
+    use tendermint_rpc::MockRequestMatcher;
 
     use super::FilterKind;
 
@@ -710,10 +716,27 @@ mod tests {
             ]))
         );
 
+        // These tests should not call the API for response resolution because it's just an ID.
+        struct NeverCall;
+
+        impl MockRequestMatcher for NeverCall {
+            fn response_for<R, S>(
+                &self,
+                _request: R,
+            ) -> Option<Result<R::Response, tendermint_rpc::Error>>
+            where
+                R: tendermint_rpc::Request<S>,
+                S: tendermint_rpc::dialect::Dialect,
+            {
+                unimplemented!("don't call")
+            }
+        }
+
+        let (client, _driver) = tendermint_rpc::MockClient::new(NeverCall);
+        let client = FendermintClient::new(client);
+
         let queries = FilterKind::Logs(Box::new(filter))
-            .to_queries(|addr| {
-                Box::pin(async { Err(anyhow!("there is only ID address in this test")) })
-            })
+            .to_queries(&client)
             .await
             .expect("failed to convert");
 
