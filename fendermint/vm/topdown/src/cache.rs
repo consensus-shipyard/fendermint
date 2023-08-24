@@ -71,8 +71,7 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
     }
 
     pub fn values_from(&self, start: K) -> ValueIter<K, V> {
-        if !self.within_bound(start) {
-            // empty iter from self.data
+        if self.is_empty() {
             return ValueIter {
                 i: self.data.iter(),
             };
@@ -80,7 +79,9 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
 
         let lower = self.lower_bound().unwrap();
         // safe to unwrap as index must be uint
-        let index = ((start - lower) / self.increment).to_usize().unwrap();
+        let index = ((start.max(lower) - lower) / self.increment)
+            .to_usize()
+            .unwrap();
 
         ValueIter {
             i: self.data.range(index..),
@@ -88,8 +89,7 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
     }
 
     pub fn values_within(&self, start: K, end: K) -> ValueIter<K, V> {
-        if !self.within_bound(start) {
-            // empty iter from self.data
+        if self.is_empty() {
             return ValueIter {
                 i: self.data.iter(),
             };
@@ -98,8 +98,12 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
         let lower = self.lower_bound().unwrap();
         let upper = self.upper_bound().unwrap();
         // safe to unwrap as index must be uint
-        let end_idx = ((end.min(upper) - lower) / self.increment).to_usize().unwrap();
-        let start_idx = ((start - lower) / self.increment).to_usize().unwrap();
+        let end_idx = ((end.min(upper) - lower) / self.increment)
+            .to_usize()
+            .unwrap();
+        let start_idx = ((start.max(lower) - lower) / self.increment)
+            .to_usize()
+            .unwrap();
 
         ValueIter {
             i: self.data.range(start_idx..=end_idx),
@@ -200,7 +204,7 @@ mod tests {
     fn range_works() {
         let mut cache = SequentialKeyCache::new(1);
 
-        for k in 0..100 {
+        for k in 1..100 {
             cache.append(k, k).unwrap();
         }
 
@@ -210,16 +214,27 @@ mod tests {
             (50..100).collect::<Vec<_>>()
         );
 
+        let range = cache.values_from(0);
+        assert_eq!(
+            range.into_iter().cloned().collect::<Vec<_>>(),
+            (1..100).collect::<Vec<_>>()
+        );
+
         let range = cache.values_within(50, 60);
         assert_eq!(
             range.into_iter().cloned().collect::<Vec<_>>(),
             (50..=60).collect::<Vec<_>>()
         );
+        let range = cache.values_within(0, 1000);
+        assert_eq!(
+            range.into_iter().cloned().collect::<Vec<_>>(),
+            (1..100).collect::<Vec<_>>()
+        );
 
         let values = cache.values();
         assert_eq!(
             values.cloned().collect::<Vec<_>>(),
-            (0..100).collect::<Vec<_>>()
+            (1..100).collect::<Vec<_>>()
         );
     }
 
