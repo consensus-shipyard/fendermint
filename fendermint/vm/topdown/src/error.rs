@@ -13,7 +13,7 @@ pub enum Error {
     HeightThresholdNotReached,
     #[error("The data specified in this height is not found in cache")]
     HeightNotFoundInCache(BlockHeight),
-    #[error("Exceeding current parent view's latest block height.")]
+    #[error("Exceeding current parent view's latest block height")]
     ExceedingLatestHeight {
         proposal: BlockHeight,
         parent: BlockHeight,
