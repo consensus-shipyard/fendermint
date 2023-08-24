@@ -13,11 +13,13 @@ pub enum Error {
     HeightThresholdNotReached,
     #[error("The data specified in this height is not found in cache")]
     HeightNotFoundInCache(BlockHeight),
-    #[error("The block height in the proposal is already committed")]
-    BlockHeightInvalid {
+    #[error("Exceeding current parent view's latest block height")]
+    ExceedingLatestHeight {
         proposal: BlockHeight,
-        last_committed: BlockHeight,
+        parent: BlockHeight,
     },
+    #[error("The block height in the proposal is already committed")]
+    HeightAlreadyCommitted(BlockHeight),
     #[error("Proposal's block hash and parent's block hash not match")]
     BlockHashNotMatch {
         proposal: BlockHash,

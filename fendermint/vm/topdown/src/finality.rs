@@ -179,12 +179,22 @@ impl DefaultFinalityProvider {
     }
 
     fn check_height(&self, proposal: &IPCParentFinality) -> StmDynResult<()> {
-        let last_committed_finality = self.last_committed_finality.read()?;
-        if proposal.height != 1 + last_committed_finality.height {
-            return abort(Error::BlockHeightInvalid {
+        let latest_height = if let Some(h) = self.parent_view_data.latest_height()? {
+            h
+        } else {
+            return abort(Error::HeightNotReady);
+        };
+
+        if latest_height < proposal.height {
+            return abort(Error::ExceedingLatestHeight {
                 proposal: proposal.height,
-                last_committed: last_committed_finality.height,
+                parent: latest_height,
             });
+        }
+
+        let last_committed_finality = self.last_committed_finality.read()?;
+        if proposal.height <= last_committed_finality.height {
+            return abort(Error::HeightAlreadyCommitted(proposal.height));
         }
         Ok(())
     }
