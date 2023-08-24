@@ -113,9 +113,9 @@ impl ParentViewProvider for DefaultFinalityProvider {
                 .append(
                     height,
                     (
-                        block_hash.clone(),
-                        validator_set.clone(),
-                        top_down_msgs.clone(),
+                        block_hash,
+                        validator_set,
+                        top_down_msgs,
                     ),
                 )
                 .map_err(Error::NonSequentialParentViewInsert);
@@ -151,6 +151,7 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
         let height = latest_height - self.config.chain_head_delay;
         let last_committed_finality = self.last_committed_finality.read()?;
 
+        // parent height is not ready to be proposed yet
         if height <= last_committed_finality.height {
             return Ok(None);
         }
@@ -207,8 +208,7 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
             // with the new finality, the parent view cache is all cleared, this means there is
             // no top down messages in the parent view cache. We set the next top down nonce to be
             // that in the current finality.
-            // FIXME: we can raise an error instead of panic here
-            assert!(
+            debug_assert!(
                 finality.next_top_down_nonce >= parent_view_next_nonce,
                 "finality's next nonce should not be smaller than that in the parent view"
             );
@@ -219,8 +219,7 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
             // the parent view cache is not all cleared, this means there might be some top down
             // messages in the parent view cache. This means the next nonce in the incoming finality
             // should not be larger than that in the parent view.
-            // FIXME: we can raise an error instead of panic here
-            assert!(
+            debug_assert!(
                 finality.next_top_down_nonce <= parent_view_next_nonce,
                 "finality's next nonce should not be greater than that in the parent view"
             );
