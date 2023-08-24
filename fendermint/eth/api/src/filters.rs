@@ -10,7 +10,7 @@ use std::{
 
 use anyhow::{anyhow, bail, Context};
 use ethers_core::types as et;
-use fendermint_rpc::{client::FendermintClient, query::QueryClient};
+use fendermint_rpc::client::FendermintClient;
 use fendermint_vm_actor_interface::eam::EthAddress;
 use futures::{Future, StreamExt};
 use fvm_shared::{address::Address, error::ExitCode};
@@ -89,7 +89,7 @@ impl FilterKind {
     /// cartesian product of all conditions in it and subscribe individually.
     ///
     /// https://docs.tendermint.com/v0.34/rpc/#/Websocket/subscribe
-    pub async fn to_queries<C>(&self, client: &FendermintClient<C>) -> anyhow::Result<Vec<Query>>
+    pub async fn to_queries<C>(&self, addr_cache: &AddressCache<C>) -> anyhow::Result<Vec<Query>>
     where
         C: Client + Sync + Send,
     {
@@ -128,19 +128,10 @@ impl FilterKind {
 
                 let mut actor_ids = Vec::new();
                 for addr in addrs {
-                    if let Ok(id) = addr.id() {
-                        actor_ids.push(id);
+                    if let Some(actor_id) = addr_cache.lookup_id(&addr).await? {
+                        actor_ids.push(actor_id);
                     } else {
-                        let res = client
-                            .actor_state(&addr, None)
-                            .await
-                            .context("failed to look up actor state")?;
-
-                        if let Some((actor_id, _)) = res.value {
-                            actor_ids.push(actor_id);
-                        } else {
-                            bail!("cannot find actor {}", addr);
-                        }
+                        bail!("cannot find actor {}", addr);
                     }
                 }
 
@@ -674,6 +665,8 @@ mod tests {
     use fendermint_rpc::client::FendermintClient;
     use tendermint_rpc::MockRequestMatcher;
 
+    use crate::cache::AddressCache;
+
     use super::FilterKind;
 
     #[tokio::test]
@@ -730,9 +723,10 @@ mod tests {
 
         let (client, _driver) = tendermint_rpc::MockClient::new(NeverCall);
         let client = FendermintClient::new(client);
+        let addr_cache = AddressCache::new(client);
 
         let queries = FilterKind::Logs(Box::new(filter))
-            .to_queries(&client)
+            .to_queries(&addr_cache)
             .await
             .expect("failed to convert");
 

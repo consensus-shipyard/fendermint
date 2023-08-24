@@ -345,7 +345,7 @@ where
         ws_sender: Option<WebSocketSender>,
     ) -> anyhow::Result<FilterId> {
         let queries = kind
-            .to_queries(&self.client)
+            .to_queries(&self.addr_cache)
             .await
             .context("failed to convert filter to queries")?;
 
