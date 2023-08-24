@@ -364,10 +364,10 @@ mod tests {
                 target_block,
                 vec![1u8; 32],
                 ValidatorSet::default(),
-                vec![]
+                vec![],
             )?;
             provider.on_finality_committed(&IPCParentFinality {
-                height: target_block-1,
+                height: target_block - 1,
                 block_hash: vec![1u8; 32],
             })?;
 
