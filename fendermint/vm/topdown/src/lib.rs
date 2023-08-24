@@ -67,7 +67,7 @@ pub trait ParentFinalityProvider: ParentViewProvider {
     /// Obtains the last committed finality
     fn last_committed_finality(&self) -> StmDynResult<IPCParentFinality>;
     /// Latest proposal for parent finality
-    fn next_proposal(&self) -> StmDynResult<IPCParentFinality>;
+    fn next_proposal(&self) -> StmDynResult<Option<IPCParentFinality>>;
     /// Check if the target proposal is valid
     fn check_proposal(&self, proposal: &IPCParentFinality) -> StmDynResult<()>;
     /// Called when finality is committed

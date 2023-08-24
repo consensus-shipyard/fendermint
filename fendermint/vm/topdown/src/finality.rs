@@ -136,7 +136,7 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
         Ok(finality)
     }
 
-    fn next_proposal(&self) -> StmDynResult<IPCParentFinality> {
+    fn next_proposal(&self) -> StmDynResult<Option<IPCParentFinality>> {
         let latest_height = if let Some(h) = self.parent_view_data.latest_height()? {
             h
         } else {
@@ -149,6 +149,11 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
         }
 
         let height = latest_height - self.config.chain_head_delay;
+        let last_committed_finality = self.last_committed_finality.read()?;
+
+        if height <= last_committed_finality.height {
+            return Ok(None);
+        }
 
         // prepare block hash and validator set
         let height_data = self.parent_view_data.height_data.read()?;
@@ -160,7 +165,6 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
         };
 
         // prepare top down messages
-        let last_committed_finality = self.last_committed_finality.read()?;
         let top_down_msgs = self
             .parent_view_data
             .top_down_msgs(last_committed_finality.height + 1, height)?;
@@ -172,13 +176,13 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
             top_down_msgs.last().unwrap().msg.nonce + 1
         };
 
-        Ok(IPCParentFinality {
+        Ok(Some(IPCParentFinality {
             height,
             block_hash,
             top_down_msgs,
             next_top_down_nonce,
             validator_set,
-        })
+        }))
     }
 
     fn check_proposal(&self, proposal: &IPCParentFinality) -> StmDynResult<()> {
@@ -374,16 +378,6 @@ mod tests {
         DefaultFinalityProvider::new(config, genesis_finality)
     }
 
-    fn new_provider_with_finality(finality: IPCParentFinality) -> DefaultFinalityProvider {
-        let config = Config {
-            chain_head_delay: 20,
-            block_interval: 1,
-            polling_interval_secs: 10,
-        };
-
-        DefaultFinalityProvider::new(config, finality)
-    }
-
     fn new_cross_msg(nonce: Nonce) -> CrossMsg {
         let subnet_id = SubnetID::new(10, vec![Address::new_id(1000)]);
         let mut msg = StorableMsg::new_fund_msg(
@@ -424,7 +418,7 @@ mod tests {
                 provider.new_parent_view(i, vec![1u8; 32], ValidatorSet::new(vec![], i), vec![])?;
             }
 
-            let proposal = provider.next_proposal()?;
+            let proposal = provider.next_proposal()?.unwrap();
             let target_block = 100 - 20; // deduct chain head delay
             assert_eq!(
                 proposal,
@@ -528,7 +522,7 @@ mod tests {
     #[tokio::test]
     async fn test_top_down_msgs_works() {
         let config = Config {
-            chain_head_delay: 3,
+            chain_head_delay: 2,
             block_interval: 1,
             polling_interval_secs: 10,
         };
@@ -580,15 +574,68 @@ mod tests {
             )?;
             assert_eq!(provider.next_nonce()?, 12);
 
+            let mut v1 = cross_msgs_batch1.clone();
+            let v2 = cross_msgs_batch2.clone();
+            v1.extend(v2);
             let finality = IPCParentFinality {
-                height: 100,
+                height: 101,
                 block_hash: vec![1u8; 32],
-                top_down_msgs: cross_msgs_batch1.clone(),
-                next_top_down_nonce: 3,
+                top_down_msgs: v1,
+                next_top_down_nonce: 6,
                 validator_set: ValidatorSet::new(vec![], 0),
             };
-            let next_proposal = provider.next_proposal()?;
+            let next_proposal = provider.next_proposal()?.unwrap();
             assert_eq!(next_proposal, finality);
+
+            Ok(())
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_top_down_msgs_nonce_invalid_works() {
+        let config = Config {
+            chain_head_delay: 2,
+            block_interval: 1,
+            polling_interval_secs: 10,
+        };
+
+        let genesis_finality = IPCParentFinality {
+            height: 0,
+            block_hash: vec![0; 32],
+            top_down_msgs: vec![],
+            next_top_down_nonce: 0,
+            validator_set: Default::default(),
+        };
+
+        let provider = DefaultFinalityProvider::new(config, genesis_finality);
+
+        let cross_msgs_batch1 = vec![new_cross_msg(0), new_cross_msg(1), new_cross_msg(2)];
+        let cross_msgs_batch3 = vec![new_cross_msg(6), new_cross_msg(7), new_cross_msg(8)];
+
+        atomically_or_err(|| {
+            provider.new_parent_view(
+                100,
+                vec![1u8; 32],
+                ValidatorSet::new(vec![], 0),
+                cross_msgs_batch1.clone(),
+            )?;
+
+            assert_eq!(provider.next_nonce()?, 3);
+
+            let r = provider.new_parent_view(
+                101,
+                vec![1u8; 32],
+                ValidatorSet::new(vec![], 0),
+                cross_msgs_batch3.clone(),
+            );
+            assert!(r.is_err());
+            assert_eq!(
+                downcast_err!(r).unwrap_err(),
+                Error::NonceNotSequential
+            );
+            assert_eq!(provider.next_nonce()?, 3);
 
             Ok(())
         })
