@@ -27,6 +27,9 @@ pub struct Config {
     chain_head_delay: BlockHeight,
     /// The top-down block proposal height interval. Anything in-between these heights is ignored.
     block_interval: BlockHeight,
+    /// Parent syncing cron period, in seconds
+    #[allow(dead_code)]
+    polling_interval_secs: u64,
 }
 
 /// The finality view for IPC parent at certain height.
