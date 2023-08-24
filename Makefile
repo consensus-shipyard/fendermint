@@ -53,8 +53,7 @@ check-fmt:
 	cargo +nightly fmt --all --check
 
 check-clippy:
-	@# `nightly` is used to stay ahead of the rules.
-	cargo +nightly clippy --all --tests -- -D clippy::all
+	cargo clippy --all --tests -- -D clippy::all
 
 docker-build: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE) $(IPC_ACTORS_ABI)
 	mkdir -p docker/.artifacts/contracts

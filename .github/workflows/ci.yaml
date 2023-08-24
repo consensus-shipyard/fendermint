@@ -63,7 +63,8 @@ jobs:
           - name: End-to-End
             task: e2e
         exclude:
-          - rust: stable
+          # Not running Lint on nightly because sometimes it seems to give false positives.
+          - rust: nightly
             make:
               name: Lint
           - rust: nightly
