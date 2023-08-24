@@ -50,15 +50,14 @@ pub trait ParentViewProvider {
     fn latest_height(&self) -> StmDynResult<Option<BlockHeight>>;
     /// Get latest nonce recorded
     fn latest_nonce(&self) -> StmDynResult<Option<Nonce>>;
-    /// There is a new block produced
-    fn new_block_height(
+    /// There is a new parent view is ready to be updated
+    fn new_parent_view(
         &self,
         height: BlockHeight,
         block_hash: BlockHash,
         validator_set: ValidatorSet,
+        top_down_msgs: Vec<CrossMsg>
     ) -> StmDynResult<()>;
-    /// There are new top down messages recorded
-    fn new_top_down_msgs(&self, top_down_msgs: Vec<CrossMsg>) -> StmDynResult<()>;
 }
 
 pub trait ParentFinalityProvider: ParentViewProvider {

@@ -64,34 +64,24 @@ impl ParentViewProvider for DefaultFinalityProvider {
         Ok(top_down_msgs.upper_bound())
     }
 
-    fn new_block_height(
-        &self,
-        height: BlockHeight,
-        block_hash: BlockHash,
-        validator_set: ValidatorSet,
-    ) -> StmDynResult<()> {
+    fn new_parent_view(&self, height: BlockHeight, block_hash: BlockHash, validator_set: ValidatorSet, top_down_msgs: Vec<CrossMsg>) -> StmDynResult<()> {
+        ensure_sequential_by_nonce(&top_down_msgs)?;
+
         let insert_res = self.parent_view_data.height_data.modify(|mut cache| {
             let r = cache.append(height, (block_hash.clone(), validator_set.clone()));
             (cache, r)
         })?;
 
-        match insert_res {
-            Ok(_) => Ok(()),
-            Err(_) => {
-                // now the inserted height is not the next expected block height, could be a chain
-                // reorg if the caller is behaving correctly.
-                abort(Error::ParentReorgDetected(height))
-            }
+        if let Err(_) = insert_res {
+            // now the inserted height is not the next expected block height, could be a chain
+            // reorg if the caller is behaving correctly.
+            return abort(Error::ParentReorgDetected(height))
         }
-    }
 
-    fn new_top_down_msgs(&self, top_down_msgs: Vec<CrossMsg>) -> StmDynResult<()> {
         if top_down_msgs.is_empty() {
             // not processing if there are no top down msgs
             return Ok(());
         }
-
-        ensure_sequential_by_nonce(&top_down_msgs)?;
 
         // get the min nonce from the list of top down msgs and purge all the msgs with nonce
         // about the min nonce in cache, as the data should be newer and more accurate.
