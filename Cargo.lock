@@ -2478,6 +2478,7 @@ dependencies = [
  "async-trait",
  "cid",
  "fvm_ipld_encoding",
+ "fvm_shared",
  "ipc-sdk",
  "num-traits",
  "serde",

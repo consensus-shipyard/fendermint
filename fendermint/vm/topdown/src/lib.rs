@@ -59,7 +59,7 @@ pub trait ParentViewProvider {
         height: BlockHeight,
         block_hash: BlockHash,
         validator_set: ValidatorSet,
-        top_down_msgs: Vec<CrossMsg>
+        top_down_msgs: Vec<CrossMsg>,
     ) -> StmDynResult<()>;
 }
 

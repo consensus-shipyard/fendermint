@@ -98,7 +98,9 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
         let lower = self.lower_bound().unwrap();
         let upper = self.upper_bound().unwrap();
         // safe to unwrap as index must be uint
-        let end_idx = ((end.min(upper) - lower) / self.increment).to_usize().unwrap();
+        let end_idx = ((end.min(upper) - lower) / self.increment)
+            .to_usize()
+            .unwrap();
         let start_idx = ((start - lower) / self.increment).to_usize().unwrap();
 
         ValueIter {

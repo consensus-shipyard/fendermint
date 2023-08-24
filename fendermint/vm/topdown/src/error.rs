@@ -38,12 +38,8 @@ pub enum Error {
         parent: Nonce,
         block: BlockHeight,
     },
-    #[error("Parent block chain reorg detected")]
-    ParentReorgDetected(BlockHeight),
     #[error("Incoming top down messages are not order by nonce sequentially")]
     NonceNotSequential,
-    #[error("First ever top down message does not have starting nonce")]
-    NotStartingNonce(Nonce),
-    #[error("First ever top down message does not have starting nonce")]
-    NonSequentialCacheInsert(SequentialAppendError),
+    #[error("The parent view update with block height is not sequential")]
+    NonSequentialParentViewInsert(SequentialAppendError),
 }
