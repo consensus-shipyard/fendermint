@@ -41,6 +41,9 @@ pub struct IPCParentFinality {
     pub block_hash: Vec<u8>,
     /// new top-down messages finalized in this PoF
     pub top_down_msgs: Vec<CrossMsg>,
+    /// The next top down nonce for top down messages. If there are not top down messages in the
+    /// parent, this field should be 0.
+    pub next_top_down_nonce: Nonce,
     /// latest validator configuration information from the parent.
     pub validator_set: ValidatorSet,
 }
@@ -48,8 +51,8 @@ pub struct IPCParentFinality {
 pub trait ParentViewProvider {
     /// Get the latest height of the parent recorded
     fn latest_height(&self) -> StmDynResult<Option<BlockHeight>>;
-    /// Get latest nonce recorded
-    fn latest_nonce(&self) -> StmDynResult<Option<Nonce>>;
+    /// Get the expected next nonce for the top down messages
+    fn next_nonce(&self) -> StmDynResult<Nonce>;
     /// There is a new parent view is ready to be updated
     fn new_parent_view(
         &self,

@@ -1,7 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use crate::{BlockHeight, Bytes, Nonce};
+use crate::{BlockHeight, Bytes, Nonce, SequentialAppendError};
 use thiserror::Error;
 
 /// The errors for top down checkpointing
@@ -44,4 +44,6 @@ pub enum Error {
     NonceNotSequential,
     #[error("First ever top down message does not have starting nonce")]
     NotStartingNonce(Nonce),
+    #[error("First ever top down message does not have starting nonce")]
+    NonSequentialCacheInsert(SequentialAppendError),
 }
