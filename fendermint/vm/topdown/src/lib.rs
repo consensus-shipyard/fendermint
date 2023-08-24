@@ -14,7 +14,6 @@ pub use crate::cache::{SequentialAppendError, SequentialKeyCache, ValueIter};
 pub use crate::finality::DefaultFinalityProvider;
 
 type BlockHeight = u64;
-type Nonce = u64;
 type Bytes = Vec<u8>;
 type BlockHash = Bytes;
 
@@ -25,8 +24,6 @@ pub struct Config {
     /// conservative and avoid other from rejecting the proposal because they don't see the
     /// height as final yet.
     chain_head_delay: BlockHeight,
-    /// The top-down block proposal height interval. Anything in-between these heights is ignored.
-    block_interval: BlockHeight,
     /// Parent syncing cron period, in seconds
     #[allow(dead_code)]
     polling_interval_secs: u64,
@@ -40,20 +37,17 @@ pub struct IPCParentFinality {
     /// The block hash. For FVM, it is a Cid. For Evm, it is bytes32 as one can now potentially
     /// deploy a subnet on EVM.
     pub block_hash: BlockHash,
-    /// new top-down messages finalized in this PoF
-    pub top_down_msgs: Vec<CrossMsg>,
-    /// The next top down nonce for top down messages. If there are not top down messages in the
-    /// parent, this field should be 0.
-    pub next_top_down_nonce: Nonce,
-    /// latest validator configuration information from the parent.
-    pub validator_set: ValidatorSet,
 }
 
 pub trait ParentViewProvider {
     /// Get the latest height of the parent recorded
     fn latest_height(&self) -> StmDynResult<Option<BlockHeight>>;
-    /// Get the expected next nonce for the top down messages
-    fn next_nonce(&self) -> StmDynResult<Nonce>;
+    /// Get the block hash at height
+    fn block_hash(&self, height: BlockHeight) -> StmDynResult<Option<BlockHash>>;
+    /// Get the validator set at height
+    fn validator_set(&self, height: BlockHeight) -> StmDynResult<Option<ValidatorSet>>;
+    /// Get the top down messages at height
+    fn top_down_msgs(&self, height: BlockHeight) -> StmDynResult<Vec<CrossMsg>>;
     /// There is a new parent view is ready to be updated
     fn new_parent_view(
         &self,

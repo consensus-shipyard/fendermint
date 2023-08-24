@@ -4,8 +4,7 @@
 use crate::cache::SequentialKeyCache;
 use crate::error::Error;
 use crate::{
-    BlockHash, BlockHeight, Config, IPCParentFinality, Nonce, ParentFinalityProvider,
-    ParentViewProvider,
+    BlockHash, BlockHeight, Config, IPCParentFinality, ParentFinalityProvider, ParentViewProvider,
 };
 use async_stm::{abort, StmDynResult, StmResult, TVar};
 use ipc_sdk::cross::CrossMsg;
@@ -27,14 +26,6 @@ pub struct DefaultFinalityProvider {
 #[derive(Clone)]
 struct ParentViewData {
     height_data: TVar<SequentialKeyCache<BlockHeight, ParentViewPayload>>,
-    /// Tracks the next top down nonce in the parent view, not the committed top down nonce. This value
-    /// should be larger than the next nonce in last committed top down nonce.
-    ///
-    /// In `height_data`, cross messages are actually stored
-    /// using block height. However, some block height might not have any cross messages. This means
-    /// getting the latest top down nonce will traverse the height data. Tracking it separately will
-    /// avoid the traversal.
-    next_top_down_nonce: TVar<Nonce>,
 }
 
 impl ParentViewData {
@@ -67,11 +58,6 @@ impl ParentViewData {
             .collect();
         Ok(v)
     }
-
-    fn next_nonce(&self) -> StmResult<Nonce> {
-        let nonce = self.next_top_down_nonce.read()?;
-        Ok(*nonce)
-    }
 }
 
 impl ParentViewProvider for DefaultFinalityProvider {
@@ -80,8 +66,19 @@ impl ParentViewProvider for DefaultFinalityProvider {
         Ok(h)
     }
 
-    fn next_nonce(&self) -> StmDynResult<Nonce> {
-        Ok(self.parent_view_data.next_nonce()?)
+    fn block_hash(&self, height: BlockHeight) -> StmDynResult<Option<BlockHash>> {
+        let v = self.parent_view_data.block_hash(height)?;
+        Ok(v)
+    }
+
+    fn validator_set(&self, height: BlockHeight) -> StmDynResult<Option<ValidatorSet>> {
+        let v = self.parent_view_data.validator_set(height)?;
+        Ok(v)
+    }
+
+    fn top_down_msgs(&self, height: BlockHeight) -> StmDynResult<Vec<CrossMsg>> {
+        let v = self.parent_view_data.top_down_msgs(height, height)?;
+        Ok(v)
     }
 
     fn new_parent_view(
@@ -94,18 +91,6 @@ impl ParentViewProvider for DefaultFinalityProvider {
         if !top_down_msgs.is_empty() {
             // make sure incoming top down messages are ordered by nonce sequentially
             ensure_sequential_by_nonce(&top_down_msgs)?;
-
-            // make sure nonce is sequential
-            let next_nonce = self.next_nonce()?;
-            let min_incoming_nonce = top_down_msgs.first().unwrap().msg.nonce;
-            if next_nonce != min_incoming_nonce {
-                return abort(Error::NonceNotSequential);
-            }
-
-            let max_incoming_nonce = top_down_msgs.last().unwrap().msg.nonce;
-            self.parent_view_data
-                .next_top_down_nonce
-                .write(max_incoming_nonce + 1)?;
         };
 
         let r = self.parent_view_data.height_data.modify(|mut cache| {
@@ -151,72 +136,29 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
 
         // prepare block hash and validator set
         let height_data = self.parent_view_data.height_data.read()?;
-        let (block_hash, validator_set) = if let Some(v) = height_data.get_value(height) {
-            let (block_hash, validator_set, _) = v;
-            (block_hash.clone(), validator_set.clone())
+        let block_hash = if let Some(v) = height_data.get_value(height) {
+            let (block_hash, _, _) = v;
+            block_hash.clone()
         } else {
             return abort(Error::HeightNotFoundInCache(height));
         };
 
-        // prepare top down messages
-        let top_down_msgs = self
-            .parent_view_data
-            .top_down_msgs(last_committed_finality.height + 1, height)?;
-
-        // prepare top down message nonce
-        let next_top_down_nonce = if top_down_msgs.is_empty() {
-            last_committed_finality.next_top_down_nonce
-        } else {
-            top_down_msgs.last().unwrap().msg.nonce + 1
-        };
-
-        Ok(Some(IPCParentFinality {
-            height,
-            block_hash,
-            top_down_msgs,
-            next_top_down_nonce,
-            validator_set,
-        }))
+        Ok(Some(IPCParentFinality { height, block_hash }))
     }
 
     fn check_proposal(&self, proposal: &IPCParentFinality) -> StmDynResult<()> {
         self.check_height(proposal)?;
-        self.check_block_hash(proposal)?;
-        self.check_validator_set(proposal)?;
-        self.check_top_down_msgs(proposal)
+        self.check_block_hash(proposal)
     }
 
     fn on_finality_committed(&self, finality: &IPCParentFinality) -> StmDynResult<()> {
         // the height to clear
         let height = finality.height;
 
-        let cache_empty = self.parent_view_data.height_data.modify(|mut cache| {
+        self.parent_view_data.height_data.update(|mut cache| {
             cache.remove_key_below(height + 1);
-            let cache_empty = cache.is_empty();
-            (cache, cache_empty)
+            cache
         })?;
-
-        let parent_view_next_nonce = *self.parent_view_data.next_top_down_nonce.read()?;
-        if cache_empty {
-            // with the new finality, the parent view cache is all cleared, this means there is
-            // no top down messages in the parent view cache. We set the next top down nonce to be
-            // that in the current finality.
-            debug_assert!(
-                finality.next_top_down_nonce >= parent_view_next_nonce,
-                "finality's next nonce should not be smaller than that in the parent view"
-            );
-            self.parent_view_data
-                .next_top_down_nonce
-                .write(finality.next_top_down_nonce)?;
-        } else {
-            // the parent view cache is not all cleared, this means there might be some top down
-            // messages in the parent view cache. This means the next nonce in the incoming finality
-            // should not be larger than that in the parent view.
-            debug_assert!(
-                finality.next_top_down_nonce <= parent_view_next_nonce,
-                "finality's next nonce should not be greater than that in the parent view"
-            );
-        }
 
         self.last_committed_finality.write(finality.clone())?;
 
@@ -226,37 +168,24 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
 
 impl DefaultFinalityProvider {
     pub fn new(config: Config, committed_finality: IPCParentFinality) -> Self {
-        let height_data = SequentialKeyCache::new(config.block_interval);
-
+        let height_data = SequentialKeyCache::new(1);
         Self {
             config,
             parent_view_data: ParentViewData {
                 height_data: TVar::new(height_data),
-                next_top_down_nonce: TVar::new(committed_finality.next_top_down_nonce),
             },
             last_committed_finality: TVar::new(committed_finality),
         }
     }
 
     fn check_height(&self, proposal: &IPCParentFinality) -> StmDynResult<()> {
-        let latest_height = if let Some(h) = self.parent_view_data.latest_height()? {
-            h
-        } else {
-            return abort(Error::HeightNotReady);
-        };
-
-        if latest_height < proposal.height {
-            return abort(Error::ExceedingLatestHeight {
+        let last_committed_finality = self.last_committed_finality.read()?;
+        if proposal.height != 1 + last_committed_finality.height {
+            return abort(Error::BlockHeightInvalid {
                 proposal: proposal.height,
-                parent: latest_height,
+                last_committed: last_committed_finality.height,
             });
         }
-
-        let last_committed_finality = self.last_committed_finality.read()?;
-        if proposal.height <= last_committed_finality.height {
-            return abort(Error::HeightAlreadyCommitted(proposal.height));
-        }
-
         Ok(())
     }
 
@@ -272,38 +201,6 @@ impl DefaultFinalityProvider {
             });
         }
         abort(Error::BlockHashNotFound(proposal.height))
-    }
-
-    fn check_validator_set(&self, proposal: &IPCParentFinality) -> StmDynResult<()> {
-        if let Some(validator_set) = self.parent_view_data.validator_set(proposal.height)? {
-            if validator_set != proposal.validator_set {
-                return abort(Error::ValidatorSetNotMatch(proposal.height));
-            }
-            return Ok(());
-        }
-        abort(Error::ValidatorSetNotFound(proposal.height))
-    }
-
-    fn check_top_down_msgs(&self, proposal: &IPCParentFinality) -> StmDynResult<()> {
-        if proposal.top_down_msgs.is_empty() {
-            // top down msgs are empty, no need checks
-            return Ok(());
-        }
-
-        ensure_sequential_by_nonce(&proposal.top_down_msgs)?;
-
-        let proposal_min_nonce = proposal.top_down_msgs.first().unwrap().msg.nonce;
-        let next_nonce = self.last_committed_finality.read()?.next_top_down_nonce;
-
-        if next_nonce != proposal_min_nonce {
-            return abort(Error::InvalidNonce {
-                proposal: proposal_min_nonce,
-                parent: next_nonce,
-                block: proposal.height,
-            });
-        }
-
-        Ok(())
     }
 }
 
@@ -327,7 +224,7 @@ fn ensure_sequential_by_nonce(msgs: &[CrossMsg]) -> StmDynResult<()> {
 mod tests {
     use crate::error::Error;
     use crate::{
-        Config, DefaultFinalityProvider, IPCParentFinality, Nonce, ParentFinalityProvider,
+        Config, DefaultFinalityProvider, IPCParentFinality, ParentFinalityProvider,
         ParentViewProvider,
     };
     use async_stm::{atomically_or_err, StmDynError};
@@ -355,22 +252,18 @@ mod tests {
     fn new_provider() -> DefaultFinalityProvider {
         let config = Config {
             chain_head_delay: 20,
-            block_interval: 1,
             polling_interval_secs: 10,
         };
 
         let genesis_finality = IPCParentFinality {
             height: 0,
             block_hash: vec![0; 32],
-            top_down_msgs: vec![],
-            next_top_down_nonce: 0,
-            validator_set: Default::default(),
         };
 
         DefaultFinalityProvider::new(config, genesis_finality)
     }
 
-    fn new_cross_msg(nonce: Nonce) -> CrossMsg {
+    fn new_cross_msg(nonce: u64) -> CrossMsg {
         let subnet_id = SubnetID::new(10, vec![Address::new_id(1000)]);
         let mut msg = StorableMsg::new_fund_msg(
             &subnet_id,
@@ -417,9 +310,6 @@ mod tests {
                 IPCParentFinality {
                     height: target_block,
                     block_hash: vec![1u8; 32],
-                    top_down_msgs: vec![],
-                    next_top_down_nonce: 0,
-                    validator_set: ValidatorSet::new(vec![], target_block),
                 }
             );
 
@@ -445,9 +335,6 @@ mod tests {
             let finality = IPCParentFinality {
                 height: target_block,
                 block_hash: vec![1u8; 32],
-                top_down_msgs: vec![],
-                next_top_down_nonce: 0,
-                validator_set: ValidatorSet::new(vec![], target_block),
             };
             provider.on_finality_committed(&finality)?;
 
@@ -470,37 +357,23 @@ mod tests {
         let provider = new_provider();
 
         atomically_or_err(|| {
-            // inject data
-            for i in 20..=100 {
-                provider.new_parent_view(i, vec![1u8; 32], ValidatorSet::new(vec![], i), vec![])?;
-            }
-
-            let target_block = 120;
-            let finality = IPCParentFinality {
-                height: target_block,
-                block_hash: vec![1u8; 32],
-                top_down_msgs: vec![],
-                next_top_down_nonce: 0,
-                validator_set: ValidatorSet::new(vec![], target_block),
-            };
-
-            let r = provider.check_proposal(&finality);
-            assert!(r.is_err());
-            assert_eq!(
-                downcast_err!(r).unwrap_err(),
-                Error::ExceedingLatestHeight {
-                    proposal: 120,
-                    parent: 100
-                }
-            );
-
             let target_block = 100;
+
+            // inject data
+            provider.new_parent_view(
+                target_block,
+                vec![1u8; 32],
+                ValidatorSet::default(),
+                vec![]
+            )?;
+            provider.on_finality_committed(&IPCParentFinality {
+                height: target_block-1,
+                block_hash: vec![1u8; 32],
+            })?;
+
             let finality = IPCParentFinality {
                 height: target_block,
                 block_hash: vec![1u8; 32],
-                top_down_msgs: vec![],
-                next_top_down_nonce: 0,
-                validator_set: ValidatorSet::new(vec![], target_block),
             };
 
             assert!(provider.check_proposal(&finality).is_ok());
@@ -515,16 +388,12 @@ mod tests {
     async fn test_top_down_msgs_works() {
         let config = Config {
             chain_head_delay: 2,
-            block_interval: 1,
             polling_interval_secs: 10,
         };
 
         let genesis_finality = IPCParentFinality {
             height: 0,
             block_hash: vec![0; 32],
-            top_down_msgs: vec![],
-            next_top_down_nonce: 0,
-            validator_set: Default::default(),
         };
 
         let provider = DefaultFinalityProvider::new(config, genesis_finality);
@@ -542,15 +411,12 @@ mod tests {
                 cross_msgs_batch1.clone(),
             )?;
 
-            assert_eq!(provider.next_nonce()?, 3);
-
             provider.new_parent_view(
                 101,
                 vec![1u8; 32],
                 ValidatorSet::new(vec![], 0),
                 cross_msgs_batch2.clone(),
             )?;
-            assert_eq!(provider.next_nonce()?, 6);
 
             provider.new_parent_view(
                 102,
@@ -564,7 +430,6 @@ mod tests {
                 ValidatorSet::new(vec![], 0),
                 cross_msgs_batch4.clone(),
             )?;
-            assert_eq!(provider.next_nonce()?, 12);
 
             let mut v1 = cross_msgs_batch1.clone();
             let v2 = cross_msgs_batch2.clone();
@@ -572,59 +437,9 @@ mod tests {
             let finality = IPCParentFinality {
                 height: 101,
                 block_hash: vec![1u8; 32],
-                top_down_msgs: v1,
-                next_top_down_nonce: 6,
-                validator_set: ValidatorSet::new(vec![], 0),
             };
             let next_proposal = provider.next_proposal()?.unwrap();
             assert_eq!(next_proposal, finality);
-
-            Ok(())
-        })
-        .await
-        .unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_top_down_msgs_nonce_invalid_works() {
-        let config = Config {
-            chain_head_delay: 2,
-            block_interval: 1,
-            polling_interval_secs: 10,
-        };
-
-        let genesis_finality = IPCParentFinality {
-            height: 0,
-            block_hash: vec![0; 32],
-            top_down_msgs: vec![],
-            next_top_down_nonce: 0,
-            validator_set: Default::default(),
-        };
-
-        let provider = DefaultFinalityProvider::new(config, genesis_finality);
-
-        let cross_msgs_batch1 = vec![new_cross_msg(0), new_cross_msg(1), new_cross_msg(2)];
-        let cross_msgs_batch3 = vec![new_cross_msg(6), new_cross_msg(7), new_cross_msg(8)];
-
-        atomically_or_err(|| {
-            provider.new_parent_view(
-                100,
-                vec![1u8; 32],
-                ValidatorSet::new(vec![], 0),
-                cross_msgs_batch1.clone(),
-            )?;
-
-            assert_eq!(provider.next_nonce()?, 3);
-
-            let r = provider.new_parent_view(
-                101,
-                vec![1u8; 32],
-                ValidatorSet::new(vec![], 0),
-                cross_msgs_batch3.clone(),
-            );
-            assert!(r.is_err());
-            assert_eq!(downcast_err!(r).unwrap_err(), Error::NonceNotSequential);
-            assert_eq!(provider.next_nonce()?, 3);
 
             Ok(())
         })
