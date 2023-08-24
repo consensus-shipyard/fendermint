@@ -36,6 +36,10 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
         self.increment
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
     pub fn upper_bound(&self) -> Option<K> {
         self.data.back().map(|v| v.0)
     }
