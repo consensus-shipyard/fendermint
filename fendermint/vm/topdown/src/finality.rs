@@ -110,14 +110,7 @@ impl ParentViewProvider for DefaultFinalityProvider {
 
         let r = self.parent_view_data.height_data.modify(|mut cache| {
             let r = cache
-                .append(
-                    height,
-                    (
-                        block_hash,
-                        validator_set,
-                        top_down_msgs,
-                    ),
-                )
+                .append(height, (block_hash, validator_set, top_down_msgs))
                 .map_err(Error::NonSequentialParentViewInsert);
             (cache, r)
         })?;
@@ -630,10 +623,7 @@ mod tests {
                 cross_msgs_batch3.clone(),
             );
             assert!(r.is_err());
-            assert_eq!(
-                downcast_err!(r).unwrap_err(),
-                Error::NonceNotSequential
-            );
+            assert_eq!(downcast_err!(r).unwrap_err(), Error::NonceNotSequential);
             assert_eq!(provider.next_nonce()?, 3);
 
             Ok(())
