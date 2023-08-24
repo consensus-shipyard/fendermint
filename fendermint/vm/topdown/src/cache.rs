@@ -16,7 +16,7 @@ pub struct SequentialKeyCache<K, V> {
 }
 
 /// The result enum for sequential cache insertion
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum SequentialAppendError {
     AboveBound,
     /// The key has already been inserted
@@ -84,6 +84,25 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
 
         ValueIter {
             i: self.data.range(index..),
+        }
+    }
+
+    pub fn values_within(&self, start: K, end: K) -> ValueIter<K, V> {
+        if !self.within_bound(start) {
+            // empty iter from self.data
+            return ValueIter {
+                i: self.data.iter(),
+            };
+        }
+
+        let lower = self.lower_bound().unwrap();
+        let upper = self.upper_bound().unwrap();
+        // safe to unwrap as index must be uint
+        let end_idx = ((end.min(upper) - lower) / self.increment).to_usize().unwrap();
+        let start_idx = ((start - lower) / self.increment).to_usize().unwrap();
+
+        ValueIter {
+            i: self.data.range(start_idx..=end_idx),
         }
     }
 
@@ -189,6 +208,12 @@ mod tests {
         assert_eq!(
             range.into_iter().cloned().collect::<Vec<_>>(),
             (50..100).collect::<Vec<_>>()
+        );
+
+        let range = cache.values_within(50, 60);
+        assert_eq!(
+            range.into_iter().cloned().collect::<Vec<_>>(),
+            (50..=60).collect::<Vec<_>>()
         );
 
         let values = cache.values();
