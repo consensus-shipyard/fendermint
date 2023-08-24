@@ -9,7 +9,9 @@ use std::{
     time::Duration,
 };
 
-#[derive(Debug, Deserialize)]
+pub mod resolver;
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct Address {
     pub host: String,
     pub port: u32,
@@ -21,14 +23,14 @@ impl Address {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct AbciSettings {
     pub listen: Address,
     /// Queue size for each ABCI component.
     pub bound: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct DbSettings {
     /// Length of the app state history to keep in the database before pruning; 0 means unlimited.
     ///
@@ -36,7 +38,7 @@ pub struct DbSettings {
     pub state_hist_size: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct FvmSettings {
     /// Overestimation rate applied to gas estimations to ensure that the
     /// message goes through
@@ -54,7 +56,7 @@ pub struct FvmSettings {
 
 /// Ethereum API facade settings.
 #[serde_as]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct EthSettings {
     pub listen: Address,
     #[serde_as(as = "DurationSeconds<u64>")]
@@ -63,7 +65,7 @@ pub struct EthSettings {
     pub gas: fendermint_eth_api::GasOpt,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
     /// Home directory configured on the CLI, to which all paths in settings can be set relative.
     home_dir: PathBuf,
@@ -74,6 +76,7 @@ pub struct Settings {
     pub db: DbSettings,
     pub eth: EthSettings,
     pub fvm: FvmSettings,
+    //pub resolver: ResolverSettings,
 }
 
 macro_rules! home_relative {
