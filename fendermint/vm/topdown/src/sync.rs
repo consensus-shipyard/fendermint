@@ -74,67 +74,82 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
     loop {
         interval.tick().await;
 
-        // update block hash and validator set
-        let latest_height = agent_proxy
-            .get_chain_head_height()
-            .await
-            .context("cannot fetch parent chain head")?;
-
+        let (starting_height, latest_height) =
+            get_query_block_heights(agent_proxy, provider).await?;
         if latest_height < config.chain_head_delay {
             tracing::debug!("latest height not more than the chain head delay");
             continue;
         }
 
-        let r = atomically_or_err(|| {
-            Ok(if let Some(h) = provider.latest_height()? {
-                h + 1
-            } else {
-                let last_committed_finality = provider.last_committed_finality()?;
-                last_committed_finality.height + 1
-            })
-        })
-        .await;
-        let starting_height = downcast_err!(r)?;
-
         // we are going backwards in terms of block height, the latest block height is lower
         // than our previously fetched head. It could be a chain reorg. We clear all the cache
         // in `provider` and start from scratch
         if starting_height > latest_height {
-            // FIXME: the most brutal way is to
             todo!()
         }
 
-        let mut block_height_to_update = vec![];
-        for h in starting_height..=latest_height {
-            let block_hash = agent_proxy
-                .get_block_hash(h)
-                .await
-                .context("cannot fetch block hash")?;
-            let validator_set = agent_proxy
-                .get_validator_set(h)
-                .await
-                .context("cannot fetch validator set")?;
-            let top_down_msgs = agent_proxy
-                .get_top_down_msgs(h, h)
-                .await
-                .context("cannot fetch top down messages")?;
-
-            block_height_to_update.push((h, block_hash, validator_set, top_down_msgs));
-        }
-
+        let new_parent_views =
+            get_new_parent_views(agent_proxy, starting_height, latest_height).await?;
         let r = atomically_or_err(move || {
-            for (height, block_hash, validator_set, messages) in block_height_to_update.clone() {
-                let r = provider.new_parent_view(height, block_hash, validator_set, messages);
-                match downcast_err!(r) {
-                    Ok(_) => {},
-                    Err(e) => {}
-                }
+            for (height, block_hash, validator_set, messages) in new_parent_views.clone() {
+                provider.new_parent_view(height, block_hash, validator_set, messages)?;
             }
             Ok(())
         })
         .await;
         downcast_err!(r)?;
     }
+}
+
+/// Obtain the block height range to perform the parent view update
+async fn get_query_block_heights<T: ParentFinalityProvider + Send + Sync + 'static>(
+    agent_proxy: &Arc<IPCAgentProxy>,
+    provider: &Arc<T>,
+) -> anyhow::Result<(BlockHeight, BlockHeight)> {
+    // update block hash and validator set
+    let latest_height = agent_proxy
+        .get_chain_head_height()
+        .await
+        .context("cannot fetch parent chain head")?;
+
+    let r = atomically_or_err(|| {
+        Ok(if let Some(h) = provider.latest_height()? {
+            h + 1
+        } else {
+            let last_committed_finality = provider.last_committed_finality()?;
+            last_committed_finality.height + 1
+        })
+    })
+    .await;
+    let starting_height = downcast_err!(r)?;
+
+    Ok((starting_height, latest_height))
+}
+
+/// Obtain the new parent views for the input block height range
+async fn get_new_parent_views(
+    agent_proxy: &Arc<IPCAgentProxy>,
+    start_height: BlockHeight,
+    end_height: BlockHeight,
+) -> anyhow::Result<Vec<(BlockHeight, BlockHash, ValidatorSet, Vec<CrossMsg>)>> {
+    let mut block_height_to_update = vec![];
+    for h in start_height..=end_height {
+        let block_hash = agent_proxy
+            .get_block_hash(h)
+            .await
+            .context("cannot fetch block hash")?;
+        let validator_set = agent_proxy
+            .get_validator_set(h)
+            .await
+            .context("cannot fetch validator set")?;
+        let top_down_msgs = agent_proxy
+            .get_top_down_msgs(h, h)
+            .await
+            .context("cannot fetch top down messages")?;
+
+        block_height_to_update.push((h, block_hash, validator_set, top_down_msgs));
+    }
+    Ok(block_height_to_update)
 }
 
 pub struct IPCAgentProxy {
