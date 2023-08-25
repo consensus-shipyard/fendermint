@@ -67,7 +67,10 @@ pub fn to_deliver_tx(ret: SignedMessageApplyRet) -> response::DeliverTx {
     let gas_used: i64 = receipt.gas_used.try_into().unwrap_or(i64::MAX);
 
     let data: bytes::Bytes = receipt.return_data.to_vec().into();
-    let events = to_events("message", ret.apply_ret.events);
+    let mut events = to_events("message", ret.apply_ret.events);
+
+    // Emit an event so which causes Tendermint to index our transaction with a custom hash.
+    events.push(to_sig_hash_event(&sig_hash));
 
     response::DeliverTx {
         code: to_code(receipt.exit_code),
@@ -157,6 +160,18 @@ pub fn to_events(kind: &str, stamped_events: Vec<StampedEvent>) -> Vec<Event> {
             Event::new(kind.to_string(), attrs)
         })
         .collect()
+}
+
+/// Construct an indexable event from a custom signature hash.
+pub fn to_sig_hash_event(sig_hash: &[u8]) -> Event {
+    Event::new(
+        "sig",
+        vec![EventAttribute {
+            key: "hash".to_string(),
+            value: hex::encode(sig_hash),
+            index: true,
+        }],
+    )
 }
 
 /// Map to query results.
