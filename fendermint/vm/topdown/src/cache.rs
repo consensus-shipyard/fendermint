@@ -32,6 +32,14 @@ impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
         }
     }
 
+    /// Create a cache with key increment 1
+    pub fn sequential() -> Self {
+        Self {
+            increment: K::one(),
+            data: Default::default(),
+        }
+    }
+
     pub fn increment(&self) -> K {
         self.increment
     }
