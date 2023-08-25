@@ -22,7 +22,7 @@ pub struct InvalidSignature(pub String);
 
 pub struct SignedMessageApplyRet {
     pub fvm: FvmApplyRet,
-    pub sig_hash: Vec<u8>,
+    pub sig_hash: [u8; 32],
 }
 
 pub type SignedMessageApplyRes = Result<SignedMessageApplyRet, InvalidSignature>;

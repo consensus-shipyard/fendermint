@@ -145,9 +145,9 @@ impl SignedMessage {
     ///
     /// Some Ethereum clients expects this to be the transaction hash,
     /// but it's different from the Tendermint transaction hash.
-    pub fn sig_hash(message: &Message, chain_id: &ChainID) -> Result<Vec<u8>, SignedMessageError> {
+    pub fn sig_hash(message: &Message, chain_id: &ChainID) -> Result<[u8; 32], SignedMessageError> {
         match Self::signable(message, chain_id)? {
-            Signable::Ethereum((hash, _)) => Ok(hash.0.to_vec()),
+            Signable::Ethereum((hash, _)) => Ok(hash.0),
             Signable::Regular(data) => {
                 // blake2b 256 hash
                 let hash = blake2b_simd::Params::new()
@@ -156,7 +156,7 @@ impl SignedMessage {
                     .update(&data)
                     .finalize();
 
-                Ok(hash.as_array().to_vec())
+                Ok(hash.as_bytes().try_into().expect("should be 32 bytes"))
             }
         }
     }

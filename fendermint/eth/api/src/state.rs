@@ -26,15 +26,14 @@ use tokio::sync::mpsc::{Sender, UnboundedSender};
 use tokio::sync::RwLock;
 
 use crate::cache::AddressCache;
+use crate::conv::from_eth::to_tm_hash;
 use crate::filters::{
     run_subscription, BlockHash, FilterCommand, FilterDriver, FilterId, FilterKind, FilterMap,
     FilterRecords,
 };
 use crate::handlers::ws::MethodNotification;
 use crate::{
-    conv::from_tm::{
-        map_rpc_block_txs, message_hash, to_chain_message, to_eth_block, to_eth_transaction,
-    },
+    conv::from_tm::{map_rpc_block_txs, to_chain_message, to_eth_block, to_eth_transaction},
     error, JsonRpcResult,
 };
 
@@ -239,7 +238,6 @@ where
         index: et::U64,
     ) -> JsonRpcResult<Option<et::Transaction>> {
         if let Some(msg) = block.data().get(index.as_usize()) {
-            let hash = message_hash(msg)?;
             let msg = to_chain_message(msg)?;
 
             if let ChainMessage::Signed(msg) = msg {
@@ -249,7 +247,7 @@ where
                     .await?;
 
                 let chain_id = ChainID::from(sp.value.chain_id);
-                let mut tx = to_eth_transaction(hash, msg, chain_id)
+                let mut tx = to_eth_transaction(msg, chain_id, None)
                     .context("failed to convert to eth transaction")?;
                 tx.transaction_index = Some(index);
                 tx.block_hash = Some(et::H256::from_slice(block.header.hash().as_bytes()));
@@ -260,6 +258,20 @@ where
             }
         } else {
             Ok(None)
+        }
+    }
+
+    /// Get the Tendermint transaction by hash.
+    pub async fn tx_by_hash(
+        &self,
+        tx_hash: et::TxHash,
+    ) -> JsonRpcResult<Option<tendermint_rpc::endpoint::tx::Response>> {
+        let hash = to_tm_hash(&tx_hash)?;
+
+        match self.tm().tx(hash, false).await {
+            Ok(res) => Ok(Some(res)),
+            Err(e) if e.to_string().contains("not found") => Ok(None),
+            Err(e) => error(ExitCode::USR_UNSPECIFIED, e),
         }
     }
 
