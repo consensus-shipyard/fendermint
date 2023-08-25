@@ -17,7 +17,7 @@ use fvm_ipld_encoding::{de::DeserializeOwned, RawBytes};
 use fvm_shared::{chainid::ChainID, econ::TokenAmount, error::ExitCode, message::Message};
 use rand::Rng;
 use tendermint::block::Height;
-use tendermint_rpc::query::{EventType, Query};
+use tendermint_rpc::query::Query;
 use tendermint_rpc::{
     endpoint::{block, block_by_hash, block_results, commit, header, header_by_hash},
     Client,
@@ -270,7 +270,8 @@ where
         // For now we can try to retrieve the transaction using the `tx_search` mechanism, and relying on
         // CometBFT indexing capabilities.
 
-        let query = Query::from(EventType::Tx).and_eq("sig.hash", hex::encode(tx_hash.as_bytes()));
+        // Doesn't work with `Query::from(EventType::Tx).and_eq()`
+        let query = Query::eq("sig.hash", hex::encode(tx_hash.as_bytes()));
 
         match self
             .tm()

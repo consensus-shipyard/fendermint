@@ -99,7 +99,9 @@ impl FilterKind {
             // if there are events emitted by the transaction itself.
             FilterKind::PendingTransactions => Ok(vec![Query::from(EventType::NewBlock)]),
             FilterKind::Logs(filter) => {
-                let mut query = Query::from(EventType::Tx);
+                // `Query::from(EventType::Tx)` doesn't seem to combine well with non-standard keys.
+                // let mut query = Query::from(EventType::Tx);
+                let mut query = Query::default();
 
                 if let Some(block_hash) = filter.get_block_hash() {
                     // TODO #220: This looks wrong, tx.hash is the transaction hash, not the block.
@@ -249,6 +251,8 @@ where
                 },
             ) => {
                 for tx in &block.data {
+                    // TODO #216: This is not the right hash for Ethereum.
+                    // If we had the chain ID here then we can parse it and re-hash it.
                     let h = from_tm::message_hash(tx)?;
                     let h = et::H256::from_slice(h.as_bytes());
                     hashes.push(h);
