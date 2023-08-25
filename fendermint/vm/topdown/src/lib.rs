@@ -69,4 +69,6 @@ pub trait ParentFinalityProvider: ParentViewProvider {
     fn check_proposal(&self, proposal: &IPCParentFinality) -> StmDynResult<()>;
     /// Called when finality is committed
     fn on_finality_committed(&self, finality: &IPCParentFinality) -> StmDynResult<()>;
+    /// Reset the parent view with provided new finality
+    fn reset(&self, finality: IPCParentFinality) -> StmDynResult<()>;
 }

@@ -164,11 +164,19 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
 
         Ok(())
     }
+
+    fn reset(&self, finality: IPCParentFinality) -> StmDynResult<()> {
+        self.parent_view_data
+            .height_data
+            .write(SequentialKeyCache::sequential())?;
+        self.last_committed_finality.write(finality)?;
+        Ok(())
+    }
 }
 
 impl DefaultFinalityProvider {
     pub fn new(config: Config, committed_finality: IPCParentFinality) -> Self {
-        let height_data = SequentialKeyCache::new(1);
+        let height_data = SequentialKeyCache::sequential();
         Self {
             config,
             parent_view_data: ParentViewData {
