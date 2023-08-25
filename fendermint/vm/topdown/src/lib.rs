@@ -68,6 +68,7 @@ pub trait ParentFinalityProvider: ParentViewProvider {
     fn next_proposal(&self) -> StmDynResult<Option<IPCParentFinality>>;
     /// Check if the target proposal is valid
     fn check_proposal(&self, proposal: &IPCParentFinality) -> StmDynResult<()>;
-    /// Called when finality is committed
+    /// Called when finality is committed. When the proposal is executed, it should execute the messages
+    /// first, then `on_finality_committed`.
     fn on_finality_committed(&self, finality: &IPCParentFinality) -> StmDynResult<()>;
 }
