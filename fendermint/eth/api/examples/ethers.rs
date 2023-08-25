@@ -396,8 +396,8 @@ where
     )?;
 
     assert_eq!(
-        block.unwrap().transactions[0].hash,
         tx_hash,
+        block.unwrap().transactions[0].hash,
         "computed hash should match"
     );
 

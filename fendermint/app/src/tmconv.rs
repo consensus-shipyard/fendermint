@@ -4,7 +4,10 @@
 use anyhow::{anyhow, Context};
 use fendermint_vm_core::Timestamp;
 use fendermint_vm_genesis::Validator;
-use fendermint_vm_interpreter::fvm::{FvmApplyRet, FvmCheckRet, FvmQueryRet};
+use fendermint_vm_interpreter::{
+    fvm::{FvmApplyRet, FvmCheckRet, FvmQueryRet},
+    signed::SignedMessageApplyRet,
+};
 use fvm_shared::{error::ExitCode, event::StampedEvent};
 use prost::Message;
 use std::num::NonZeroU32;
@@ -52,7 +55,8 @@ pub fn invalid_query(err: AppError, description: String) -> response::Query {
     }
 }
 
-pub fn to_deliver_tx(ret: FvmApplyRet) -> response::DeliverTx {
+pub fn to_deliver_tx(ret: SignedMessageApplyRet) -> response::DeliverTx {
+    let SignedMessageApplyRet { fvm: ret, sig_hash } = ret;
     let receipt = ret.apply_ret.msg_receipt;
 
     // Based on the sanity check in the `DefaultExecutor`.
@@ -156,7 +160,10 @@ pub fn to_events(kind: &str, stamped_events: Vec<StampedEvent>) -> Vec<Event> {
 }
 
 /// Map to query results.
-pub fn to_query(ret: FvmQueryRet, block_height: BlockHeight) -> anyhow::Result<response::Query> {
+pub fn to_query(
+    ret: FvmQueryRet<SignedMessageApplyRet>,
+    block_height: BlockHeight,
+) -> anyhow::Result<response::Query> {
     let exit_code = match ret {
         FvmQueryRet::Ipld(None) | FvmQueryRet::ActorState(None) => ExitCode::USR_NOT_FOUND,
         FvmQueryRet::Ipld(_) | FvmQueryRet::ActorState(_) => ExitCode::OK,
