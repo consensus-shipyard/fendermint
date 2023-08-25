@@ -6,7 +6,11 @@ use crate::error::Error;
 use crate::{BlockHash, BlockHeight, Config, ParentFinalityProvider};
 use anyhow::Context;
 use async_stm::atomically_or_err;
+use fvm_shared::clock::ChainEpoch;
+use ipc_agent_sdk::apis::IpcAgentClient;
+use ipc_agent_sdk::jsonrpc::JsonRpcClientImpl;
 use ipc_sdk::cross::CrossMsg;
+use ipc_sdk::subnet_id::SubnetID;
 use ipc_sdk::ValidatorSet;
 use std::sync::Arc;
 use std::time::Duration;
@@ -31,9 +35,9 @@ impl<T> PollingParentSyncer<T> {
 impl<T: ParentFinalityProvider + Send + Sync + 'static> PollingParentSyncer<T> {
     /// Start the parent finality listener in the background
     pub fn start(self) -> anyhow::Result<()> {
-        let config = self.config.clone();
-        let provider = self.parent_view_provider.clone();
-        let agent = self.agent.clone();
+        let config = self.config;
+        let provider = self.parent_view_provider;
+        let agent = self.agent;
 
         tokio::spawn(async move {
             loop {
@@ -83,18 +87,20 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
 
         let r = atomically_or_err(|| {
             Ok(if let Some(h) = provider.latest_height()? {
-                h + config.block_interval
+                h + 1
             } else {
                 let last_committed_finality = provider.last_committed_finality()?;
-                last_committed_finality.height + config.block_interval
+                last_committed_finality.height + 1
             })
         })
         .await;
         let starting_height = downcast_err!(r)?;
 
+        // we are going backwards in terms of block height, the latest block height is lower
+        // than our previously fetched head. It could be a chain reorg. We clear all the cache
+        // in `provider` and start from scratch
         if starting_height > latest_height {
-            // FIXME: the most brutal way is to clear all the cache in `provider` and
-            // FIXME: start from scratch.
+            // FIXME: the most brutal way is to
             todo!()
         }
 
@@ -108,66 +114,73 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
                 .get_validator_set(h)
                 .await
                 .context("cannot fetch validator set")?;
+            let top_down_msgs = agent_proxy
+                .get_top_down_msgs(h, h)
+                .await
+                .context("cannot fetch top down messages")?;
 
-            block_height_to_update.push((h, block_hash, validator_set));
+            block_height_to_update.push((h, block_hash, validator_set, top_down_msgs));
         }
 
-        let r = atomically_or_err(|| {
-            for (height, block_hash, validator_set) in block_height_to_update {
-                provider.new_block_height(height, block_hash, validator_set)?;
+        let r = atomically_or_err(move || {
+            for (height, block_hash, validator_set, messages) in block_height_to_update.clone() {
+                let r = provider.new_parent_view(height, block_hash, validator_set, messages);
+                match downcast_err!(r) {
+                    Ok(_) => {},
+                    Err(e) => {}
+                }
             }
             Ok(())
         })
         .await;
         downcast_err!(r)?;
-
-        // now get the top down messages
-        let nonce = downcast_err!(
-            atomically_or_err(|| {
-                let nonce = if let Some(nonce) = provider.latest_nonce()? {
-                    nonce
-                } else {
-                    let finality = provider.last_committed_finality()?;
-                    if finality.top_down_msgs.is_empty() {
-                        0
-                    } else {
-                        finality.top_down_msgs.last().unwrap().msg.nonce
-                    }
-                };
-
-                Ok(nonce + 1)
-            })
-            .await
-        )?;
-
-        let top_down_msgs = agent_proxy.get_top_down_msgs(latest_height, nonce).await?;
-        // safe to unwrap as updating top down msgs will not trigger error
-        downcast_err!(atomically_or_err(|| provider.new_top_down_msgs(top_down_msgs)).await);
     }
 }
 
 pub struct IPCAgentProxy {
-    agent_client:
+    agent_client: IpcAgentClient<JsonRpcClientImpl>,
+    parent_subnet: SubnetID,
 }
 
 impl IPCAgentProxy {
-    pub async fn get_chain_head_height(&self) -> anyhow::Result<BlockHeight> {
-        todo!()
+    pub fn new(client: IpcAgentClient<JsonRpcClientImpl>, parent: SubnetID) -> Self {
+        Self {
+            agent_client: client,
+            parent_subnet: parent,
+        }
     }
 
-    pub async fn get_block_hash(&self, _height: BlockHeight) -> anyhow::Result<BlockHash> {
-        todo!()
+    pub async fn get_chain_head_height(&self) -> anyhow::Result<BlockHeight> {
+        let head = self
+            .agent_client
+            .get_chain_head(&self.parent_subnet)
+            .await?;
+        Ok(head.height)
+    }
+
+    pub async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<BlockHash> {
+        self.agent_client
+            .get_block_hash(&self.parent_subnet, height as ChainEpoch)
+            .await
     }
 
     pub async fn get_top_down_msgs(
         &self,
-        _height: BlockHeight,
-        _nonce: u64,
+        start_height: BlockHeight,
+        end_height: u64,
     ) -> anyhow::Result<Vec<CrossMsg>> {
-        todo!()
+        self.agent_client
+            .get_top_down_msgs(
+                &self.parent_subnet,
+                start_height as ChainEpoch,
+                end_height as ChainEpoch,
+            )
+            .await
     }
 
-    pub async fn get_validator_set(&self, _height: BlockHeight) -> anyhow::Result<ValidatorSet> {
-        todo!()
+    pub async fn get_validator_set(&self, height: BlockHeight) -> anyhow::Result<ValidatorSet> {
+        self.agent_client
+            .get_validator_set(&self.parent_subnet, Some(height as ChainEpoch))
+            .await
     }
 }

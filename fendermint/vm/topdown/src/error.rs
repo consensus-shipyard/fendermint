@@ -1,7 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use crate::{BlockHeight, Bytes, Nonce};
+use crate::{BlockHash, BlockHeight, SequentialAppendError};
 use thiserror::Error;
 
 /// The errors for top down checkpointing
@@ -13,7 +13,7 @@ pub enum Error {
     HeightThresholdNotReached,
     #[error("The data specified in this height is not found in cache")]
     HeightNotFoundInCache(BlockHeight),
-    #[error("Exceeding current parent view's latest block height.")]
+    #[error("Exceeding current parent view's latest block height")]
     ExceedingLatestHeight {
         proposal: BlockHeight,
         parent: BlockHeight,
@@ -22,26 +22,14 @@ pub enum Error {
     HeightAlreadyCommitted(BlockHeight),
     #[error("Proposal's block hash and parent's block hash not match")]
     BlockHashNotMatch {
-        proposal: Bytes,
-        parent: Bytes,
+        proposal: BlockHash,
+        parent: BlockHash,
         height: BlockHeight,
     },
     #[error("Proposal's block hash at height not found in parent view")]
     BlockHashNotFound(BlockHeight),
-    #[error("Proposal's validator set and that of the parent view not match")]
-    ValidatorSetNotMatch(BlockHeight),
-    #[error("Proposal's validator set at height not found in parent view")]
-    ValidatorSetNotFound(BlockHeight),
-    #[error("Proposal's min top down msg nonce is smaller than the last committed nonce")]
-    InvalidNonce {
-        proposal: Nonce,
-        parent: Nonce,
-        block: BlockHeight,
-    },
-    #[error("Parent block chain reorg detected")]
-    ParentReorgDetected(BlockHeight),
     #[error("Incoming top down messages are not order by nonce sequentially")]
     NonceNotSequential,
-    #[error("First ever top down message does not have starting nonce")]
-    NotStartingNonce(Nonce),
+    #[error("The parent view update with block height is not sequential")]
+    NonSequentialParentViewInsert(SequentialAppendError),
 }

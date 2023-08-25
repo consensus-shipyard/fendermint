@@ -19,4 +19,8 @@ fvm_ipld_encoding = { workspace = true }
 num-traits = { workspace = true }
 async-stm = { workspace = true }
 thiserror = { workspace = true }
-ipc-agent = { workspace = true }
+ipc-agent-sdk = { workspace = true }
+fvm_shared = { workspace = true }
+
+[dev-dependencies]
+
