@@ -12,7 +12,7 @@ use ipc_sdk::ValidatorSet;
 use serde::{Deserialize, Serialize};
 
 pub use crate::cache::{SequentialAppendError, SequentialKeyCache, ValueIter};
-pub use crate::finality::DefaultFinalityProvider;
+pub use crate::finality::InMemoryFinalityProvider;
 pub use crate::sync::{IPCAgentProxy, PollingParentSyncer};
 
 type BlockHeight = u64;
@@ -69,6 +69,4 @@ pub trait ParentFinalityProvider: ParentViewProvider {
     fn check_proposal(&self, proposal: &IPCParentFinality) -> StmDynResult<()>;
     /// Called when finality is committed
     fn on_finality_committed(&self, finality: &IPCParentFinality) -> StmDynResult<()>;
-    /// Reset the parent view with provided new finality
-    fn reset(&self, finality: IPCParentFinality) -> StmDynResult<()>;
 }

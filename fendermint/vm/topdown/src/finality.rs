@@ -13,7 +13,7 @@ use ipc_sdk::ValidatorSet;
 type ParentViewPayload = (BlockHash, ValidatorSet, Vec<CrossMsg>);
 
 /// The default parent finality provider
-pub struct DefaultFinalityProvider {
+pub struct InMemoryFinalityProvider {
     config: Config,
     parent_view_data: ParentViewData,
     /// This is a in memory view of the committed parent finality,
@@ -60,7 +60,7 @@ impl ParentViewData {
     }
 }
 
-impl ParentViewProvider for DefaultFinalityProvider {
+impl ParentViewProvider for InMemoryFinalityProvider {
     fn latest_height(&self) -> StmDynResult<Option<BlockHeight>> {
         let h = self.parent_view_data.latest_height()?;
         Ok(h)
@@ -108,7 +108,7 @@ impl ParentViewProvider for DefaultFinalityProvider {
     }
 }
 
-impl ParentFinalityProvider for DefaultFinalityProvider {
+impl ParentFinalityProvider for InMemoryFinalityProvider {
     fn last_committed_finality(&self) -> StmDynResult<IPCParentFinality> {
         let finality = self.last_committed_finality.read_clone()?;
         Ok(finality)
@@ -164,17 +164,9 @@ impl ParentFinalityProvider for DefaultFinalityProvider {
 
         Ok(())
     }
-
-    fn reset(&self, finality: IPCParentFinality) -> StmDynResult<()> {
-        self.parent_view_data
-            .height_data
-            .write(SequentialKeyCache::sequential())?;
-        self.last_committed_finality.write(finality)?;
-        Ok(())
-    }
 }
 
-impl DefaultFinalityProvider {
+impl InMemoryFinalityProvider {
     pub fn new(config: Config, committed_finality: IPCParentFinality) -> Self {
         let height_data = SequentialKeyCache::sequential();
         Self {
@@ -242,7 +234,7 @@ fn ensure_sequential_by_nonce(msgs: &[CrossMsg]) -> StmDynResult<()> {
 mod tests {
     use crate::error::Error;
     use crate::{
-        Config, DefaultFinalityProvider, IPCParentFinality, ParentFinalityProvider,
+        Config, IPCParentFinality, InMemoryFinalityProvider, ParentFinalityProvider,
         ParentViewProvider,
     };
     use async_stm::{atomically_or_err, StmDynError};
@@ -267,7 +259,7 @@ mod tests {
         };
     }
 
-    fn new_provider() -> DefaultFinalityProvider {
+    fn new_provider() -> InMemoryFinalityProvider {
         let config = Config {
             chain_head_delay: 20,
             polling_interval_secs: 10,
@@ -278,7 +270,7 @@ mod tests {
             block_hash: vec![0; 32],
         };
 
-        DefaultFinalityProvider::new(config, genesis_finality)
+        InMemoryFinalityProvider::new(config, genesis_finality)
     }
 
     fn new_cross_msg(nonce: u64) -> CrossMsg {
@@ -414,7 +406,7 @@ mod tests {
             block_hash: vec![0; 32],
         };
 
-        let provider = DefaultFinalityProvider::new(config, genesis_finality);
+        let provider = InMemoryFinalityProvider::new(config, genesis_finality);
 
         let cross_msgs_batch1 = vec![new_cross_msg(0), new_cross_msg(1), new_cross_msg(2)];
         let cross_msgs_batch2 = vec![new_cross_msg(3), new_cross_msg(4), new_cross_msg(5)];
