@@ -401,6 +401,12 @@ where
         "computed hash should match"
     );
 
+    // This equivalence is not required for ethers-rs, it's happy to use the return value from `eth_sendRawTransaction` for transaction hash.
+    // However, ethers.js actually asserts this and we cannot disable it, rendering that, or any similar tool, unusable if we rely on
+    // the default Tendermint transaction hash, which is a Sha256 hash of the entire payload (which includes the signature),
+    // not a Keccak256 of the unsigned RLP.
+    assert_eq!(tx_hash, transfer.sighash(), "Ethereum hash should match");
+
     // Get the block with transactions by hash.
     request(
         "eth_getBlockByHash w/ txns",
