@@ -102,6 +102,7 @@ impl FilterKind {
                 let mut query = Query::from(EventType::Tx);
 
                 if let Some(block_hash) = filter.get_block_hash() {
+                    // TODO #220: This looks wrong, tx.hash is the transaction hash, not the block.
                     query = query.and_eq("tx.hash", hex::encode(block_hash.0));
                 }
                 if let Some(from_block) = filter.get_from_block() {

@@ -17,16 +17,16 @@ use fvm_ipld_encoding::{de::DeserializeOwned, RawBytes};
 use fvm_shared::{chainid::ChainID, econ::TokenAmount, error::ExitCode, message::Message};
 use rand::Rng;
 use tendermint::block::Height;
+use tendermint_rpc::query::{EventType, Query};
 use tendermint_rpc::{
     endpoint::{block, block_by_hash, block_results, commit, header, header_by_hash},
     Client,
 };
-use tendermint_rpc::{Subscription, SubscriptionClient};
+use tendermint_rpc::{Order, Subscription, SubscriptionClient};
 use tokio::sync::mpsc::{Sender, UnboundedSender};
 use tokio::sync::RwLock;
 
 use crate::cache::AddressCache;
-use crate::conv::from_eth::to_tm_hash;
 use crate::filters::{
     run_subscription, BlockHash, FilterCommand, FilterDriver, FilterId, FilterKind, FilterMap,
     FilterRecords,
@@ -266,11 +266,19 @@ where
         &self,
         tx_hash: et::TxHash,
     ) -> JsonRpcResult<Option<tendermint_rpc::endpoint::tx::Response>> {
-        let hash = to_tm_hash(&tx_hash)?;
+        // We cannot use `self.tm().tx()` because the ethers.js forces us to use Ethereum specific hashes.
+        // For now we can try to retrieve the transaction using the `tx_search` mechanism, and relying on
+        // CometBFT indexing capabilities.
 
-        match self.tm().tx(hash, false).await {
-            Ok(res) => Ok(Some(res)),
-            Err(e) if e.to_string().contains("not found") => Ok(None),
+        let query = Query::from(EventType::Tx).and_eq("sig.hash", hex::encode(tx_hash.as_bytes()));
+
+        match self
+            .tm()
+            .tx_search(query, false, 1, 1, Order::Ascending)
+            .await
+        {
+            Ok(res) if res.txs.is_empty() => Ok(None),
+            Ok(res) => Ok(Some(res.txs.into_iter().next().expect("non-empty"))),
             Err(e) => error(ExitCode::USR_UNSPECIFIED, e),
         }
     }
