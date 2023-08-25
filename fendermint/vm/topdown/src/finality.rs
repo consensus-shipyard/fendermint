@@ -16,7 +16,7 @@ type ParentViewPayload = (BlockHash, ValidatorSet, Vec<CrossMsg>);
 pub struct InMemoryFinalityProvider {
     config: Config,
     parent_view_data: ParentViewData,
-    /// This is a in memory view of the committed parent finality,
+    /// This is an in-memory view of the committed parent finality,
     /// it should be synced with the store committed finality, owner of the struct should enforce
     /// this.
     last_committed_finality: TVar<IPCParentFinality>,
