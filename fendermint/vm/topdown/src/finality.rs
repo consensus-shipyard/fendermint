@@ -31,7 +31,6 @@ struct ParentViewData {
 impl ParentViewData {
     fn latest_height(&self) -> StmResult<Option<BlockHeight>> {
         let cache = self.height_data.read()?;
-        // safe to unwrap, we dont allow no upper bound
         Ok(cache.upper_bound())
     }
 

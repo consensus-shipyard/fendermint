@@ -39,6 +39,7 @@ pub struct IPCParentFinality {
     pub block_hash: BlockHash,
 }
 
+/// Provides the local view of the current finality of the parent seen by the peer.
 pub trait ParentViewProvider {
     /// Get the latest height of the parent recorded
     fn latest_height(&self) -> StmDynResult<Option<BlockHeight>>;
@@ -58,6 +59,8 @@ pub trait ParentViewProvider {
     ) -> StmDynResult<()>;
 }
 
+/// This handles the finality in the parent that the validators in the child subnet have already agreed upon,
+/// or about to agree upon.
 pub trait ParentFinalityProvider: ParentViewProvider {
     /// Obtains the last committed finality
     fn last_committed_finality(&self) -> StmDynResult<IPCParentFinality>;
