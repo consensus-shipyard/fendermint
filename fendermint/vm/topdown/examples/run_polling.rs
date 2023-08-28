@@ -1,5 +1,7 @@
+use async_stm::atomically_or_err;
 use fendermint_vm_topdown::{
-    Config, IPCAgentProxy, IPCParentFinality, InMemoryFinalityProvider, PollingParentSyncer,
+    Config, IPCAgentProxy, IPCParentFinality, InMemoryFinalityProvider, ParentFinalityProvider,
+    PollingParentSyncer,
 };
 use fvm_shared::address::{set_current_network, Network};
 use ipc_agent_sdk::apis::IpcAgentClient;
@@ -15,7 +17,7 @@ async fn main() {
     set_network_from_env();
 
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
+        .with_max_level(tracing::Level::INFO)
         .with_target(false)
         .init();
 
@@ -42,14 +44,23 @@ async fn main() {
     );
     let provider = Arc::new(provider);
     let agent = Arc::new(agent_proxy);
-    let polling = PollingParentSyncer::new(config, provider.clone(), agent.clone());
+    let polling = PollingParentSyncer::new(config, provider.clone(), agent);
 
-    let handle = tokio::spawn(async move {
+    tokio::spawn(async move {
         polling.start().unwrap();
     });
 
-    tokio::time::sleep(Duration::new(100, 0)).await;
-    handle.abort();
+    loop {
+        atomically_or_err(|| {
+            let proposal = provider.next_proposal()?;
+            println!("proposal: {proposal:?}");
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+        tokio::time::sleep(Duration::new(5, 0)).await;
+    }
 }
 
 pub fn set_network_from_env() {

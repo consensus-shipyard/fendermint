@@ -240,9 +240,9 @@ mod tests {
     use async_stm::{atomically_or_err, StmDynError};
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
+    use ipc_agent_sdk::message::ipc::ValidatorSet;
     use ipc_sdk::cross::{CrossMsg, StorableMsg};
     use ipc_sdk::subnet_id::SubnetID;
-    use ipc_agent_sdk::message::ipc::ValidatorSet;
 
     macro_rules! downcast_err {
         ($r:ident) => {
@@ -299,7 +299,15 @@ mod tests {
             assert!(r.is_err());
             assert_eq!(downcast_err!(r).unwrap_err(), Error::HeightNotReady);
 
-            provider.new_parent_view(10, vec![1u8; 32], ValidatorSet{ validators: None, configuration_number: 0 }, vec![])?;
+            provider.new_parent_view(
+                10,
+                vec![1u8; 32],
+                ValidatorSet {
+                    validators: None,
+                    configuration_number: 0,
+                },
+                vec![],
+            )?;
 
             let r = provider.next_proposal();
             assert!(r.is_err());
@@ -310,7 +318,15 @@ mod tests {
 
             // inject data
             for i in 11..=100 {
-                provider.new_parent_view(i, vec![1u8; 32], ValidatorSet{ validators: None, configuration_number: i }, vec![])?;
+                provider.new_parent_view(
+                    i,
+                    vec![1u8; 32],
+                    ValidatorSet {
+                        validators: None,
+                        configuration_number: i,
+                    },
+                    vec![],
+                )?;
             }
 
             let proposal = provider.next_proposal()?.unwrap();
@@ -338,7 +354,15 @@ mod tests {
         atomically_or_err(|| {
             // inject data
             for i in 10..=100 {
-                provider.new_parent_view(i, vec![1u8; 32], ValidatorSet{ validators: None, configuration_number: 0 }, vec![])?;
+                provider.new_parent_view(
+                    i,
+                    vec![1u8; 32],
+                    ValidatorSet {
+                        validators: None,
+                        configuration_number: 0,
+                    },
+                    vec![],
+                )?;
             }
 
             let target_block = 120;
@@ -373,7 +397,10 @@ mod tests {
             provider.new_parent_view(
                 target_block,
                 vec![1u8; 32],
-                ValidatorSet{ validators: None, configuration_number: 0 },
+                ValidatorSet {
+                    validators: None,
+                    configuration_number: 0,
+                },
                 vec![],
             )?;
             provider.on_finality_committed(&IPCParentFinality {
@@ -417,27 +444,39 @@ mod tests {
             provider.new_parent_view(
                 100,
                 vec![1u8; 32],
-                ValidatorSet{ validators: None, configuration_number: 0 },
+                ValidatorSet {
+                    validators: None,
+                    configuration_number: 0,
+                },
                 cross_msgs_batch1.clone(),
             )?;
 
             provider.new_parent_view(
                 101,
                 vec![1u8; 32],
-                ValidatorSet{ validators: None, configuration_number: 0 },
+                ValidatorSet {
+                    validators: None,
+                    configuration_number: 0,
+                },
                 cross_msgs_batch2.clone(),
             )?;
 
             provider.new_parent_view(
                 102,
                 vec![1u8; 32],
-                ValidatorSet{ validators: None, configuration_number: 0 },
+                ValidatorSet {
+                    validators: None,
+                    configuration_number: 0,
+                },
                 cross_msgs_batch3.clone(),
             )?;
             provider.new_parent_view(
                 103,
                 vec![1u8; 32],
-                ValidatorSet{ validators: None, configuration_number: 0 },
+                ValidatorSet {
+                    validators: None,
+                    configuration_number: 0,
+                },
                 cross_msgs_batch4.clone(),
             )?;
 

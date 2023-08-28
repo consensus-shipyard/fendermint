@@ -7,8 +7,8 @@ mod finality;
 mod sync;
 
 use async_stm::StmDynResult;
-use ipc_sdk::cross::CrossMsg;
 use ipc_agent_sdk::message::ipc::ValidatorSet;
+use ipc_sdk::cross::CrossMsg;
 use serde::{Deserialize, Serialize};
 
 pub use crate::cache::{SequentialAppendError, SequentialKeyCache, ValueIter};
