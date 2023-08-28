@@ -3769,7 +3769,7 @@ dependencies = [
 [[package]]
 name = "ipc-agent-sdk"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=update-sdk#f7761f0c6aae81c873f8f038b241346eba2a1c8e"
+source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=update-sdk#baf682030f05a45e980453b29ad5831d3468b880"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -7227,9 +7227,9 @@ checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 
 [[package]]
 name = "url"
-version = "2.4.0"
+version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50bff7831e19200a85b17131d085c25d7811bc4e186efdaf54bbd132994a88cb"
+checksum = "143b538f18257fac9cad154828a57c6bf5157e1aa604d4816b5995bf6de87ae5"
 dependencies = [
  "form_urlencoded",
  "idna",

@@ -9,9 +9,9 @@ use async_stm::atomically_or_err;
 use fvm_shared::clock::ChainEpoch;
 use ipc_agent_sdk::apis::IpcAgentClient;
 use ipc_agent_sdk::jsonrpc::JsonRpcClientImpl;
+use ipc_agent_sdk::message::ipc::ValidatorSet;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::subnet_id::SubnetID;
-use ipc_sdk::ValidatorSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -212,8 +212,10 @@ impl IPCAgentProxy {
     }
 
     pub async fn get_validator_set(&self, height: BlockHeight) -> anyhow::Result<ValidatorSet> {
-        self.agent_client
+        let r = self
+            .agent_client
             .get_validator_set(&self.child_subnet, Some(height as ChainEpoch))
-            .await
+            .await?;
+        Ok(r.validator_set)
     }
 }

@@ -1,14 +1,14 @@
 use fendermint_vm_topdown::{
     Config, IPCAgentProxy, IPCParentFinality, InMemoryFinalityProvider, PollingParentSyncer,
 };
+use fvm_shared::address::{set_current_network, Network};
 use ipc_agent_sdk::apis::IpcAgentClient;
 use ipc_agent_sdk::jsonrpc::JsonRpcClientImpl;
 use ipc_sdk::subnet_id::SubnetID;
+use num_traits::FromPrimitive;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use fvm_shared::address::{Network, set_current_network};
-use num_traits::FromPrimitive;
 
 #[tokio::main]
 async fn main() {
