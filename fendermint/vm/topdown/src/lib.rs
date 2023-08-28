@@ -12,6 +12,7 @@ use ipc_sdk::cross::CrossMsg;
 use serde::{Deserialize, Serialize};
 
 pub use crate::cache::{SequentialAppendError, SequentialKeyCache, ValueIter};
+pub use crate::error::Error;
 pub use crate::finality::InMemoryFinalityProvider;
 pub use crate::sync::{IPCAgentProxy, PollingParentSyncer};
 

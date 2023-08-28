@@ -1,7 +1,7 @@
-use async_stm::atomically_or_err;
+use async_stm::{atomically_or_err, StmDynError};
 use fendermint_vm_topdown::{
-    Config, IPCAgentProxy, IPCParentFinality, InMemoryFinalityProvider, ParentFinalityProvider,
-    PollingParentSyncer,
+    Config, Error, IPCAgentProxy, IPCParentFinality, InMemoryFinalityProvider,
+    ParentFinalityProvider, PollingParentSyncer,
 };
 use fvm_shared::address::{set_current_network, Network};
 use ipc_agent_sdk::apis::IpcAgentClient;
@@ -52,7 +52,22 @@ async fn main() {
 
     loop {
         atomically_or_err(|| {
-            let proposal = provider.next_proposal()?;
+            let proposal = match provider.next_proposal() {
+                Ok(p) => p,
+                Err(e) => match e {
+                    StmDynError::Abort(e) => {
+                        let error = e.downcast_ref::<Error>().unwrap();
+                        match error {
+                            Error::HeightNotReady => {
+                                println!("polling not started yet");
+                                return Ok(());
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                    _ => unreachable!(),
+                },
+            };
             println!("proposal: {proposal:?}");
             Ok(())
         })
