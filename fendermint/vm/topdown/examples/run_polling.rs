@@ -1,7 +1,7 @@
 use async_stm::{atomically_or_err, StmDynError};
 use fendermint_vm_topdown::{
     Config, Error, IPCAgentProxy, IPCParentFinality, InMemoryFinalityProvider,
-    ParentFinalityProvider, PollingParentSyncer,
+    ParentFinalityProvider, ParentViewProvider, PollingParentSyncer,
 };
 use fvm_shared::address::{set_current_network, Network};
 use ipc_agent_sdk::apis::IpcAgentClient;
@@ -69,6 +69,12 @@ async fn main() {
                 },
             };
             println!("proposal: {proposal:?}");
+
+            if let Some(p) = proposal {
+                let msgs = provider.top_down_msgs(p.height)?;
+                println!("topdown messages: {:?}", msgs);
+            }
+
             Ok(())
         })
         .await
