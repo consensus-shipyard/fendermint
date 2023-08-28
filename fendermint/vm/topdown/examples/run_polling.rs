@@ -7,9 +7,13 @@ use ipc_sdk::subnet_id::SubnetID;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
+use fvm_shared::address::{Network, set_current_network};
+use num_traits::FromPrimitive;
 
 #[tokio::main]
 async fn main() {
+    set_network_from_env();
+
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_target(false)
@@ -46,4 +50,14 @@ async fn main() {
 
     tokio::time::sleep(Duration::new(100, 0)).await;
     handle.abort();
+}
+
+pub fn set_network_from_env() {
+    let network_raw: u8 = std::env::var("LOTUS_NETWORK")
+        // default to testnet
+        .unwrap_or_else(|_| String::from("1"))
+        .parse()
+        .unwrap();
+    let network = Network::from_u8(network_raw).unwrap();
+    set_current_network(network);
 }
