@@ -165,13 +165,15 @@ async fn get_new_parent_views(
 pub struct IPCAgentProxy {
     agent_client: IpcAgentClient<JsonRpcClientImpl>,
     parent_subnet: SubnetID,
+    child_subnet: SubnetID,
 }
 
 impl IPCAgentProxy {
-    pub fn new(client: IpcAgentClient<JsonRpcClientImpl>, parent: SubnetID) -> Self {
+    pub fn new(client: IpcAgentClient<JsonRpcClientImpl>, parent: SubnetID, child_subnet: SubnetID) -> Self {
         Self {
             agent_client: client,
             parent_subnet: parent,
+            child_subnet
         }
     }
 
@@ -196,7 +198,7 @@ impl IPCAgentProxy {
     ) -> anyhow::Result<Vec<CrossMsg>> {
         self.agent_client
             .get_top_down_msgs(
-                &self.parent_subnet,
+                &self.child_subnet,
                 start_height as ChainEpoch,
                 end_height as ChainEpoch,
             )
@@ -205,7 +207,7 @@ impl IPCAgentProxy {
 
     pub async fn get_validator_set(&self, height: BlockHeight) -> anyhow::Result<ValidatorSet> {
         self.agent_client
-            .get_validator_set(&self.parent_subnet, Some(height as ChainEpoch))
+            .get_validator_set(&self.child_subnet, Some(height as ChainEpoch))
             .await
     }
 }

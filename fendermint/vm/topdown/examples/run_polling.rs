@@ -18,11 +18,14 @@ async fn main() {
     let url = std::env::var("URL").unwrap_or_else(|_| "http://0.0.0.0:3030/json_rpc".to_string());
     let raw_parent_subnet_id =
         std::env::var("PARENT").unwrap_or_else(|_| "/r31415926".to_string());
+    let raw_child_subnet_id =
+        std::env::var("CHILD").unwrap_or_else(|_| "/r31415926".to_string());
     let parent_subnet = SubnetID::from_str(&raw_parent_subnet_id).unwrap();
+    let child_subnet = SubnetID::from_str(&raw_child_subnet_id).unwrap();
 
     let json_rpc = JsonRpcClientImpl::new(url.parse().unwrap(), None);
     let ipc_agent_client = IpcAgentClient::new(json_rpc);
-    let agent_proxy = IPCAgentProxy::new(ipc_agent_client, parent_subnet);
+    let agent_proxy = IPCAgentProxy::new(ipc_agent_client, parent_subnet, child_subnet);
 
     let chain_head = agent_proxy.get_chain_head_height().await.unwrap();
 
