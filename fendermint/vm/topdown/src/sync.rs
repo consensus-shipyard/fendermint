@@ -4,7 +4,7 @@
 
 use crate::error::Error;
 use crate::{BlockHash, BlockHeight, Config, InMemoryFinalityProvider, ParentFinalityProvider};
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use async_stm::atomically_or_err;
 use fvm_shared::clock::ChainEpoch;
 use ipc_agent_sdk::apis::IpcAgentClient;
@@ -169,12 +169,18 @@ pub struct IPCAgentProxy {
 }
 
 impl IPCAgentProxy {
-    pub fn new(client: IpcAgentClient<JsonRpcClientImpl>, parent: SubnetID, child_subnet: SubnetID) -> Self {
-        Self {
+    pub fn new(
+        client: IpcAgentClient<JsonRpcClientImpl>,
+        target_subnet: SubnetID,
+    ) -> anyhow::Result<Self> {
+        let parent = target_subnet
+            .parent()
+            .ok_or_else(|| anyhow!("subnet does not have parent"))?;
+        Ok(Self {
             agent_client: client,
             parent_subnet: parent,
-            child_subnet
-        }
+            child_subnet: target_subnet,
+        })
     }
 
     pub async fn get_chain_head_height(&self) -> anyhow::Result<BlockHeight> {
