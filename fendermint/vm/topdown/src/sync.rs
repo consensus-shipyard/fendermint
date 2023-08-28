@@ -23,7 +23,11 @@ pub struct PollingParentSyncer {
 }
 
 impl PollingParentSyncer {
-    pub fn new(config: Config, parent_view_provider: Arc<InMemoryFinalityProvider>, agent: Arc<IPCAgentProxy>) -> Self {
+    pub fn new(
+        config: Config,
+        parent_view_provider: Arc<InMemoryFinalityProvider>,
+        agent: Arc<IPCAgentProxy>,
+    ) -> Self {
         Self {
             config,
             parent_view_provider,
@@ -170,7 +174,7 @@ impl IPCAgentProxy {
             .agent_client
             .get_chain_head_height(&self.parent_subnet)
             .await?;
-        Ok(height)
+        Ok(height as BlockHeight)
     }
 
     pub async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<BlockHash> {

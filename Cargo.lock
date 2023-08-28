@@ -3768,7 +3768,7 @@ dependencies = [
 [[package]]
 name = "ipc-agent-sdk"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=update-sdk#8e4f8ae730b5c104c1ed54a04efd2b6d075e4a81"
+source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=update-sdk#f7761f0c6aae81c873f8f038b241346eba2a1c8e"
 dependencies = [
  "anyhow",
  "async-channel",
