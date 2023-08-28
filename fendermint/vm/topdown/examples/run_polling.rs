@@ -10,9 +10,14 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .with_target(false)
+        .init();
+
     let url = std::env::var("URL").unwrap_or_else(|_| "http://0.0.0.0:3030/json_rpc".to_string());
     let raw_parent_subnet_id =
-        std::env::var("PARENT").unwrap_or_else(|_| "/rr31415926".to_string());
+        std::env::var("PARENT").unwrap_or_else(|_| "/r31415926".to_string());
     let parent_subnet = SubnetID::from_str(&raw_parent_subnet_id).unwrap();
 
     let json_rpc = JsonRpcClientImpl::new(url.parse().unwrap(), None);
@@ -28,7 +33,7 @@ async fn main() {
     let provider = InMemoryFinalityProvider::new(
         config.clone(),
         IPCParentFinality {
-            height: chain_head,
+            height: chain_head - 20,
             block_hash: vec![],
         },
     );

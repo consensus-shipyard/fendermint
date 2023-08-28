@@ -22,5 +22,6 @@ thiserror = { workspace = true }
 ipc-agent-sdk = { workspace = true }
 fvm_shared = { workspace = true }
 
+tracing-subscriber = "0.3.17"
 [dev-dependencies]
 
