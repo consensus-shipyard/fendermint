@@ -25,9 +25,9 @@ pub struct Config {
     /// To propose a certain number of epochs delayed from the latest height, we see to be
     /// conservative and avoid other from rejecting the proposal because they don't see the
     /// height as final yet.
-    chain_head_delay: BlockHeight,
+    pub chain_head_delay: BlockHeight,
     /// Parent syncing cron period, in seconds
-    polling_interval_secs: u64,
+    pub polling_interval_secs: u64,
 }
 
 /// The finality view for IPC parent at certain height.
