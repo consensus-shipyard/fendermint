@@ -85,6 +85,8 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
             continue;
         }
 
+        tracing::debug!("starting height: {starting_height}, latest_height: {latest_height}");
+
         // we are going backwards in terms of block height, the latest block height is lower
         // than our previously fetched head. It could be a chain reorg. We clear all the cache
         // in `provider` and start from scratch
@@ -94,6 +96,8 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
 
         let new_parent_views =
             get_new_parent_views(agent_proxy, starting_height, latest_height).await?;
+        tracing::debug!("new parent views: {new_parent_views:?}");
+
         let r = atomically_or_err(move || {
             for (height, block_hash, validator_set, messages) in new_parent_views.clone() {
                 provider.new_parent_view(height, block_hash, validator_set, messages)?;
@@ -102,6 +106,8 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
         })
         .await;
         downcast_err!(r)?;
+
+        tracing::debug!("updated new parent views till height: {latest_height}");
     }
 }
 
