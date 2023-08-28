@@ -27,7 +27,6 @@ pub struct Config {
     /// height as final yet.
     chain_head_delay: BlockHeight,
     /// Parent syncing cron period, in seconds
-    #[allow(dead_code)]
     polling_interval_secs: u64,
 }
 

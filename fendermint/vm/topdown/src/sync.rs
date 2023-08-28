@@ -3,7 +3,7 @@
 //! A constant running process that fetch or listener to parent state
 
 use crate::error::Error;
-use crate::{BlockHash, BlockHeight, Config, ParentFinalityProvider};
+use crate::{BlockHash, BlockHeight, Config, InMemoryFinalityProvider, ParentFinalityProvider};
 use anyhow::Context;
 use async_stm::atomically_or_err;
 use fvm_shared::clock::ChainEpoch;
@@ -16,14 +16,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Constantly syncing with parent through polling
-pub struct PollingParentSyncer<T> {
+pub struct PollingParentSyncer {
     config: Config,
-    parent_view_provider: Arc<T>,
+    parent_view_provider: Arc<InMemoryFinalityProvider>,
     agent: Arc<IPCAgentProxy>,
 }
 
-impl<T> PollingParentSyncer<T> {
-    pub fn new(config: Config, parent_view_provider: Arc<T>, agent: Arc<IPCAgentProxy>) -> Self {
+impl PollingParentSyncer {
+    pub fn new(config: Config, parent_view_provider: Arc<InMemoryFinalityProvider>, agent: Arc<IPCAgentProxy>) -> Self {
         Self {
             config,
             parent_view_provider,
@@ -32,7 +32,7 @@ impl<T> PollingParentSyncer<T> {
     }
 }
 
-impl<T: ParentFinalityProvider + Send + Sync + 'static> PollingParentSyncer<T> {
+impl PollingParentSyncer {
     /// Start the parent finality listener in the background
     pub fn start(self) -> anyhow::Result<()> {
         let config = self.config;
@@ -166,11 +166,11 @@ impl IPCAgentProxy {
     }
 
     pub async fn get_chain_head_height(&self) -> anyhow::Result<BlockHeight> {
-        let head = self
+        let height = self
             .agent_client
-            .get_chain_head(&self.parent_subnet)
+            .get_chain_head_height(&self.parent_subnet)
             .await?;
-        Ok(head.height)
+        Ok(height)
     }
 
     pub async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<BlockHash> {
