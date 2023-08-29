@@ -70,7 +70,7 @@ const SIMPLECOIN_HEX: &'static str =
 const ENOUGH_GAS: u64 = 10_000_000_000u64;
 
 /// Disabling filters helps when inspecting docker logs. The background data received for filters is rather noisy.
-const FILTERS_ENABLED: bool = false;
+const FILTERS_ENABLED: bool = true;
 
 // Generate a statically typed interface for the contract.
 // An example of what it looks like is at https://github.com/filecoin-project/ref-fvm/blob/evm-integration-tests/testing/integration/tests/evm/src/simple_coin/simple_coin.rs
@@ -252,7 +252,11 @@ where
     // Set up filters to collect events.
     let mut filter_ids = Vec::new();
 
-    let (logs_filter_id, blocks_filter_id, txs_filter_id) = if FILTERS_ENABLED {
+    let (logs_filter_id, blocks_filter_id, txs_filter_id): (
+        Option<U256>,
+        Option<U256>,
+        Option<U256>,
+    ) = if FILTERS_ENABLED {
         let logs_filter_id = request(
             "eth_newFilter",
             provider
@@ -575,6 +579,8 @@ where
         send_transaction(&mw, coin_send.tx, "coin_send").await,
         |receipt| !receipt.logs.is_empty(),
     )?;
+
+    tracing::info!(tx_hash = ?receipt.transaction_hash, "coin sent");
 
     request(
         "eth_getLogs",

@@ -101,8 +101,12 @@ impl FilterKind {
             FilterKind::PendingTransactions => Ok(vec![Query::from(EventType::NewBlock)]),
             FilterKind::Logs(filter) => {
                 // `Query::from(EventType::Tx)` doesn't seem to combine well with non-standard keys.
-                // let mut query = Query::from(EventType::Tx);
-                let mut query = Query::default();
+                // But `Query::default()` doesn't return anything if we subscribe to `Filter::default()`.
+                let mut query = if filter.has_topics() || filter.address.is_some() {
+                    Query::default()
+                } else {
+                    Query::from(EventType::Tx)
+                };
 
                 if let Some(block_hash) = filter.get_block_hash() {
                     // TODO #220: This looks wrong, tx.hash is the transaction hash, not the block.
