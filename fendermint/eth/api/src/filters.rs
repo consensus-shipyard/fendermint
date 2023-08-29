@@ -692,11 +692,48 @@ pub async fn run_subscription(id: FilterId, mut sub: Subscription, tx: Sender<Fi
 mod tests {
     use ethers_core::types as et;
     use fendermint_rpc::client::FendermintClient;
-    use tendermint_rpc::MockRequestMatcher;
+    use tendermint_rpc::{MockClient, MockRequestMatcher};
 
     use crate::cache::AddressCache;
 
     use super::FilterKind;
+
+    // These tests should not call the API for response resolution because it's just an ID.
+    struct NeverCall;
+
+    impl MockRequestMatcher for NeverCall {
+        fn response_for<R, S>(
+            &self,
+            _request: R,
+        ) -> Option<Result<R::Response, tendermint_rpc::Error>>
+        where
+            R: tendermint_rpc::Request<S>,
+            S: tendermint_rpc::dialect::Dialect,
+        {
+            unimplemented!("don't call")
+        }
+    }
+
+    fn mock_add_cache() -> AddressCache<MockClient<NeverCall>> {
+        let (client, _driver) = tendermint_rpc::MockClient::new(NeverCall);
+        let client = FendermintClient::new(client);
+        AddressCache::new(client, 0)
+    }
+
+    #[tokio::test]
+    async fn default_filter_to_query() {
+        let filter = et::Filter::default();
+
+        let addr_cache = mock_add_cache();
+
+        let queries = FilterKind::Logs(Box::new(filter))
+            .to_queries(&addr_cache)
+            .await
+            .expect("failed to convert");
+
+        assert_eq!(queries.len(), 1);
+        assert_eq!(queries[0].to_string(), "tm.event = 'Tx'");
+    }
 
     #[tokio::test]
     async fn filter_to_query() {
@@ -734,25 +771,7 @@ mod tests {
             ]))
         );
 
-        // These tests should not call the API for response resolution because it's just an ID.
-        struct NeverCall;
-
-        impl MockRequestMatcher for NeverCall {
-            fn response_for<R, S>(
-                &self,
-                _request: R,
-            ) -> Option<Result<R::Response, tendermint_rpc::Error>>
-            where
-                R: tendermint_rpc::Request<S>,
-                S: tendermint_rpc::dialect::Dialect,
-            {
-                unimplemented!("don't call")
-            }
-        }
-
-        let (client, _driver) = tendermint_rpc::MockClient::new(NeverCall);
-        let client = FendermintClient::new(client);
-        let addr_cache = AddressCache::new(client, 0);
+        let addr_cache = mock_add_cache();
 
         let queries = FilterKind::Logs(Box::new(filter))
             .to_queries(&addr_cache)
@@ -771,7 +790,7 @@ mod tests {
         .enumerate()
         {
             let q = queries[i].to_string();
-            let e = format!("tm.event = 'Tx' AND tx.height >= 1234 AND message.emitter = '100' AND message.t1 = '{}' AND message.t2 = '{}' AND message.t3 = '{}'", hash_hex(t1), hash_hex("Alice"), hash_hex(t3));
+            let e = format!("tx.height >= 1234 AND message.emitter = '100' AND message.t1 = '{}' AND message.t2 = '{}' AND message.t3 = '{}'", hash_hex(t1), hash_hex("Alice"), hash_hex(t3));
             assert_eq!(q, e, "combination {i}");
         }
     }
