@@ -502,8 +502,9 @@ where
         .context("failed to decode RLP as signed TypedTransaction")?;
 
     let sighash = tx.sighash();
+    let msghash = et::TxHash::from(ethers_core::utils::keccak256(rlp.as_raw()));
 
-    tracing::debug!(?sighash, "received raw transaction");
+    tracing::debug!(?sighash, ?msghash, "received raw transaction");
 
     let msg = to_fvm_message(tx, false)?;
     let msg = SignedMessage {
@@ -517,7 +518,7 @@ where
         // The following hash would be okay for ethers-rs,and we could use it to look up the TX with Tendermint,
         // but ethers.js would reject it because it doesn't match what Ethereum would use.
         // Ok(et::TxHash::from_slice(res.hash.as_bytes()))
-        Ok(sighash)
+        Ok(msghash)
     } else {
         error(
             ExitCode::new(res.code.value()),

@@ -405,7 +405,8 @@ where
     // However, ethers.js actually asserts this and we cannot disable it, rendering that, or any similar tool, unusable if we rely on
     // the default Tendermint transaction hash, which is a Sha256 hash of the entire payload (which includes the signature),
     // not a Keccak256 of the unsigned RLP.
-    assert_eq!(tx_hash, transfer.sighash(), "Ethereum hash should match");
+    // let expected_hash = todo!("we need to reproduce the signature to get the full RLP");
+    // assert_eq!(tx_hash, expected_hash, "Ethereum hash should match");
 
     // Get a block with transactions by number.
     let block = request(
