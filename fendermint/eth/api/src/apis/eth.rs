@@ -32,7 +32,7 @@ use tendermint_rpc::{
 };
 
 use crate::conv::from_eth::to_fvm_message;
-use crate::conv::from_tm::{self, find_sig_hash, to_chain_message, to_cumulative};
+use crate::conv::from_tm::{self, msg_hash, to_chain_message, to_cumulative};
 use crate::filters::{matches_topics, FilterId, FilterKind, FilterRecords};
 use crate::{
     conv::{
@@ -321,8 +321,14 @@ where
             let header: header::Response = data.tm().header(res.height).await?;
             let sp = data.client.state_params(Some(res.height)).await?;
             let chain_id = ChainID::from(sp.value.chain_id);
-            let sig_hash = find_sig_hash(&res.tx_result.events);
-            let mut tx = to_eth_transaction(msg, chain_id, sig_hash)?;
+            let hash = msg_hash(
+                &chain_id,
+                &res.tx_result.events,
+                &res.tx,
+                Some(&msg),
+                Some(res.hash),
+            );
+            let mut tx = to_eth_transaction(msg, chain_id, hash)?;
             tx.transaction_index = Some(et::U64::from(res.index));
             tx.block_hash = Some(et::H256::from_slice(header.header.hash().as_bytes()));
             tx.block_number = Some(et::U64::from(res.height.value()));
@@ -725,6 +731,14 @@ where
     let mut logs = Vec::new();
 
     while height <= to_height {
+        let state_params = data
+            .client
+            .state_params(Some(height))
+            .await
+            .context("failed to get state params")?;
+
+        let chain_id = ChainID::from(state_params.value.chain_id);
+
         if let Ok(block_results) = data.tm().block_results(height).await {
             if let Some(tx_results) = block_results.txs_results {
                 let block_number = et::U64::from(height.value());
@@ -737,18 +751,18 @@ where
 
                 let mut log_index_start = 0usize;
                 for ((tx_idx, tx_result), tx) in tx_results.iter().enumerate().zip(block.data()) {
-                    let tx_hash = find_sig_hash(&tx_result.events).unwrap_or_default();
-                    let tx_hash = et::H256::from_slice(tx_hash.as_bytes());
-                    let tx_idx = et::U64::from(tx_idx);
+                    let msg = match to_chain_message(tx) {
+                        Ok(ChainMessage::Signed(msg)) => msg,
+                        _ => continue,
+                    };
 
                     // Filter by address.
-                    if !addrs.is_empty() {
-                        if let Ok(ChainMessage::Signed(msg)) = to_chain_message(tx) {
-                            if !addrs.contains(&msg.message().from) {
-                                continue;
-                            }
-                        }
+                    if !addrs.is_empty() && !addrs.contains(&msg.message().from) {
+                        continue;
                     }
+
+                    let tx_hash = msg_hash(&chain_id, &tx_result.events, tx, Some(&msg), None);
+                    let tx_idx = et::U64::from(tx_idx);
 
                     let mut tx_logs = from_tm::to_logs(
                         &data.addr_cache,

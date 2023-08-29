@@ -247,7 +247,14 @@ where
                     .await?;
 
                 let chain_id = ChainID::from(sp.value.chain_id);
-                let mut tx = to_eth_transaction(msg, chain_id, None)
+
+                let hash = if let Ok(Some(h)) = msg.eco_hash(&chain_id) {
+                    et::TxHash::from(h)
+                } else {
+                    return error(ExitCode::USR_ILLEGAL_ARGUMENT, "incompatible transaction");
+                };
+
+                let mut tx = to_eth_transaction(msg, chain_id, hash)
                     .context("failed to convert to eth transaction")?;
                 tx.transaction_index = Some(index);
                 tx.block_hash = Some(et::H256::from_slice(block.header.hash().as_bytes()));
@@ -271,7 +278,7 @@ where
         // CometBFT indexing capabilities.
 
         // Doesn't work with `Query::from(EventType::Tx).and_eq()`
-        let query = Query::eq("sig.hash", hex::encode(tx_hash.as_bytes()));
+        let query = Query::eq("eco.hash", hex::encode(tx_hash.as_bytes()));
 
         match self
             .tm()

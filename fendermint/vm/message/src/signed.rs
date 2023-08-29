@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::anyhow;
+use cid::multihash::MultihashDigest;
 use cid::Cid;
 use ethers_core::types as et;
 use fendermint_vm_actor_interface::{eam, evm};
@@ -141,23 +142,27 @@ impl SignedMessage {
         }
     }
 
-    /// Calculate the exact hash that the client would have to sign.
+    /// Calculate the hash that ecosystem tools expect.
     ///
-    /// Some Ethereum clients expects this to be the transaction hash,
-    /// but it's different from the Tendermint transaction hash.
-    pub fn sig_hash(message: &Message, chain_id: &ChainID) -> Result<[u8; 32], SignedMessageError> {
-        match Self::signable(message, chain_id)? {
-            Signable::Ethereum((hash, _)) => Ok(hash.0),
-            Signable::Regular(data) => {
-                // blake2b 256 hash
-                let hash = blake2b_simd::Params::new()
-                    .hash_length(32)
-                    .to_state()
-                    .update(&data)
-                    .finalize();
+    /// For example some Ethereum clients expect transaction hashes to be the Keccak256 hash over the signed RLP,
+    /// and they refuse to accept the default Tendermint hash as an identifier for the transaction.
+    pub fn eco_hash(&self, chain_id: &ChainID) -> Result<Option<[u8; 32]>, SignedMessageError> {
+        if maybe_eth_address(&self.message.from).is_some() {
+            let tx = from_fvm::to_eth_transaction(self.message(), chain_id)
+                .map_err(SignedMessageError::Ethereum)?;
 
-                Ok(hash.as_bytes().try_into().expect("should be 32 bytes"))
-            }
+            let sig = from_fvm::to_eth_signature(self.signature())
+                .map_err(SignedMessageError::Ethereum)?;
+
+            let rlp = tx.rlp_signed(&sig);
+
+            let hash = cid::multihash::Code::Keccak256.digest(&rlp);
+            let hash = hash.digest().try_into().expect("Keccak256 is 32 bytes");
+
+            Ok(Some(hash))
+        } else {
+            // Use the default transaction ID.
+            Ok(None)
         }
     }
 
