@@ -207,14 +207,21 @@ pub async fn to_eth_receipt<C>(
     cumulative: &[(et::U256, usize)],
     header: &tendermint::block::Header,
     base_fee: &TokenAmount,
+    chain_id: &ChainID,
 ) -> anyhow::Result<et::TransactionReceipt>
 where
     C: Client + Sync + Send,
 {
     let block_hash = et::H256::from_slice(header.hash().as_bytes());
     let block_number = et::U64::from(result.height.value());
-    let transaction_hash = et::H256::from_slice(result.hash.as_bytes());
     let transaction_index = et::U64::from(result.index);
+    let transaction_hash = find_sig_hash(&result.tx_result.events)
+        .or_else(|| {
+            SignedMessage::sig_hash(msg.message(), chain_id)
+                .ok()
+                .map(et::H256::from)
+        })
+        .unwrap_or_default();
 
     let msg = &msg.message;
     // Lotus effective gas price is based on total spend divided by gas used,
@@ -467,7 +474,10 @@ pub fn to_chain_message(tx: &[u8]) -> anyhow::Result<ChainMessage> {
 
 /// Hash the transaction payload the way Tendermint does,
 /// to calculate the transaction hash which is otherwise unavailable.
-pub fn message_hash(tx: &[u8]) -> anyhow::Result<tendermint::Hash> {
+///
+/// This is here for reference only and should not be returned to Ethereum tools which expect
+/// the hash to be based on RLP and Keccak256.
+pub fn _message_hash(tx: &[u8]) -> anyhow::Result<tendermint::Hash> {
     // based on how `tendermint::Header::hash` works.
     let hash = tendermint::crypto::default::Sha256::digest(tx);
     let hash = tendermint::Hash::Sha256(hash);

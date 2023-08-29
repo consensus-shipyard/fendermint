@@ -32,7 +32,7 @@ use tendermint_rpc::{
 };
 
 use crate::conv::from_eth::to_fvm_message;
-use crate::conv::from_tm::{self, find_sig_hash, message_hash, to_chain_message, to_cumulative};
+use crate::conv::from_tm::{self, find_sig_hash, to_chain_message, to_cumulative};
 use crate::filters::{matches_topics, FilterId, FilterKind, FilterRecords};
 use crate::{
     conv::{
@@ -381,6 +381,7 @@ where
                 &cumulative,
                 &header.header,
                 &state_params.value.base_fee,
+                &ChainID::from(state_params.value.chain_id),
             )
             .await
             .context("failed to convert to receipt")?;
@@ -417,10 +418,8 @@ where
     {
         let msg = to_chain_message(&tx)?;
         if let ChainMessage::Signed(msg) = msg {
-            let hash = message_hash(&tx)?;
-
             let result = endpoint::tx::Response {
-                hash,
+                hash: Default::default(), // Shouldn't use this anyway.
                 height,
                 index: index as u32,
                 tx_result,
@@ -435,6 +434,7 @@ where
                 &cumulative,
                 &block.header,
                 &state_params.value.base_fee,
+                &ChainID::from(state_params.value.chain_id),
             )
             .await?;
             receipts.push(receipt)
@@ -496,6 +496,8 @@ where
         .context("failed to decode RLP as signed TypedTransaction")?;
 
     let sighash = tx.sighash();
+
+    tracing::debug!(?sighash, "received raw transaction");
 
     let msg = to_fvm_message(tx, false)?;
     let msg = SignedMessage {
@@ -735,7 +737,7 @@ where
 
                 let mut log_index_start = 0usize;
                 for ((tx_idx, tx_result), tx) in tx_results.iter().enumerate().zip(block.data()) {
-                    let tx_hash = from_tm::message_hash(tx)?;
+                    let tx_hash = find_sig_hash(&tx_result.events).unwrap_or_default();
                     let tx_hash = et::H256::from_slice(tx_hash.as_bytes());
                     let tx_idx = et::U64::from(tx_idx);
 

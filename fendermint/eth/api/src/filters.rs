@@ -10,10 +10,11 @@ use std::{
 
 use anyhow::{anyhow, bail, Context};
 use ethers_core::types as et;
-use fendermint_rpc::client::FendermintClient;
+use fendermint_rpc::{client::FendermintClient, query::QueryClient};
 use fendermint_vm_actor_interface::eam::EthAddress;
+use fendermint_vm_message::{chain::ChainMessage, signed::SignedMessage};
 use futures::{Future, StreamExt};
-use fvm_shared::{address::Address, error::ExitCode};
+use fvm_shared::{address::Address, chainid::ChainID, error::ExitCode};
 use serde::Serialize;
 use tendermint_rpc::{
     event::{Event, EventData},
@@ -27,7 +28,7 @@ use tokio::sync::{
 
 use crate::{
     cache::AddressCache,
-    conv::from_tm::{self, map_rpc_block_txs},
+    conv::from_tm::{self, find_sig_hash, map_rpc_block_txs},
     error::JsonRpcError,
     handlers::ws::{MethodNotification, Notification},
     state::{enrich_block, WebSocketSender},
@@ -229,6 +230,7 @@ where
         event: Event,
         to_block: F,
         addr_cache: &AddressCache<C>,
+        chain_id: &ChainID,
     ) -> anyhow::Result<()>
     where
         F: FnOnce(tendermint::Block) -> Pin<Box<dyn Future<Output = anyhow::Result<B>> + Send>>,
@@ -251,11 +253,11 @@ where
                 },
             ) => {
                 for tx in &block.data {
-                    // TODO #216: This is not the right hash for Ethereum.
-                    // If we had the chain ID here then we can parse it and re-hash it.
-                    let h = from_tm::message_hash(tx)?;
-                    let h = et::H256::from_slice(h.as_bytes());
-                    hashes.push(h);
+                    if let Ok(ChainMessage::Signed(msg)) = fvm_ipld_encoding::from_slice(tx) {
+                        if let Ok(h) = SignedMessage::sig_hash(msg.message(), chain_id) {
+                            hashes.push(et::TxHash::from(h))
+                        }
+                    }
                 }
             }
             (Self::Logs(ref mut logs), EventData::Tx { tx_result }) => {
@@ -305,8 +307,7 @@ where
                 let block_hash = et::H256::default();
                 let block_number = et::U64::from(tx_result.height);
 
-                let transaction_hash = from_tm::message_hash(&tx_result.tx)?;
-                let transaction_hash = et::H256::from_slice(transaction_hash.as_bytes());
+                let transaction_hash = find_sig_hash(&tx_result.result.events).unwrap_or_default();
 
                 // TODO: The transaction index comes as None.
                 let transaction_index = et::U64::from(tx_result.index.unwrap_or_default());
@@ -412,6 +413,13 @@ impl FilterDriver {
         let id = self.id;
 
         tracing::info!(?id, "handling filter events");
+
+        // Get the Chain ID once. In practice it will not change and will last the entire session.
+        let chain_id = client
+            .state_params(None)
+            .await
+            .map(|state_params| ChainID::from(state_params.value.chain_id));
+
         while let Some(cmd) = self.rx.recv().await {
             match self.state {
                 FilterState::Poll(ref mut state) => {
@@ -426,20 +434,26 @@ impl FilterDriver {
                                 continue;
                             }
 
-                            let res = state
-                                .records
-                                .update(
-                                    event,
-                                    |block| {
-                                        Box::pin(async move {
-                                            Ok(et::H256::from_slice(
-                                                block.header().hash().as_bytes(),
-                                            ))
-                                        })
-                                    },
-                                    &addr_cache,
-                                )
-                                .await;
+                            let res = match &chain_id {
+                                Ok(chain_id) => {
+                                    state
+                                        .records
+                                        .update(
+                                            event,
+                                            |block| {
+                                                Box::pin(async move {
+                                                    Ok(et::H256::from_slice(
+                                                        block.header().hash().as_bytes(),
+                                                    ))
+                                                })
+                                            },
+                                            &addr_cache,
+                                            chain_id,
+                                        )
+                                        .await
+                                }
+                                Err(e) => Err(anyhow!("failed to get chain ID: {e}")),
+                            };
 
                             if let Err(err) = res {
                                 tracing::error!(?id, "failed to update filter: {err}");
@@ -472,21 +486,27 @@ impl FilterDriver {
                     FilterCommand::Update(event) => {
                         let mut records = FilterRecords::<et::Block<et::TxHash>>::new(&state.kind);
 
-                        let res = records
-                            .update(
-                                event,
-                                |block| {
-                                    let client = client.clone();
-                                    Box::pin(async move {
-                                        let block = enrich_block(&client, block).await?;
-                                        let block: anyhow::Result<et::Block<et::TxHash>> =
-                                            map_rpc_block_txs(block, |tx| Ok(tx.hash()));
-                                        block
-                                    })
-                                },
-                                &addr_cache,
-                            )
-                            .await;
+                        let res = match &chain_id {
+                            Ok(chain_id) => {
+                                records
+                                    .update(
+                                        event,
+                                        |block| {
+                                            let client = client.clone();
+                                            Box::pin(async move {
+                                                let block = enrich_block(&client, block).await?;
+                                                let block: anyhow::Result<et::Block<et::TxHash>> =
+                                                    map_rpc_block_txs(block, |tx| Ok(tx.hash()));
+                                                block
+                                            })
+                                        },
+                                        &addr_cache,
+                                        chain_id,
+                                    )
+                                    .await
+                            }
+                            Err(e) => Err(anyhow!("failed to get chain ID: {e}")),
+                        };
 
                         match res {
                             Err(e) => {
