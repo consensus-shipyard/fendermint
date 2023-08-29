@@ -5,6 +5,7 @@ use anyhow::{anyhow, Context};
 use fendermint_vm_core::Timestamp;
 use fendermint_vm_genesis::Validator;
 use fendermint_vm_interpreter::fvm::{FvmApplyRet, FvmCheckRet, FvmQueryRet};
+use fendermint_vm_message::signed::DomainHash;
 use fvm_shared::{error::ExitCode, event::StampedEvent};
 use prost::Message;
 use std::num::NonZeroU32;
@@ -52,7 +53,7 @@ pub fn invalid_query(err: AppError, description: String) -> response::Query {
     }
 }
 
-pub fn to_deliver_tx(ret: FvmApplyRet, eco_hash: Option<[u8; 32]>) -> response::DeliverTx {
+pub fn to_deliver_tx(ret: FvmApplyRet, domain_hash: Option<DomainHash>) -> response::DeliverTx {
     let receipt = ret.apply_ret.msg_receipt;
 
     // Based on the sanity check in the `DefaultExecutor`.
@@ -66,8 +67,8 @@ pub fn to_deliver_tx(ret: FvmApplyRet, eco_hash: Option<[u8; 32]>) -> response::
     let mut events = to_events("message", ret.apply_ret.events);
 
     // Emit an event which causes Tendermint to index our transaction with a custom hash.
-    if let Some(eco_hash) = eco_hash {
-        events.push(to_eco_hash_event(&eco_hash));
+    if let Some(h) = domain_hash {
+        events.push(to_domain_hash_event(&h));
     }
 
     response::DeliverTx {
@@ -161,12 +162,15 @@ pub fn to_events(kind: &str, stamped_events: Vec<StampedEvent>) -> Vec<Event> {
 }
 
 /// Construct an indexable event from a custom transaction hash.
-pub fn to_eco_hash_event(eco_hash: &[u8]) -> Event {
+pub fn to_domain_hash_event(domain_hash: &DomainHash) -> Event {
+    let (k, v) = match domain_hash {
+        DomainHash::Eth(h) => ("eth", hex::encode(h)),
+    };
     Event::new(
-        "eco",
+        k,
         vec![EventAttribute {
             key: "hash".to_string(),
-            value: hex::encode(eco_hash),
+            value: v,
             index: true,
         }],
     )

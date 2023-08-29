@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use fendermint_vm_core::chainid::HasChainID;
 use fendermint_vm_message::{
     query::FvmQuery,
-    signed::{chain_id_bytes, SignedMessage, SignedMessageError},
+    signed::{chain_id_bytes, DomainHash, SignedMessage, SignedMessageError},
 };
 use fvm_ipld_encoding::Error as IpldError;
 use fvm_shared::{chainid::ChainID, crypto::signature::Signature};
@@ -22,9 +22,7 @@ pub struct InvalidSignature(pub String);
 
 pub struct SignedMessageApplyRet {
     pub fvm: FvmApplyRet,
-    /// The hash expected by ecosystem tools, if they are peculiar about
-    /// not using the default Tendermint hash, which is Sha256 over the data.
-    pub eco_hash: Option<[u8; 32]>,
+    pub domain_hash: Option<DomainHash>,
 }
 
 pub type SignedMessageApplyRes = Result<SignedMessageApplyRet, InvalidSignature>;
@@ -57,9 +55,12 @@ impl VerifiableMessage {
         }
     }
 
-    pub fn eco_hash(&self, chain_id: &ChainID) -> Result<Option<[u8; 32]>, SignedMessageError> {
+    pub fn domain_hash(
+        &self,
+        chain_id: &ChainID,
+    ) -> Result<Option<DomainHash>, SignedMessageError> {
         match self {
-            Self::Signed(m) => m.eco_hash(chain_id),
+            Self::Signed(m) => m.domain_hash(chain_id),
             Self::Synthetic(_) => Ok(None),
         }
     }
@@ -142,9 +143,12 @@ where
                 Ok((state, Err(InvalidSignature(s))))
             }
             Ok(()) => {
-                let eco_hash = msg.eco_hash(&chain_id)?;
+                let domain_hash = msg.domain_hash(&chain_id)?;
                 let (state, ret) = self.inner.deliver(state, msg.into_message()).await?;
-                let ret = SignedMessageApplyRet { fvm: ret, eco_hash };
+                let ret = SignedMessageApplyRet {
+                    fvm: ret,
+                    domain_hash,
+                };
                 Ok((state, Ok(ret)))
             }
         }

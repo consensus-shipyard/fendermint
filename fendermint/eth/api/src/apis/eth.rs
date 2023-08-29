@@ -321,13 +321,7 @@ where
             let header: header::Response = data.tm().header(res.height).await?;
             let sp = data.client.state_params(Some(res.height)).await?;
             let chain_id = ChainID::from(sp.value.chain_id);
-            let hash = msg_hash(
-                &chain_id,
-                &res.tx_result.events,
-                &res.tx,
-                Some(&msg),
-                Some(res.hash),
-            );
+            let hash = msg_hash(&res.tx_result.events, &res.tx);
             let mut tx = to_eth_transaction(msg, chain_id, hash)?;
             tx.transaction_index = Some(et::U64::from(res.index));
             tx.block_hash = Some(et::H256::from_slice(header.header.hash().as_bytes()));
@@ -387,7 +381,6 @@ where
                 &cumulative,
                 &header.header,
                 &state_params.value.base_fee,
-                &ChainID::from(state_params.value.chain_id),
             )
             .await
             .context("failed to convert to receipt")?;
@@ -440,7 +433,6 @@ where
                 &cumulative,
                 &block.header,
                 &state_params.value.base_fee,
-                &ChainID::from(state_params.value.chain_id),
             )
             .await?;
             receipts.push(receipt)
@@ -732,14 +724,6 @@ where
     let mut logs = Vec::new();
 
     while height <= to_height {
-        let state_params = data
-            .client
-            .state_params(Some(height))
-            .await
-            .context("failed to get state params")?;
-
-        let chain_id = ChainID::from(state_params.value.chain_id);
-
         if let Ok(block_results) = data.tm().block_results(height).await {
             if let Some(tx_results) = block_results.txs_results {
                 let block_number = et::U64::from(height.value());
@@ -762,7 +746,7 @@ where
                         continue;
                     }
 
-                    let tx_hash = msg_hash(&chain_id, &tx_result.events, tx, Some(&msg), None);
+                    let tx_hash = msg_hash(&tx_result.events, tx);
                     let tx_idx = et::U64::from(tx_idx);
 
                     let mut tx_logs = from_tm::to_logs(

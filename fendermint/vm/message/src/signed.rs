@@ -34,6 +34,16 @@ pub enum SignedMessageError {
     Ethereum(#[from] anyhow::Error),
 }
 
+/// Domain specific transaction hash.
+///
+/// Some tools like ethers.js refuse to accept Tendermint hashes,
+/// which use a different algorithm than Ethereum.
+///
+/// We can potentially extend this list to include CID based indexing.
+pub enum DomainHash {
+    Eth([u8; 32]),
+}
+
 /// Represents a wrapped message with signature bytes.
 ///
 /// This is the message that the client needs to send, but only the `message`
@@ -142,11 +152,11 @@ impl SignedMessage {
         }
     }
 
-    /// Calculate the hash that ecosystem tools expect.
-    ///
-    /// For example some Ethereum clients expect transaction hashes to be the Keccak256 hash over the signed RLP,
-    /// and they refuse to accept the default Tendermint hash as an identifier for the transaction.
-    pub fn eco_hash(&self, chain_id: &ChainID) -> Result<Option<[u8; 32]>, SignedMessageError> {
+    /// Calculate an optional hash that ecosystem tools expect.
+    pub fn domain_hash(
+        &self,
+        chain_id: &ChainID,
+    ) -> Result<Option<DomainHash>, SignedMessageError> {
         if maybe_eth_address(&self.message.from).is_some() {
             let tx = from_fvm::to_eth_transaction(self.message(), chain_id)
                 .map_err(SignedMessageError::Ethereum)?;
@@ -159,7 +169,7 @@ impl SignedMessage {
             let hash = cid::multihash::Code::Keccak256.digest(&rlp);
             let hash = hash.digest().try_into().expect("Keccak256 is 32 bytes");
 
-            Ok(Some(hash))
+            Ok(Some(DomainHash::Eth(hash)))
         } else {
             // Use the default transaction ID.
             Ok(None)

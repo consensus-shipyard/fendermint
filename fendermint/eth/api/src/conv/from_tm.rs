@@ -101,7 +101,7 @@ pub fn to_eth_block(
         let msg = to_chain_message(data)?;
 
         if let ChainMessage::Signed(msg) = msg {
-            let hash = msg_hash(&chain_id, &result.events, data, Some(&msg), None);
+            let hash = msg_hash(&result.events, data);
 
             let mut tx = to_eth_transaction(msg, chain_id, hash)
                 .context("failed to convert to eth transaction")?;
@@ -203,7 +203,6 @@ pub async fn to_eth_receipt<C>(
     cumulative: &[(et::U256, usize)],
     header: &tendermint::block::Header,
     base_fee: &TokenAmount,
-    chain_id: &ChainID,
 ) -> anyhow::Result<et::TransactionReceipt>
 where
     C: Client + Sync + Send,
@@ -211,13 +210,7 @@ where
     let block_hash = et::H256::from_slice(header.hash().as_bytes());
     let block_number = et::U64::from(result.height.value());
     let transaction_index = et::U64::from(result.index);
-    let transaction_hash = msg_hash(
-        chain_id,
-        &result.tx_result.events,
-        &result.tx,
-        Some(msg),
-        Some(result.hash),
-    );
+    let transaction_hash = msg_hash(&result.tx_result.events, &result.tx);
 
     let msg = &msg.message;
     // Lotus effective gas price is based on total spend divided by gas used,
@@ -480,10 +473,10 @@ fn message_hash(tx: &[u8]) -> tendermint::Hash {
 }
 
 /// Best effort to find and parse any `eco.hash` attribute emitted among the events.
-fn find_eco_hash(events: &[abci::Event]) -> Option<et::TxHash> {
+fn find_eth_hash(events: &[abci::Event]) -> Option<et::TxHash> {
     events
         .iter()
-        .find(|e| e.kind == "eco")
+        .find(|e| e.kind == "eth")
         .and_then(|e| e.attributes.iter().find(|a| a.key == "hash"))
         .and_then(|a| hex::decode(&a.value).ok())
         .filter(|bz| bz.len() == 32)
@@ -491,27 +484,11 @@ fn find_eco_hash(events: &[abci::Event]) -> Option<et::TxHash> {
 }
 
 // Calculate some kind of hash for the message, preferrably one the tools expect.
-pub fn msg_hash(
-    chain_id: &ChainID,
-    events: &[Event],
-    tx: &[u8],
-    msg: Option<&SignedMessage>,
-    hash: Option<tendermint::Hash>,
-) -> et::TxHash {
-    if let Some(eco_hash) = find_eco_hash(events) {
-        return eco_hash;
+pub fn msg_hash(events: &[Event], tx: &[u8]) -> et::TxHash {
+    if let Some(h) = find_eth_hash(events) {
+        h
+    } else {
+        // Return the default hash, at least there is something
+        et::TxHash::from_slice(message_hash(tx).as_bytes())
     }
-    if let Some(msg) = msg {
-        if let Ok(Some(h)) = msg.eco_hash(chain_id) {
-            return et::TxHash::from(h);
-        }
-    }
-    if let Ok(ChainMessage::Signed(msg)) = fvm_ipld_encoding::from_slice(tx) {
-        if let Ok(Some(h)) = msg.eco_hash(chain_id) {
-            return et::TxHash::from(h);
-        }
-    }
-    // If all else failed, return the default Tendermint hash.
-    let hash = hash.unwrap_or_else(|| message_hash(tx));
-    et::TxHash::from_slice(hash.as_bytes())
 }
