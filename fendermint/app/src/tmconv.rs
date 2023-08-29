@@ -69,7 +69,7 @@ pub fn to_deliver_tx(ret: SignedMessageApplyRet) -> response::DeliverTx {
     let data: bytes::Bytes = receipt.return_data.to_vec().into();
     let mut events = to_events("message", ret.apply_ret.events);
 
-    // Emit an event so which causes Tendermint to index our transaction with a custom hash.
+    // Emit an event which causes Tendermint to index our transaction with a custom hash.
     events.push(to_sig_hash_event(&sig_hash));
 
     response::DeliverTx {

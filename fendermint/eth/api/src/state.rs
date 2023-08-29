@@ -278,8 +278,7 @@ where
             .tx_search(query, false, 1, 1, Order::Ascending)
             .await
         {
-            Ok(res) if res.txs.is_empty() => Ok(None),
-            Ok(res) => Ok(Some(res.txs.into_iter().next().expect("non-empty"))),
+            Ok(res) => Ok(res.txs.into_iter().next()),
             Err(e) => error(ExitCode::USR_UNSPECIFIED, e),
         }
     }
