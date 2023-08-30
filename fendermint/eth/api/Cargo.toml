@@ -24,6 +24,7 @@ tracing = { workspace = true }
 tendermint = { workspace = true }
 tendermint-rpc = { workspace = true }
 tokio = { workspace = true }
+reqwest = { workspace = true }
 
 cid = { workspace = true }
 fvm_shared = { workspace = true }

@@ -21,9 +21,12 @@ use fendermint_vm_message::chain::ChainMessage;
 use fendermint_vm_message::signed::SignedMessage;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
+use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::crypto::signature::Signature;
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::{chainid::ChainID, error::ExitCode};
 use jsonrpc_v2::Params;
+use rand::Rng;
 use tendermint_rpc::endpoint::{self, status};
 use tendermint_rpc::SubscriptionClient;
 use tendermint_rpc::{
@@ -43,7 +46,12 @@ use crate::{
     error, JsonRpcData, JsonRpcResult,
 };
 
+// Lotus uses only 2 epochs to compupte the MAX_PRIO_FEE
+// but they compute the median over (on average) 10 blocks,
+// 5 per blocks. Thus, our 10 heights instead of 2.
+const NUM_BLOCKS_MAX_PRIO_FEE: u64 = 10;
 const MAX_FEE_HIST_SIZE: usize = 1024;
+const MIN_GAS_PREMIUM: u64 = 100_000;
 
 /// Returns a list of addresses owned by client.
 ///
@@ -79,6 +87,121 @@ where
     let res = data.client.state_params(None).await?;
     let version: u32 = res.value.network_version.into();
     Ok(version.to_string())
+}
+
+/// Returns a fee per gas that is an estimate of how much you can pay as a
+/// priority fee, or 'tip', to get a transaction included in the current block.
+pub async fn max_priority_fee_per_gas<C>(data: JsonRpcData<C>) -> JsonRpcResult<et::U256>
+where
+    C: Client + Sync + Send,
+{
+    // get the latest block
+    let res: block::Response = data.tm().latest_block().await?;
+    let latest_h = res.block.header.height;
+
+    // get consensus params to fetch block gas limit
+    // (this just needs to be done once as we assume that is constant
+    // for all blocks)
+    let consensus_params: consensus_params::Response = data
+        .tm()
+        .consensus_params(latest_h)
+        .await
+        .context("failed to get consensus params")?;
+    let mut block_gas_limit = consensus_params.consensus_params.block.max_gas;
+    if block_gas_limit <= 0 {
+        block_gas_limit =
+            i64::try_from(fvm_shared::BLOCK_GAS_LIMIT).expect("FVM block gas limit not i64")
+    };
+
+    let mut premiums = Vec::new();
+    // iterate through the blocks in the range
+    // we may be able to de-duplicate a lot of this code from fee_history
+    let latest_h: u64 = latest_h.into();
+    let mut blk = latest_h;
+    while blk > latest_h - NUM_BLOCKS_MAX_PRIO_FEE {
+        let block = data
+            .block_by_height(blk.into())
+            .await
+            .context("failed to get block")?;
+
+        let height = block.header().height;
+
+        // Genesis has height 1, but no relevant fees.
+        if height.value() <= 1 {
+            break;
+        }
+        let state_params = data.client.state_params(Some(height)).await?;
+        let base_fee = &state_params.value.base_fee;
+
+        // The latest block might not have results yet.
+        if let Ok(block_results) = data.tm().block_results(height).await {
+            let txs_results = block_results.txs_results.unwrap_or_default();
+
+            for (tx, txres) in block.data().iter().zip(txs_results) {
+                let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(tx)
+                    .context("failed to decode tx as ChainMessage")?;
+
+                if let ChainMessage::Signed(msg) = msg {
+                    let premium = crate::gas::effective_gas_premium(&msg.message, base_fee);
+                    premiums.push((premium, txres.gas_used));
+                }
+            }
+        }
+        blk -= 1;
+    }
+
+    // compute median gas price
+    let mut median = median_gas_premium(&mut premiums, block_gas_limit);
+    let min_premium = TokenAmount::from_atto(BigInt::from(MIN_GAS_PREMIUM));
+    if median < min_premium {
+        median = min_premium;
+    }
+
+    // add some noise to normalize behaviour of message selection
+    // mean 1, stddev 0.005 => 95% within +-1%
+    const PRECISION: u32 = 32;
+    let mut rng = rand::thread_rng();
+    let noise: f64 = 1.0 + rng.gen::<f64>() * 0.005;
+    let precision: i64 = 32;
+    let coeff: u64 = ((noise * (1 << precision) as f64) as u64) + 1;
+
+    median *= BigInt::from(coeff);
+    median.div_ceil(BigInt::from(1 << PRECISION));
+
+    Ok(to_eth_tokens(&median)?)
+}
+
+// finds 55th percntile instead of median to put negative pressure on gas price
+// Rust implementation of:
+// https://github.com/consensus-shipyard/lotus/blob/156f5556b3ecc042764d76308dca357da3adfb4d/node/impl/full/gas.go#L144
+fn median_gas_premium(prices: &mut Vec<(TokenAmount, i64)>, block_gas_target: i64) -> TokenAmount {
+    // Sort in descending order based on premium
+    prices.sort_by(|a, b| b.0.cmp(&a.0));
+    let blocks = prices.len() as i64;
+
+    let mut at = block_gas_target * blocks / 2;
+    at += block_gas_target * blocks / (2 * 20);
+
+    let mut prev1 = TokenAmount::zero();
+    let mut prev2 = TokenAmount::zero();
+
+    for (price, limit) in prices.iter() {
+        prev2 = prev1.clone();
+        prev1 = price.clone();
+        at -= limit;
+        if at < 0 {
+            break;
+        }
+    }
+
+    let mut premium = prev1.clone();
+
+    if prev2 != TokenAmount::zero() {
+        premium += &prev2;
+        premium.div_ceil(BigInt::from(2));
+    }
+
+    premium
 }
 
 /// Returns transaction base fee per gas and effective priority fee per gas for the requested/supported block range.

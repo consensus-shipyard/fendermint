@@ -52,6 +52,7 @@ use ethers_core::{
 };
 use fendermint_rpc::message::MessageFactory;
 use fendermint_vm_actor_interface::eam::EthAddress;
+use fvm_shared::{bigint::BigInt, econ::TokenAmount};
 use libsecp256k1::SecretKey;
 use tracing::Level;
 
@@ -466,6 +467,24 @@ where
         |gas: &U256| !gas.is_zero(),
     )?;
 
+    request(
+        "eth_estimateGas w/o height",
+        provider.estimate_gas(&probe_tx, None).await,
+        |gas: &U256| !gas.is_zero(),
+    )?;
+
+    request(
+        "eth_getBlockByHash w/o txns",
+        provider.get_block(BlockId::Hash(bh)).await,
+        |b| b.is_some() && b.as_ref().map(|b| b.number).flatten() == Some(bn),
+    )?;
+
+    request(
+        "eth_maxPriorityFeePerGas",
+        test_max_priority_fee_call(opts).await,
+        |premium: &TokenAmount| !premium.is_zero(),
+    )?;
+
     tracing::info!("deploying SimpleCoin");
 
     let bytecode =
@@ -751,4 +770,39 @@ where
         .context("failed to fill transaction")?;
 
     Ok(call)
+}
+
+/// Performs an `eth_maxPriorityFeePerGas` call to the ETH RPC
+/// This method is not provided by `ethers`, so we have to perform
+/// it manually.
+async fn test_max_priority_fee_call(opts: &Options) -> anyhow::Result<TokenAmount> {
+    let client = reqwest::Client::new();
+    let url = opts.http_endpoint();
+
+    let request_data = r#"{
+        "jsonrpc": "2.0",
+        "id": 0,
+        "method": "eth_maxPriorityFeePerGas",
+        "params": []
+    }"#;
+
+    let response = client
+        .post(url)
+        .header("Content-Type", "application/json")
+        .body(request_data)
+        .send()
+        .await?;
+
+    let response_text: String = response.text().await?;
+    let parsed_response: serde_json::Value = serde_json::from_str(&response_text)?;
+
+    if let Some(res) = parsed_response["result"].as_str() {
+        if let Ok(val) = u64::from_str_radix(&res[2..], 16) {
+            return Ok(TokenAmount::from_atto(BigInt::from(val)));
+        } else {
+            return Err(anyhow::anyhow!("fail to convert result to hex"));
+        }
+    }
+
+    Err(anyhow::anyhow!("call to eth_maxPriorityFeePerGas failed"))
 }
