@@ -1,3 +1,5 @@
+// Copyright 2022-2023 Protocol Labs
+// SPDX-License-Identifier: Apache-2.0, MIT
 use async_stm::{atomically_or_err, StmDynError};
 use fendermint_vm_topdown::{
     Config, Error, IPCAgentProxy, IPCParentFinality, InMemoryFinalityProvider,
