@@ -210,6 +210,7 @@ impl TestAccount {
 // - eth_getTransactionByHash
 // - eth_getTransactionReceipt
 // - eth_feeHistory
+// - eth_maxPriorityFeePerGas
 // - eth_sendRawTransaction
 // - eth_call
 // - eth_estimateGas
