@@ -3,10 +3,12 @@
 
 use anyhow::{anyhow, Context};
 use fendermint_abci::ApplicationService;
-use fendermint_app::{App, AppStore};
+use fendermint_app::{App, AppConfig, AppStore};
 use fendermint_rocksdb::{blockstore::NamespaceBlockstore, namespaces, RocksDb, RocksDbConfig};
 use fendermint_vm_interpreter::{
-    bytes::BytesMessageInterpreter, chain::ChainMessageInterpreter, fvm::FvmMessageInterpreter,
+    bytes::{BytesMessageInterpreter, ProposalPrepareMode},
+    chain::{ChainMessageInterpreter, CheckpointPool},
+    fvm::FvmMessageInterpreter,
     signed::SignedMessageInterpreter,
 };
 use tracing::info;
@@ -27,7 +29,8 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
     );
     let interpreter = SignedMessageInterpreter::new(interpreter);
     let interpreter = ChainMessageInterpreter::new(interpreter);
-    let interpreter = BytesMessageInterpreter::new(interpreter);
+    let interpreter =
+        BytesMessageInterpreter::new(interpreter, ProposalPrepareMode::AppendOnly, false);
 
     let ns = Namespaces::default();
     let db = open_db(&settings, &ns).context("error opening DB")?;
@@ -35,14 +38,19 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
     let state_store =
         NamespaceBlockstore::new(db.clone(), ns.state_store).context("error creating state DB")?;
 
+    let resolve_pool = CheckpointPool::new();
+
     let app: App<_, _, AppStore, _> = App::new(
+        AppConfig {
+            app_namespace: ns.app,
+            state_hist_namespace: ns.state_hist,
+            state_hist_size: settings.db.state_hist_size,
+            builtin_actors_bundle: settings.builtin_actors_bundle(),
+        },
         db,
         state_store,
-        settings.builtin_actors_bundle(),
-        ns.app,
-        ns.state_hist,
-        settings.db.state_hist_size,
         interpreter,
+        resolve_pool,
     )?;
 
     let service = ApplicationService(app);

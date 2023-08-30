@@ -14,9 +14,11 @@ fendermint_vm_ipc_actors = { path = "../ipc_actors" }
 fendermint_vm_core = { path = "../core" }
 fendermint_vm_genesis = { path = "../genesis" }
 fendermint_vm_message = { path = "../message" }
+fendermint_vm_resolver = { path = "../resolver" }
 fendermint_eth_hardhat = { path = "../../eth/hardhat" }
 
 async-trait = { workspace = true }
+async-stm = { workspace = true }
 anyhow = { workspace = true }
 ethers = { workspace = true }
 hex = { workspace = true }
@@ -24,6 +26,7 @@ num-traits = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+thiserror = { workspace = true }
 
 cid = { workspace = true }
 fvm = { workspace = true }
@@ -42,7 +45,7 @@ pin-project = { workspace = true }
 
 [dev-dependencies]
 quickcheck = { workspace = true }
-fvm = { workspace = true, features= ["arb", "testing"] }
+fvm = { workspace = true, features = ["arb", "testing"] }
 fendermint_vm_genesis = { path = "../genesis", features = ["arb"] }
 tempfile = "3.7.0"
 

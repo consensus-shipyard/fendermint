@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, bail, Context};
 use ethers_core::types as et;
 use fendermint_rpc::client::FendermintClient;
 use fendermint_vm_actor_interface::eam::EthAddress;
@@ -26,6 +26,7 @@ use tokio::sync::{
 };
 
 use crate::{
+    cache::AddressCache,
     conv::from_tm::{self, map_rpc_block_txs},
     error::JsonRpcError,
     handlers::ws::{MethodNotification, Notification},
@@ -88,7 +89,10 @@ impl FilterKind {
     /// cartesian product of all conditions in it and subscribe individually.
     ///
     /// https://docs.tendermint.com/v0.34/rpc/#/Websocket/subscribe
-    pub fn to_queries(&self) -> anyhow::Result<Vec<Query>> {
+    pub async fn to_queries<C>(&self, addr_cache: &AddressCache<C>) -> anyhow::Result<Vec<Query>>
+    where
+        C: Client + Sync + Send,
+    {
         match self {
             FilterKind::NewBlocks => Ok(vec![Query::from(EventType::NewBlock)]),
             // Testing indicates that `EventType::Tx` might only be raised
@@ -115,22 +119,29 @@ impl FilterKind {
                     Some(et::ValueOrArray::Array(addrs)) => addrs.clone(),
                 };
 
+                // We need to turn the Ethereum addresses into ActorIDs because that's
+                // how the event emitter can be filtered.
                 let addrs = addrs
                     .into_iter()
-                    .map(|addr| {
-                        Address::from(EthAddress(addr.0))
-                            .id()
-                            .context("only f0 type addresses are supported")
-                    })
-                    .collect::<Result<Vec<u64>, _>>()?;
+                    .map(|addr| Address::from(EthAddress(addr.0)))
+                    .collect::<Vec<_>>();
 
-                if !addrs.is_empty() {
-                    queries = addrs
+                let mut actor_ids = Vec::new();
+                for addr in addrs {
+                    if let Some(actor_id) = addr_cache.lookup_id(&addr).await? {
+                        actor_ids.push(actor_id);
+                    } else {
+                        bail!("cannot find actor {}", addr);
+                    }
+                }
+
+                if !actor_ids.is_empty() {
+                    queries = actor_ids
                         .iter()
-                        .flat_map(|addr| {
+                        .flat_map(|actor_id| {
                             queries
                                 .iter()
-                                .map(|q| q.clone().and_eq("message.emitter", addr.to_string()))
+                                .map(|q| q.clone().and_eq("message.emitter", actor_id.to_string()))
                         })
                         .collect();
                 };
@@ -210,9 +221,15 @@ where
     }
 
     /// Accumulate the events.
-    async fn update<F>(&mut self, event: Event, f: F) -> anyhow::Result<()>
+    async fn update<F, C>(
+        &mut self,
+        event: Event,
+        to_block: F,
+        addr_cache: &AddressCache<C>,
+    ) -> anyhow::Result<()>
     where
         F: FnOnce(tendermint::Block) -> Pin<Box<dyn Future<Output = anyhow::Result<B>> + Send>>,
+        C: Client + Sync + Send,
     {
         match (self, event.data) {
             (
@@ -221,7 +238,7 @@ where
                     block: Some(block), ..
                 },
             ) => {
-                let b: B = f(block).await?;
+                let b: B = to_block(block).await?;
                 blocks.push(b);
             }
             (
@@ -293,13 +310,15 @@ where
                 let log_index_start = Default::default();
 
                 let tx_logs = from_tm::to_logs(
+                    addr_cache,
                     &tx_result.result.events,
                     block_hash,
                     block_number,
                     transaction_hash,
                     transaction_index,
                     log_index_start,
-                )?;
+                )
+                .await?;
 
                 logs.extend(tx_logs)
             }
@@ -319,15 +338,15 @@ fn to_json_vec<R: Serialize>(records: &[R]) -> anyhow::Result<Vec<serde_json::Va
     Ok(values)
 }
 
-pub struct FilterDriver<C> {
+pub struct FilterDriver {
     id: FilterId,
-    state: FilterState<C>,
+    state: FilterState,
     rx: Receiver<FilterCommand>,
 }
 
-enum FilterState<C> {
+enum FilterState {
     Poll(PollState),
-    Subscription(SubscriptionState<C>),
+    Subscription(SubscriptionState),
 }
 
 /// Accumulate changes between polls.
@@ -341,31 +360,22 @@ struct PollState {
 }
 
 /// Send changes to a WebSocket as soon as they happen, one by one, not in batches.
-struct SubscriptionState<C> {
-    client: FendermintClient<C>,
+struct SubscriptionState {
     kind: FilterKind,
     ws_sender: WebSocketSender,
 }
 
-impl<C> FilterDriver<C>
-where
-    C: Client + Send + Sync + Clone + 'static,
-{
+impl FilterDriver {
     pub fn new(
         id: FilterId,
         timeout: Duration,
         kind: FilterKind,
         ws_sender: Option<WebSocketSender>,
-        client: FendermintClient<C>,
     ) -> (Self, Sender<FilterCommand>) {
         let (tx, rx) = tokio::sync::mpsc::channel(10);
 
         let state = match ws_sender {
-            Some(ws_sender) => FilterState::Subscription(SubscriptionState {
-                kind,
-                ws_sender,
-                client,
-            }),
+            Some(ws_sender) => FilterState::Subscription(SubscriptionState { kind, ws_sender }),
             None => FilterState::Poll(PollState {
                 timeout,
                 last_poll: Instant::now(),
@@ -386,7 +396,14 @@ where
     /// Consume commands until some end condition is met.
     ///
     /// In the end the filter removes itself from the registry.
-    pub async fn run(mut self, filters: FilterMap) {
+    pub async fn run<C>(
+        mut self,
+        filters: FilterMap,
+        client: FendermintClient<C>,
+        addr_cache: AddressCache<C>,
+    ) where
+        C: Client + Send + Sync + Clone + 'static,
+    {
         let id = self.id;
 
         tracing::info!(?id, "handling filter events");
@@ -406,11 +423,17 @@ where
 
                             let res = state
                                 .records
-                                .update(event, |block| {
-                                    Box::pin(async move {
-                                        Ok(et::H256::from_slice(block.header().hash().as_bytes()))
-                                    })
-                                })
+                                .update(
+                                    event,
+                                    |block| {
+                                        Box::pin(async move {
+                                            Ok(et::H256::from_slice(
+                                                block.header().hash().as_bytes(),
+                                            ))
+                                        })
+                                    },
+                                    &addr_cache,
+                                )
                                 .await;
 
                             if let Err(err) = res {
@@ -445,15 +468,19 @@ where
                         let mut records = FilterRecords::<et::Block<et::TxHash>>::new(&state.kind);
 
                         let res = records
-                            .update(event, |block| {
-                                let client = state.client.clone();
-                                Box::pin(async move {
-                                    let block = enrich_block(&client, block).await?;
-                                    let block: anyhow::Result<et::Block<et::TxHash>> =
-                                        map_rpc_block_txs(block, |tx| Ok(tx.hash()));
-                                    block
-                                })
-                            })
+                            .update(
+                                event,
+                                |block| {
+                                    let client = client.clone();
+                                    Box::pin(async move {
+                                        let block = enrich_block(&client, block).await?;
+                                        let block: anyhow::Result<et::Block<et::TxHash>> =
+                                            map_rpc_block_txs(block, |tx| Ok(tx.hash()));
+                                        block
+                                    })
+                                },
+                                &addr_cache,
+                            )
                             .await;
 
                         match res {
@@ -635,11 +662,15 @@ pub async fn run_subscription(id: FilterId, mut sub: Subscription, tx: Sender<Fi
 #[cfg(test)]
 mod tests {
     use ethers_core::types as et;
+    use fendermint_rpc::client::FendermintClient;
+    use tendermint_rpc::MockRequestMatcher;
+
+    use crate::cache::AddressCache;
 
     use super::FilterKind;
 
-    #[test]
-    fn filter_to_query() {
+    #[tokio::test]
+    async fn filter_to_query() {
         fn hash(s: &str) -> et::H256 {
             et::H256::from(ethers_core::utils::keccak256(s))
         }
@@ -674,8 +705,29 @@ mod tests {
             ]))
         );
 
+        // These tests should not call the API for response resolution because it's just an ID.
+        struct NeverCall;
+
+        impl MockRequestMatcher for NeverCall {
+            fn response_for<R, S>(
+                &self,
+                _request: R,
+            ) -> Option<Result<R::Response, tendermint_rpc::Error>>
+            where
+                R: tendermint_rpc::Request<S>,
+                S: tendermint_rpc::dialect::Dialect,
+            {
+                unimplemented!("don't call")
+            }
+        }
+
+        let (client, _driver) = tendermint_rpc::MockClient::new(NeverCall);
+        let client = FendermintClient::new(client);
+        let addr_cache = AddressCache::new(client, 0);
+
         let queries = FilterKind::Logs(Box::new(filter))
-            .to_queries()
+            .to_queries(&addr_cache)
+            .await
             .expect("failed to convert");
 
         assert_eq!(queries.len(), 4);

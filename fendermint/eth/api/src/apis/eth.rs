@@ -324,7 +324,7 @@ where
                 let header: header::Response = data.tm().header(res.height).await?;
                 let sp = data.client.state_params(Some(res.height)).await?;
                 let chain_id = ChainID::from(sp.value.chain_id);
-                let mut tx = to_eth_transaction(hash, *msg, chain_id)?;
+                let mut tx = to_eth_transaction(hash, msg, chain_id)?;
                 tx.transaction_index = Some(et::U64::from(res.index));
                 tx.block_hash = Some(et::H256::from_slice(header.header.hash().as_bytes()));
                 tx.block_number = Some(et::U64::from(res.height.value()));
@@ -382,12 +382,14 @@ where
             let msg = to_chain_message(&res.tx)?;
             if let ChainMessage::Signed(msg) = msg {
                 let receipt = to_eth_receipt(
+                    &data.addr_cache,
                     &msg,
                     &res,
                     &cumulative,
                     &header.header,
                     &state_params.value.base_fee,
                 )
+                .await
                 .context("failed to convert to receipt")?;
 
                 Ok(Some(receipt))
@@ -418,7 +420,7 @@ where
     for (index, (tx, tx_result)) in block
         .data
         .into_iter()
-        .zip(block_results.txs_results.unwrap_or_default().into_iter())
+        .zip(block_results.txs_results.unwrap_or_default())
         .enumerate()
     {
         let msg = to_chain_message(&tx)?;
@@ -435,12 +437,14 @@ where
             };
 
             let receipt = to_eth_receipt(
+                &data.addr_cache,
                 &msg,
                 &result,
                 &cumulative,
                 &block.header,
                 &state_params.value.base_fee,
-            )?;
+            )
+            .await?;
             receipts.push(receipt)
         }
     }
@@ -504,7 +508,7 @@ where
         message: msg,
         signature: Signature::new_secp256k1(sig.to_vec()),
     };
-    let msg = ChainMessage::Signed(Box::new(msg));
+    let msg = ChainMessage::Signed(msg);
     let bz: Vec<u8> = MessageFactory::serialize(&msg)?;
     let res: tx_sync::Response = data.tm().broadcast_tx_sync(bz).await?;
     if res.code.is_ok() {
@@ -748,13 +752,15 @@ where
                     }
 
                     let mut tx_logs = from_tm::to_logs(
+                        &data.addr_cache,
                         &tx_result.events,
                         block_hash,
                         block_number,
                         tx_hash,
                         tx_idx,
                         log_index_start,
-                    )?;
+                    )
+                    .await?;
 
                     // Filter by topic.
                     tx_logs.retain(|log| matches_topics(&filter, log));
