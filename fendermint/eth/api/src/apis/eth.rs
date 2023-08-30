@@ -21,7 +21,7 @@ use fendermint_vm_message::chain::ChainMessage;
 use fendermint_vm_message::signed::SignedMessage;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::{BigInt, Zero};
+use fvm_shared::bigint::BigInt;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::{chainid::ChainID, error::ExitCode};
@@ -151,7 +151,7 @@ where
     }
 
     // compute median gas price
-    let mut median = median_gas_premium(&mut premiums, block_gas_limit);
+    let mut median = crate::gas::median_gas_premium(&mut premiums, block_gas_limit);
     let min_premium = TokenAmount::from_atto(BigInt::from(MIN_GAS_PREMIUM));
     if median < min_premium {
         median = min_premium;
@@ -169,39 +169,6 @@ where
     median.div_ceil(BigInt::from(1 << PRECISION));
 
     Ok(to_eth_tokens(&median)?)
-}
-
-// finds 55th percntile instead of median to put negative pressure on gas price
-// Rust implementation of:
-// https://github.com/consensus-shipyard/lotus/blob/156f5556b3ecc042764d76308dca357da3adfb4d/node/impl/full/gas.go#L144
-fn median_gas_premium(prices: &mut Vec<(TokenAmount, i64)>, block_gas_target: i64) -> TokenAmount {
-    // Sort in descending order based on premium
-    prices.sort_by(|a, b| b.0.cmp(&a.0));
-    let blocks = prices.len() as i64;
-
-    let mut at = block_gas_target * blocks / 2;
-    at += block_gas_target * blocks / (2 * 20);
-
-    let mut prev1 = TokenAmount::zero();
-    let mut prev2 = TokenAmount::zero();
-
-    for (price, limit) in prices.iter() {
-        prev2 = prev1.clone();
-        prev1 = price.clone();
-        at -= limit;
-        if at < 0 {
-            break;
-        }
-    }
-
-    let mut premium = prev1.clone();
-
-    if prev2 != TokenAmount::zero() {
-        premium += &prev2;
-        premium.div_ceil(BigInt::from(2));
-    }
-
-    premium
 }
 
 /// Returns transaction base fee per gas and effective priority fee per gas for the requested/supported block range.
