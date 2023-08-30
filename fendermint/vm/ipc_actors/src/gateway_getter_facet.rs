@@ -60,181 +60,6 @@ pub mod gateway_getter_facet {
                     ],
                 ),
                 (
-                    ::std::borrow::ToOwned::to_owned("bottomUpCheckpointAtEpoch"),
-                    ::std::vec![
-                        ::ethers::core::abi::ethabi::Function {
-                            name: ::std::borrow::ToOwned::to_owned(
-                                "bottomUpCheckpointAtEpoch",
-                            ),
-                            inputs: ::std::vec![
-                                ::ethers::core::abi::ethabi::Param {
-                                    name: ::std::borrow::ToOwned::to_owned("epoch"),
-                                    kind: ::ethers::core::abi::ethabi::ParamType::Uint(64usize),
-                                    internal_type: ::core::option::Option::Some(
-                                        ::std::borrow::ToOwned::to_owned("uint64"),
-                                    ),
-                                },
-                            ],
-                            outputs: ::std::vec![
-                                ::ethers::core::abi::ethabi::Param {
-                                    name: ::std::borrow::ToOwned::to_owned("exists"),
-                                    kind: ::ethers::core::abi::ethabi::ParamType::Bool,
-                                    internal_type: ::core::option::Option::Some(
-                                        ::std::borrow::ToOwned::to_owned("bool"),
-                                    ),
-                                },
-                                ::ethers::core::abi::ethabi::Param {
-                                    name: ::std::borrow::ToOwned::to_owned("checkpoint"),
-                                    kind: ::ethers::core::abi::ethabi::ParamType::Tuple(
-                                        ::std::vec![
-                                            ::ethers::core::abi::ethabi::ParamType::Tuple(
-                                                ::std::vec![
-                                                    ::ethers::core::abi::ethabi::ParamType::Uint(64usize),
-                                                    ::ethers::core::abi::ethabi::ParamType::Array(
-                                                        ::std::boxed::Box::new(
-                                                            ::ethers::core::abi::ethabi::ParamType::Address,
-                                                        ),
-                                                    ),
-                                                ],
-                                            ),
-                                            ::ethers::core::abi::ethabi::ParamType::Uint(64usize),
-                                            ::ethers::core::abi::ethabi::ParamType::Uint(256usize),
-                                            ::ethers::core::abi::ethabi::ParamType::Array(
-                                                ::std::boxed::Box::new(
-                                                    ::ethers::core::abi::ethabi::ParamType::Tuple(
-                                                        ::std::vec![
-                                                            ::ethers::core::abi::ethabi::ParamType::Tuple(
-                                                                ::std::vec![
-                                                                    ::ethers::core::abi::ethabi::ParamType::Tuple(
-                                                                        ::std::vec![
-                                                                            ::ethers::core::abi::ethabi::ParamType::Tuple(
-                                                                                ::std::vec![
-                                                                                    ::ethers::core::abi::ethabi::ParamType::Uint(64usize),
-                                                                                    ::ethers::core::abi::ethabi::ParamType::Array(
-                                                                                        ::std::boxed::Box::new(
-                                                                                            ::ethers::core::abi::ethabi::ParamType::Address,
-                                                                                        ),
-                                                                                    ),
-                                                                                ],
-                                                                            ),
-                                                                            ::ethers::core::abi::ethabi::ParamType::Tuple(
-                                                                                ::std::vec![
-                                                                                    ::ethers::core::abi::ethabi::ParamType::Uint(8usize),
-                                                                                    ::ethers::core::abi::ethabi::ParamType::Bytes,
-                                                                                ],
-                                                                            ),
-                                                                        ],
-                                                                    ),
-                                                                    ::ethers::core::abi::ethabi::ParamType::Tuple(
-                                                                        ::std::vec![
-                                                                            ::ethers::core::abi::ethabi::ParamType::Tuple(
-                                                                                ::std::vec![
-                                                                                    ::ethers::core::abi::ethabi::ParamType::Uint(64usize),
-                                                                                    ::ethers::core::abi::ethabi::ParamType::Array(
-                                                                                        ::std::boxed::Box::new(
-                                                                                            ::ethers::core::abi::ethabi::ParamType::Address,
-                                                                                        ),
-                                                                                    ),
-                                                                                ],
-                                                                            ),
-                                                                            ::ethers::core::abi::ethabi::ParamType::Tuple(
-                                                                                ::std::vec![
-                                                                                    ::ethers::core::abi::ethabi::ParamType::Uint(8usize),
-                                                                                    ::ethers::core::abi::ethabi::ParamType::Bytes,
-                                                                                ],
-                                                                            ),
-                                                                        ],
-                                                                    ),
-                                                                    ::ethers::core::abi::ethabi::ParamType::Uint(256usize),
-                                                                    ::ethers::core::abi::ethabi::ParamType::Uint(64usize),
-                                                                    ::ethers::core::abi::ethabi::ParamType::FixedBytes(4usize),
-                                                                    ::ethers::core::abi::ethabi::ParamType::Bytes,
-                                                                ],
-                                                            ),
-                                                            ::ethers::core::abi::ethabi::ParamType::Bool,
-                                                        ],
-                                                    ),
-                                                ),
-                                            ),
-                                            ::ethers::core::abi::ethabi::ParamType::Array(
-                                                ::std::boxed::Box::new(
-                                                    ::ethers::core::abi::ethabi::ParamType::Tuple(
-                                                        ::std::vec![
-                                                            ::ethers::core::abi::ethabi::ParamType::Tuple(
-                                                                ::std::vec![
-                                                                    ::ethers::core::abi::ethabi::ParamType::Uint(64usize),
-                                                                    ::ethers::core::abi::ethabi::ParamType::Array(
-                                                                        ::std::boxed::Box::new(
-                                                                            ::ethers::core::abi::ethabi::ParamType::Address,
-                                                                        ),
-                                                                    ),
-                                                                ],
-                                                            ),
-                                                            ::ethers::core::abi::ethabi::ParamType::Array(
-                                                                ::std::boxed::Box::new(
-                                                                    ::ethers::core::abi::ethabi::ParamType::FixedBytes(32usize),
-                                                                ),
-                                                            ),
-                                                        ],
-                                                    ),
-                                                ),
-                                            ),
-                                            ::ethers::core::abi::ethabi::ParamType::FixedBytes(32usize),
-                                            ::ethers::core::abi::ethabi::ParamType::Bytes,
-                                        ],
-                                    ),
-                                    internal_type: ::core::option::Option::Some(
-                                        ::std::borrow::ToOwned::to_owned(
-                                            "struct BottomUpCheckpoint",
-                                        ),
-                                    ),
-                                },
-                            ],
-                            constant: ::core::option::Option::None,
-                            state_mutability: ::ethers::core::abi::ethabi::StateMutability::View,
-                        },
-                    ],
-                ),
-                (
-                    ::std::borrow::ToOwned::to_owned("bottomUpCheckpointHashAtEpoch"),
-                    ::std::vec![
-                        ::ethers::core::abi::ethabi::Function {
-                            name: ::std::borrow::ToOwned::to_owned(
-                                "bottomUpCheckpointHashAtEpoch",
-                            ),
-                            inputs: ::std::vec![
-                                ::ethers::core::abi::ethabi::Param {
-                                    name: ::std::borrow::ToOwned::to_owned("epoch"),
-                                    kind: ::ethers::core::abi::ethabi::ParamType::Uint(64usize),
-                                    internal_type: ::core::option::Option::Some(
-                                        ::std::borrow::ToOwned::to_owned("uint64"),
-                                    ),
-                                },
-                            ],
-                            outputs: ::std::vec![
-                                ::ethers::core::abi::ethabi::Param {
-                                    name: ::std::string::String::new(),
-                                    kind: ::ethers::core::abi::ethabi::ParamType::Bool,
-                                    internal_type: ::core::option::Option::Some(
-                                        ::std::borrow::ToOwned::to_owned("bool"),
-                                    ),
-                                },
-                                ::ethers::core::abi::ethabi::Param {
-                                    name: ::std::string::String::new(),
-                                    kind: ::ethers::core::abi::ethabi::ParamType::FixedBytes(
-                                        32usize,
-                                    ),
-                                    internal_type: ::core::option::Option::Some(
-                                        ::std::borrow::ToOwned::to_owned("bytes32"),
-                                    ),
-                                },
-                            ],
-                            constant: ::core::option::Option::None,
-                            state_mutability: ::ethers::core::abi::ethabi::StateMutability::View,
-                        },
-                    ],
-                ),
-                (
                     ::std::borrow::ToOwned::to_owned("bottomUpCheckpoints"),
                     ::std::vec![
                         ::ethers::core::abi::ethabi::Function {
@@ -1728,24 +1553,6 @@ pub mod gateway_getter_facet {
                 .method_hash([6, 196, 104, 83], ())
                 .expect("method not found (this should never happen)")
         }
-        ///Calls the contract's `bottomUpCheckpointAtEpoch` (0x6cb2ecee) function
-        pub fn bottom_up_checkpoint_at_epoch(
-            &self,
-            epoch: u64,
-        ) -> ::ethers::contract::builders::ContractCall<M, (bool, BottomUpCheckpoint)> {
-            self.0
-                .method_hash([108, 178, 236, 238], epoch)
-                .expect("method not found (this should never happen)")
-        }
-        ///Calls the contract's `bottomUpCheckpointHashAtEpoch` (0x133f74ea) function
-        pub fn bottom_up_checkpoint_hash_at_epoch(
-            &self,
-            epoch: u64,
-        ) -> ::ethers::contract::builders::ContractCall<M, (bool, [u8; 32])> {
-            self.0
-                .method_hash([19, 63, 116, 234], epoch)
-                .expect("method not found (this should never happen)")
-        }
         ///Calls the contract's `bottomUpCheckpoints` (0x2cc14ea2) function
         pub fn bottom_up_checkpoints(
             &self,
@@ -1967,42 +1774,6 @@ pub mod gateway_getter_facet {
     )]
     #[ethcall(name = "bottomUpCheckPeriod", abi = "bottomUpCheckPeriod()")]
     pub struct BottomUpCheckPeriodCall;
-    ///Container type for all input parameters for the `bottomUpCheckpointAtEpoch` function with signature `bottomUpCheckpointAtEpoch(uint64)` and selector `0x6cb2ecee`
-    #[derive(
-        Clone,
-        ::ethers::contract::EthCall,
-        ::ethers::contract::EthDisplay,
-        Default,
-        Debug,
-        PartialEq,
-        Eq,
-        Hash
-    )]
-    #[ethcall(
-        name = "bottomUpCheckpointAtEpoch",
-        abi = "bottomUpCheckpointAtEpoch(uint64)"
-    )]
-    pub struct BottomUpCheckpointAtEpochCall {
-        pub epoch: u64,
-    }
-    ///Container type for all input parameters for the `bottomUpCheckpointHashAtEpoch` function with signature `bottomUpCheckpointHashAtEpoch(uint64)` and selector `0x133f74ea`
-    #[derive(
-        Clone,
-        ::ethers::contract::EthCall,
-        ::ethers::contract::EthDisplay,
-        Default,
-        Debug,
-        PartialEq,
-        Eq,
-        Hash
-    )]
-    #[ethcall(
-        name = "bottomUpCheckpointHashAtEpoch",
-        abi = "bottomUpCheckpointHashAtEpoch(uint64)"
-    )]
-    pub struct BottomUpCheckpointHashAtEpochCall {
-        pub epoch: u64,
-    }
     ///Container type for all input parameters for the `bottomUpCheckpoints` function with signature `bottomUpCheckpoints(uint64)` and selector `0x2cc14ea2`
     #[derive(
         Clone,
@@ -2330,8 +2101,6 @@ pub mod gateway_getter_facet {
     pub enum GatewayGetterFacetCalls {
         AppliedTopDownNonce(AppliedTopDownNonceCall),
         BottomUpCheckPeriod(BottomUpCheckPeriodCall),
-        BottomUpCheckpointAtEpoch(BottomUpCheckpointAtEpochCall),
-        BottomUpCheckpointHashAtEpoch(BottomUpCheckpointHashAtEpochCall),
         BottomUpCheckpoints(BottomUpCheckpointsCall),
         BottomUpNonce(BottomUpNonceCall),
         CrossMsgFee(CrossMsgFeeCall),
@@ -2371,18 +2140,6 @@ pub mod gateway_getter_facet {
                     data,
                 ) {
                 return Ok(Self::BottomUpCheckPeriod(decoded));
-            }
-            if let Ok(decoded)
-                = <BottomUpCheckpointAtEpochCall as ::ethers::core::abi::AbiDecode>::decode(
-                    data,
-                ) {
-                return Ok(Self::BottomUpCheckpointAtEpoch(decoded));
-            }
-            if let Ok(decoded)
-                = <BottomUpCheckpointHashAtEpochCall as ::ethers::core::abi::AbiDecode>::decode(
-                    data,
-                ) {
-                return Ok(Self::BottomUpCheckpointHashAtEpoch(decoded));
             }
             if let Ok(decoded)
                 = <BottomUpCheckpointsCall as ::ethers::core::abi::AbiDecode>::decode(
@@ -2500,12 +2257,6 @@ pub mod gateway_getter_facet {
                 Self::BottomUpCheckPeriod(element) => {
                     ::ethers::core::abi::AbiEncode::encode(element)
                 }
-                Self::BottomUpCheckpointAtEpoch(element) => {
-                    ::ethers::core::abi::AbiEncode::encode(element)
-                }
-                Self::BottomUpCheckpointHashAtEpoch(element) => {
-                    ::ethers::core::abi::AbiEncode::encode(element)
-                }
                 Self::BottomUpCheckpoints(element) => {
                     ::ethers::core::abi::AbiEncode::encode(element)
                 }
@@ -2580,12 +2331,6 @@ pub mod gateway_getter_facet {
                 Self::BottomUpCheckPeriod(element) => {
                     ::core::fmt::Display::fmt(element, f)
                 }
-                Self::BottomUpCheckpointAtEpoch(element) => {
-                    ::core::fmt::Display::fmt(element, f)
-                }
-                Self::BottomUpCheckpointHashAtEpoch(element) => {
-                    ::core::fmt::Display::fmt(element, f)
-                }
                 Self::BottomUpCheckpoints(element) => {
                     ::core::fmt::Display::fmt(element, f)
                 }
@@ -2635,18 +2380,6 @@ pub mod gateway_getter_facet {
     impl ::core::convert::From<BottomUpCheckPeriodCall> for GatewayGetterFacetCalls {
         fn from(value: BottomUpCheckPeriodCall) -> Self {
             Self::BottomUpCheckPeriod(value)
-        }
-    }
-    impl ::core::convert::From<BottomUpCheckpointAtEpochCall>
-    for GatewayGetterFacetCalls {
-        fn from(value: BottomUpCheckpointAtEpochCall) -> Self {
-            Self::BottomUpCheckpointAtEpoch(value)
-        }
-    }
-    impl ::core::convert::From<BottomUpCheckpointHashAtEpochCall>
-    for GatewayGetterFacetCalls {
-        fn from(value: BottomUpCheckpointHashAtEpochCall) -> Self {
-            Self::BottomUpCheckpointHashAtEpoch(value)
         }
     }
     impl ::core::convert::From<BottomUpCheckpointsCall> for GatewayGetterFacetCalls {
@@ -2785,33 +2518,6 @@ pub mod gateway_getter_facet {
         Hash
     )]
     pub struct BottomUpCheckPeriodReturn(pub u64);
-    ///Container type for all return fields from the `bottomUpCheckpointAtEpoch` function with signature `bottomUpCheckpointAtEpoch(uint64)` and selector `0x6cb2ecee`
-    #[derive(
-        Clone,
-        ::ethers::contract::EthAbiType,
-        ::ethers::contract::EthAbiCodec,
-        Default,
-        Debug,
-        PartialEq,
-        Eq,
-        Hash
-    )]
-    pub struct BottomUpCheckpointAtEpochReturn {
-        pub exists: bool,
-        pub checkpoint: BottomUpCheckpoint,
-    }
-    ///Container type for all return fields from the `bottomUpCheckpointHashAtEpoch` function with signature `bottomUpCheckpointHashAtEpoch(uint64)` and selector `0x133f74ea`
-    #[derive(
-        Clone,
-        ::ethers::contract::EthAbiType,
-        ::ethers::contract::EthAbiCodec,
-        Default,
-        Debug,
-        PartialEq,
-        Eq,
-        Hash
-    )]
-    pub struct BottomUpCheckpointHashAtEpochReturn(pub bool, pub [u8; 32]);
     ///Container type for all return fields from the `bottomUpCheckpoints` function with signature `bottomUpCheckpoints(uint64)` and selector `0x2cc14ea2`
     #[derive(
         Clone,
