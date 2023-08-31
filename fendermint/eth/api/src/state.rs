@@ -361,6 +361,7 @@ where
         T: DeserializeOwned,
     {
         let height = self.query_height(block_id).await?;
+        let method_num = method as u64;
 
         // We send off a read-only query to an EVM actor at the given address.
         let message = Message {
@@ -369,7 +370,7 @@ where
             to: to_fvm_address(address),
             sequence: 0,
             value: TokenAmount::from_atto(0),
-            method_num: method as u64,
+            method_num,
             params,
             gas_limit: fvm_shared::BLOCK_GAS_LIMIT,
             gas_fee_cap: TokenAmount::from_atto(0),
@@ -385,6 +386,8 @@ where
         if result.value.code.is_err() {
             return error(ExitCode::new(result.value.code.value()), result.value.info);
         }
+
+        tracing::debug!(addr = ?address, method_num, data = hex::encode(&result.value.data), "evm actor response");
 
         let data = fendermint_rpc::response::decode_bytes(&result.value)
             .context("failed to decode data as bytes")?;

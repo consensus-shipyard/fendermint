@@ -77,15 +77,17 @@ where
                 let method_num = msg.method_num;
                 let gas_limit = msg.gas_limit;
 
+                let (apply_ret, emitters) = state.call(*msg, true)?;
+
                 tracing::info!(
                     height = state.block_height(),
-                    to = msg.to.to_string(),
-                    from = msg.from.to_string(),
-                    method_num = msg.method_num,
+                    to = to.to_string(),
+                    from = from.to_string(),
+                    method_num,
+                    exit_code = apply_ret.msg_receipt.exit_code.value(),
+                    data = hex::encode(apply_ret.msg_receipt.return_data.bytes()),
                     "query call"
                 );
-
-                let (apply_ret, emitters) = state.call(*msg, true)?;
 
                 let ret = FvmApplyRet {
                     apply_ret,
