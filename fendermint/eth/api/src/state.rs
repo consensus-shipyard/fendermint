@@ -350,13 +350,16 @@ where
     }
 
     /// Send a message by the system actor to an EVM actor for a read-only query.
+    ///
+    /// If the actor doesn't exist then the FVM will create a placeholder actor,
+    /// which will not respond to any queries. In that case `None` is returned.
     pub async fn read_evm_actor<T>(
         &self,
         address: et::H160,
         method: evm::Method,
         params: RawBytes,
         block_id: BlockId,
-    ) -> JsonRpcResult<T>
+    ) -> JsonRpcResult<Option<T>>
     where
         T: DeserializeOwned,
     {
@@ -392,9 +395,14 @@ where
         let data = fendermint_rpc::response::decode_bytes(&result.value)
             .context("failed to decode data as bytes")?;
 
-        let data: T = fvm_ipld_encoding::from_slice(&data).context("failed to decode as IPLD")?;
+        if data.is_empty() {
+            Ok(None)
+        } else {
+            let data: T =
+                fvm_ipld_encoding::from_slice(&data).context("failed to decode as IPLD")?;
 
-        Ok(data)
+            Ok(Some(data))
+        }
     }
 }
 

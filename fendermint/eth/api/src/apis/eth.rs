@@ -682,13 +682,20 @@ where
     };
     let params = RawBytes::serialize(params).context("failed to serialize position to IPLD")?;
 
-    let ret: evm::GetStorageAtReturn = data
-        .read_evm_actor(address, evm::Method::GetStorageAt, params, block_id)
+    let ret = data
+        .read_evm_actor::<evm::GetStorageAtReturn>(
+            address,
+            evm::Method::GetStorageAt,
+            params,
+            block_id,
+        )
         .await?;
 
     // The client library expects hex encoded string.
     let mut bz = [0u8; 32];
-    ret.storage.to_big_endian(&mut bz);
+    if let Some(ret) = ret {
+        ret.storage.to_big_endian(&mut bz);
+    }
     Ok(hex::encode(bz))
 }
 
@@ -703,11 +710,11 @@ where
     // This method has no input parameters.
     let params = RawBytes::default();
 
-    let ret: evm::BytecodeReturn = data
-        .read_evm_actor(address, evm::Method::GetBytecode, params, block_id)
+    let ret = data
+        .read_evm_actor::<evm::BytecodeReturn>(address, evm::Method::GetBytecode, params, block_id)
         .await?;
 
-    match ret.code {
+    match ret.and_then(|r| r.code) {
         None => Ok(et::Bytes::default()),
         Some(cid) => {
             let code = data
