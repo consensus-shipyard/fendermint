@@ -165,11 +165,11 @@ where
             | et::BlockNumber::Latest
             | et::BlockNumber::Safe
             | et::BlockNumber::Pending => {
-                // Not using `.latest_commit()` here because it points at the earlier block than the latest,
-                // however we have to be careful not to try and fetch the results for this header as it might not
-                // be available.
-                let res: block::Response = self.tm().latest_block().await?;
-                res.block.header
+                // `.latest_commit()` actually points at the block before the last one,
+                // because the commit is attached to the next block.
+                // Not using `.latest_block().header` because this is a lighter query.
+                let res: commit::Response = self.tm().latest_commit().await?;
+                res.signed_header.header
             }
             et::BlockNumber::Earliest => {
                 let res: header::Response = self.tm().header(Height::from(1u32)).await?;
@@ -187,6 +187,32 @@ where
         match block_id {
             et::BlockId::Number(n) => self.header_by_height(n).await,
             et::BlockId::Hash(h) => self.header_by_hash(h).await,
+        }
+    }
+
+    /// Return the height of a block which we should send with a query,
+    /// or None if it's the latest, to let the node figure it out.
+    pub async fn query_height(
+        &self,
+        block_id: et::BlockId,
+    ) -> JsonRpcResult<Option<tendermint::block::Height>> {
+        match block_id {
+            et::BlockId::Number(bn) => match bn {
+                et::BlockNumber::Number(height) => {
+                    let height =
+                        Height::try_from(height.as_u64()).context("failed to convert to height")?;
+                    Ok(Some(height))
+                }
+                et::BlockNumber::Finalized
+                | et::BlockNumber::Latest
+                | et::BlockNumber::Safe
+                | et::BlockNumber::Pending => Ok(None),
+                et::BlockNumber::Earliest => Ok(Some(Height::from(1u32))),
+            },
+            et::BlockId::Hash(h) => {
+                let header = self.header_by_hash(h).await?;
+                Ok(Some(header.height))
+            }
         }
     }
 
@@ -334,7 +360,7 @@ where
     where
         T: DeserializeOwned,
     {
-        let header = self.header_by_id(block_id).await?;
+        let height = self.query_height(block_id).await?;
 
         // We send off a read-only query to an EVM actor at the given address.
         let message = Message {
@@ -352,7 +378,7 @@ where
 
         let result = self
             .client
-            .call(message, Some(header.height))
+            .call(message, height)
             .await
             .context("failed to call contract")?;
 

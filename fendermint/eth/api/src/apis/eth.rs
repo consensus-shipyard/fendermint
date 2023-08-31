@@ -606,8 +606,8 @@ where
     C: Client + Sync + Send,
 {
     let msg = to_fvm_message(tx.into(), true)?;
-    let header = data.header_by_id(block_id).await?;
-    let response = data.client.call(msg, Some(header.height)).await?;
+    let height = data.query_height(block_id).await?;
+    let response = data.client.call(msg, height).await?;
     let deliver_tx = response.value;
 
     // Based on Lotus, we should return the data from the receipt.
@@ -639,14 +639,14 @@ where
 
     let msg = to_fvm_message(tx.into(), true).context("failed to convert to FVM message")?;
 
-    let header = data
-        .header_by_id(block_id)
+    let height = data
+        .query_height(block_id)
         .await
-        .context("failed to get header")?;
+        .context("failed to get height")?;
 
     let response = data
         .client
-        .estimate_gas(msg, Some(header.height))
+        .estimate_gas(msg, height)
         .await
         .context("failed to call estimate gas query")?;
 
