@@ -48,16 +48,19 @@ where
             .await
             .context("failed to lookup actor state")?;
 
-        match res.value {
-            Some((id, _)) => {
-                self.set_id(*addr, id);
-                if let Payload::Delegated(_) = addr.payload() {
-                    self.set_addr(id, *addr)
-                }
-                Ok(Some(id))
+        if let Some((id, _)) = res.value {
+            self.set_id(*addr, id);
+            if let Payload::Delegated(_) = addr.payload() {
+                self.set_addr(id, *addr)
             }
-            None => Ok(None),
+            return Ok(Some(id));
         }
+        tracing::info!(
+            addr = addr.to_string(),
+            height = res.height.value(),
+            "actor not found"
+        );
+        Ok(None)
     }
 
     /// Look up the delegated address of an ID, if any.
@@ -79,7 +82,7 @@ where
                 return Ok(Some(addr));
             }
         }
-
+        tracing::info!(id, height = res.height.value(), "actor not found");
         Ok(None)
     }
 
