@@ -31,6 +31,7 @@ use crate::filters::{
     FilterRecords,
 };
 use crate::handlers::ws::MethodNotification;
+use crate::GasOpt;
 use crate::{
     conv::from_tm::{
         map_rpc_block_txs, message_hash, to_chain_message, to_eth_block, to_eth_transaction,
@@ -52,13 +53,19 @@ pub struct JsonRpcState<C> {
     filters: FilterMap,
     next_web_socket_id: AtomicUsize,
     web_sockets: RwLock<HashMap<WebSocketId, WebSocketSender>>,
+    pub gas_opt: GasOpt,
 }
 
 impl<C> JsonRpcState<C>
 where
     C: Client + Send + Sync + Clone,
 {
-    pub fn new(client: C, filter_timeout: Duration, cache_capacity: usize) -> Self {
+    pub fn new(
+        client: C,
+        filter_timeout: Duration,
+        cache_capacity: usize,
+        gas_opt: GasOpt,
+    ) -> Self {
         let client = FendermintClient::new(client);
         let addr_cache = AddressCache::new(client.clone(), cache_capacity);
         Self {
@@ -68,6 +75,7 @@ where
             filters: Default::default(),
             next_web_socket_id: Default::default(),
             web_sockets: Default::default(),
+            gas_opt,
         }
     }
 }

@@ -46,13 +46,6 @@ use crate::{
     error, JsonRpcData, JsonRpcResult,
 };
 
-// Lotus uses only 2 epochs to compupte the MAX_PRIO_FEE
-// but they compute the median over (on average) 10 blocks,
-// 5 per blocks. Thus, our 10 heights instead of 2.
-const NUM_BLOCKS_MAX_PRIO_FEE: u64 = 10;
-const MAX_FEE_HIST_SIZE: usize = 1024;
-const MIN_GAS_PREMIUM: u64 = 100_000;
-
 /// Returns a list of addresses owned by client.
 ///
 /// It will always return [] since we don't expect Fendermint to manage private keys.
@@ -118,7 +111,7 @@ where
     // we may be able to de-duplicate a lot of this code from fee_history
     let latest_h: u64 = latest_h.into();
     let mut blk = latest_h;
-    while blk > latest_h - NUM_BLOCKS_MAX_PRIO_FEE {
+    while blk > latest_h - data.gas_opt.num_blocks_max_prio_fee {
         let block = data
             .block_by_height(blk.into())
             .await
@@ -152,7 +145,7 @@ where
 
     // compute median gas price
     let mut median = crate::gas::median_gas_premium(&mut premiums, block_gas_limit);
-    let min_premium = TokenAmount::from_atto(BigInt::from(MIN_GAS_PREMIUM));
+    let min_premium = TokenAmount::from_atto(BigInt::from(data.gas_opt.min_gas_premium));
     if median < min_premium {
         median = min_premium;
     }
@@ -183,7 +176,7 @@ pub async fn fee_history<C>(
 where
     C: Client + Sync + Send,
 {
-    if block_count > et::U256::from(MAX_FEE_HIST_SIZE) {
+    if block_count > et::U256::from(data.gas_opt.max_fee_hist_size) {
         return error(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             "block_count must be <= 1024",
