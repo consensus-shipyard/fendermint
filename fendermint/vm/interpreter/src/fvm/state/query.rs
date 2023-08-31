@@ -9,8 +9,8 @@ use cid::Cid;
 use fendermint_vm_actor_interface::system::SYSTEM_ACTOR_ADDR;
 use fendermint_vm_core::chainid::HasChainID;
 use fendermint_vm_message::query::ActorState;
+use fvm::engine::MultiEngine;
 use fvm::state_tree::StateTree;
-use fvm::{engine::MultiEngine, executor::ApplyRet};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::{address::Address, chainid::ChainID, clock::ChainEpoch, ActorID};
 use num_traits::Zero;
@@ -18,6 +18,7 @@ use num_traits::Zero;
 use crate::fvm::state::FvmCheckState;
 use crate::fvm::{store::ReadOnlyBlockstore, FvmMessage};
 
+use super::exec::ExecResult;
 use super::{FvmExecState, FvmStateParams};
 
 type CheckState<DB> = Arc<tokio::sync::Mutex<Option<FvmCheckState<DB>>>>;
@@ -166,7 +167,7 @@ where
     /// multiple such messages results in their buffered effects stacking up if
     /// `use_cache` is enabled. If `use_cache` is not enabled, the results of the
     /// execution are not cached.
-    pub fn call(&self, mut msg: FvmMessage, use_cache: bool) -> anyhow::Result<ApplyRet> {
+    pub fn call(&self, mut msg: FvmMessage, use_cache: bool) -> ExecResult {
         self.with_exec_state(use_cache, |s| {
             // If the sequence is zero, treat it as a signal to use whatever is in the state.
             if msg.sequence.is_zero() {

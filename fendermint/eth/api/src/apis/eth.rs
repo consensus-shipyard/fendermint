@@ -454,7 +454,6 @@ where
         let msg = to_chain_message(&res.tx)?;
         if let ChainMessage::Signed(msg) = msg {
             let receipt = to_eth_receipt(
-                &data.addr_cache,
                 &msg,
                 &res,
                 &cumulative,
@@ -506,7 +505,6 @@ where
             };
 
             let receipt = to_eth_receipt(
-                &data.addr_cache,
                 &msg,
                 &result,
                 &cumulative,
@@ -830,15 +828,13 @@ where
                     let tx_idx = et::U64::from(tx_idx);
 
                     let mut tx_logs = from_tm::to_logs(
-                        &data.addr_cache,
                         &tx_result.events,
                         block_hash,
                         block_number,
                         tx_hash,
                         tx_idx,
                         log_index_start,
-                    )
-                    .await?;
+                    )?;
 
                     // Filter by topic.
                     tx_logs.retain(|log| matches_topics(&filter, log));

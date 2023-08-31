@@ -85,7 +85,7 @@ where
                     "query call"
                 );
 
-                let apply_ret = state.call(*msg, true)?;
+                let (apply_ret, emitters) = state.call(*msg, true)?;
 
                 let ret = FvmApplyRet {
                     apply_ret,
@@ -93,6 +93,7 @@ where
                     to,
                     method_num,
                     gas_limit,
+                    emitters,
                 };
 
                 FvmQueryRet::Call(ret)
@@ -156,7 +157,7 @@ where
 
         // estimate the gas limit and assign it to the message
         // do not reuse the cache
-        let ret = state.call(msg.clone(), false)?;
+        let (ret, _) = state.call(msg.clone(), false)?;
         if !ret.msg_receipt.exit_code.is_success() {
             // if the message fail we can't estimate the gas.
             return Ok(Some(GasEstimate {
@@ -228,7 +229,7 @@ where
         // set message nonce to zero so the right one is picked up
         msg.sequence = 0;
 
-        let apply_ret = state.call(msg, false)?;
+        let (apply_ret, _) = state.call(msg, false)?;
 
         let ret = GasEstimate {
             exit_code: apply_ret.msg_receipt.exit_code,

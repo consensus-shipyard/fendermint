@@ -404,10 +404,7 @@ where
         kind: FilterKind,
         ws_sender: Option<WebSocketSender>,
     ) -> anyhow::Result<FilterId> {
-        let queries = kind
-            .to_queries(&self.addr_cache)
-            .await
-            .context("failed to convert filter to queries")?;
+        let queries = kind.to_queries();
 
         let mut subs = Vec::new();
 
@@ -425,9 +422,8 @@ where
         let id = state.id();
         let filters = self.filters.clone();
         let client = self.client.clone();
-        let addr_cache = self.addr_cache.clone();
 
-        tokio::spawn(async move { state.run(filters, client, addr_cache).await });
+        tokio::spawn(async move { state.run(filters, client).await });
 
         for sub in subs {
             let tx = tx.clone();
