@@ -136,9 +136,10 @@ where
                 // Using 1 block less than `latest_block` so if this is followed up by `block_results`
                 // then we don't get an error.
                 let commit: commit::Response = self.tm().latest_commit().await?;
+                // The latest commit is available in the _next_ block, so by this time results should be available too.
                 let height = commit.signed_header.header.height.value();
-                let height = Height::try_from((height.saturating_sub(1)).max(1))
-                    .context("failed to convert to height")?;
+                // let height = Height::try_from((height.saturating_sub(1)).max(1))
+                let height = Height::try_from(height).context("failed to convert to height")?;
                 let res: block::Response = self.tm().block(height).await?;
                 res.block
             }
@@ -166,8 +167,9 @@ where
             | et::BlockNumber::Latest
             | et::BlockNumber::Safe
             | et::BlockNumber::Pending => {
-                let res: commit::Response = self.tm().latest_commit().await?;
-                res.signed_header.header
+                // Not using `.latest_commit()` here because it point at the earlier block.
+                let res: block::Response = self.tm().latest_block().await?;
+                res.block.header
             }
             et::BlockNumber::Earliest => {
                 let res: header::Response = self.tm().header(Height::from(1u32)).await?;

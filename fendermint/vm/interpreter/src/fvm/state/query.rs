@@ -190,6 +190,10 @@ where
     pub fn state_params(&self) -> &FvmStateParams {
         &self.state_params
     }
+
+    pub fn block_height(&self) -> ChainEpoch {
+        self.block_height
+    }
 }
 
 impl<DB> HasChainID for FvmQueryState<DB>

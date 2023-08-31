@@ -47,13 +47,28 @@ where
             FvmQuery::ActorState {
                 address,
                 pending: false,
-            } => FvmQueryRet::ActorState(state.actor_state(false, &address)?.map(Box::new)),
+            } => {
+                let ret = state.actor_state(false, &address)?;
+                tracing::info!(
+                    height = state.block_height(),
+                    addr = address.to_string(),
+                    found = ret.is_some(),
+                    "query actor state"
+                );
+                FvmQueryRet::ActorState(ret.map(Box::new))
+            }
             FvmQuery::ActorState {
                 address,
                 pending: true,
             } => {
                 let (st, ret) = state.pending_state(&address).await?;
                 state = st;
+                tracing::info!(
+                    height = state.block_height(),
+                    addr = address.to_string(),
+                    found = ret.is_some(),
+                    "query pending state"
+                );
                 FvmQueryRet::ActorState(ret.map(Box::new))
             }
             FvmQuery::Call(msg) => {
@@ -61,6 +76,14 @@ where
                 let to = msg.to;
                 let method_num = msg.method_num;
                 let gas_limit = msg.gas_limit;
+
+                tracing::info!(
+                    height = state.block_height(),
+                    to = msg.to.to_string(),
+                    from = msg.from.to_string(),
+                    method_num = msg.method_num,
+                    "query call"
+                );
 
                 let apply_ret = state.call(*msg, true)?;
 
@@ -75,6 +98,13 @@ where
                 FvmQueryRet::Call(ret)
             }
             FvmQuery::EstimateGas(mut msg) => {
+                tracing::info!(
+                    height = state.block_height(),
+                    to = msg.to.to_string(),
+                    from = msg.from.to_string(),
+                    method_num = msg.method_num,
+                    "query estimate gas"
+                );
                 // Populate gas message parameters.
                 let est = match self.estimate_gassed_msg(&state, &mut msg)? {
                     Some(ret) => {

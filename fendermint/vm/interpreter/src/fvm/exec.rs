@@ -92,6 +92,15 @@ where
 
         let apply_ret = state.execute_explicit(msg)?;
 
+        tracing::info!(
+            height = state.block_height(),
+            from = from.to_string(),
+            to = to.to_string(),
+            method_num = method_num,
+            exit_code = apply_ret.msg_receipt.exit_code.value(),
+            "tx delivered"
+        );
+
         let ret = FvmApplyRet {
             apply_ret,
             from,
