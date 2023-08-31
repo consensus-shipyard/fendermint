@@ -29,6 +29,8 @@ pub struct Config {
     pub chain_head_delay: BlockHeight,
     /// Parent syncing cron period, in seconds
     pub polling_interval_secs: u64,
+    /// The ipc agent url
+    pub ipc_agent_url: String,
 }
 
 /// The finality view for IPC parent at certain height.

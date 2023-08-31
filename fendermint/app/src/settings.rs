@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use config::{Config, ConfigError, Environment, File};
+use ipc_sdk::subnet_id::SubnetID;
 use serde::Deserialize;
 use serde_with::{serde_as, DurationSeconds};
 use std::{
@@ -67,6 +68,9 @@ pub struct Settings {
     pub db: DbSettings,
     pub eth: EthSettings,
     pub fvm: FvmSettings,
+
+    pub subnet_id: SubnetID,
+    pub parent_finality: fendermint_vm_topdown::Config,
 }
 
 macro_rules! home_relative {

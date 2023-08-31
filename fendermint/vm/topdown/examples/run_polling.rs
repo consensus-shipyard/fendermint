@@ -36,6 +36,7 @@ async fn main() {
     let config = Config {
         chain_head_delay: 10,
         polling_interval_secs: 5,
+        ipc_agent_url: url.clone(),
     };
     let provider = InMemoryFinalityProvider::new(
         config.clone(),

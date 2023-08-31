@@ -11,6 +11,9 @@ use fendermint_vm_interpreter::{
     fvm::FvmMessageInterpreter,
     signed::SignedMessageInterpreter,
 };
+use fendermint_vm_topdown::{Config, IPCAgentProxy, IPCParentFinality, InMemoryFinalityProvider};
+use ipc_sdk::subnet_id::SubnetID;
+use std::sync::Arc;
 use tracing::info;
 
 use crate::{cmd, options::run::RunArgs, settings::Settings};
@@ -19,6 +22,15 @@ cmd! {
   RunArgs(self, settings) {
     run(settings).await
   }
+}
+
+async fn create_parent_finality(_settings: &Settings) -> anyhow::Result<InMemoryFinalityProvider> {
+    // let provider = InMemoryFinalityProvider::new(
+    //     settings.parent_finality.clone(),
+    //     unimplemented!(),
+    // );
+    // Ok(provider)
+    todo!()
 }
 
 async fn run(settings: Settings) -> anyhow::Result<()> {
@@ -39,7 +51,7 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         NamespaceBlockstore::new(db.clone(), ns.state_store).context("error creating state DB")?;
 
     let resolve_pool = CheckpointPool::new();
-
+    let parent_finality = Arc::new(create_parent_finality(&settings).await?);
     let app: App<_, _, AppStore, _> = App::new(
         AppConfig {
             app_namespace: ns.app,
@@ -51,6 +63,7 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         state_store,
         interpreter,
         resolve_pool,
+        parent_finality.clone(),
     )?;
 
     let service = ApplicationService(app);
