@@ -52,7 +52,6 @@ use ethers_core::{
 };
 use fendermint_rpc::message::MessageFactory;
 use fendermint_vm_actor_interface::eam::EthAddress;
-use fvm_shared::{bigint::BigInt, econ::TokenAmount};
 use libsecp256k1::SecretKey;
 use tracing::Level;
 
