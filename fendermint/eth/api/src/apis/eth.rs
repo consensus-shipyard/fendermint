@@ -582,6 +582,8 @@ where
     };
     let msg = ChainMessage::Signed(msg);
     let bz: Vec<u8> = MessageFactory::serialize(&msg)?;
+    // Use the broadcast version which waits for basic checks to complete,
+    // but not the execution results - those will have to be polled with get_transaction_receipt.
     let res: tx_sync::Response = data.tm().broadcast_tx_sync(bz).await?;
     tracing::debug!(?sighash, eth_hash = ?msghash, tm_hash = ?res.hash, "received raw transaction");
     if res.code.is_ok() {
