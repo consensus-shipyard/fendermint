@@ -577,7 +577,9 @@ fn send_error(ws_sender: &WebSocketSender, exit_code: ExitCode, msg: String, id:
 fn notification(subscription: FilterId, result: serde_json::Value) -> MethodNotification {
     MethodNotification {
         // We know this is the only one at the moment.
-        method: "eth_subscribe".into(),
+        // The go-ethereum client checks that the suffix is "_subscription":
+        // https://github.com/ethereum/go-ethereum/blob/92b8f28df3255c6cef9605063850d77b46146763/rpc/handler.go#L236C42-L236C42
+        method: "eth_subscription".into(),
         notification: Notification {
             subscription,
             result,
