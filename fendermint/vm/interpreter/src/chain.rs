@@ -98,13 +98,21 @@ where
         });
 
         // Prepare top down proposals
-        if let Some(proposal) = atomically_or_err(|| finality_provider.next_proposal()).await? {
-            msgs.push(ChainMessage::Ipc(IpcMessage::TopDownProposal(
+        match atomically_or_err(|| finality_provider.next_proposal()).await {
+            Ok(Some(proposal)) => msgs.push(ChainMessage::Ipc(IpcMessage::TopDownProposal(
                 ParentFinalityProposal {
                     height: proposal.height as ChainEpoch,
                     block_hash: proposal.block_hash,
                 },
-            )))
+            ))),
+            Ok(None) => {
+                tracing::debug!("parent finality proposal not ready yet");
+            }
+            Err(e) => {
+                // safe to unwrap as the type is correct
+                let e = e.downcast_ref::<fendermint_vm_topdown::Error>().unwrap();
+                tracing::warn!("cannot produce parent finality proposal: {e}");
+            }
         }
 
         // Append at the end - if we run out of block space, these are going to be reproposed in the next block.
@@ -134,19 +142,24 @@ where
                         return Ok(false);
                     }
                 }
-                ChainMessage::Ipc(IpcMessage::TopDownProposal(proposal)) => {
-                    if let Ok(_) = atomically_or_err(|| {
+                ChainMessage::Ipc(IpcMessage::TopDownProposal(ParentFinalityProposal {
+                    height,
+                    block_hash,
+                })) => {
+                    return if (atomically_or_err(|| {
                         state.1.check_proposal(&IPCParentFinality {
-                            height: proposal.height as u64,
-                            block_hash: proposal.block_hash,
+                            height: height as u64,
+                            // need clone as atomically_or_err seems not able to capture with move
+                            block_hash: block_hash.clone(),
                         })
                     })
-                    .await
+                    .await)
+                        .is_ok()
                     {
                         Ok(true)
                     } else {
                         Ok(false)
-                    }
+                    };
                 }
                 _ => {}
             };
@@ -213,7 +226,7 @@ where
                 IpcMessage::BottomUpExec(_) => {
                     todo!("#197: implement BottomUp checkpoint execution")
                 }
-                IpcMessage::TopDown => {
+                IpcMessage::TopDownProposal(_) => {
                     todo!("implement TopDown handling; this is just a placeholder")
                 }
             },
@@ -274,7 +287,7 @@ where
 
                         Ok((state, Ok(ret)))
                     }
-                    IpcMessage::TopDown | IpcMessage::BottomUpExec(_) => {
+                    IpcMessage::TopDownProposal(_) | IpcMessage::BottomUpExec(_) => {
                         // Users cannot send these messages, only validators can propose them in blocks.
                         Ok((state, Err(IllegalMessage)))
                     }

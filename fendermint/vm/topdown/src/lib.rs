@@ -20,7 +20,7 @@ type BlockHeight = u64;
 type Bytes = Vec<u8>;
 type BlockHash = Bytes;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     /// The number of blocks to delay before reporting a height as final on the parent chain.
     /// To propose a certain number of epochs delayed from the latest height, we see to be

@@ -335,7 +335,10 @@ where
         Genesis = Vec<u8>,
         Output = FvmGenesisOutput,
     >,
-    I: ProposalInterpreter<State = CheckpointPool, Message = Vec<u8>>,
+    I: ProposalInterpreter<
+        State = (CheckpointPool, Arc<InMemoryFinalityProvider>),
+        Message = Vec<u8>,
+    >,
     I: ExecInterpreter<
         State = (CheckpointPool, FvmExecState<SS>),
         Message = Vec<u8>,

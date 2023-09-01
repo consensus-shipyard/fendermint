@@ -11,8 +11,7 @@ use fendermint_vm_interpreter::{
     fvm::FvmMessageInterpreter,
     signed::SignedMessageInterpreter,
 };
-use fendermint_vm_topdown::{Config, IPCAgentProxy, IPCParentFinality, InMemoryFinalityProvider};
-use ipc_sdk::subnet_id::SubnetID;
+use fendermint_vm_topdown::InMemoryFinalityProvider;
 use std::sync::Arc;
 use tracing::info;
 
