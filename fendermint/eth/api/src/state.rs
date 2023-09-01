@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use anyhow::{anyhow, Context};
-use ethers_core::types::{self as et, BlockId};
+use ethers_core::types::{self as et};
 use fendermint_rpc::client::{FendermintClient, TendermintClient};
 use fendermint_rpc::query::QueryClient;
 use fendermint_vm_actor_interface::{evm, system};
@@ -330,12 +330,11 @@ where
         address: et::H160,
         method: evm::Method,
         params: RawBytes,
-        block_id: BlockId,
+        height: FvmQueryHeight,
     ) -> JsonRpcResult<Option<T>>
     where
         T: DeserializeOwned,
     {
-        let height = self.query_height(block_id).await?;
         let method_num = method as u64;
 
         // We send off a read-only query to an EVM actor at the given address.

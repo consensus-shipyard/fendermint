@@ -44,13 +44,22 @@ where
     ) -> anyhow::Result<(Self::State, Self::Output)> {
         match qry {
             FvmQuery::Ipld(cid) => {
-                let out = FvmQueryRet::Ipld(state.store_get(&cid)?);
+                let data = state.store_get(&cid)?;
+                tracing::info!(
+                    height = state.block_height(),
+                    pending = state.pending(),
+                    cid = cid.to_string(),
+                    found = data.is_some(),
+                    "query IPLD"
+                );
+                let out = FvmQueryRet::Ipld(data);
                 Ok((state, out))
             }
             FvmQuery::ActorState(address) => {
                 let (state, ret) = state.actor_state(&address).await?;
                 tracing::info!(
                     height = state.block_height(),
+                    pending = state.pending(),
                     addr = address.to_string(),
                     found = ret.is_some(),
                     "query actor state"
@@ -69,6 +78,7 @@ where
 
                 tracing::info!(
                     height = state.block_height(),
+                    pending = state.pending(),
                     to = to.to_string(),
                     from = from.to_string(),
                     method_num,
@@ -92,6 +102,7 @@ where
             FvmQuery::EstimateGas(mut msg) => {
                 tracing::info!(
                     height = state.block_height(),
+                    pending = state.pending(),
                     to = msg.to.to_string(),
                     from = msg.from.to_string(),
                     method_num = msg.method_num,

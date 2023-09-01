@@ -41,16 +41,14 @@ where
         _is_recheck: bool,
     ) -> anyhow::Result<(Self::State, Self::Output)> {
         let checked = |state, exit_code: ExitCode, info: Option<String>| {
-            if !exit_code.is_success() {
-                tracing::info!(
-                    exit_code = exit_code.value(),
-                    from = msg.from.to_string(),
-                    to = msg.to.to_string(),
-                    method_num = msg.method_num,
-                    info = info.clone().unwrap_or_default(),
-                    "check failed"
-                );
-            }
+            tracing::info!(
+                exit_code = exit_code.value(),
+                from = msg.from.to_string(),
+                to = msg.to.to_string(),
+                method_num = msg.method_num,
+                info = info.clone().unwrap_or_default(),
+                "check transaction"
+            );
             let ret = FvmCheckRet {
                 sender: msg.from,
                 gas_limit: msg.gas_limit,

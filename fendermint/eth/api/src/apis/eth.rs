@@ -703,13 +703,14 @@ where
         },
     };
     let params = RawBytes::serialize(params).context("failed to serialize position to IPLD")?;
+    let height = data.query_height(block_id).await?;
 
     let ret = data
         .read_evm_actor::<evm::GetStorageAtReturn>(
             address,
             evm::Method::GetStorageAt,
             params,
-            block_id,
+            height,
         )
         .await?;
 
@@ -731,9 +732,10 @@ where
 {
     // This method has no input parameters.
     let params = RawBytes::default();
+    let height = data.query_height(block_id).await?;
 
     let ret = data
-        .read_evm_actor::<evm::BytecodeReturn>(address, evm::Method::GetBytecode, params, block_id)
+        .read_evm_actor::<evm::BytecodeReturn>(address, evm::Method::GetBytecode, params, height)
         .await?;
 
     match ret.and_then(|r| r.code) {
@@ -741,7 +743,7 @@ where
         Some(cid) => {
             let code = data
                 .client
-                .ipld(&cid)
+                .ipld(&cid, height)
                 .await
                 .context("failed to fetch bytecode")?;
 

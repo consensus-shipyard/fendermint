@@ -199,6 +199,10 @@ where
     pub fn block_height(&self) -> ChainEpoch {
         self.block_height
     }
+
+    pub fn pending(&self) -> bool {
+        self.pending
+    }
 }
 
 impl<DB> HasChainID for FvmQueryState<DB>

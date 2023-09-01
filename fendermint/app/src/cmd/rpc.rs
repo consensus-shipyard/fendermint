@@ -81,7 +81,7 @@ async fn query(
 ) -> anyhow::Result<()> {
     let height = FvmQueryHeight::from(height.value());
     match command {
-        RpcQueryCommands::Ipld { cid } => match client.ipld(&cid).await? {
+        RpcQueryCommands::Ipld { cid } => match client.ipld(&cid, height).await? {
             Some(data) => println!("{}", to_b64(&data)),
             None => eprintln!("CID not found"),
         },

@@ -31,10 +31,8 @@ pub struct QueryResponse<T> {
 #[async_trait]
 pub trait QueryClient: Sync {
     /// Query the contents of a CID from the IPLD store.
-    async fn ipld(&self, cid: &Cid) -> anyhow::Result<Option<Vec<u8>>> {
-        let res = self
-            .perform(FvmQuery::Ipld(*cid), FvmQueryHeight::Committed)
-            .await?;
+    async fn ipld(&self, cid: &Cid, height: FvmQueryHeight) -> anyhow::Result<Option<Vec<u8>>> {
+        let res = self.perform(FvmQuery::Ipld(*cid), height).await?;
         extract_opt(res, |res| Ok(res.value))
     }
 
