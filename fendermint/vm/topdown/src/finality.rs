@@ -263,6 +263,7 @@ mod tests {
         let config = Config {
             chain_head_delay: 20,
             polling_interval_secs: 10,
+            ipc_agent_url: "".to_string(),
         };
 
         let genesis_finality = IPCParentFinality {
@@ -426,6 +427,7 @@ mod tests {
         let config = Config {
             chain_head_delay: 2,
             polling_interval_secs: 10,
+            ipc_agent_url: "".to_string(),
         };
 
         let genesis_finality = IPCParentFinality {
