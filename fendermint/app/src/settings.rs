@@ -3,8 +3,10 @@
 
 use config::{Config, ConfigError, Environment, File};
 use ipc_sdk::subnet_id::SubnetID;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_with::{serde_as, DurationSeconds};
+use std::fmt::Formatter;
+use std::str::FromStr;
 use std::{
     path::{Path, PathBuf},
     time::Duration,
@@ -69,6 +71,7 @@ pub struct Settings {
     pub eth: EthSettings,
     pub fvm: FvmSettings,
 
+    #[serde(deserialize_with = "deserialize_subnet_id", default)]
     pub subnet_id: SubnetID,
     pub parent_finality: fendermint_vm_topdown::Config,
 }
@@ -146,6 +149,29 @@ pub fn expand_tilde<P: AsRef<Path>>(path: P) -> PathBuf {
             }
         })
         .unwrap_or(p)
+}
+
+/// A serde deserialization method to deserialize a subnet path string into a [`SubnetID`].
+pub(crate) fn deserialize_subnet_id<'de, D>(deserializer: D) -> anyhow::Result<SubnetID, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct SubnetIDVisitor;
+    impl<'de> serde::de::Visitor<'de> for SubnetIDVisitor {
+        type Value = SubnetID;
+
+        fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+            formatter.write_str("a string")
+        }
+
+        fn visit_str<E>(self, v: &str) -> std::result::Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            SubnetID::from_str(v).map_err(E::custom)
+        }
+    }
+    deserializer.deserialize_str(SubnetIDVisitor)
 }
 
 #[cfg(test)]

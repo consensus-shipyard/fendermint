@@ -4,6 +4,8 @@ data_dir = "data"
 contracts_dir = "contracts"
 # Builtin actor bundle path relative to the `--home-dir`, unless given as an absolute path.
 builtin_actors_bundle = "bundle.car"
+# Subnet id assigned to this fendermint node
+subnet_id = "/r1024"
 
 [abci]
 bound = 1
@@ -40,3 +42,12 @@ host = "127.0.0.1"
 # The default port where the Ethereum API will listen to
 # JSON-RPC (POST) and WebSockets (GET) requests.
 port = 8545
+
+# IPC Parent finality related configuration
+[parent_finality]
+# The number of blocks behind chain head to propose parent finality.
+chain_head_delay = 10
+# The number of seconds to polling ipc agent for latest parent view
+polling_interval_secs = 10
+# The ipc agent url
+ipc_agent_url = "http://0.0.0.0:3030/json_rpc"
