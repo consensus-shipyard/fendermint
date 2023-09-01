@@ -4,7 +4,10 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 
 use fendermint_vm_core::chainid::HasChainID;
-use fendermint_vm_message::signed::{chain_id_bytes, SignedMessage, SignedMessageError};
+use fendermint_vm_message::{
+    query::FvmQuery,
+    signed::{chain_id_bytes, DomainHash, SignedMessage, SignedMessageError},
+};
 use fvm_ipld_encoding::Error as IpldError;
 use fvm_shared::{chainid::ChainID, crypto::signature::Signature};
 use serde::Serialize;
@@ -17,8 +20,13 @@ use crate::{
 /// Message validation failed due to an invalid signature.
 pub struct InvalidSignature(pub String);
 
-pub type SignedMessageApplyRet = Result<FvmApplyRet, InvalidSignature>;
-pub type SignedMessageCheckRet = Result<FvmCheckRet, InvalidSignature>;
+pub struct SignedMessageApplyRet {
+    pub fvm: FvmApplyRet,
+    pub domain_hash: Option<DomainHash>,
+}
+
+pub type SignedMessageApplyRes = Result<SignedMessageApplyRet, InvalidSignature>;
+pub type SignedMessageCheckRes = Result<FvmCheckRet, InvalidSignature>;
 
 /// Different kinds of signed messages.
 ///
@@ -44,6 +52,16 @@ impl VerifiableMessage {
         match self {
             Self::Signed(m) => m.into_message(),
             Self::Synthetic(m) => m.message,
+        }
+    }
+
+    pub fn domain_hash(
+        &self,
+        chain_id: &ChainID,
+    ) -> Result<Option<DomainHash>, SignedMessageError> {
+        match self {
+            Self::Signed(m) => m.domain_hash(chain_id),
+            Self::Synthetic(_) => Ok(None),
         }
     }
 }
@@ -95,15 +113,15 @@ impl<I> SignedMessageInterpreter<I> {
 }
 
 #[async_trait]
-impl<I, S> ExecInterpreter for SignedMessageInterpreter<I>
+impl<I> ExecInterpreter for SignedMessageInterpreter<I>
 where
-    I: ExecInterpreter<Message = FvmMessage, DeliverOutput = FvmApplyRet, State = S>,
-    S: HasChainID + Send + 'static,
+    I: ExecInterpreter<Message = FvmMessage, DeliverOutput = FvmApplyRet>,
+    I::State: HasChainID,
 {
     type State = I::State;
     type Message = VerifiableMessage;
     type BeginOutput = I::BeginOutput;
-    type DeliverOutput = SignedMessageApplyRet;
+    type DeliverOutput = SignedMessageApplyRes;
     type EndOutput = I::EndOutput;
 
     async fn deliver(
@@ -115,7 +133,7 @@ where
         // async call to `inner.deliver` would be inside a match holding a reference to `state`.
         let chain_id = state.chain_id();
 
-        match msg.verify(chain_id) {
+        match msg.verify(&chain_id) {
             Err(SignedMessageError::Ipld(e)) => Err(anyhow!(e)),
             Err(SignedMessageError::Ethereum(e)) => {
                 Ok((state, Err(InvalidSignature(e.to_string()))))
@@ -125,7 +143,12 @@ where
                 Ok((state, Err(InvalidSignature(s))))
             }
             Ok(()) => {
+                let domain_hash = msg.domain_hash(&chain_id)?;
                 let (state, ret) = self.inner.deliver(state, msg.into_message()).await?;
+                let ret = SignedMessageApplyRet {
+                    fvm: ret,
+                    domain_hash,
+                };
                 Ok((state, Ok(ret)))
             }
         }
@@ -141,14 +164,14 @@ where
 }
 
 #[async_trait]
-impl<I, S> CheckInterpreter for SignedMessageInterpreter<I>
+impl<I> CheckInterpreter for SignedMessageInterpreter<I>
 where
-    I: CheckInterpreter<Message = FvmMessage, Output = FvmCheckRet, State = S>,
-    S: HasChainID + Send + 'static,
+    I: CheckInterpreter<Message = FvmMessage, Output = FvmCheckRet>,
+    I::State: HasChainID + Send + 'static,
 {
     type State = I::State;
     type Message = VerifiableMessage;
-    type Output = SignedMessageCheckRet;
+    type Output = SignedMessageCheckRes;
 
     async fn check(
         &self,
@@ -159,7 +182,7 @@ where
         let verify_result = if is_recheck {
             Ok(())
         } else {
-            msg.verify(state.chain_id())
+            msg.verify(&state.chain_id())
         };
 
         match verify_result {
@@ -186,7 +209,7 @@ where
 #[async_trait]
 impl<I> QueryInterpreter for SignedMessageInterpreter<I>
 where
-    I: QueryInterpreter,
+    I: QueryInterpreter<Query = FvmQuery>,
 {
     type State = I::State;
     type Query = I::Query;
