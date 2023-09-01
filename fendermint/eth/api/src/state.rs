@@ -8,16 +8,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use anyhow::{anyhow, Context};
-use ethers_core::types::{self as et, BlockId, BlockNumber};
+use ethers_core::types::{self as et, BlockId};
 use fendermint_rpc::client::{FendermintClient, TendermintClient};
 use fendermint_rpc::query::QueryClient;
 use fendermint_vm_actor_interface::{evm, system};
-use fendermint_vm_message::query::ActorState;
+use fendermint_vm_message::query::FvmQueryHeight;
 use fendermint_vm_message::signed::DomainHash;
 use fendermint_vm_message::{chain::ChainMessage, conv::from_eth::to_fvm_address};
 use fvm_ipld_encoding::{de::DeserializeOwned, RawBytes};
-use fvm_shared::address::Address;
-use fvm_shared::ActorID;
 use fvm_shared::{chainid::ChainID, econ::TokenAmount, error::ExitCode, message::Message};
 use rand::Rng;
 use tendermint::block::Height;
@@ -192,26 +190,19 @@ where
 
     /// Return the height of a block which we should send with a query,
     /// or None if it's the latest, to let the node figure it out.
-    pub async fn query_height(
-        &self,
-        block_id: et::BlockId,
-    ) -> JsonRpcResult<Option<tendermint::block::Height>> {
+    pub async fn query_height(&self, block_id: et::BlockId) -> JsonRpcResult<FvmQueryHeight> {
         match block_id {
             et::BlockId::Number(bn) => match bn {
-                et::BlockNumber::Number(height) => {
-                    let height =
-                        Height::try_from(height.as_u64()).context("failed to convert to height")?;
-                    Ok(Some(height))
+                et::BlockNumber::Number(height) => Ok(FvmQueryHeight::from(height.as_u64())),
+                et::BlockNumber::Finalized | et::BlockNumber::Latest | et::BlockNumber::Safe => {
+                    Ok(FvmQueryHeight::Committed)
                 }
-                et::BlockNumber::Finalized
-                | et::BlockNumber::Latest
-                | et::BlockNumber::Safe
-                | et::BlockNumber::Pending => Ok(None),
-                et::BlockNumber::Earliest => Ok(Some(Height::from(1u32))),
+                et::BlockNumber::Pending => Ok(FvmQueryHeight::Pending),
+                et::BlockNumber::Earliest => Ok(FvmQueryHeight::Height(1)),
             },
             et::BlockId::Hash(h) => {
                 let header = self.header_by_hash(h).await?;
-                Ok(Some(header.height))
+                Ok(FvmQueryHeight::Height(header.height.value()))
             }
         }
     }
@@ -250,25 +241,6 @@ where
         }
     }
 
-    /// Get the state of an actor at either a specific block, or the latest, or the pending tag.
-    pub async fn actor_state_by_block_id(
-        &self,
-        block_id: BlockId,
-        addr: Address,
-    ) -> JsonRpcResult<Option<(ActorID, ActorState)>> {
-        let res = match block_id {
-            BlockId::Number(BlockNumber::Pending) => self.client.pending_state(&addr).await?,
-            BlockId::Number(BlockNumber::Latest | BlockNumber::Finalized | BlockNumber::Safe) => {
-                self.client.actor_state(&addr, None).await?
-            }
-            _ => {
-                let header = self.header_by_id(block_id).await?;
-                self.client.actor_state(&addr, Some(header.height)).await?
-            }
-        };
-        Ok(res.value)
-    }
-
     /// Fetch transaction results to produce the full block.
     pub async fn enrich_block(
         &self,
@@ -302,7 +274,7 @@ where
             if let ChainMessage::Signed(msg) = msg {
                 let sp = self
                     .client
-                    .state_params(Some(block.header().height))
+                    .state_params(FvmQueryHeight::from(index.as_u64()))
                     .await?;
 
                 let chain_id = ChainID::from(sp.value.chain_id);
@@ -531,7 +503,10 @@ where
 {
     let height = block.header().height;
 
-    let state_params = client.state_params(Some(height)).await?;
+    let state_params = client
+        .state_params(FvmQueryHeight::Height(height.value()))
+        .await?;
+
     let base_fee = state_params.value.base_fee;
     let chain_id = ChainID::from(state_params.value.chain_id);
 

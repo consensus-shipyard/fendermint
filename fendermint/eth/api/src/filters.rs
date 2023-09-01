@@ -12,7 +12,7 @@ use anyhow::{anyhow, Context};
 use ethers_core::types as et;
 use fendermint_rpc::{client::FendermintClient, query::QueryClient};
 use fendermint_vm_actor_interface::eam::EthAddress;
-use fendermint_vm_message::{chain::ChainMessage, signed::DomainHash};
+use fendermint_vm_message::{chain::ChainMessage, query::FvmQueryHeight, signed::DomainHash};
 use futures::{Future, StreamExt};
 use fvm_shared::{address::Address, chainid::ChainID, error::ExitCode};
 use serde::Serialize;
@@ -404,7 +404,7 @@ impl FilterDriver {
 
         // Get the Chain ID once. In practice it will not change and will last the entire session.
         let chain_id = client
-            .state_params(None)
+            .state_params(FvmQueryHeight::default())
             .await
             .map(|state_params| ChainID::from(state_params.value.chain_id));
 

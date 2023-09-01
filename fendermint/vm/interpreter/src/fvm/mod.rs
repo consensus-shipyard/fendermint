@@ -8,7 +8,7 @@ mod externs;
 mod genesis;
 mod query;
 pub mod state;
-mod store;
+pub mod store;
 
 #[cfg(any(test, feature = "bundle"))]
 pub mod bundle;

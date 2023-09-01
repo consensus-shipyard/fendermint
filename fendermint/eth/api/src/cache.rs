@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::Context;
 use fendermint_rpc::client::FendermintClient;
 use fendermint_rpc::query::QueryClient;
+use fendermint_vm_message::query::FvmQueryHeight;
 use fvm_shared::{
     address::{Address, Payload},
     ActorID,
@@ -42,9 +43,10 @@ where
             return Ok(Some(id));
         }
 
+        // Using committed height because pending could change.
         let res = self
             .client
-            .actor_state(addr, None)
+            .actor_state(addr, FvmQueryHeight::Committed)
             .await
             .context("failed to lookup actor state")?;
 
@@ -71,7 +73,7 @@ where
 
         let res = self
             .client
-            .actor_state(&Address::new_id(*id), None)
+            .actor_state(&Address::new_id(*id), FvmQueryHeight::Committed)
             .await
             .context("failed to lookup actor state")?;
 

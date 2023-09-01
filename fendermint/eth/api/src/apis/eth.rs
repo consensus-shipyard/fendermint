@@ -18,6 +18,7 @@ use fendermint_rpc::response::decode_fevm_invoke;
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_actor_interface::evm;
 use fendermint_vm_message::chain::ChainMessage;
+use fendermint_vm_message::query::FvmQueryHeight;
 use fendermint_vm_message::signed::SignedMessage;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -68,7 +69,7 @@ pub async fn chain_id<C>(data: JsonRpcData<C>) -> JsonRpcResult<et::U64>
 where
     C: Client + Sync + Send,
 {
-    let res = data.client.state_params(None).await?;
+    let res = data.client.state_params(FvmQueryHeight::default()).await?;
     Ok(et::U64::from(res.value.chain_id))
 }
 
@@ -77,7 +78,7 @@ pub async fn protocol_version<C>(data: JsonRpcData<C>) -> JsonRpcResult<String>
 where
     C: Client + Sync + Send,
 {
-    let res = data.client.state_params(None).await?;
+    let res = data.client.state_params(FvmQueryHeight::default()).await?;
     let version: u32 = res.value.network_version.into();
     Ok(version.to_string())
 }
@@ -123,7 +124,12 @@ where
         if height.value() <= 1 {
             break;
         }
-        let state_params = data.client.state_params(Some(height)).await?;
+
+        let state_params = data
+            .client
+            .state_params(FvmQueryHeight::Height(height.value()))
+            .await?;
+
         let base_fee = &state_params.value.base_fee;
 
         // The latest block might not have results yet.
@@ -204,7 +210,12 @@ where
         if height.value() <= 1 {
             break;
         }
-        let state_params = data.client.state_params(Some(height)).await?;
+
+        let state_params = data
+            .client
+            .state_params(FvmQueryHeight::Height(height.value()))
+            .await?;
+
         let base_fee = &state_params.value.base_fee;
 
         let consensus_params: consensus_params::Response = data
@@ -280,7 +291,7 @@ pub async fn gas_price<C>(data: JsonRpcData<C>) -> JsonRpcResult<et::U256>
 where
     C: Client + Sync + Send,
 {
-    let res = data.client.state_params(None).await?;
+    let res = data.client.state_params(FvmQueryHeight::default()).await?;
     let price = to_eth_tokens(&res.value.base_fee)?;
     Ok(price)
 }
@@ -294,9 +305,10 @@ where
     C: Client + Sync + Send,
 {
     let addr = to_fvm_address(addr);
-    let res = data.actor_state_by_block_id(block_id, addr).await?;
+    let height = data.query_height(block_id).await?;
+    let res = data.client.actor_state(&addr, height).await?;
 
-    match res {
+    match res.value {
         Some((_, state)) => Ok(to_eth_tokens(&state.balance)?),
         None => error(ExitCode::USR_NOT_FOUND, format!("actor {addr} not found")),
     }
@@ -400,7 +412,10 @@ where
 
         if let ChainMessage::Signed(msg) = msg {
             let header: header::Response = data.tm().header(res.height).await?;
-            let sp = data.client.state_params(Some(res.height)).await?;
+            let sp = data
+                .client
+                .state_params(FvmQueryHeight::Height(header.header.height.value()))
+                .await?;
             let chain_id = ChainID::from(sp.value.chain_id);
             let hash = msg_hash(&res.tx_result.events, &res.tx);
             let mut tx = to_eth_transaction(msg, chain_id, hash)?;
@@ -427,9 +442,10 @@ where
     C: Client + Sync + Send,
 {
     let addr = to_fvm_address(addr);
-    let res = data.actor_state_by_block_id(block_id, addr).await?;
+    let height = data.query_height(block_id).await?;
+    let res = data.client.actor_state(&addr, height).await?;
 
-    match res {
+    match res.value {
         Some((_, state)) => {
             let nonce = state.sequence;
             Ok(et::U64::from(nonce))
@@ -450,7 +466,10 @@ where
         let header: header::Response = data.tm().header(res.height).await?;
         let block_results: block_results::Response = data.tm().block_results(res.height).await?;
         let cumulative = to_cumulative(&block_results);
-        let state_params = data.client.state_params(Some(res.height)).await?;
+        let state_params = data
+            .client
+            .state_params(FvmQueryHeight::Height(header.header.height.value()))
+            .await?;
         let msg = to_chain_message(&res.tx)?;
         if let ChainMessage::Signed(msg) = msg {
             let receipt = to_eth_receipt(
@@ -482,7 +501,10 @@ where
 {
     let block = data.block_by_height(block_number).await?;
     let height = block.header.height;
-    let state_params = data.client.state_params(Some(height)).await?;
+    let state_params = data
+        .client
+        .state_params(FvmQueryHeight::Height(height.value()))
+        .await?;
     let block_results: block_results::Response = data.tm().block_results(height).await?;
     let cumulative = to_cumulative(&block_results);
     let mut receipts = Vec::new();
