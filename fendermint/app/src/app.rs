@@ -14,7 +14,7 @@ use fendermint_storage::{
 };
 use fendermint_vm_core::Timestamp;
 use fendermint_vm_interpreter::bytes::{
-    BytesMessageApplyRet, BytesMessageCheckRet, BytesMessageQuery, BytesMessageQueryRet,
+    BytesMessageApplyRes, BytesMessageCheckRes, BytesMessageQuery, BytesMessageQueryRes,
 };
 use fendermint_vm_interpreter::chain::{ChainMessageApplyRet, CheckpointPool, IllegalMessage};
 use fendermint_vm_interpreter::fvm::state::{
@@ -343,18 +343,18 @@ where
         State = (CheckpointPool, FvmExecState<SS>),
         Message = Vec<u8>,
         BeginOutput = FvmApplyRet,
-        DeliverOutput = BytesMessageApplyRet,
+        DeliverOutput = BytesMessageApplyRes,
         EndOutput = (),
     >,
     I: CheckInterpreter<
         State = FvmCheckState<SS>,
         Message = Vec<u8>,
-        Output = BytesMessageCheckRet,
+        Output = BytesMessageCheckRes,
     >,
     I: QueryInterpreter<
         State = FvmQueryState<SS>,
         Query = BytesMessageQuery,
-        Output = BytesMessageQueryRet,
+        Output = BytesMessageQueryRes,
     >,
 {
     /// Provide information about the ABCI application.
@@ -455,6 +455,7 @@ where
             self.multi_engine.clone(),
             block_height.try_into()?,
             state_params,
+            self.check_state.clone(),
         )
         .context("error creating query state")?;
 
@@ -605,12 +606,12 @@ where
                 }
                 ChainMessageApplyRet::Signed(Ok(ret)) => {
                     tracing::info!(
-                        from = ret.from.to_string(),
-                        to = ret.to.to_string(),
-                        method_num = ret.method_num,
+                        from = ret.fvm.from.to_string(),
+                        to = ret.fvm.to.to_string(),
+                        method_num = ret.fvm.method_num,
                         "tx delivered"
                     );
-                    to_deliver_tx(ret)
+                    to_deliver_tx(ret.fvm, ret.domain_hash)
                 }
             },
         };
