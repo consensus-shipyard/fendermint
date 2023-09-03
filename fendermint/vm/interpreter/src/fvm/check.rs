@@ -71,7 +71,7 @@ where
 
         // This code is left in place for reference of a partial check performed on top of `FvmCheckState`.
         if let Some(id) = state_tree.lookup_id(&msg.from)? {
-            if let Some(actor) = state_tree.get_actor(id)? {
+            if let Some(mut actor) = state_tree.get_actor(id)? {
                 let balance_needed = msg.gas_fee_cap.clone() * msg.gas_limit;
                 if actor.balance < balance_needed {
                     return checked(
@@ -89,15 +89,12 @@ where
                             format! {"expected sequence {}, got {}", actor.sequence, msg.sequence},
                         ),
                     );
-                } else {
+                } else if self.exec_in_check {
                     // Instead of modifying just the partial state, we will execute the call in earnest.
-                    // actor.sequence += 1;
-                    // actor.balance -= balance_needed;
-                    // state_tree.set_actor(id, actor);
+                    // This is required for fully supporting the Ethereum API "pending" queries, if that's needed.
 
                     // This will stack the effect for subsequent transactions added to the mempool.
                     let (apply_ret, _) = state.execute_explicit(msg.clone())?;
-
                     return checked(
                         state,
                         apply_ret.msg_receipt.exit_code,
@@ -106,6 +103,12 @@ where
                             .map(|i| i.to_string())
                             .filter(|s| !s.is_empty()),
                     );
+                } else {
+                    actor.sequence += 1;
+                    actor.balance -= balance_needed;
+                    state_tree.set_actor(id, actor);
+
+                    return checked(state, ExitCode::OK, None);
                 }
             }
         }
