@@ -99,12 +99,12 @@ where
 
         // Prepare top down proposals
         match atomically_or_err(|| finality_provider.next_proposal()).await {
-            Ok(Some(proposal)) => msgs.push(ChainMessage::Ipc(IpcMessage::TopDownExec(
-                ParentFinality {
+            Ok(Some(proposal)) => {
+                msgs.push(ChainMessage::Ipc(IpcMessage::TopDownExec(ParentFinality {
                     height: proposal.height as ChainEpoch,
                     block_hash: proposal.block_hash,
-                },
-            ))),
+                })))
+            }
             Ok(None) => {}
             Err(e) => {
                 // safe to unwrap as the type is correct
@@ -145,11 +145,14 @@ where
                     block_hash,
                 })) => {
                     let prop = IPCParentFinality {
-                            height: height as u64,
-                            block_hash,
+                        height: height as u64,
+                        block_hash,
                     };
-                    if atomically_or_err(|| state.1.check_proposal(&prop)).await.is_err() {
-                      return Ok(false);
+                    if atomically_or_err(|| state.1.check_proposal(&prop))
+                        .await
+                        .is_err()
+                    {
+                        return Ok(false);
                     }
                 }
                 _ => {}
