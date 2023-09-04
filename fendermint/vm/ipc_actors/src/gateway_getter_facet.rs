@@ -360,6 +360,41 @@ pub mod gateway_getter_facet {
                     ],
                 ),
                 (
+                    ::std::borrow::ToOwned::to_owned("getParentFinality"),
+                    ::std::vec![
+                        ::ethers::core::abi::ethabi::Function {
+                            name: ::std::borrow::ToOwned::to_owned("getParentFinality"),
+                            inputs: ::std::vec![
+                                ::ethers::core::abi::ethabi::Param {
+                                    name: ::std::borrow::ToOwned::to_owned("blockNumber"),
+                                    kind: ::ethers::core::abi::ethabi::ParamType::Uint(
+                                        256usize,
+                                    ),
+                                    internal_type: ::core::option::Option::Some(
+                                        ::std::borrow::ToOwned::to_owned("uint256"),
+                                    ),
+                                },
+                            ],
+                            outputs: ::std::vec![
+                                ::ethers::core::abi::ethabi::Param {
+                                    name: ::std::string::String::new(),
+                                    kind: ::ethers::core::abi::ethabi::ParamType::Tuple(
+                                        ::std::vec![
+                                            ::ethers::core::abi::ethabi::ParamType::Uint(256usize),
+                                            ::ethers::core::abi::ethabi::ParamType::FixedBytes(32usize),
+                                        ],
+                                    ),
+                                    internal_type: ::core::option::Option::Some(
+                                        ::std::borrow::ToOwned::to_owned("struct ParentFinality"),
+                                    ),
+                                },
+                            ],
+                            constant: ::core::option::Option::None,
+                            state_mutability: ::ethers::core::abi::ethabi::StateMutability::View,
+                        },
+                    ],
+                ),
+                (
                     ::std::borrow::ToOwned::to_owned("getSubnet"),
                     ::std::vec![
                         ::ethers::core::abi::ethabi::Function {
@@ -1351,6 +1386,15 @@ pub mod gateway_getter_facet {
                 .method_hash([148, 7, 75, 3], ())
                 .expect("method not found (this should never happen)")
         }
+        ///Calls the contract's `getParentFinality` (0x7edeac92) function
+        pub fn get_parent_finality(
+            &self,
+            block_number: ::ethers::core::types::U256,
+        ) -> ::ethers::contract::builders::ContractCall<M, ParentFinality> {
+            self.0
+                .method_hash([126, 222, 172, 146], block_number)
+                .expect("method not found (this should never happen)")
+        }
         ///Calls the contract's `getSubnet` (0xc66c66a1) function
         pub fn get_subnet(
             &self,
@@ -1603,6 +1647,21 @@ pub mod gateway_getter_facet {
     )]
     #[ethcall(name = "getNetworkName", abi = "getNetworkName()")]
     pub struct GetNetworkNameCall;
+    ///Container type for all input parameters for the `getParentFinality` function with signature `getParentFinality(uint256)` and selector `0x7edeac92`
+    #[derive(
+        Clone,
+        ::ethers::contract::EthCall,
+        ::ethers::contract::EthDisplay,
+        Default,
+        Debug,
+        PartialEq,
+        Eq,
+        Hash
+    )]
+    #[ethcall(name = "getParentFinality", abi = "getParentFinality(uint256)")]
+    pub struct GetParentFinalityCall {
+        pub block_number: ::ethers::core::types::U256,
+    }
     ///Container type for all input parameters for the `getSubnet` function with signature `getSubnet((uint64,address[]))` and selector `0xc66c66a1`
     #[derive(
         Clone,
@@ -1821,6 +1880,7 @@ pub mod gateway_getter_facet {
         GetAppliedTopDownNonce(GetAppliedTopDownNonceCall),
         GetGenesisEpoch(GetGenesisEpochCall),
         GetNetworkName(GetNetworkNameCall),
+        GetParentFinality(GetParentFinalityCall),
         GetSubnet(GetSubnetCall),
         GetSubnetTopDownMsgsLength(GetSubnetTopDownMsgsLengthCall),
         GetTopDownMsgs(GetTopDownMsgsCall),
@@ -1884,6 +1944,12 @@ pub mod gateway_getter_facet {
             if let Ok(decoded)
                 = <GetNetworkNameCall as ::ethers::core::abi::AbiDecode>::decode(data) {
                 return Ok(Self::GetNetworkName(decoded));
+            }
+            if let Ok(decoded)
+                = <GetParentFinalityCall as ::ethers::core::abi::AbiDecode>::decode(
+                    data,
+                ) {
+                return Ok(Self::GetParentFinality(decoded));
             }
             if let Ok(decoded)
                 = <GetSubnetCall as ::ethers::core::abi::AbiDecode>::decode(data) {
@@ -1984,6 +2050,9 @@ pub mod gateway_getter_facet {
                 Self::GetNetworkName(element) => {
                     ::ethers::core::abi::AbiEncode::encode(element)
                 }
+                Self::GetParentFinality(element) => {
+                    ::ethers::core::abi::AbiEncode::encode(element)
+                }
                 Self::GetSubnet(element) => {
                     ::ethers::core::abi::AbiEncode::encode(element)
                 }
@@ -2045,6 +2114,7 @@ pub mod gateway_getter_facet {
                 }
                 Self::GetGenesisEpoch(element) => ::core::fmt::Display::fmt(element, f),
                 Self::GetNetworkName(element) => ::core::fmt::Display::fmt(element, f),
+                Self::GetParentFinality(element) => ::core::fmt::Display::fmt(element, f),
                 Self::GetSubnet(element) => ::core::fmt::Display::fmt(element, f),
                 Self::GetSubnetTopDownMsgsLength(element) => {
                     ::core::fmt::Display::fmt(element, f)
@@ -2115,6 +2185,11 @@ pub mod gateway_getter_facet {
     impl ::core::convert::From<GetNetworkNameCall> for GatewayGetterFacetCalls {
         fn from(value: GetNetworkNameCall) -> Self {
             Self::GetNetworkName(value)
+        }
+    }
+    impl ::core::convert::From<GetParentFinalityCall> for GatewayGetterFacetCalls {
+        fn from(value: GetParentFinalityCall) -> Self {
+            Self::GetParentFinality(value)
         }
     }
     impl ::core::convert::From<GetSubnetCall> for GatewayGetterFacetCalls {
@@ -2297,6 +2372,18 @@ pub mod gateway_getter_facet {
         Hash
     )]
     pub struct GetNetworkNameReturn(pub SubnetID);
+    ///Container type for all return fields from the `getParentFinality` function with signature `getParentFinality(uint256)` and selector `0x7edeac92`
+    #[derive(
+        Clone,
+        ::ethers::contract::EthAbiType,
+        ::ethers::contract::EthAbiCodec,
+        Default,
+        Debug,
+        PartialEq,
+        Eq,
+        Hash
+    )]
+    pub struct GetParentFinalityReturn(pub ParentFinality);
     ///Container type for all return fields from the `getSubnet` function with signature `getSubnet((uint64,address[]))` and selector `0xc66c66a1`
     #[derive(
         Clone,
@@ -2549,6 +2636,21 @@ pub mod gateway_getter_facet {
     pub struct Ipcaddress {
         pub subnet_id: SubnetID,
         pub raw_address: FvmAddress,
+    }
+    ///`ParentFinality(uint256,bytes32)`
+    #[derive(
+        Clone,
+        ::ethers::contract::EthAbiType,
+        ::ethers::contract::EthAbiCodec,
+        Default,
+        Debug,
+        PartialEq,
+        Eq,
+        Hash
+    )]
+    pub struct ParentFinality {
+        pub height: ::ethers::core::types::U256,
+        pub block_hash: [u8; 32],
     }
     ///`StorableMsg(((uint64,address[]),(uint8,bytes)),((uint64,address[]),(uint8,bytes)),uint256,uint64,bytes4,bytes)`
     #[derive(

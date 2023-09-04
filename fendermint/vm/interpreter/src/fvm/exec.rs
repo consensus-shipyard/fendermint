@@ -90,7 +90,11 @@ where
         let method_num = msg.method_num;
         let gas_limit = msg.gas_limit;
 
-        let apply_ret = state.execute_explicit(msg)?;
+        let apply_ret = if from == system::SYSTEM_ACTOR_ADDR {
+            state.execute_implicit(msg)?
+        } else {
+            state.execute_explicit(msg)?
+        };
 
         let ret = FvmApplyRet {
             apply_ret,

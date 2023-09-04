@@ -64,11 +64,11 @@ pub enum AppError {
 #[derive(Serialize, Deserialize)]
 pub struct AppState {
     /// Last committed block height.
-    block_height: BlockHeight,
+    pub(crate) block_height: BlockHeight,
     /// Oldest state hash height.
     oldest_state_height: BlockHeight,
     /// Last committed version of the evolving state of the FVM.
-    state_params: FvmStateParams,
+    pub(crate) state_params: FvmStateParams,
 }
 
 impl AppState {
@@ -159,16 +159,17 @@ where
 {
     pub fn new(
         config: AppConfig<S>,
-        db: DB,
-        state_store: SS,
+        db: Arc<DB>,
+        state_store: Arc<SS>,
+        multi_engine: Arc<MultiEngine>,
         interpreter: I,
         resolve_pool: CheckpointPool,
         parent_finality_provider: Arc<InMemoryFinalityProvider>,
     ) -> Result<Self> {
         let app = Self {
-            db: Arc::new(db),
-            state_store: Arc::new(state_store),
-            multi_engine: Arc::new(MultiEngine::new(1)),
+            db,
+            state_store,
+            multi_engine,
             builtin_actors_bundle: config.builtin_actors_bundle,
             namespace: config.app_namespace,
             state_hist: KVCollection::new(config.state_hist_namespace),

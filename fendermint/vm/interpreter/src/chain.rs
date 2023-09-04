@@ -1,4 +1,3 @@
-use std::sync::Arc;
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 use crate::{
@@ -6,21 +5,27 @@ use crate::{
     signed::{SignedMessageApplyRes, SignedMessageCheckRes, SyntheticMessage, VerifiableMessage},
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use async_stm::{atomically, atomically_or_err};
 use async_trait::async_trait;
-use fendermint_vm_actor_interface::ipc;
+use fendermint_vm_actor_interface::{ipc, system};
+use fendermint_vm_ipc_actors::gateway_router_facet;
 use fendermint_vm_message::ipc::ParentFinalityProposal;
 use fendermint_vm_message::{
     chain::ChainMessage,
     ipc::{BottomUpCheckpoint, CertifiedMessage, IpcMessage, SignedRelayedMessage},
 };
 use fendermint_vm_resolver::pool::{ResolveKey, ResolvePool};
-use fendermint_vm_topdown::{IPCParentFinality, InMemoryFinalityProvider, ParentFinalityProvider};
+use fendermint_vm_topdown::convert::EncodeWithSignature;
+use fendermint_vm_topdown::{
+    IPCParentFinality, InMemoryFinalityProvider, ParentFinalityProvider, ParentViewProvider,
+};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
+use ipc_agent_sdk::message::ipc::ValidatorSet;
 use num_traits::Zero;
+use std::sync::Arc;
 
 /// A resolution pool for bottom-up and top-down checkpoints.
 pub type CheckpointPool = ResolvePool<CheckpointPoolItem>;
@@ -168,6 +173,18 @@ where
     }
 }
 
+macro_rules! downcast_err {
+    ($r:expr) => {
+        match $r {
+            Ok(v) => Ok(v),
+            Err(e) => match e.downcast_ref::<fendermint_vm_topdown::Error>() {
+                None => unreachable!(),
+                Some(e) => Err(e.clone()),
+            },
+        }
+    };
+}
+
 #[async_trait]
 impl<I> ExecInterpreter for ChainMessageInterpreter<I>
 where
@@ -177,7 +194,7 @@ where
     // state which the inner interpreter uses. This is a technical solution because the pool doesn't
     // fit with the state we use for execution messages further down the stack, which depend on block
     // height and are used in queries as well.
-    type State = (CheckpointPool, I::State);
+    type State = (CheckpointPool, Arc<InMemoryFinalityProvider>, I::State);
     type Message = ChainMessage;
     type BeginOutput = I::BeginOutput;
     type DeliverOutput = ChainMessageApplyRet;
@@ -185,7 +202,7 @@ where
 
     async fn deliver(
         &self,
-        (pool, state): Self::State,
+        (pool, provider, state): Self::State,
         msg: Self::Message,
     ) -> anyhow::Result<(Self::State, Self::DeliverOutput)> {
         match msg {
@@ -194,7 +211,7 @@ where
                     .inner
                     .deliver(state, VerifiableMessage::Signed(msg))
                     .await?;
-                Ok(((pool, state), ChainMessageApplyRet::Signed(ret)))
+                Ok(((pool, provider, state), ChainMessageApplyRet::Signed(ret)))
             }
             ChainMessage::Ipc(msg) => match msg {
                 IpcMessage::BottomUpResolve(msg) => {
@@ -221,13 +238,32 @@ where
                     }
 
                     // We can use the same result type for now, it's isomorphic.
-                    Ok(((pool, state), ChainMessageApplyRet::Signed(ret)))
+                    Ok(((pool, provider, state), ChainMessageApplyRet::Signed(ret)))
                 }
                 IpcMessage::BottomUpExec(_) => {
                     todo!("#197: implement BottomUp checkpoint execution")
                 }
-                IpcMessage::TopDownProposal(_) => {
-                    todo!("implement TopDown handling; this is just a placeholder")
+                IpcMessage::TopDownProposal(p) => {
+                    let validator_set = downcast_err!(
+                        atomically_or_err(|| provider.validator_set(p.height as u64)).await
+                    )?
+                    .ok_or_else(|| anyhow!("cannot find validator set for block: {}", p.height))?;
+
+                    let finality = IPCParentFinality {
+                        height: p.height as u64,
+                        block_hash: p.block_hash,
+                    };
+                    let msg = parent_finality_to_fvm(finality.clone(), validator_set)?;
+                    let (state, ret) = self
+                        .inner
+                        .deliver(state, VerifiableMessage::NotVerify(msg))
+                        .await?;
+
+                    downcast_err!(
+                        atomically_or_err(|| provider.on_finality_committed(&finality)).await
+                    )?;
+
+                    Ok(((pool, provider, state), ChainMessageApplyRet::Signed(ret)))
                 }
             },
         }
@@ -235,18 +271,18 @@ where
 
     async fn begin(
         &self,
-        (pool, state): Self::State,
+        (pool, provider, state): Self::State,
     ) -> anyhow::Result<(Self::State, Self::BeginOutput)> {
         let (state, out) = self.inner.begin(state).await?;
-        Ok(((pool, state), out))
+        Ok(((pool, provider, state), out))
     }
 
     async fn end(
         &self,
-        (pool, state): Self::State,
+        (pool, provider, state): Self::State,
     ) -> anyhow::Result<(Self::State, Self::EndOutput)> {
         let (state, out) = self.inner.end(state).await?;
-        Ok(((pool, state), out))
+        Ok(((pool, provider, state), out))
     }
 }
 
@@ -359,6 +395,33 @@ fn relayed_bottom_up_ckpt_to_fvm(
 
     let msg = SyntheticMessage::new(msg, &relayed.message, relayed.signature.clone())
         .context("failed to create syntetic message")?;
+
+    Ok(msg)
+}
+
+/// Convert a parent finality to fvm message
+fn parent_finality_to_fvm(
+    finality: IPCParentFinality,
+    validator_set: ValidatorSet,
+) -> anyhow::Result<FvmMessage> {
+    let params = RawBytes::new(EncodeWithSignature::<
+        gateway_router_facet::CommitParentFinalityCall,
+    >::encode(finality, validator_set)?);
+    let msg = FvmMessage {
+        version: 0,
+        from: system::SYSTEM_ACTOR_ADDR,
+        to: ipc::GATEWAY_ACTOR_ADDR,
+        value: TokenAmount::zero(),
+        method_num: ipc::gateway::METHOD_INVOKE_CONTRACT,
+        params,
+        // we are sending a implicit message, no need to set sequence
+        sequence: 0, // read the latest
+
+        // FIXME: what's this value?
+        gas_limit: 0,
+        gas_fee_cap: TokenAmount::zero(),
+        gas_premium: TokenAmount::zero(),
+    };
 
     Ok(msg)
 }

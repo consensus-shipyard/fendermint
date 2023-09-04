@@ -44,6 +44,8 @@ tokio-stream = { workspace = true }
 tokio-util = { workspace = true }
 pin-project = { workspace = true }
 
+ipc-agent-sdk = { workspace = true }
+
 [dev-dependencies]
 quickcheck = { workspace = true }
 fvm = { workspace = true, features = ["arb", "testing"] }

@@ -6,6 +6,9 @@ mod error;
 mod finality;
 mod sync;
 
+#[cfg(feature = "conversion")]
+pub mod convert;
+
 use async_stm::StmDynResult;
 use ipc_agent_sdk::message::ipc::ValidatorSet;
 use ipc_sdk::cross::CrossMsg;

@@ -6,6 +6,10 @@ authors.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+conversion = ["fendermint_vm_ipc_actors", "ethers"]
+default = ["conversion"]
+
 [dependencies]
 tokio = { workspace = true }
 anyhow = { workspace = true }
@@ -21,6 +25,9 @@ async-stm = { workspace = true }
 thiserror = { workspace = true }
 ipc-agent-sdk = { workspace = true }
 fvm_shared = { workspace = true }
+
+fendermint_vm_ipc_actors = { path = "../ipc_actors", optional = true }
+ethers = { workspace = true, optional = true}
 
 tracing-subscriber = "0.3.17"
 [dev-dependencies]
