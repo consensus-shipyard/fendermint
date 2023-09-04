@@ -55,19 +55,6 @@ impl PollingParentSyncer {
     }
 }
 
-/// Extract the actual error from Box
-macro_rules! downcast_err {
-    ($r:expr) => {
-        match $r {
-            Ok(v) => Ok(v),
-            Err(e) => match e.downcast_ref::<Error>() {
-                None => unreachable!(),
-                Some(e) => Err(e.clone()),
-            },
-        }
-    };
-}
-
 async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
     config: &Config,
     agent_proxy: &Arc<IPCAgentProxy>,
