@@ -98,7 +98,11 @@ where
         });
 
         // Prepare top down proposals
-        match atomically_or_err::<_, fendermint_vm_topdown::Error, _>(|| finality_provider.next_proposal()).await? {
+        match atomically_or_err::<_, fendermint_vm_topdown::Error, _>(|| {
+            finality_provider.next_proposal()
+        })
+        .await?
+        {
             None => {}
             Some(proposal) => {
                 msgs.push(ChainMessage::Ipc(IpcMessage::TopDownExec(ParentFinality {
