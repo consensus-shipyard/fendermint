@@ -85,14 +85,13 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
             get_new_parent_views(agent_proxy, starting_height, latest_height).await?;
         tracing::debug!("new parent views: {new_parent_views:?}");
 
-        let r = atomically_or_err(move || {
+        atomically_or_err::<_, Error, _>(move || {
             for (height, block_hash, validator_set, messages) in new_parent_views.clone() {
                 provider.new_parent_view(height, block_hash, validator_set, messages)?;
             }
             Ok(())
         })
-        .await;
-        downcast_err!(r)?;
+        .await?;
 
         tracing::debug!("updated new parent views till height: {latest_height}");
     }
@@ -109,7 +108,7 @@ async fn get_query_block_heights<T: ParentFinalityProvider + Send + Sync + 'stat
         .await
         .context("cannot fetch parent chain head")?;
 
-    let r = atomically_or_err(|| {
+    let starting_height = atomically_or_err::<_, Error, _>(|| {
         Ok(if let Some(h) = provider.latest_height()? {
             h + 1
         } else {
@@ -117,8 +116,7 @@ async fn get_query_block_heights<T: ParentFinalityProvider + Send + Sync + 'stat
             last_committed_finality.height + 1
         })
     })
-    .await;
-    let starting_height = downcast_err!(r)?;
+    .await?;
 
     Ok((starting_height, latest_height))
 }

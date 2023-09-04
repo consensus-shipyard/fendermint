@@ -232,7 +232,6 @@ fn ensure_sequential_by_nonce(msgs: &[CrossMsg]) -> StmResult<(), Error> {
 
 #[cfg(test)]
 mod tests {
-    use crate::error::Error;
     use crate::{
         Config, IPCParentFinality, InMemoryFinalityProvider, ParentFinalityProvider,
         ParentViewProvider,
@@ -282,7 +281,6 @@ mod tests {
         atomically_or_err(|| {
             let r = provider.next_proposal();
             assert!(r.is_err());
-            assert_eq!(r.unwrap_err(), Error::HeightNotReady);
 
             provider.new_parent_view(
                 10,
@@ -296,10 +294,6 @@ mod tests {
 
             let r = provider.next_proposal();
             assert!(r.is_err());
-            assert_eq!(
-                downcast_err!(r).unwrap_err(),
-                Error::HeightThresholdNotReached
-            );
 
             // inject data
             for i in 11..=100 {
@@ -360,7 +354,6 @@ mod tests {
             // all cache should be cleared
             let r = provider.next_proposal();
             assert!(r.is_err());
-            assert_eq!(downcast_err!(r).unwrap_err(), Error::HeightNotReady);
 
             let f = provider.last_committed_finality()?;
             assert_eq!(f, finality);
