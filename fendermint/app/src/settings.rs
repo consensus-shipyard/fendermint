@@ -3,13 +3,13 @@
 
 use config::{Config, ConfigError, Environment, File};
 use ipc_sdk::subnet_id::SubnetID;
+use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 use serde_with::{serde_as, DurationSeconds};
 use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
-use serde::de::Error;
 
 #[derive(Debug, Deserialize)]
 pub struct Address {
@@ -52,7 +52,7 @@ pub struct FvmSettings {
 pub struct IPCSettings {
     #[serde(deserialize_with = "deserialize_subnet_id")]
     pub subnet_id: SubnetID,
-    pub config: fendermint_vm_topdown::Config
+    pub config: fendermint_vm_topdown::Config,
 }
 
 /// Ethereum API facade settings.
@@ -161,7 +161,7 @@ where
     D: Deserializer<'de>,
 {
     let s = String::deserialize(deserializer)?;
-    s.parse::<SubnetID>().map_err(|e| D::Error::custom(e))
+    s.parse::<SubnetID>().map_err(Error::custom)
 }
 
 #[cfg(test)]

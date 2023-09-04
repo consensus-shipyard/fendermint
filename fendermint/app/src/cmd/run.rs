@@ -11,7 +11,7 @@ use fendermint_vm_interpreter::{
     fvm::FvmMessageInterpreter,
     signed::SignedMessageInterpreter,
 };
-use fendermint_vm_topdown::{InMemoryFinalityProvider, IPCParentFinality};
+use fendermint_vm_topdown::{IPCParentFinality, InMemoryFinalityProvider};
 use std::sync::Arc;
 use tracing::info;
 
@@ -30,7 +30,7 @@ async fn create_parent_finality(settings: &Settings) -> anyhow::Result<InMemoryF
         IPCParentFinality {
             height: 0,
             block_hash: vec![],
-        }
+        },
     );
     Ok(provider)
 }

@@ -105,9 +105,7 @@ where
                     block_hash: proposal.block_hash,
                 },
             ))),
-            Ok(None) => {
-                tracing::debug!("parent finality proposal not ready yet");
-            }
+            Ok(None) => {}
             Err(e) => {
                 // safe to unwrap as the type is correct
                 let e = e.downcast_ref::<fendermint_vm_topdown::Error>().unwrap();
