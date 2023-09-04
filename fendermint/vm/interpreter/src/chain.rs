@@ -146,20 +146,13 @@ where
                     height,
                     block_hash,
                 })) => {
-                    return if (atomically_or_err(|| {
-                        state.1.check_proposal(&IPCParentFinality {
+                    let prop = IPCParentFinality {
                             height: height as u64,
-                            // need clone as atomically_or_err seems not able to capture with move
-                            block_hash: block_hash.clone(),
-                        })
-                    })
-                    .await)
-                        .is_ok()
-                    {
-                        Ok(true)
-                    } else {
-                        Ok(false)
+                            block_hash,
                     };
+                    if atomically_or_err(|| state.1.check_proposal(&prop)).await.is_err() {
+                      return Ok(false);
+                    }
                 }
                 _ => {}
             };
