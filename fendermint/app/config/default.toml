@@ -54,7 +54,10 @@ host = "127.0.0.1"
 port = 8545
 
 # IPC Parent finality related configuration
-[parent_finality]
+[ipc]
+subnet_id = "/r1942764459484029"
+
+[ipc.config]
 # The number of blocks behind chain head to propose parent finality.
 chain_head_delay = 10
 # The number of seconds to polling ipc agent for latest parent view

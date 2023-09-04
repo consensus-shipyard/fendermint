@@ -5,12 +5,11 @@ use config::{Config, ConfigError, Environment, File};
 use ipc_sdk::subnet_id::SubnetID;
 use serde::{Deserialize, Deserializer};
 use serde_with::{serde_as, DurationSeconds};
-use std::fmt::Formatter;
-use std::str::FromStr;
 use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
+use serde::de::Error;
 
 #[derive(Debug, Deserialize)]
 pub struct Address {
@@ -49,6 +48,13 @@ pub struct FvmSettings {
     pub gas_search_step: f64,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct IPCSettings {
+    #[serde(deserialize_with = "deserialize_subnet_id")]
+    pub subnet_id: SubnetID,
+    pub config: fendermint_vm_topdown::Config
+}
+
 /// Ethereum API facade settings.
 #[serde_as]
 #[derive(Debug, Deserialize)]
@@ -71,10 +77,7 @@ pub struct Settings {
     pub db: DbSettings,
     pub eth: EthSettings,
     pub fvm: FvmSettings,
-
-    #[serde(deserialize_with = "deserialize_subnet_id", default)]
-    pub subnet_id: SubnetID,
-    pub parent_finality: fendermint_vm_topdown::Config,
+    pub ipc: IPCSettings,
 }
 
 macro_rules! home_relative {
@@ -157,22 +160,8 @@ pub(crate) fn deserialize_subnet_id<'de, D>(deserializer: D) -> anyhow::Result<S
 where
     D: Deserializer<'de>,
 {
-    struct SubnetIDVisitor;
-    impl<'de> serde::de::Visitor<'de> for SubnetIDVisitor {
-        type Value = SubnetID;
-
-        fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
-            formatter.write_str("a string")
-        }
-
-        fn visit_str<E>(self, v: &str) -> std::result::Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            SubnetID::from_str(v).map_err(E::custom)
-        }
-    }
-    deserializer.deserialize_str(SubnetIDVisitor)
+    let s = String::deserialize(deserializer)?;
+    s.parse::<SubnetID>().map_err(|e| D::Error::custom(e))
 }
 
 #[cfg(test)]

@@ -10,7 +10,7 @@ use anyhow::Context;
 use async_stm::{atomically, atomically_or_err};
 use async_trait::async_trait;
 use fendermint_vm_actor_interface::ipc;
-use fendermint_vm_message::ipc::ParentFinalityProposal;
+use fendermint_vm_message::ipc::ParentFinality;
 use fendermint_vm_message::{
     chain::ChainMessage,
     ipc::{BottomUpCheckpoint, CertifiedMessage, IpcMessage, SignedRelayedMessage},
@@ -99,8 +99,8 @@ where
 
         // Prepare top down proposals
         match atomically_or_err(|| finality_provider.next_proposal()).await {
-            Ok(Some(proposal)) => msgs.push(ChainMessage::Ipc(IpcMessage::TopDownProposal(
-                ParentFinalityProposal {
+            Ok(Some(proposal)) => msgs.push(ChainMessage::Ipc(IpcMessage::TopDownExec(
+                ParentFinality {
                     height: proposal.height as ChainEpoch,
                     block_hash: proposal.block_hash,
                 },
@@ -142,7 +142,7 @@ where
                         return Ok(false);
                     }
                 }
-                ChainMessage::Ipc(IpcMessage::TopDownProposal(ParentFinalityProposal {
+                ChainMessage::Ipc(IpcMessage::TopDownExec(ParentFinality {
                     height,
                     block_hash,
                 })) => {
@@ -226,7 +226,7 @@ where
                 IpcMessage::BottomUpExec(_) => {
                     todo!("#197: implement BottomUp checkpoint execution")
                 }
-                IpcMessage::TopDownProposal(_) => {
+                IpcMessage::TopDownExec(_) => {
                     todo!("implement TopDown handling; this is just a placeholder")
                 }
             },
@@ -287,7 +287,7 @@ where
 
                         Ok((state, Ok(ret)))
                     }
-                    IpcMessage::TopDownProposal(_) | IpcMessage::BottomUpExec(_) => {
+                    IpcMessage::TopDownExec(_) | IpcMessage::BottomUpExec(_) => {
                         // Users cannot send these messages, only validators can propose them in blocks.
                         Ok((state, Err(IllegalMessage)))
                     }

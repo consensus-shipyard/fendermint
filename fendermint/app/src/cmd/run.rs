@@ -11,7 +11,7 @@ use fendermint_vm_interpreter::{
     fvm::FvmMessageInterpreter,
     signed::SignedMessageInterpreter,
 };
-use fendermint_vm_topdown::InMemoryFinalityProvider;
+use fendermint_vm_topdown::{InMemoryFinalityProvider, IPCParentFinality};
 use std::sync::Arc;
 use tracing::info;
 
@@ -23,13 +23,16 @@ cmd! {
   }
 }
 
-async fn create_parent_finality(_settings: &Settings) -> anyhow::Result<InMemoryFinalityProvider> {
-    // let provider = InMemoryFinalityProvider::new(
-    //     settings.parent_finality.clone(),
-    //     unimplemented!(),
-    // );
-    // Ok(provider)
-    todo!()
+async fn create_parent_finality(settings: &Settings) -> anyhow::Result<InMemoryFinalityProvider> {
+    let provider = InMemoryFinalityProvider::new(
+        settings.ipc.config.clone(),
+        // TODO: default implementation, will be fixed in follow up PR
+        IPCParentFinality {
+            height: 0,
+            block_hash: vec![],
+        }
+    );
+    Ok(provider)
 }
 
 async fn run(settings: Settings) -> anyhow::Result<()> {
@@ -62,7 +65,7 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         state_store,
         interpreter,
         resolve_pool,
-        parent_finality.clone(),
+        parent_finality,
     )?;
 
     let service = ApplicationService(app);
