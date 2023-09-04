@@ -5,8 +5,8 @@ BASE_FEE = { value = "1000", condition = { env_not_set = ["BASE_FEE"] }}
 TIMESTAMP = { value = "1680101412", condition = { env_not_set = ["TIMESTAMP"] }}
 
 BASE_DIR="${HOME}"
-FM_DIR="${BASE_DIR}/.fendermint"
-CMT_DIR="${BASE_DIR}/.cometbft"
+FM_DIR="${BASE_DIR}/.fendermint/${CHAIN_NAME}"
+CMT_DIR="${BASE_DIR}/.cometbft/${CHAIN_NAME}"
 
 GENESIS_FILE="${FM_DIR}/genesis.json"
 KEYS_DIR="${FM_DIR}/keys"
@@ -65,6 +65,7 @@ echo - Keys directory: ${KEYS_DIR}
 echo - Genesis file: ${GENESIS_FILE}
 echo - CometBFT directory: ${CMT_DIR}
 echo - Fendermint directory: ${FM_DIR}
+echo - Private key: ${PRIV_KEY_PATH}
 echo
 echo Docker:
 echo - Network: ${NETWORK_NAME}
@@ -94,6 +95,7 @@ rm -rf ${CMT_DIR}
 script="""
 echo creating directories: $FM_DIR $CMT_DIR
 mkdir -p $FM_DIR
+
 mkdir -p $CMT_DIR
 mkdir -p $CMT_DIR/data
 mkdir -p $CMT_DIR/config
