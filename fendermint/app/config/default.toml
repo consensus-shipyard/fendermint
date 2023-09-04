@@ -4,8 +4,6 @@ data_dir = "data"
 contracts_dir = "contracts"
 # Builtin actor bundle path relative to the `--home-dir`, unless given as an absolute path.
 builtin_actors_bundle = "bundle.car"
-# Subnet id assigned to this fendermint node
-subnet_id = "/r1024"
 
 [abci]
 bound = 1
@@ -61,7 +59,9 @@ port = 8545
 
 # IPC Parent finality related configuration
 [ipc]
-subnet_id = "/r1942764459484029"
+# Subnet id assigned to this fendermint node. Update this to the correct subnet id.
+# TODO: fetch this value from genisis if possible.
+subnet_id = "/r0"
 
 [ipc.config]
 # The number of blocks behind chain head to propose parent finality.
