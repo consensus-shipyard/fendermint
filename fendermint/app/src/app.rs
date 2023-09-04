@@ -280,11 +280,31 @@ where
     /// Take the execution state, update it, put it back, return the output.
     async fn modify_exec_state<T, F, R>(&self, f: F) -> Result<T>
     where
-        F: FnOnce((CheckpointPool, FvmExecState<SS>)) -> R,
-        R: Future<Output = Result<((CheckpointPool, FvmExecState<SS>), T)>>,
+        F: FnOnce(
+            (
+                CheckpointPool,
+                Arc<InMemoryFinalityProvider>,
+                FvmExecState<SS>,
+            ),
+        ) -> R,
+        R: Future<
+            Output = Result<(
+                (
+                    CheckpointPool,
+                    Arc<InMemoryFinalityProvider>,
+                    FvmExecState<SS>,
+                ),
+                T,
+            )>,
+        >,
     {
         let state = self.take_exec_state();
-        let ((_pool, state), ret) = f((self.resolve_pool.clone(), state)).await?;
+        let ((_pool, _provider, state), ret) = f((
+            self.resolve_pool.clone(),
+            self.parent_finality_provider.clone(),
+            state,
+        ))
+        .await?;
         self.put_exec_state(state);
         Ok(ret)
     }
@@ -341,7 +361,11 @@ where
         Message = Vec<u8>,
     >,
     I: ExecInterpreter<
-        State = (CheckpointPool, FvmExecState<SS>),
+        State = (
+            CheckpointPool,
+            Arc<InMemoryFinalityProvider>,
+            FvmExecState<SS>,
+        ),
         Message = Vec<u8>,
         BeginOutput = FvmApplyRet,
         DeliverOutput = BytesMessageApplyRes,
