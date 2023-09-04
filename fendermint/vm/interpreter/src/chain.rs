@@ -98,18 +98,13 @@ where
         });
 
         // Prepare top down proposals
-        match atomically_or_err(|| finality_provider.next_proposal()).await {
-            Ok(Some(proposal)) => {
+        match atomically_or_err::<_, fendermint_vm_topdown::Error, _>(|| finality_provider.next_proposal()).await? {
+            None => {}
+            Some(proposal) => {
                 msgs.push(ChainMessage::Ipc(IpcMessage::TopDownExec(ParentFinality {
                     height: proposal.height as ChainEpoch,
                     block_hash: proposal.block_hash,
                 })))
-            }
-            Ok(None) => {}
-            Err(e) => {
-                // safe to unwrap as the type is correct
-                let e = e.downcast_ref::<fendermint_vm_topdown::Error>().unwrap();
-                tracing::warn!("cannot produce parent finality proposal: {e}");
             }
         }
 

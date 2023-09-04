@@ -6,7 +6,7 @@ mod error;
 mod finality;
 mod sync;
 
-use async_stm::StmDynResult;
+use async_stm::StmResult;
 use ipc_agent_sdk::message::ipc::ValidatorSet;
 use ipc_sdk::cross::CrossMsg;
 use serde::{Deserialize, Serialize};
@@ -45,13 +45,13 @@ pub struct IPCParentFinality {
 
 pub trait ParentViewProvider {
     /// Get the latest height of the parent recorded
-    fn latest_height(&self) -> StmDynResult<Option<BlockHeight>>;
+    fn latest_height(&self) -> StmResult<Option<BlockHeight>, Error>;
     /// Get the block hash at height
-    fn block_hash(&self, height: BlockHeight) -> StmDynResult<Option<BlockHash>>;
+    fn block_hash(&self, height: BlockHeight) -> StmResult<Option<BlockHash>, Error>;
     /// Get the validator set at height
-    fn validator_set(&self, height: BlockHeight) -> StmDynResult<Option<ValidatorSet>>;
+    fn validator_set(&self, height: BlockHeight) -> StmResult<Option<ValidatorSet>, Error>;
     /// Get the top down messages at height
-    fn top_down_msgs(&self, height: BlockHeight) -> StmDynResult<Vec<CrossMsg>>;
+    fn top_down_msgs(&self, height: BlockHeight) -> StmResult<Vec<CrossMsg>, Error>;
     /// There is a new parent view is ready to be updated
     fn new_parent_view(
         &self,
@@ -59,16 +59,16 @@ pub trait ParentViewProvider {
         block_hash: BlockHash,
         validator_set: ValidatorSet,
         top_down_msgs: Vec<CrossMsg>,
-    ) -> StmDynResult<()>;
+    ) -> StmResult<(), Error>;
 }
 
 pub trait ParentFinalityProvider: ParentViewProvider {
     /// Obtains the last committed finality
-    fn last_committed_finality(&self) -> StmDynResult<IPCParentFinality>;
+    fn last_committed_finality(&self) -> StmResult<IPCParentFinality, Error>;
     /// Latest proposal for parent finality
-    fn next_proposal(&self) -> StmDynResult<Option<IPCParentFinality>>;
+    fn next_proposal(&self) -> StmResult<Option<IPCParentFinality>, Error>;
     /// Check if the target proposal is valid
-    fn check_proposal(&self, proposal: &IPCParentFinality) -> StmDynResult<()>;
+    fn check_proposal(&self, proposal: &IPCParentFinality) -> StmResult<(), Error>;
     /// Called when finality is committed
-    fn on_finality_committed(&self, finality: &IPCParentFinality) -> StmDynResult<()>;
+    fn on_finality_committed(&self, finality: &IPCParentFinality) -> StmResult<(), Error>;
 }

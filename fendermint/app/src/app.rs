@@ -18,13 +18,15 @@ use fendermint_vm_interpreter::bytes::{
 };
 use fendermint_vm_interpreter::chain::{ChainMessageApplyRet, CheckpointPool, IllegalMessage};
 use fendermint_vm_interpreter::fvm::state::{
-    empty_state_tree, FvmCheckState, FvmExecState, FvmGenesisState, FvmQueryState, FvmStateParams,
+    empty_state_tree, CheckStateRef, FvmExecState, FvmGenesisState, FvmQueryState, FvmStateParams,
 };
+use fendermint_vm_interpreter::fvm::store::ReadOnlyBlockstore;
 use fendermint_vm_interpreter::fvm::{FvmApplyRet, FvmGenesisOutput};
 use fendermint_vm_interpreter::signed::InvalidSignature;
 use fendermint_vm_interpreter::{
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
+use fendermint_vm_message::query::FvmQueryHeight;
 use fendermint_vm_topdown::InMemoryFinalityProvider;
 use fvm::engine::MultiEngine;
 use fvm_ipld_blockstore::Blockstore;
@@ -35,7 +37,6 @@ use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use tendermint::abci::request::CheckTxKind;
 use tendermint::abci::{request, response};
-use tendermint::block::Height;
 
 use crate::{tmconv::*, VERSION};
 use crate::{BlockHeight, APP_VERSION};
@@ -139,8 +140,8 @@ where
     parent_finality_provider: Arc<InMemoryFinalityProvider>,
     /// State accumulating changes during block execution.
     exec_state: Arc<Mutex<Option<FvmExecState<SS>>>>,
-    /// Projected partial state accumulating during transaction checks.
-    check_state: Arc<tokio::sync::Mutex<Option<FvmCheckState<SS>>>>,
+    /// Projected (partial) state accumulating during transaction checks.
+    check_state: CheckStateRef<SS>,
     /// How much history to keep.
     ///
     /// Zero means unlimited.
@@ -296,9 +297,11 @@ where
     /// because it doesn't contain any initialized state for the actors.
     ///
     /// Returns the state params and the height of the block which committed it.
-    fn state_params_at_height(&self, height: Height) -> Result<(FvmStateParams, BlockHeight)> {
-        let h = height.value();
-        if h > 0 {
+    fn state_params_at_height(
+        &self,
+        height: FvmQueryHeight,
+    ) -> Result<(FvmStateParams, BlockHeight)> {
+        if let FvmQueryHeight::Height(h) = height {
             let tx = self.db.read();
             let sh = self
                 .state_hist
@@ -347,7 +350,7 @@ where
         EndOutput = (),
     >,
     I: CheckInterpreter<
-        State = FvmCheckState<SS>,
+        State = FvmExecState<ReadOnlyBlockstore<SS>>,
         Message = Vec<u8>,
         Output = BytesMessageCheckRes,
     >,
@@ -433,7 +436,8 @@ where
     /// Query the application for data at the current or past height.
     async fn query(&self, request: request::Query) -> AbciResult<response::Query> {
         let db = self.state_store_clone();
-        let (state_params, block_height) = self.state_params_at_height(request.height)?;
+        let height = FvmQueryHeight::from(request.height.value());
+        let (state_params, block_height) = self.state_params_at_height(height)?;
 
         tracing::info!(
             query_height = request.height.value(),
@@ -456,6 +460,7 @@ where
             block_height.try_into()?,
             state_params,
             self.check_state.clone(),
+            height == FvmQueryHeight::Pending,
         )
         .context("error creating query state")?;
 
@@ -484,8 +489,18 @@ where
             None => {
                 let db = self.state_store_clone();
                 let state = self.committed_state()?;
-                FvmCheckState::new(db, state.state_root(), state.chain_id())
-                    .context("error creating check state")?
+
+                // This would create a partial state, but some client scenarios need the full one.
+                // FvmCheckState::new(db, state.state_root(), state.chain_id())
+                //     .context("error creating check state")?
+
+                FvmExecState::new(
+                    ReadOnlyBlockstore::new(db),
+                    self.multi_engine.as_ref(),
+                    state.block_height.try_into()?,
+                    state.state_params,
+                )
+                .context("error creating check state")?
             }
         };
 
@@ -604,15 +619,7 @@ where
                 ChainMessageApplyRet::Signed(Err(InvalidSignature(d))) => {
                     invalid_deliver_tx(AppError::InvalidSignature, d)
                 }
-                ChainMessageApplyRet::Signed(Ok(ret)) => {
-                    tracing::info!(
-                        from = ret.fvm.from.to_string(),
-                        to = ret.fvm.to.to_string(),
-                        method_num = ret.fvm.method_num,
-                        "tx delivered"
-                    );
-                    to_deliver_tx(ret.fvm, ret.domain_hash)
-                }
+                ChainMessageApplyRet::Signed(Ok(ret)) => to_deliver_tx(ret.fvm, ret.domain_hash),
             },
         };
 

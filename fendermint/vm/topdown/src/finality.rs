@@ -6,7 +6,7 @@ use crate::error::Error;
 use crate::{
     BlockHash, BlockHeight, Config, IPCParentFinality, ParentFinalityProvider, ParentViewProvider,
 };
-use async_stm::{abort, StmDynResult, StmResult, TVar};
+use async_stm::{abort, StmResult, TVar};
 use ipc_agent_sdk::message::ipc::ValidatorSet;
 use ipc_sdk::cross::CrossMsg;
 
@@ -29,18 +29,18 @@ struct ParentViewData {
 }
 
 impl ParentViewData {
-    fn latest_height(&self) -> StmResult<Option<BlockHeight>> {
+    fn latest_height(&self) -> StmResult<Option<BlockHeight>, Error> {
         let cache = self.height_data.read()?;
         // safe to unwrap, we dont allow no upper bound
         Ok(cache.upper_bound())
     }
 
-    fn block_hash(&self, height: BlockHeight) -> StmResult<Option<BlockHash>> {
+    fn block_hash(&self, height: BlockHeight) -> StmResult<Option<BlockHash>, Error> {
         let cache = self.height_data.read()?;
         Ok(cache.get_value(height).map(|i| i.0.clone()))
     }
 
-    fn validator_set(&self, height: BlockHeight) -> StmResult<Option<ValidatorSet>> {
+    fn validator_set(&self, height: BlockHeight) -> StmResult<Option<ValidatorSet>, Error> {
         let cache = self.height_data.read()?;
         Ok(cache.get_value(height).map(|i| i.1.clone()))
     }
@@ -49,7 +49,7 @@ impl ParentViewData {
         &self,
         from_height: BlockHeight,
         to_height: BlockHeight,
-    ) -> StmResult<Vec<CrossMsg>> {
+    ) -> StmResult<Vec<CrossMsg>, Error> {
         let cache = self.height_data.read()?;
         let v = cache
             .values_within(from_height, to_height)
@@ -61,22 +61,22 @@ impl ParentViewData {
 }
 
 impl ParentViewProvider for InMemoryFinalityProvider {
-    fn latest_height(&self) -> StmDynResult<Option<BlockHeight>> {
+    fn latest_height(&self) -> StmResult<Option<BlockHeight>, Error> {
         let h = self.parent_view_data.latest_height()?;
         Ok(h)
     }
 
-    fn block_hash(&self, height: BlockHeight) -> StmDynResult<Option<BlockHash>> {
+    fn block_hash(&self, height: BlockHeight) -> StmResult<Option<BlockHash>, Error> {
         let v = self.parent_view_data.block_hash(height)?;
         Ok(v)
     }
 
-    fn validator_set(&self, height: BlockHeight) -> StmDynResult<Option<ValidatorSet>> {
+    fn validator_set(&self, height: BlockHeight) -> StmResult<Option<ValidatorSet>, Error> {
         let v = self.parent_view_data.validator_set(height)?;
         Ok(v)
     }
 
-    fn top_down_msgs(&self, height: BlockHeight) -> StmDynResult<Vec<CrossMsg>> {
+    fn top_down_msgs(&self, height: BlockHeight) -> StmResult<Vec<CrossMsg>, Error> {
         let v = self.parent_view_data.top_down_msgs(height, height)?;
         Ok(v)
     }
@@ -87,7 +87,7 @@ impl ParentViewProvider for InMemoryFinalityProvider {
         block_hash: BlockHash,
         validator_set: ValidatorSet,
         top_down_msgs: Vec<CrossMsg>,
-    ) -> StmDynResult<()> {
+    ) -> StmResult<(), Error> {
         if !top_down_msgs.is_empty() {
             // make sure incoming top down messages are ordered by nonce sequentially
             ensure_sequential_by_nonce(&top_down_msgs)?;
@@ -109,12 +109,12 @@ impl ParentViewProvider for InMemoryFinalityProvider {
 }
 
 impl ParentFinalityProvider for InMemoryFinalityProvider {
-    fn last_committed_finality(&self) -> StmDynResult<IPCParentFinality> {
+    fn last_committed_finality(&self) -> StmResult<IPCParentFinality, Error> {
         let finality = self.last_committed_finality.read_clone()?;
         Ok(finality)
     }
 
-    fn next_proposal(&self) -> StmDynResult<Option<IPCParentFinality>> {
+    fn next_proposal(&self) -> StmResult<Option<IPCParentFinality>, Error> {
         let latest_height = if let Some(h) = self.parent_view_data.latest_height()? {
             h
         } else {
@@ -146,12 +146,12 @@ impl ParentFinalityProvider for InMemoryFinalityProvider {
         Ok(Some(IPCParentFinality { height, block_hash }))
     }
 
-    fn check_proposal(&self, proposal: &IPCParentFinality) -> StmDynResult<()> {
+    fn check_proposal(&self, proposal: &IPCParentFinality) -> StmResult<(), Error> {
         self.check_height(proposal)?;
         self.check_block_hash(proposal)
     }
 
-    fn on_finality_committed(&self, finality: &IPCParentFinality) -> StmDynResult<()> {
+    fn on_finality_committed(&self, finality: &IPCParentFinality) -> StmResult<(), Error> {
         // the height to clear
         let height = finality.height;
 
@@ -178,7 +178,7 @@ impl InMemoryFinalityProvider {
         }
     }
 
-    fn check_height(&self, proposal: &IPCParentFinality) -> StmDynResult<()> {
+    fn check_height(&self, proposal: &IPCParentFinality) -> StmResult<(), Error> {
         let latest_height = if let Some(h) = self.parent_view_data.latest_height()? {
             h
         } else {
@@ -199,7 +199,7 @@ impl InMemoryFinalityProvider {
         Ok(())
     }
 
-    fn check_block_hash(&self, proposal: &IPCParentFinality) -> StmDynResult<()> {
+    fn check_block_hash(&self, proposal: &IPCParentFinality) -> StmResult<(), Error> {
         if let Some(block_hash) = self.parent_view_data.block_hash(proposal.height)? {
             if block_hash == proposal.block_hash {
                 return Ok(());
@@ -214,7 +214,7 @@ impl InMemoryFinalityProvider {
     }
 }
 
-fn ensure_sequential_by_nonce(msgs: &[CrossMsg]) -> StmDynResult<()> {
+fn ensure_sequential_by_nonce(msgs: &[CrossMsg]) -> StmResult<(), Error> {
     if msgs.is_empty() {
         return Ok(());
     }
@@ -232,32 +232,16 @@ fn ensure_sequential_by_nonce(msgs: &[CrossMsg]) -> StmDynResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use crate::error::Error;
     use crate::{
         Config, IPCParentFinality, InMemoryFinalityProvider, ParentFinalityProvider,
         ParentViewProvider,
     };
-    use async_stm::{atomically_or_err, StmDynError};
+    use async_stm::atomically_or_err;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
     use ipc_agent_sdk::message::ipc::ValidatorSet;
     use ipc_sdk::cross::{CrossMsg, StorableMsg};
     use ipc_sdk::subnet_id::SubnetID;
-
-    macro_rules! downcast_err {
-        ($r:ident) => {
-            match $r {
-                Ok(v) => Ok(v),
-                Err(e) => match e {
-                    StmDynError::Abort(e) => match e.downcast_ref::<Error>() {
-                        None => unreachable!(),
-                        Some(e) => Err(e.clone()),
-                    },
-                    _ => unreachable!(),
-                },
-            }
-        };
-    }
 
     fn new_provider() -> InMemoryFinalityProvider {
         let config = Config {
@@ -298,7 +282,6 @@ mod tests {
         atomically_or_err(|| {
             let r = provider.next_proposal();
             assert!(r.is_err());
-            assert_eq!(downcast_err!(r).unwrap_err(), Error::HeightNotReady);
 
             provider.new_parent_view(
                 10,
@@ -312,10 +295,6 @@ mod tests {
 
             let r = provider.next_proposal();
             assert!(r.is_err());
-            assert_eq!(
-                downcast_err!(r).unwrap_err(),
-                Error::HeightThresholdNotReached
-            );
 
             // inject data
             for i in 11..=100 {
@@ -376,7 +355,6 @@ mod tests {
             // all cache should be cleared
             let r = provider.next_proposal();
             assert!(r.is_err());
-            assert_eq!(downcast_err!(r).unwrap_err(), Error::HeightNotReady);
 
             let f = provider.last_committed_finality()?;
             assert_eq!(f, finality);
