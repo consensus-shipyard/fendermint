@@ -4,9 +4,9 @@ BALANCE = { value = "1000", condition = { env_not_set = ["BALANCE"] }}
 BASE_FEE = { value = "1000", condition = { env_not_set = ["BASE_FEE"] }}
 TIMESTAMP = { value = "1680101412", condition = { env_not_set = ["TIMESTAMP"] }}
 
-BASE_DIR="${HOME}"
-FM_DIR="${BASE_DIR}/.fendermint/${CHAIN_NAME}"
-CMT_DIR="${BASE_DIR}/.cometbft/${CHAIN_NAME}"
+BASE_DIR="${HOME}/.ipc/${CHAIN_NAME}"
+FM_DIR="${BASE_DIR}/fendermint"
+CMT_DIR="${BASE_DIR}/cometbft"
 
 GENESIS_FILE="${FM_DIR}/genesis.json"
 KEYS_DIR="${FM_DIR}/keys"
@@ -14,10 +14,10 @@ KEY_NAME="validator_key"
 PUB_KEY_PATH="${KEYS_DIR}/${KEY_NAME}.pk"
 PRIV_KEY_PATH="${KEYS_DIR}/${KEY_NAME}.sk"
 
-NETWORK_NAME = "${CHAIN_NAME}-network"
-CMT_CONTAINER_NAME = "${CHAIN_NAME}-cometbft"
-FM_CONTAINER_NAME = "${CHAIN_NAME}-fendermint"
-ETHAPI_CONTAINER_NAME = "${CHAIN_NAME}-ethapi"
+NETWORK_NAME = "${CHAIN_NAME}net"
+CMT_CONTAINER_NAME = "${NETWORK_NAME}-cometbft"
+FM_CONTAINER_NAME = "${NETWORK_NAME}-fendermint"
+ETHAPI_CONTAINER_NAME = "${NETWORK_NAME}-ethapi"
 
 CMT_DOCKER_IMAGE = "cometbft/cometbft:v0.37.x"
 FM_DOCKER_IMAGE = "fendermint:latest"
@@ -53,21 +53,21 @@ VERBOSITY = "--verbose"
 [tasks.info]
 script="""
 echo
-echo Chain:
+echo Chain info:
 echo - Chain: ${CHAIN_NAME}
 echo - Balance: ${BALANCE}
 echo - Base Fee: ${BASE_FEE}
 echo - Timestamp: ${TIMESTAMP}
 echo
 echo Directories and files:
-echo - Home directory: ${BASE_DIR}
-echo - Keys directory: ${KEYS_DIR}
-echo - Genesis file: ${GENESIS_FILE}
+echo - IPC directory: ${BASE_DIR}
 echo - CometBFT directory: ${CMT_DIR}
 echo - Fendermint directory: ${FM_DIR}
+echo - Keys directory: ${KEYS_DIR}
+echo - Genesis file: ${GENESIS_FILE}
 echo - Private key: ${PRIV_KEY_PATH}
 echo
-echo Docker:
+echo Docker info:
 echo - Network: ${NETWORK_NAME}
 echo - CometBFT container: ${CMT_CONTAINER_NAME}
 echo - Fendermint container: ${FM_CONTAINER_NAME}
@@ -78,68 +78,21 @@ echo
 dependencies = [
   "clear",
   "createbasedir",
-  "newgenesis",
-  "newkey",
-  "newaccount",
-  "newgateway"
 ]
 
 [tasks.clear]
 script="""
-echo clearing all data in: $FM_DIR $CMT_DIR
-rm -rf ${FM_DIR}
-rm -rf ${CMT_DIR}
+echo clearing all IPC data
+rm -rf ${BASE_DIR}
 """
 
 [tasks.createbasedir]
 script="""
-echo creating directories: $FM_DIR $CMT_DIR
+echo creating directories: $BASE_DIR $FM_DIR $CMT_DIR
+mkdir -p $BASE_DIR
 mkdir -p $FM_DIR
 
 mkdir -p $CMT_DIR
-mkdir -p $CMT_DIR/data
-mkdir -p $CMT_DIR/config
-"""
-
-[tasks.newkey]
-cwd = "./target/release"
-script="""
-mkdir -p $KEYS_DIR
-./fendermint key gen --out-dir $KEYS_DIR --name $KEY_NAME;
-chmod 600 ${PRIV_KEY_PATH}
-"""
-
-[tasks.newaccount]
-cwd = "./target/release"
-script="""
-./fendermint genesis --genesis-file ${GENESIS_FILE} add-account --public-key ${PUB_KEY_PATH} --balance ${BALANCE}
-"""
-
-[tasks.newgenesis]
-cwd = "./target/release"
-script = """
-./fendermint genesis --genesis-file ${GENESIS_FILE} new --chain-name ${CHAIN_NAME} --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP}
-"""
-dependencies = [
-  "createbasedir",
-]
-
-[tasks.newgateway]
-cwd = "./target/release"
-script = """
-./fendermint genesis --genesis-file ${GENESIS_FILE} add-validator --public-key ${PUB_KEY_PATH} --power 1
-
-./fendermint genesis --genesis-file ${GENESIS_FILE} ipc gateway --subnet-id /r0 \
-    --top-down-check-period 10 \
-    --bottom-up-check-period 10 \
-    --msg-fee 10 \
-    --majority-percentage 66
-
-./fendermint genesis --genesis-file ${GENESIS_FILE} into-tendermint --out ${CMT_DIR}/config/genesis.json
-
-./fendermint key into-tendermint --secret-key ${PRIV_KEY_PATH} --out ${CMT_DIR}/data/priv_validator_key.json
-
-chmod 600 ${CMT_DIR}/data/priv_validator_key.json
 """
 
 [tasks.default]
@@ -151,9 +104,9 @@ script = ['''
     echo - clear: Clear all information: private keys, cache, database, etc.
     echo - init: Initialize the system
     echo - info: Print the setup information
-    echo - start: Starts Fendermint/CometBFT docker containers with the genesis
-    echo - teardown: Stops the system and clears all data
-    echo - run: Inits and then starts the system
+    echo - start: Start Fendermint/CometBFT docker containers with the genesis
+    echo - teardown: Stop the system and clears all data
+    echo - run: Init and then start the system
     echo
     echo Most tasks use these environment variables:
     echo - CHAIN_NAME (default '${CHAIN_NAME}'): the target IPC subnet
@@ -169,22 +122,7 @@ script = ['''
 # Waiting before starting the Eth API for the CometBFT websocket to start listening.
 [tasks.start]
 dependencies = [
-  "network-create",
-  "cometbft-init",
-  "fendermint-deps",
-  "fendermint-start",
-  "cometbft-start",
-]
-
-[tasks.run]
-dependencies = [
   "init",
-  "start",
-]
-
-[tasks.setupold]
-dependencies = [
-  "test-data-dir",
   "network-create",
   "cometbft-init",
   "fendermint-deps",
@@ -192,10 +130,7 @@ dependencies = [
   "fendermint-start",
   "cometbft-start",
   "cometbft-wait",
-  "ethapi-start",
-  "fendermint-logs",
-  "cometbft-logs",
-  "ethapi-logs",
+  "ethapi-start"
 ]
 
 [tasks.test]
@@ -299,8 +234,53 @@ fi
 """
 
 [tasks.fendermint-init]
-extend = "fendermint-run"
-env = { "ENTRY" = "/scripts/init.sh", "FLAGS" = "-a STDOUT -a STDERR --rm" }
+dependencies = [
+  "fendermint-newgenesis",
+  "fendermint-newkey",
+  "fendermint-newaccount",
+  "fendermint-newgateway"
+]
+
+[tasks.fendermint-newkey]
+cwd = "./target/release"
+script="""
+mkdir -p $KEYS_DIR
+
+./fendermint key gen --out-dir $KEYS_DIR --name $KEY_NAME;
+chmod 600 ${PRIV_KEY_PATH}
+"""
+
+[tasks.fendermint-newaccount]
+cwd = "./target/release"
+script="""
+./fendermint genesis --genesis-file ${GENESIS_FILE} add-account --public-key ${PUB_KEY_PATH} --balance ${BALANCE}
+"""
+
+[tasks.fendermint-newgenesis]
+cwd = "./target/release"
+script = """
+./fendermint genesis --genesis-file ${GENESIS_FILE} new --chain-name ${CHAIN_NAME} --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP}
+"""
+dependencies = [
+  "createbasedir",
+]
+
+[tasks.fendermint-newgateway]
+cwd = "./target/release"
+script = """
+./fendermint genesis --genesis-file ${GENESIS_FILE} add-validator --public-key ${PUB_KEY_PATH} --power 1
+
+./fendermint genesis --genesis-file ${GENESIS_FILE} ipc gateway --subnet-id /r0 \
+    --top-down-check-period 10 \
+    --bottom-up-check-period 10 \
+    --msg-fee 10 \
+    --majority-percentage 66
+
+./fendermint genesis --genesis-file ${GENESIS_FILE} into-tendermint --out ${CMT_DIR}/config/genesis.json
+
+./fendermint key into-tendermint --secret-key ${PRIV_KEY_PATH} --out ${CMT_DIR}/config/priv_validator_key.json
+chmod 600 ${CMT_DIR}/config/priv_validator_key.json
+"""
 
 [tasks.fendermint-start]
 extend = "fendermint-run"
@@ -314,7 +294,7 @@ docker run \
   --init \
   --user $(id -u) \
   --network ${NETWORK_NAME} \
-  --volume ${FM_DIR}/data:/data \
+  --volume ${BASE_DIR}:/data \
   --env FM_DATA_DIR=/data/fendermint/data \
   --env FM_CHAIN_NAME=${NETWORK_NAME} \
   --env LOG_LEVEL=info \
@@ -349,7 +329,7 @@ dependencies = ["network-create"]
 [tasks.network-create]
 command = "docker"
 args = ["network", "create", "${NETWORK_NAME}"]
-ignore_errors = true
+ignore_errors = false
 
 [tasks.network-rm]
 command = "docker"
