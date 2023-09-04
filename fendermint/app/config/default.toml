@@ -60,4 +60,4 @@ chain_head_delay = 10
 # The number of seconds to polling ipc agent for latest parent view
 polling_interval_secs = 10
 # The ipc agent url
-ipc_agent_url = "http://0.0.0.0:3030/json_rpc"
+ipc_agent_url = "http://127.0.0.1:3030/json_rpc"
