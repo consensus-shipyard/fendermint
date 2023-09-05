@@ -33,6 +33,12 @@ pub struct ResolverSettings {
     pub content: ContentSettings,
 }
 
+impl ResolverSettings {
+    pub fn enabled(&self) -> bool {
+        !self.connection.listen_addr.is_empty()
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct NetworkSettings {
     /// Cryptographic key used to sign messages.
