@@ -9,6 +9,8 @@ use std::{
     time::Duration,
 };
 
+use self::resolver::ResolverSettings;
+
 pub mod resolver;
 
 #[derive(Debug, Deserialize, Clone)]
@@ -71,8 +73,6 @@ pub struct Settings {
     home_dir: PathBuf,
     /// Database files.
     data_dir: PathBuf,
-    /// Private keys.
-    keys_dir: PathBuf,
     /// Solidity contracts.
     contracts_dir: PathBuf,
     /// Builtin-actors CAR file.
@@ -96,7 +96,6 @@ impl Settings {
     home_relative!(data_dir);
     home_relative!(contracts_dir);
     home_relative!(builtin_actors_bundle);
-    home_relative!(keys_dir);
 
     /// Load the default configuration from a directory,
     /// then potential overrides specific to the run mode,

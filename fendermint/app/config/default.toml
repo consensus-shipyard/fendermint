@@ -5,8 +5,6 @@
 
 # Database files.
 data_dir = "data"
-# Private key.
-keys_dir = "keys"
 # Solidity contracts.
 contracts_dir = "contracts"
 # Builtin actor bundle CAR file.
