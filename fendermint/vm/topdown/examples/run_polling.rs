@@ -36,7 +36,7 @@ pub struct Options {
     pub subnet_id: String,
 
     /// The subnet id expressed a string
-    #[arg(long, short, default_value = 1, env = "LOTUS_NETWORK")]
+    #[arg(long, short, default_value = "1", env = "LOTUS_NETWORK")]
     pub lotus_network: u8,
 }
 
@@ -75,7 +75,7 @@ async fn main() {
         height: chain_head - 20,
         block_hash: vec![0; 32],
     };
-    let provider = InMemoryFinalityProvider::new(config.clone(), mocked_committed_finality);
+    let provider = InMemoryFinalityProvider::new(config.clone(), Some(mocked_committed_finality));
     let provider = Arc::new(provider);
     let agent = Arc::new(agent_proxy);
     let polling = PollingParentSyncer::new(config, provider.clone(), agent);
@@ -111,7 +111,7 @@ async fn main() {
     }
 }
 
-pub fn set_network_from_env(network: u8) {
+pub fn set_network(network: u8) {
     let network = Network::from_u8(network).unwrap();
     set_current_network(network);
 }
