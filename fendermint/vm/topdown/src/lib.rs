@@ -8,6 +8,7 @@ pub mod sync;
 
 #[cfg(feature = "conversion")]
 pub mod convert;
+mod disabled;
 
 use async_stm::StmResult;
 use ipc_agent_sdk::message::ipc::ValidatorSet;
@@ -15,12 +16,13 @@ use ipc_sdk::cross::CrossMsg;
 use serde::{Deserialize, Serialize};
 
 pub use crate::cache::{SequentialAppendError, SequentialKeyCache, ValueIter};
+pub use crate::disabled::MaybeDisabledProvider;
 pub use crate::error::Error;
 pub use crate::finality::InMemoryFinalityProvider;
 
-type BlockHeight = u64;
-type Bytes = Vec<u8>;
-type BlockHash = Bytes;
+pub type BlockHeight = u64;
+pub type Bytes = Vec<u8>;
+pub type BlockHash = Bytes;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -72,5 +74,5 @@ pub trait ParentFinalityProvider: ParentViewProvider {
     /// Check if the target proposal is valid
     fn check_proposal(&self, proposal: &IPCParentFinality) -> StmResult<(), Error>;
     /// Called when finality is committed
-    fn on_finality_committed(&self, finality: &IPCParentFinality) -> StmResult<(), Error>;
+    fn set_new_finality(&self, finality: IPCParentFinality) -> StmResult<(), Error>;
 }

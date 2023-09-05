@@ -13,6 +13,7 @@ use ipc_sdk::cross::CrossMsg;
 type ParentViewPayload = (BlockHash, ValidatorSet, Vec<CrossMsg>);
 
 /// The default parent finality provider
+#[derive(Clone)]
 pub struct InMemoryFinalityProvider {
     config: Config,
     parent_view_data: ParentViewData,
@@ -170,9 +171,7 @@ impl ParentFinalityProvider for InMemoryFinalityProvider {
         self.check_block_hash(proposal)
     }
 
-    fn on_finality_committed(&self, finality: &IPCParentFinality) -> StmResult<(), Error> {
-        self.require_init()?;
-
+    fn set_new_finality(&self, finality: IPCParentFinality) -> StmResult<(), Error> {
         // the height to clear
         let height = finality.height;
 
@@ -181,14 +180,17 @@ impl ParentFinalityProvider for InMemoryFinalityProvider {
             cache
         })?;
 
-        self.last_committed_finality.write(Some(finality.clone()))?;
+        self.last_committed_finality.write(Some(finality))?;
 
         Ok(())
     }
 }
 
 impl InMemoryFinalityProvider {
-    // creates an uninitialized provider
+    /// Creates an uninitialized provider
+    /// We need this because `fendermint` has yet to be initialized and might
+    /// not be able to provide an existing finality from the storage. This provider requires an
+    /// existing committed finality. Providing the finality will enable other functionalities.
     pub fn uninitialized(config: Config) -> Self {
         Self::new(config, None)
     }
@@ -207,18 +209,6 @@ impl InMemoryFinalityProvider {
             },
             last_committed_finality: TVar::new(committed_finality),
         }
-    }
-
-    /// Initialize the provider. This is because `fendermint` has yet to be initialized and might
-    /// not be able to provide an existing finality from the storage. This provider requires an
-    /// existing committed finality. Providing the finality will enable other functionalities.
-    pub fn init(&self, finality: IPCParentFinality) -> StmResult<(), Error> {
-        let committed_finality = self.last_committed_finality.read()?;
-        if committed_finality.is_some() {
-            return Err(StmError::Abort(Error::ProviderAlreadyInitialized));
-        }
-        self.last_committed_finality.write(Some(finality))?;
-        Ok(())
     }
 
     fn require_init(&self) -> StmResult<(), Error> {
@@ -402,7 +392,7 @@ mod tests {
                 height: target_block,
                 block_hash: vec![1u8; 32],
             };
-            provider.on_finality_committed(&finality)?;
+            provider.set_new_finality(finality.clone())?;
 
             // all cache should be cleared
             let r = provider.next_proposal();
@@ -434,7 +424,7 @@ mod tests {
                 },
                 vec![],
             )?;
-            provider.on_finality_committed(&IPCParentFinality {
+            provider.set_new_finality(IPCParentFinality {
                 height: target_block - 1,
                 block_hash: vec![1u8; 32],
             })?;

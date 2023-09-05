@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 use crate::{
@@ -17,9 +18,7 @@ use fendermint_vm_message::{
 };
 use fendermint_vm_resolver::pool::{ResolveKey, ResolvePool};
 use fendermint_vm_topdown::convert::EncodeWithSignature;
-use fendermint_vm_topdown::{
-    IPCParentFinality, InMemoryFinalityProvider, ParentFinalityProvider, ParentViewProvider,
-};
+use fendermint_vm_topdown::{IPCParentFinality, ParentFinalityProvider};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -63,22 +62,27 @@ pub type ChainMessageCheckRes = Result<SignedMessageCheckRes, IllegalMessage>;
 /// Interpreter working on chain messages; in the future it will schedule
 /// CID lookups to turn references into self-contained user or cross messages.
 #[derive(Clone)]
-pub struct ChainMessageInterpreter<I> {
+pub struct ChainMessageInterpreter<I, P> {
     inner: I,
+    parent_finality_provider: PhantomData<P>,
 }
 
-impl<I> ChainMessageInterpreter<I> {
+impl<I, P> ChainMessageInterpreter<I, P> {
     pub fn new(inner: I) -> Self {
-        Self { inner }
+        Self {
+            inner,
+            parent_finality_provider: Default::default(),
+        }
     }
 }
 
 #[async_trait]
-impl<I> ProposalInterpreter for ChainMessageInterpreter<I>
+impl<I, P> ProposalInterpreter for ChainMessageInterpreter<I, P>
 where
     I: Sync + Send,
+    P: ParentFinalityProvider + Send + Sync,
 {
-    type State = (CheckpointPool, Arc<InMemoryFinalityProvider>);
+    type State = (CheckpointPool, Arc<P>);
     type Message = ChainMessage;
 
     /// Check whether there are any "ready" messages in the IPLD resolution mempool which can be appended to the proposal.
@@ -167,15 +171,16 @@ where
 }
 
 #[async_trait]
-impl<I> ExecInterpreter for ChainMessageInterpreter<I>
+impl<I, P> ExecInterpreter for ChainMessageInterpreter<I, P>
 where
     I: ExecInterpreter<Message = VerifiableMessage, DeliverOutput = SignedMessageApplyRes>,
+    P: ParentFinalityProvider + Send + Sync,
 {
     // The state consists of the resolver pool, which this interpreter needs, and the rest of the
     // state which the inner interpreter uses. This is a technical solution because the pool doesn't
     // fit with the state we use for execution messages further down the stack, which depend on block
     // height and are used in queries as well.
-    type State = (CheckpointPool, Arc<InMemoryFinalityProvider>, I::State);
+    type State = (CheckpointPool, Arc<P>, I::State);
     type Message = ChainMessage;
     type BeginOutput = I::BeginOutput;
     type DeliverOutput = ChainMessageApplyRet;
@@ -245,7 +250,7 @@ where
                         .await?;
 
                     atomically_or_err::<_, fendermint_vm_topdown::Error, _>(|| {
-                        provider.on_finality_committed(&finality)
+                        provider.set_new_finality(finality.clone())
                     })
                     .await?;
 
@@ -273,9 +278,10 @@ where
 }
 
 #[async_trait]
-impl<I> CheckInterpreter for ChainMessageInterpreter<I>
+impl<I, P> CheckInterpreter for ChainMessageInterpreter<I, P>
 where
     I: CheckInterpreter<Message = VerifiableMessage, Output = SignedMessageCheckRes>,
+    P: Send + Sync,
 {
     type State = I::State;
     type Message = ChainMessage;
@@ -320,9 +326,10 @@ where
 }
 
 #[async_trait]
-impl<I> QueryInterpreter for ChainMessageInterpreter<I>
+impl<I, P> QueryInterpreter for ChainMessageInterpreter<I, P>
 where
     I: QueryInterpreter,
+    P: Send + Sync,
 {
     type State = I::State;
     type Query = I::Query;
@@ -338,9 +345,10 @@ where
 }
 
 #[async_trait]
-impl<I> GenesisInterpreter for ChainMessageInterpreter<I>
+impl<I, P> GenesisInterpreter for ChainMessageInterpreter<I, P>
 where
     I: GenesisInterpreter,
+    P: Send + Sync,
 {
     type State = I::State;
     type Genesis = I::Genesis;

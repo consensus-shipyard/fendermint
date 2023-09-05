@@ -7,6 +7,8 @@ use thiserror::Error;
 /// The errors for top down checkpointing
 #[derive(Error, Debug, Eq, PartialEq, Clone)]
 pub enum Error {
+    #[error("Provider not enabled")]
+    ProviderNotEnabled,
     #[error("Provider not initialized")]
     ProviderNotInitialized,
     #[error("Provider already initialized")]

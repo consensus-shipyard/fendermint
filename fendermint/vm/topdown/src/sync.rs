@@ -3,10 +3,7 @@
 //! A constant running process that fetch or listener to parent state
 
 use crate::error::Error;
-use crate::{
-    BlockHash, BlockHeight, Config, IPCParentFinality, InMemoryFinalityProvider,
-    ParentFinalityProvider,
-};
+use crate::{BlockHash, BlockHeight, Config, IPCParentFinality, ParentFinalityProvider};
 use anyhow::{anyhow, Context};
 use async_stm::atomically_or_err;
 use fvm_shared::clock::ChainEpoch;
@@ -25,21 +22,24 @@ pub trait ParentFinalityStateQuery {
 }
 
 /// Constantly syncing with parent through polling
-pub struct PollingParentSyncer {
+pub struct PollingParentSyncer<P> {
     config: Config,
-    parent_view_provider: Arc<InMemoryFinalityProvider>,
+    parent_view_provider: Arc<P>,
     agent: Arc<IPCAgentProxy>,
 }
 
 /// Start the polling parent syncer in the background
-pub async fn launch_polling_syncer<P: ParentFinalityStateQuery + Send + Sync + 'static>(
-    p: &P,
+pub async fn launch_polling_syncer<
+    Q: ParentFinalityStateQuery + Send + Sync + 'static,
+    P: ParentFinalityProvider + Send + Sync + 'static,
+>(
+    query: &Q,
     config: Config,
-    view_provider: Arc<InMemoryFinalityProvider>,
+    view_provider: Arc<P>,
     agent: IPCAgentProxy,
 ) -> anyhow::Result<()> {
     loop {
-        let finality = match p.get_latest_committed_finality() {
+        let finality = match query.get_latest_committed_finality() {
             Ok(Some(finality)) => finality,
             Ok(None) => {
                 tracing::debug!("app not ready for query yet");
@@ -51,7 +51,7 @@ pub async fn launch_polling_syncer<P: ParentFinalityStateQuery + Send + Sync + '
             }
         };
 
-        atomically_or_err(|| view_provider.init(finality.clone())).await?;
+        atomically_or_err(|| view_provider.set_new_finality(finality.clone())).await?;
 
         let poll = PollingParentSyncer::new(config, view_provider, Arc::new(agent));
         poll.start();
@@ -60,12 +60,8 @@ pub async fn launch_polling_syncer<P: ParentFinalityStateQuery + Send + Sync + '
     }
 }
 
-impl PollingParentSyncer {
-    pub fn new(
-        config: Config,
-        parent_view_provider: Arc<InMemoryFinalityProvider>,
-        agent: Arc<IPCAgentProxy>,
-    ) -> Self {
+impl<P> PollingParentSyncer<P> {
+    pub fn new(config: Config, parent_view_provider: Arc<P>, agent: Arc<IPCAgentProxy>) -> Self {
         Self {
             config,
             parent_view_provider,
@@ -74,7 +70,7 @@ impl PollingParentSyncer {
     }
 }
 
-impl PollingParentSyncer {
+impl<P: ParentFinalityProvider + Send + Sync + 'static> PollingParentSyncer<P> {
     /// Start the parent finality listener in the background
     pub fn start(self) {
         let config = self.config;

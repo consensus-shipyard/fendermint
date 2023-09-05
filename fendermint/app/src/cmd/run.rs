@@ -13,7 +13,8 @@ use fendermint_vm_interpreter::{
     signed::SignedMessageInterpreter,
 };
 use fendermint_vm_topdown::sync::{launch_polling_syncer, IPCAgentProxy};
-use fendermint_vm_topdown::InMemoryFinalityProvider;
+use fendermint_vm_topdown::{InMemoryFinalityProvider, MaybeDisabledProvider};
+use ipc_sdk::subnet_id::SubnetID;
 use std::sync::Arc;
 use tracing::info;
 
@@ -25,13 +26,15 @@ cmd! {
   }
 }
 
-fn create_ipc_agent_proxy(settings: &Settings) -> anyhow::Result<IPCAgentProxy> {
-    let url = settings.ipc.config.ipc_agent_url.parse()?;
-    let subnet = settings.ipc.subnet_id.clone();
+fn create_ipc_agent_proxy(
+    settings: &fendermint_vm_topdown::Config,
+    subnet_id: SubnetID,
+) -> anyhow::Result<IPCAgentProxy> {
+    let url = settings.ipc_agent_url.parse()?;
 
     let json_rpc = ipc_agent_sdk::jsonrpc::JsonRpcClientImpl::new(url, None);
     let ipc_agent_client = ipc_agent_sdk::apis::IpcAgentClient::new(json_rpc);
-    IPCAgentProxy::new(ipc_agent_client, subnet)
+    IPCAgentProxy::new(ipc_agent_client, subnet_id)
 }
 
 async fn run(settings: Settings) -> anyhow::Result<()> {
@@ -53,11 +56,16 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         NamespaceBlockstore::new(db.clone(), ns.state_store).context("error creating state DB")?;
 
     let resolve_pool = CheckpointPool::new();
-    let parent_finality_provider = Arc::new(InMemoryFinalityProvider::uninitialized(
-        settings.ipc.config.clone(),
-    ));
 
-    let app: App<_, _, AppStore, _> = App::new(
+    let parent_finality_provider = if let Some(topdown_config) = &settings.ipc.topdown {
+        Arc::new(MaybeDisabledProvider::enabled(
+            InMemoryFinalityProvider::uninitialized(topdown_config.clone()),
+        ))
+    } else {
+        Arc::new(MaybeDisabledProvider::disabled())
+    };
+
+    let app: App<_, _, AppStore, _, _> = App::new(
         AppConfig {
             app_namespace: ns.app,
             state_hist_namespace: ns.state_hist,
@@ -71,14 +79,16 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         parent_finality_provider.clone(),
     )?;
 
-    let app_parent_finality_query = AppParentFinalityQuery::new(app.clone());
-    launch_polling_syncer(
-        &app_parent_finality_query,
-        settings.ipc.config.clone(),
-        parent_finality_provider,
-        create_ipc_agent_proxy(&settings)?,
-    )
-    .await?;
+    if let Some(topdown_config) = &settings.ipc.topdown {
+        let app_parent_finality_query = AppParentFinalityQuery::new(app.clone());
+        launch_polling_syncer(
+            &app_parent_finality_query,
+            topdown_config.clone(),
+            parent_finality_provider,
+            create_ipc_agent_proxy(topdown_config, settings.ipc.subnet_id.clone())?,
+        )
+        .await?;
+    }
 
     let service = ApplicationService(app);
 

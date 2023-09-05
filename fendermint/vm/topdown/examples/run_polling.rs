@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 use async_stm::atomically_or_err;
 use clap::Parser;
+use fendermint_vm_topdown::sync::{IPCAgentProxy, PollingParentSyncer};
 use fendermint_vm_topdown::{
-    Config, Error, IPCAgentProxy, IPCParentFinality, InMemoryFinalityProvider,
-    ParentFinalityProvider, ParentViewProvider, PollingParentSyncer,
+    Config, Error, IPCParentFinality, InMemoryFinalityProvider, ParentFinalityProvider,
+    ParentViewProvider,
 };
 use fvm_shared::address::{set_current_network, Network};
 use ipc_agent_sdk::apis::IpcAgentClient;
@@ -76,13 +77,13 @@ async fn main() {
         height: chain_head - 20,
         block_hash: vec![0; 32],
     };
-    let provider = InMemoryFinalityProvider::new(config.clone(), Some(mocked_committed_finality));
+    let provider = InMemoryFinalityProvider::initialized(config.clone(), mocked_committed_finality);
     let provider = Arc::new(provider);
     let agent = Arc::new(agent_proxy);
     let polling = PollingParentSyncer::new(config, provider.clone(), agent);
 
     tokio::spawn(async move {
-        polling.start().unwrap();
+        polling.start();
     });
 
     loop {
