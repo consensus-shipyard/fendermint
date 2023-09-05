@@ -174,11 +174,23 @@ mod tests {
     use super::expand_tilde;
     use super::Settings;
 
-    #[test]
-    fn parse_default_config() {
+    fn parse_config(run_mode: &str) -> Settings {
         let current_dir = PathBuf::from(".");
         let default_dir = PathBuf::from("config");
-        Settings::new(&default_dir, &current_dir, "test").unwrap();
+        Settings::new(&default_dir, &current_dir, run_mode).unwrap()
+    }
+
+    #[test]
+    fn parse_default_config() {
+        let settings = parse_config("");
+        assert!(settings.resolver.connection.listen_addr.is_empty());
+    }
+
+    #[test]
+    fn parse_test_config() {
+        let settings = parse_config("test");
+        assert!(!settings.resolver.connection.listen_addr.is_empty());
+        assert!(!settings.resolver.discovery.static_addresses.is_empty());
     }
 
     #[test]
