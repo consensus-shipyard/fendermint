@@ -1,6 +1,14 @@
 # These setting are overlayed over `default.toml` in unit tests
 # to exercise parsing values that are not viable as defaults.
 
+[resolver]
+subnet_id = "/r31415926"
+
+[resolver.membership]
+static_subnets = [
+  "/r31415926/f2xwzbdu7z5sam6hc57xxwkctciuaz7oe5omipwbq",
+]
+
 [resolver.discovery]
 static_addresses = [
   "/ip4/198.51.100.0/tcp/4242/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N",

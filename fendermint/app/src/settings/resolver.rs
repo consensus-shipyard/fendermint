@@ -12,6 +12,8 @@ use serde_with::{serde_as, DurationSeconds};
 use ipc_sdk::subnet_id::SubnetID;
 use multiaddr::Multiaddr;
 
+use super::IsHumanReadable;
+
 macro_rules! home_relative {
     ($settings:ty { $($name:ident),+ } ) => {
       impl $settings {
@@ -24,19 +26,23 @@ macro_rules! home_relative {
     };
 }
 
+#[serde_as]
 #[derive(Debug, Clone, Deserialize)]
 pub struct ResolverSettings {
+    /// Time to wait between attempts to resolve a CID, in seconds.
+    #[serde_as(as = "DurationSeconds<u64>")]
+    pub retry_delay: Duration,
+    /// The current subnet ID for which this node can serve data.
+    ///
+    /// TODO #231: Take this from the IPC settings.
+    #[serde_as(as = "IsHumanReadable")]
+    pub subnet_id: SubnetID,
+
     pub network: NetworkSettings,
     pub discovery: DiscoverySettings,
     pub membership: MembershipSettings,
     pub connection: ConnectionSettings,
     pub content: ContentSettings,
-}
-
-impl ResolverSettings {
-    pub fn enabled(&self) -> bool {
-        !self.connection.listen_addr.is_empty()
-    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -70,6 +76,7 @@ pub struct DiscoverySettings {
 #[derive(Clone, Debug, Deserialize)]
 pub struct MembershipSettings {
     /// User defined list of subnets which will never be pruned from the cache.
+    #[serde_as(as = "Vec<IsHumanReadable>")]
     pub static_subnets: Vec<SubnetID>,
 
     /// Maximum number of subnets to track in the cache.

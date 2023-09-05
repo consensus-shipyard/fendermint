@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use config::{Config, ConfigError, Environment, File};
+use ipc_sdk::subnet_id::SubnetID;
 use serde::Deserialize;
 use serde_with::{serde_as, DurationSeconds};
 use std::{
@@ -9,9 +10,18 @@ use std::{
     time::Duration,
 };
 
+use fendermint_vm_encoding::human_readable_str;
+
 use self::resolver::ResolverSettings;
 
 pub mod resolver;
+
+/// Marker to be used with the `human_readable_str!` macro.
+///
+/// We can't use the one in `fendermint_vm_encoding` because we can't implement traits for it here.
+struct IsHumanReadable;
+
+human_readable_str!(IsHumanReadable, SubnetID);
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Address {
@@ -129,6 +139,12 @@ impl Settings {
     pub fn home_dir(&self) -> &Path {
         &self.home_dir
     }
+
+    /// Indicate whether we have configured the IPLD Resolver to run.
+    pub fn resolver_enabled(&self) -> bool {
+        !self.resolver.connection.listen_addr.is_empty()
+            && self.resolver.subnet_id != *ipc_sdk::subnet_id::UNDEF
+    }
 }
 
 /// Expand a path which can either be :
@@ -169,7 +185,11 @@ pub fn expand_tilde<P: AsRef<Path>>(path: P) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    use fvm_shared::address::Address;
     use std::path::PathBuf;
+    use std::str::FromStr;
+
+    use ipc_sdk::subnet_id::SubnetID;
 
     use super::expand_tilde;
     use super::Settings;
@@ -183,14 +203,13 @@ mod tests {
     #[test]
     fn parse_default_config() {
         let settings = parse_config("");
-        assert!(settings.resolver.connection.listen_addr.is_empty());
+        assert!(!settings.resolver_enabled());
     }
 
     #[test]
     fn parse_test_config() {
         let settings = parse_config("test");
-        assert!(!settings.resolver.connection.listen_addr.is_empty());
-        assert!(!settings.resolver.discovery.static_addresses.is_empty());
+        assert!(settings.resolver_enabled());
     }
 
     #[test]
@@ -200,5 +219,25 @@ mod tests {
         assert_eq!(expand_tilde("~/.project"), home_project);
         assert_eq!(expand_tilde("/foo/bar"), PathBuf::from("/foo/bar"));
         assert_eq!(expand_tilde("~foo/bar"), PathBuf::from("~foo/bar"));
+    }
+
+    #[test]
+    fn parse_subnet_id() {
+        let id = "/r31415926/f2xwzbdu7z5sam6hc57xxwkctciuaz7oe5omipwbq";
+
+        // Trying to debug what's wrong with it.
+        let l: Vec<&str> = id.split('/').filter(|&elem| !elem.is_empty()).collect();
+        let _root = l[0][1..].parse::<u64>().expect("failed to parse root ID");
+        for child in l[1..].iter() {
+            let _addr = Address::from_str(child).expect("failed to parse address");
+        }
+
+        SubnetID::from_str(id).unwrap();
+    }
+
+    #[test]
+    #[ignore = "https://github.com/consensus-shipyard/ipc-agent/issues/303"]
+    fn parse_empty_subnet_id() {
+        assert!(SubnetID::from_str("").is_err())
     }
 }
