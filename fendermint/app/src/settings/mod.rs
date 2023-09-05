@@ -69,8 +69,13 @@ pub struct EthSettings {
 pub struct Settings {
     /// Home directory configured on the CLI, to which all paths in settings can be set relative.
     home_dir: PathBuf,
+    /// Database files.
     data_dir: PathBuf,
+    /// Private keys.
+    keys_dir: PathBuf,
+    /// Solidity contracts.
     contracts_dir: PathBuf,
+    /// Builtin-actors CAR file.
     builtin_actors_bundle: PathBuf,
     pub abci: AbciSettings,
     pub db: DbSettings,
@@ -82,12 +87,17 @@ pub struct Settings {
 macro_rules! home_relative {
     ($name:ident) => {
         pub fn $name(&self) -> PathBuf {
-            self.expand_path(&self.$name)
+            expand_path(&self.home_dir(), &self.$name)
         }
     };
 }
 
 impl Settings {
+    home_relative!(data_dir);
+    home_relative!(contracts_dir);
+    home_relative!(builtin_actors_bundle);
+    home_relative!(keys_dir);
+
     /// Load the default configuration from a directory,
     /// then potential overrides specific to the run mode,
     /// then overrides from the local environment.
@@ -116,20 +126,24 @@ impl Settings {
         c.try_deserialize()
     }
 
-    /// Make the path relative to `--home-dir`, unless it's an absolute path, then expand any `~` in the beginning.
-    fn expand_path(&self, path: &PathBuf) -> PathBuf {
-        if path.starts_with("/") {
-            return path.clone();
-        }
-        if path.starts_with("~") {
-            return expand_tilde(path);
-        }
-        expand_tilde(self.home_dir.join(path))
+    /// The configured home directory.
+    pub fn home_dir(&self) -> &Path {
+        &self.home_dir
     }
+}
 
-    home_relative!(data_dir);
-    home_relative!(contracts_dir);
-    home_relative!(builtin_actors_bundle);
+/// Expand a path which can either be :
+/// * absolute, e.g. "/foo/bar"
+/// * relative to the system `$HOME` directory, e.g. "~/foo/bar"
+/// * relative to the configured `--home-dir` directory, e.g. "foo/bar"
+pub fn expand_path(home_dir: &Path, path: &Path) -> PathBuf {
+    if path.starts_with("/") {
+        PathBuf::from(path)
+    } else if path.starts_with("~") {
+        expand_tilde(path)
+    } else {
+        expand_tilde(home_dir.join(path))
+    }
 }
 
 /// Expand paths that begin with "~" to `$HOME`.

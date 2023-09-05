@@ -1,11 +1,19 @@
-# Data directory relative to the `--home-dir`, unless given as an absolute path.
+# All directories can be either:
+# * an absolute path, starting with "/", e.g. "/foo/bar"
+# * a path relative to the system `$HOME` directory, starting with "~", e.g. "~/foo/bar"
+# * a path relative to the `--home-dir` directory passed to the CLI, e.g. "foo/bar"
+
+# Database files.
 data_dir = "data"
-# Contract directory relative to the `--home-dir`, unless given as an absolute path.
+# Private key.
+keys_dir = "keys"
+# Solidity contracts.
 contracts_dir = "contracts"
-# Builtin actor bundle path relative to the `--home-dir`, unless given as an absolute path.
+# Builtin actor bundle CAR file.
 builtin_actors_bundle = "bundle.car"
 
 [abci]
+# Number of concurrent requests allowed to reach the application.
 bound = 1
 
 [abci.listen]
