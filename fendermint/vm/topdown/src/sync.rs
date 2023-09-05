@@ -109,6 +109,8 @@ async fn get_query_block_heights<T: ParentFinalityProvider + Send + Sync + 'stat
         .context("cannot fetch parent chain head")?;
 
     let starting_height = atomically_or_err::<_, Error, _>(|| {
+        // we are adding 1 to the height because we are fetching block by block, we also configured
+        // the sequential cache to use increment = 1.
         Ok(if let Some(h) = provider.latest_height()? {
             h + 1
         } else {

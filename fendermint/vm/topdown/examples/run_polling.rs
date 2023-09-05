@@ -34,6 +34,10 @@ pub struct Options {
     /// The subnet id expressed a string
     #[arg(long, short)]
     pub subnet_id: String,
+
+    /// The subnet id expressed a string
+    #[arg(long, short, default_value = 1, env = "LOTUS_NETWORK")]
+    pub lotus_network: u8,
 }
 
 impl Options {
@@ -48,9 +52,9 @@ impl Options {
 
 #[tokio::main]
 async fn main() {
-    set_network_from_env();
-
     let opts: Options = Options::parse();
+
+    set_network(opts.lotus_network);
 
     tracing_subscriber::fmt()
         .with_max_level(opts.log_level())
@@ -107,12 +111,7 @@ async fn main() {
     }
 }
 
-pub fn set_network_from_env() {
-    let network_raw: u8 = std::env::var("LOTUS_NETWORK")
-        // default to testnet
-        .unwrap_or_else(|_| String::from("1"))
-        .parse()
-        .unwrap();
-    let network = Network::from_u8(network_raw).unwrap();
+pub fn set_network_from_env(network: u8) {
+    let network = Network::from_u8(network).unwrap();
     set_current_network(network);
 }
