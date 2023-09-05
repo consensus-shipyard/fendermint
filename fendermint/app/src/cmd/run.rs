@@ -24,10 +24,7 @@ cmd! {
 }
 
 async fn create_parent_finality(settings: &Settings) -> anyhow::Result<InMemoryFinalityProvider> {
-    let provider = InMemoryFinalityProvider::new(
-        settings.ipc.config.clone(),
-        None,
-    );
+    let provider = InMemoryFinalityProvider::new(settings.ipc.config.clone(), None);
     Ok(provider)
 }
 
