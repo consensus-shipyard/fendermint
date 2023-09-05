@@ -94,18 +94,31 @@ pub struct Settings {
     pub resolver: ResolverSettings,
 }
 
+#[macro_export]
 macro_rules! home_relative {
-    ($name:ident) => {
-        pub fn $name(&self) -> PathBuf {
+    // Using this inside something that has a `.home_dir()` function.
+    ($($name:ident),+) => {
+        $(
+        pub fn $name(&self) -> std::path::PathBuf {
             expand_path(&self.home_dir(), &self.$name)
         }
+        )+
+    };
+
+    // Using this outside something that requires a `home_dir` parameter to be passed to it.
+    ($settings:ty { $($name:ident),+ } ) => {
+      impl $settings {
+        $(
+        pub fn $name(&self, home_dir: &std::path::Path) -> std::path::PathBuf {
+            $crate::settings::expand_path(home_dir, &self.$name)
+        }
+        )+
+      }
     };
 }
 
 impl Settings {
-    home_relative!(data_dir);
-    home_relative!(contracts_dir);
-    home_relative!(builtin_actors_bundle);
+    home_relative!(data_dir, contracts_dir, builtin_actors_bundle);
 
     /// Load the default configuration from a directory,
     /// then potential overrides specific to the run mode,
@@ -185,7 +198,6 @@ pub fn expand_tilde<P: AsRef<Path>>(path: P) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use fvm_shared::address::Address;
     use std::path::PathBuf;
     use std::str::FromStr;
 
@@ -223,15 +235,8 @@ mod tests {
 
     #[test]
     fn parse_subnet_id() {
+        // NOTE: It would not work with `t` prefix addresses unless the current network is changed.
         let id = "/r31415926/f2xwzbdu7z5sam6hc57xxwkctciuaz7oe5omipwbq";
-
-        // Trying to debug what's wrong with it.
-        let l: Vec<&str> = id.split('/').filter(|&elem| !elem.is_empty()).collect();
-        let _root = l[0][1..].parse::<u64>().expect("failed to parse root ID");
-        for child in l[1..].iter() {
-            let _addr = Address::from_str(child).expect("failed to parse address");
-        }
-
         SubnetID::from_str(id).unwrap();
     }
 

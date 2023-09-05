@@ -1,10 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::{
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::{path::PathBuf, time::Duration};
 
 use serde::Deserialize;
 use serde_with::{serde_as, DurationSeconds};
@@ -13,18 +10,7 @@ use ipc_sdk::subnet_id::SubnetID;
 use multiaddr::Multiaddr;
 
 use super::IsHumanReadable;
-
-macro_rules! home_relative {
-    ($settings:ty { $($name:ident),+ } ) => {
-      impl $settings {
-        $(
-        pub fn $name(&self, home_dir: &Path) -> PathBuf {
-            $crate::settings::expand_path(home_dir, &self.$name)
-        }
-        )+
-      }
-    };
-}
+use crate::home_relative;
 
 #[serde_as]
 #[derive(Debug, Clone, Deserialize)]
