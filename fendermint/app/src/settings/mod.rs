@@ -81,7 +81,7 @@ pub struct Settings {
     pub db: DbSettings,
     pub eth: EthSettings,
     pub fvm: FvmSettings,
-    //pub resolver: ResolverSettings,
+    pub resolver: ResolverSettings,
 }
 
 macro_rules! home_relative {
@@ -175,7 +175,7 @@ mod tests {
     use super::Settings;
 
     #[test]
-    fn parse_default() {
+    fn parse_default_config() {
         let current_dir = PathBuf::from(".");
         let default_dir = PathBuf::from("config");
         Settings::new(&default_dir, &current_dir, "test").unwrap();
