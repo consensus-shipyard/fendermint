@@ -1,6 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
-use async_stm::{atomically_or_err, StmDynError};
+use async_stm::atomically_or_err;
+use clap::Parser;
 use fendermint_vm_topdown::{
     Config, Error, IPCAgentProxy, IPCParentFinality, InMemoryFinalityProvider,
     ParentFinalityProvider, ParentViewProvider, PollingParentSyncer,
@@ -13,38 +14,69 @@ use num_traits::FromPrimitive;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::Level;
+
+#[derive(Parser, Debug)]
+pub struct Options {
+    /// The URL of the ipc agent's RPC endpoint.
+    #[arg(
+        long,
+        short,
+        default_value = "http://127.0.0.1:3030/json_rpc",
+        env = "IPC_AGENT_RPC_URL"
+    )]
+    pub ipc_agent_url: String,
+
+    /// Enable DEBUG logs.
+    #[arg(long, short)]
+    pub verbose: bool,
+
+    /// The subnet id expressed a string
+    #[arg(long, short)]
+    pub subnet_id: String,
+
+    /// The subnet id expressed a string
+    #[arg(long, short, default_value = "1", env = "LOTUS_NETWORK")]
+    pub lotus_network: u8,
+}
+
+impl Options {
+    pub fn log_level(&self) -> Level {
+        if self.verbose {
+            Level::DEBUG
+        } else {
+            Level::INFO
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() {
-    set_network_from_env();
+    let opts: Options = Options::parse();
+
+    set_network(opts.lotus_network);
 
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .with_target(false)
+        .with_max_level(opts.log_level())
         .init();
 
-    let url = std::env::var("URL").unwrap_or_else(|_| "http://0.0.0.0:3030/json_rpc".to_string());
-    let raw_target_subnet_id = std::env::var("TARGET").unwrap_or_else(|_| "/r31415926".to_string());
-    let subnet = SubnetID::from_str(&raw_target_subnet_id).unwrap();
-
-    let json_rpc = JsonRpcClientImpl::new(url.parse().unwrap(), None);
+    let subnet = SubnetID::from_str(&opts.subnet_id).unwrap();
+    let json_rpc = JsonRpcClientImpl::new(opts.ipc_agent_url.parse().unwrap(), None);
     let ipc_agent_client = IpcAgentClient::new(json_rpc);
     let agent_proxy = IPCAgentProxy::new(ipc_agent_client, subnet).unwrap();
-
-    let chain_head = agent_proxy.get_chain_head_height().await.unwrap();
 
     let config = Config {
         chain_head_delay: 10,
         polling_interval_secs: 5,
-        ipc_agent_url: url.clone(),
+        ipc_agent_url: opts.ipc_agent_url.clone(),
     };
-    let provider = InMemoryFinalityProvider::new(
-        config.clone(),
-        IPCParentFinality {
-            height: chain_head - 20,
-            block_hash: vec![],
-        },
-    );
+    let chain_head = agent_proxy.get_chain_head_height().await.unwrap();
+    // Mocked committed finality as we dont have a contract to store the parent finality
+    let mocked_committed_finality = IPCParentFinality {
+        height: chain_head - 20,
+        block_hash: vec![0; 32],
+    };
+    let provider = InMemoryFinalityProvider::new(config.clone(), Some(mocked_committed_finality));
     let provider = Arc::new(provider);
     let agent = Arc::new(agent_proxy);
     let polling = PollingParentSyncer::new(config, provider.clone(), agent);
@@ -54,45 +86,33 @@ async fn main() {
     });
 
     loop {
-        atomically_or_err(|| {
-            let proposal = match provider.next_proposal() {
-                Ok(p) => p,
-                Err(e) => match e {
-                    StmDynError::Abort(e) => {
-                        let error = e.downcast_ref::<Error>().unwrap();
-                        match error {
-                            Error::HeightNotReady => {
-                                println!("polling not started yet");
-                                return Ok(());
-                            }
-                            _ => unreachable!(),
-                        }
-                    }
-                    _ => unreachable!(),
-                },
-            };
-            println!("proposal: {proposal:?}");
-
+        let maybe_proposal = atomically_or_err::<_, Error, _>(|| {
+            let proposal = provider.next_proposal()?;
             if let Some(p) = proposal {
                 let msgs = provider.top_down_msgs(p.height)?;
+                return Ok(Some((p, msgs)));
+            }
+            Ok(None)
+        })
+        .await;
+
+        match maybe_proposal {
+            Ok(Some((proposal, msgs))) => {
+                println!("proposal: {proposal:?}");
                 println!("topdown messages: {:?}", msgs);
             }
-
-            Ok(())
-        })
-        .await
-        .unwrap();
+            Ok(None) => {}
+            Err(Error::HeightNotReady) => {
+                println!("polling not started yet");
+            }
+            _ => unreachable!(),
+        }
 
         tokio::time::sleep(Duration::new(5, 0)).await;
     }
 }
 
-pub fn set_network_from_env() {
-    let network_raw: u8 = std::env::var("LOTUS_NETWORK")
-        // default to testnet
-        .unwrap_or_else(|_| String::from("1"))
-        .parse()
-        .unwrap();
-    let network = Network::from_u8(network_raw).unwrap();
+pub fn set_network(network: u8) {
+    let network = Network::from_u8(network).unwrap();
     set_current_network(network);
 }

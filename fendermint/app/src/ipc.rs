@@ -81,8 +81,8 @@ where
         .context("error creating execution state")?;
 
         let msg = get_parent_finality_to_fvm(block_height)?;
-        let data = exec_state
-            .execute_implicit(msg)?
+        let (apply_ret, _) = exec_state.execute_implicit(msg)?;
+        let data = apply_ret
             .msg_receipt
             .return_data
             .to_vec();

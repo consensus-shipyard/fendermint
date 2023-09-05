@@ -27,7 +27,7 @@ pub enum IpcMessage {
 
     /// A top-down checkpoint parent finality proposal. This proposal should contain the latest parent
     /// state that to be checked and voted by validators.
-    TopDownProposal(ParentFinalityProposal),
+    TopDownExec(ParentFinality),
 }
 
 /// A message relayed by a user on the current subnet.
@@ -96,7 +96,7 @@ pub struct BottomUpCheckpoint {
 
 /// A proposal of the parent view that validators will be voting on.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct ParentFinalityProposal {
+pub struct ParentFinality {
     /// Block height of this proposal.
     pub height: ChainEpoch,
     /// The block hash of the parent, expressed as bytes
@@ -106,7 +106,7 @@ pub struct ParentFinalityProposal {
 #[cfg(feature = "arb")]
 mod arb {
 
-    use crate::ipc::ParentFinalityProposal;
+    use crate::ipc::ParentFinality;
     use fendermint_testing::arb::{ArbAddress, ArbCid, ArbSubnetID, ArbTokenAmount};
     use fvm_shared::crypto::signature::Signature;
     use quickcheck::{Arbitrary, Gen};
@@ -121,7 +121,7 @@ mod arb {
             match u8::arbitrary(g) % 3 {
                 0 => IpcMessage::BottomUpResolve(Arbitrary::arbitrary(g)),
                 1 => IpcMessage::BottomUpExec(Arbitrary::arbitrary(g)),
-                _ => IpcMessage::TopDownProposal(Arbitrary::arbitrary(g)),
+                _ => IpcMessage::TopDownExec(Arbitrary::arbitrary(g)),
             }
         }
     }
@@ -187,7 +187,7 @@ mod arb {
         }
     }
 
-    impl Arbitrary for ParentFinalityProposal {
+    impl Arbitrary for ParentFinality {
         fn arbitrary(g: &mut Gen) -> Self {
             Self {
                 height: u32::arbitrary(g).into(),

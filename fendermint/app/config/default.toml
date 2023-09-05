@@ -4,8 +4,6 @@ data_dir = "data"
 contracts_dir = "contracts"
 # Builtin actor bundle path relative to the `--home-dir`, unless given as an absolute path.
 builtin_actors_bundle = "bundle.car"
-# Subnet id assigned to this fendermint node
-subnet_id = "/r1024"
 
 [abci]
 bound = 1
@@ -28,6 +26,12 @@ gas_overestimation_rate = 1.25
 # Gas search step increase used to find the optimal gas limit.
 # It determines how fine-grained we want the gas estimation to be.
 gas_search_step = 1.25
+# Indicate whether transactions should be fully executed during the checks performed
+# when they are added to the mempool, or just the most basic ones are performed.
+#
+# Enabling this option is required to fully support "pending" queries in the Ethereum API,
+# otherwise only the nonces and balances are projected into a partial state.
+exec_in_check = true
 
 # Ethereum API facade
 [eth]
@@ -54,10 +58,15 @@ host = "127.0.0.1"
 port = 8545
 
 # IPC Parent finality related configuration
-[parent_finality]
+[ipc]
+# Subnet id assigned to this fendermint node. Update this to the correct subnet id.
+# TODO: fetch this value from genisis if possible.
+subnet_id = "/r0"
+
+[ipc.config]
 # The number of blocks behind chain head to propose parent finality.
 chain_head_delay = 10
 # The number of seconds to polling ipc agent for latest parent view
 polling_interval_secs = 10
 # The ipc agent url
-ipc_agent_url = "http://0.0.0.0:3030/json_rpc"
+ipc_agent_url = "http://127.0.0.1:3030/json_rpc"

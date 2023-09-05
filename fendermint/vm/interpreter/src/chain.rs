@@ -10,7 +10,7 @@ use async_stm::{atomically, atomically_or_err};
 use async_trait::async_trait;
 use fendermint_vm_actor_interface::{ipc, system};
 use fendermint_vm_ipc_actors::gateway_router_facet;
-use fendermint_vm_message::ipc::ParentFinalityProposal;
+use fendermint_vm_message::ipc::ParentFinality;
 use fendermint_vm_message::{
     chain::ChainMessage,
     ipc::{BottomUpCheckpoint, CertifiedMessage, IpcMessage, SignedRelayedMessage},
@@ -103,20 +103,17 @@ where
         });
 
         // Prepare top down proposals
-        match atomically_or_err(|| finality_provider.next_proposal()).await {
-            Ok(Some(proposal)) => msgs.push(ChainMessage::Ipc(IpcMessage::TopDownProposal(
-                ParentFinalityProposal {
+        match atomically_or_err::<_, fendermint_vm_topdown::Error, _>(|| {
+            finality_provider.next_proposal()
+        })
+        .await?
+        {
+            None => {}
+            Some(proposal) => {
+                msgs.push(ChainMessage::Ipc(IpcMessage::TopDownExec(ParentFinality {
                     height: proposal.height as ChainEpoch,
                     block_hash: proposal.block_hash,
-                },
-            ))),
-            Ok(None) => {
-                tracing::debug!("parent finality proposal not ready yet");
-            }
-            Err(e) => {
-                // safe to unwrap as the type is correct
-                let e = e.downcast_ref::<fendermint_vm_topdown::Error>().unwrap();
-                tracing::warn!("cannot produce parent finality proposal: {e}");
+                })))
             }
         }
 
@@ -147,42 +144,26 @@ where
                         return Ok(false);
                     }
                 }
-                ChainMessage::Ipc(IpcMessage::TopDownProposal(ParentFinalityProposal {
+                ChainMessage::Ipc(IpcMessage::TopDownExec(ParentFinality {
                     height,
                     block_hash,
                 })) => {
-                    return if (atomically_or_err(|| {
-                        state.1.check_proposal(&IPCParentFinality {
-                            height: height as u64,
-                            // need clone as atomically_or_err seems not able to capture with move
-                            block_hash: block_hash.clone(),
-                        })
-                    })
-                    .await)
-                        .is_ok()
-                    {
-                        Ok(true)
-                    } else {
-                        Ok(false)
+                    let prop = IPCParentFinality {
+                        height: height as u64,
+                        block_hash,
                     };
+                    if atomically_or_err(|| state.1.check_proposal(&prop))
+                        .await
+                        .is_err()
+                    {
+                        return Ok(false);
+                    }
                 }
                 _ => {}
             };
         }
         Ok(true)
     }
-}
-
-macro_rules! downcast_err {
-    ($r:expr) => {
-        match $r {
-            Ok(v) => Ok(v),
-            Err(e) => match e.downcast_ref::<fendermint_vm_topdown::Error>() {
-                None => unreachable!(),
-                Some(e) => Err(e.clone()),
-            },
-        }
-    };
 }
 
 #[async_trait]
@@ -243,10 +224,8 @@ where
                 IpcMessage::BottomUpExec(_) => {
                     todo!("#197: implement BottomUp checkpoint execution")
                 }
-                IpcMessage::TopDownProposal(p) => {
-                    let validator_set = downcast_err!(
-                        atomically_or_err(|| provider.validator_set(p.height as u64)).await
-                    )?
+                IpcMessage::TopDownExec(p) => {
+                    let validator_set = atomically_or_err::<_, fendermint_vm_topdown::Error, _>(|| provider.validator_set(p.height as u64)).await?
                     .ok_or_else(|| anyhow!("cannot find validator set for block: {}", p.height))?;
 
                     let finality = IPCParentFinality {
@@ -259,9 +238,7 @@ where
                         .deliver(state, VerifiableMessage::NotVerify(msg))
                         .await?;
 
-                    downcast_err!(
-                        atomically_or_err(|| provider.on_finality_committed(&finality)).await
-                    )?;
+                    atomically_or_err::<_, fendermint_vm_topdown::Error, _>(|| provider.on_finality_committed(&finality)).await?;
 
                     Ok(((pool, provider, state), ChainMessageApplyRet::Signed(ret)))
                 }
@@ -323,7 +300,7 @@ where
 
                         Ok((state, Ok(ret)))
                     }
-                    IpcMessage::TopDownProposal(_) | IpcMessage::BottomUpExec(_) => {
+                    IpcMessage::TopDownExec(_) | IpcMessage::BottomUpExec(_) => {
                         // Users cannot send these messages, only validators can propose them in blocks.
                         Ok((state, Err(IllegalMessage)))
                     }

@@ -29,6 +29,6 @@ fvm_shared = { workspace = true }
 fendermint_vm_ipc_actors = { path = "../ipc_actors", optional = true }
 ethers = { workspace = true, optional = true}
 
-tracing-subscriber = "0.3.17"
 [dev-dependencies]
-
+tracing-subscriber = { workspace = true }
+clap = { workspace = true }

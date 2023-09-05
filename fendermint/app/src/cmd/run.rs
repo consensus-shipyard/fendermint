@@ -24,23 +24,31 @@ cmd! {
   }
 }
 
-fn create_parent_finality(
-    settings: &Settings,
-    query: &ParentFinalityQuery<RocksDb, NamespaceBlockstore, AppStore>,
-) -> anyhow::Result<InMemoryFinalityProvider> {
-    let last_committed_finality = query.get_committed_finality()?;
-    let provider =
-        InMemoryFinalityProvider::new(settings.parent_finality.clone(), last_committed_finality);
-    Ok(provider)
-}
+// fn create_parent_finality(
+//     settings: &Settings,
+//     query: &ParentFinalityQuery<RocksDb, NamespaceBlockstore, AppStore>,
+// ) -> anyhow::Result<InMemoryFinalityProvider> {
+//     let last_committed_finality = query.get_committed_finality()?;
+//     let provider =
+//         InMemoryFinalityProvider::new(settings.parent_finality.clone(), last_committed_finality);
+//     Ok(provider)
+// }
 
 fn create_ipc_agent_proxy(settings: &Settings) -> anyhow::Result<IPCAgentProxy> {
-    let url = settings.parent_finality.ipc_agent_url.parse()?;
-    let subnet = settings.subnet_id.clone();
+    let url = settings.ipc.config.ipc_agent_url.parse()?;
+    let subnet = settings.ipc.subnet_id.clone();
 
     let json_rpc = ipc_agent_sdk::jsonrpc::JsonRpcClientImpl::new(url, None);
     let ipc_agent_client = ipc_agent_sdk::apis::IpcAgentClient::new(json_rpc);
     IPCAgentProxy::new(ipc_agent_client, subnet)
+}
+
+fn create_parent_finality(settings: &Settings) -> anyhow::Result<InMemoryFinalityProvider> {
+    let provider = InMemoryFinalityProvider::new(
+        settings.ipc.config.clone(),
+        None,
+    );
+    Ok(provider)
 }
 
 async fn run(settings: Settings) -> anyhow::Result<()> {
@@ -48,6 +56,7 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         settings.contracts_dir(),
         settings.fvm.gas_overestimation_rate,
         settings.fvm.gas_search_step,
+        settings.fvm.exec_in_check,
     );
     let interpreter = SignedMessageInterpreter::new(interpreter);
     let interpreter = ChainMessageInterpreter::new(interpreter);
@@ -66,16 +75,17 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
     let state_store = Arc::new(state_store);
 
     // setup top down parent finality related code
-    let parent_finality_getter = ParentFinalityQuery::new(
-        db.clone(),
-        state_store.clone(),
-        multi_engine.clone(),
-        ns.app.clone(),
-    );
-    let parent_finality = Arc::new(create_parent_finality(&settings, &parent_finality_getter)?);
+    // let parent_finality_getter = ParentFinalityQuery::new(
+    //     db.clone(),
+    //     state_store.clone(),
+    //     multi_engine.clone(),
+    //     ns.app.clone(),
+    // );
+    let parent_finality = Arc::new(create_parent_finality(&settings)?);
+    // let parent_finality = Arc::new(create_parent_finality(&settings, &parent_finality_getter)?);
     let ipc_agent_proxy = create_ipc_agent_proxy(&settings)?;
     let polling_parent_syncer = PollingParentSyncer::new(
-        settings.parent_finality.clone(),
+        settings.ipc.config.clone(),
         parent_finality.clone(),
         Arc::new(ipc_agent_proxy),
     );
@@ -93,7 +103,7 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         multi_engine,
         interpreter,
         resolve_pool,
-        parent_finality.clone(),
+        parent_finality,
     )?;
 
     let service = ApplicationService(app);
