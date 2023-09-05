@@ -11,7 +11,7 @@ use fendermint_vm_interpreter::{
     fvm::FvmMessageInterpreter,
     signed::SignedMessageInterpreter,
 };
-use fendermint_vm_topdown::{IPCParentFinality, InMemoryFinalityProvider};
+use fendermint_vm_topdown::InMemoryFinalityProvider;
 use std::sync::Arc;
 use tracing::info;
 
@@ -26,11 +26,7 @@ cmd! {
 async fn create_parent_finality(settings: &Settings) -> anyhow::Result<InMemoryFinalityProvider> {
     let provider = InMemoryFinalityProvider::new(
         settings.ipc.config.clone(),
-        // TODO: default implementation, will be fixed in follow up PR
-        IPCParentFinality {
-            height: 0,
-            block_hash: vec![],
-        },
+        None,
     );
     Ok(provider)
 }

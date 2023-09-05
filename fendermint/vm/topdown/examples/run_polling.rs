@@ -68,7 +68,7 @@ async fn main() {
     let config = Config {
         chain_head_delay: 10,
         polling_interval_secs: 5,
-        ipc_agent_url: url.clone(),
+        ipc_agent_url: opts.ipc_agent_url.clone(),
     };
     let chain_head = agent_proxy.get_chain_head_height().await.unwrap();
     // Mocked committed finality as we dont have a contract to store the parent finality
