@@ -46,7 +46,7 @@ impl PollingParentSyncer {
         tokio::spawn(async move {
             loop {
                 if let Err(e) = sync_with_parent(&config, &agent, &provider).await {
-                    tracing::info!("sync with parent encountered error: {e}");
+                    tracing::error!("sync with parent encountered error: {e}");
                 }
             }
         });
