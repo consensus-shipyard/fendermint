@@ -1,0 +1,134 @@
+version: '3'
+
+services:
+  cometbft-node0:
+    container_name: cometbft-node0
+    image: "cometbft/cometbft:v0.37.x"
+    ports:
+      - "26656-26657:26656-26657"
+    environment:
+      - ID=0
+      - LOG=${LOG:-cometbft-node0.log}
+      - CMT_PEX=false
+      - CMT_PROXY_APP=tcp://fendermint-node0:26658
+    volumes:
+      - ${HOME}/.ipc-testnet/node0/cometbft:/cometbft
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.2
+
+  cometbft-node1:
+    container_name: cometbft-node1
+    image: "cometbft/cometbft:v0.37.x"
+    ports:
+      - "26659-26660:26656-26657"
+    environment:
+      - ID=1
+      - LOG=${LOG:-cometbft-node1.log}
+      - CMT_PEX=false
+      - CMT_PROXY_APP=tcp://fendermint-node1:26658
+    volumes:
+      - ${HOME}/.ipc-testnet/node1/cometbft:/cometbft
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.3
+
+  cometbft-node2:
+    container_name: cometbft-node2
+    image: "cometbft/cometbft:v0.37.x"
+    environment:
+      - ID=2
+      - LOG=${LOG:-cometbft-node2.log}
+      - CMT_PEX=false
+      - CMT_PROXY_APP=tcp://fendermint-node2:26658
+    ports:
+      - "26661-26662:26656-26657"
+    volumes:
+      - ${HOME}/.ipc-testnet/node2/cometbft:/cometbft
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.4
+
+  cometbft-node3:
+    container_name: cometbft-node3
+    image: "cometbft/cometbft:v0.37.x"
+    environment:
+      - ID=3
+      - LOG=${LOG:-cometbft-node3.log}
+      - CMT_PEX=false
+      - CMT_PROXY_APP=tcp://fendermint-node3:26658
+    ports:
+      - "26663-26664:26656-26657"
+    volumes:
+      - ${HOME}/.ipc-testnet/node3/cometbft:/cometbft
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.5
+
+  fendermint-node0:
+    container_name: fendermint-node0
+    image: "fendermint:latest"
+    build:
+      context: .
+    environment:
+      - FM_DATA_DIR=/data/fendermint/data
+      - FM_CHAIN_NAME=root
+      - LOG_LEVEL=info
+    volumes:
+      - ${HOME}/.ipc-testnet/node0:/data
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.6
+
+  fendermint-node1:
+    container_name: fendermint-node1
+    image: "fendermint:latest"
+    build:
+      context: .
+    environment:
+      - FM_DATA_DIR=/data/fendermint/data
+      - FM_CHAIN_NAME=root
+      - LOG_LEVEL=info
+    volumes:
+      - ${HOME}/.ipc-testnet/node1:/data
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.7
+
+  fendermint-node2:
+    container_name: fendermint-node2
+    image: "fendermint:latest"
+    build:
+      context: .
+    environment:
+      - FM_DATA_DIR=/data/fendermint/data
+      - FM_CHAIN_NAME=root
+      - LOG_LEVEL=info
+    volumes:
+      - ${HOME}/.ipc-testnet/node2:/data
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.8
+
+  fendermint-node3:
+    container_name: fendermint-node3
+    image: "fendermint:latest"
+    build:
+      context: .
+    environment:
+      - FM_DATA_DIR=/data/fendermint/data
+      - FM_CHAIN_NAME=root
+      - LOG_LEVEL=info
+    volumes:
+      - ${HOME}/.ipc-testnet/node3:/data
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.9
+
+networks:
+  localnet:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.167.10.0/16

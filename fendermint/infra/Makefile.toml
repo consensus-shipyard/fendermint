@@ -5,6 +5,8 @@ BASE_FEE = { value = "1000", condition = { env_not_set = ["BASE_FEE"] }}
 TIMESTAMP = { value = "1680101412", condition = { env_not_set = ["TIMESTAMP"] }}
 
 BASE_DIR="${HOME}/.ipc/${CHAIN_NAME}"
+BASE_TESTNET_DIR="${HOME}/.ipc-testnet"
+
 FM_DIR="${BASE_DIR}/fendermint"
 CMT_DIR="${BASE_DIR}/cometbft"
 
@@ -118,7 +120,6 @@ script = ['''
     echo
 ''']
 
-
 # Waiting before starting the Eth API for the CometBFT websocket to start listening.
 [tasks.start]
 dependencies = [
@@ -150,6 +151,69 @@ run_task = { name = [
   "clear",
 ] }
 
+[tasks.testnet-clear]
+script="""
+echo clearing all IPC data
+rm -rf ${BASE_TESTNET_DIR}
+"""
+
+[tasks.testnet-mkdir]
+script="""
+echo creating directories: $BASE_DIR $FM_DIR $CMT_DIR
+mkdir -p $BASE_TESTNET_DIR
+mkdir -p $BASE_TESTNET_DIR/out
+
+mkdir -p $BASE_TESTNET_DIR/node0
+mkdir -p $BASE_TESTNET_DIR/node1
+mkdir -p $BASE_TESTNET_DIR/node2
+mkdir -p $BASE_TESTNET_DIR/node3
+
+mkdir -p $BASE_TESTNET_DIR/node0/fendermint
+mkdir -p $BASE_TESTNET_DIR/node1/fendermint
+mkdir -p $BASE_TESTNET_DIR/node2/fendermint
+mkdir -p $BASE_TESTNET_DIR/node3/fendermint
+
+mkdir -p $BASE_TESTNET_DIR/node0/cometbft
+mkdir -p $BASE_TESTNET_DIR/node1/cometbft
+mkdir -p $BASE_TESTNET_DIR/node2/cometbft
+mkdir -p $BASE_TESTNET_DIR/node3/cometbft
+
+mkdir -p $BASE_TESTNET_DIR/node0/cometbft/config
+mkdir -p $BASE_TESTNET_DIR/node1/cometbft/config
+mkdir -p $BASE_TESTNET_DIR/node2/cometbft/config
+mkdir -p $BASE_TESTNET_DIR/node3/cometbft/config
+
+mkdir -p $BASE_TESTNET_DIR/node0/cometbft/data
+mkdir -p $BASE_TESTNET_DIR/node1/cometbft/data
+mkdir -p $BASE_TESTNET_DIR/node2/cometbft/data
+mkdir -p $BASE_TESTNET_DIR/node3/cometbft/data
+
+"""
+
+[tasks.testnet-createbasedir]
+dependencies = [
+  "testnet-clear",
+  "testnet-mkdir",
+]
+
+[tasks.testnet-up]
+script = """
+docker compose -f ./fendermint/infra/docker-compose.yml up -d
+"""
+
+[tasks.testnet-down]
+script = """
+docker compose -f ./fendermint/infra/docker-compose.yml down
+"""
+
+[tasks.testnet]
+dependencies = [
+  "testnet-down",
+  "testnet-createbasedir",
+  "testnet-init",
+  "fendermint-deps",
+  "testnet-up"
+]
 
 [tasks.simplecoin-example]
 # Using --release in the hope that it can reuse artifacts compiled earlier for the docker build.
@@ -233,13 +297,44 @@ else
 fi
 """
 
+[tasks.testnet-init]
+dependencies = [
+  "testnet-newgenesis",
+  "testnet-newkey",
+  "testnet-newaccount",
+  "testnet-newgateway",
+  "testnet-share-genesis"
+]
+
 [tasks.fendermint-init]
 dependencies = [
   "fendermint-newgenesis",
   "fendermint-newkey",
   "fendermint-newaccount",
-  "fendermint-newgateway"
+  "fendermint-newgateway",
 ]
+
+[tasks.testnet-newkey]
+cwd = "./target/release"
+script="""
+mkdir -p $BASE_TESTNET_DIR/node0/fendermint/keys
+mkdir -p $BASE_TESTNET_DIR/node1/fendermint/keys
+mkdir -p $BASE_TESTNET_DIR/node2/fendermint/keys
+mkdir -p $BASE_TESTNET_DIR/node3/fendermint/keys
+
+./fendermint key gen --out-dir $BASE_TESTNET_DIR/node0/fendermint/keys --name validator0_key
+./fendermint key gen --out-dir $BASE_TESTNET_DIR/node1/fendermint/keys --name validator1_key
+./fendermint key gen --out-dir $BASE_TESTNET_DIR/node2/fendermint/keys --name validator2_key
+./fendermint key gen --out-dir $BASE_TESTNET_DIR/node3/fendermint/keys --name validator3_key
+
+"""
+
+[tasks.testnet-newgenesis]
+cwd = "./target/release"
+script = """
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json \
+      new --chain-name testnet --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP}
+"""
 
 [tasks.fendermint-newkey]
 cwd = "./target/release"
@@ -250,11 +345,74 @@ mkdir -p $KEYS_DIR
 chmod 600 ${PRIV_KEY_PATH}
 """
 
+[tasks.testnet-newaccount]
+cwd = "./target/release"
+script="""
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json add-account \
+        --public-key $BASE_TESTNET_DIR/node0/fendermint/keys/validator0_key.pk --balance ${BALANCE}
+
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json add-account \
+        --public-key $BASE_TESTNET_DIR/node1/fendermint/keys/validator1_key.pk --balance ${BALANCE}
+
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json add-account \
+        --public-key $BASE_TESTNET_DIR/node2/fendermint/keys/validator2_key.pk --balance ${BALANCE}
+
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json add-account \
+        --public-key $BASE_TESTNET_DIR/node3/fendermint/keys/validator3_key.pk --balance ${BALANCE}
+"""
+
+[tasks.testnet-newgateway]
+cwd = "./target/release"
+script = """
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json add-validator \
+    --public-key $BASE_TESTNET_DIR/node0/fendermint/keys/validator0_key.pk --power 1
+
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json add-validator \
+    --public-key $BASE_TESTNET_DIR/node1/fendermint/keys/validator1_key.pk --power 1
+
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json add-validator \
+    --public-key $BASE_TESTNET_DIR/node2/fendermint/keys/validator2_key.pk --power 1
+
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json add-validator \
+    --public-key $BASE_TESTNET_DIR/node3/fendermint/keys/validator3_key.pk --power 1
+
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json ipc gateway --subnet-id /r0 \
+    --top-down-check-period 10 \
+    --bottom-up-check-period 10 \
+    --msg-fee 10 \
+    --majority-percentage 66
+
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json into-tendermint --out $BASE_TESTNET_DIR/out/genesis.json
+
+./fendermint key into-tendermint --secret-key $BASE_TESTNET_DIR/node0/fendermint/keys/validator0_key.sk \
+      --out $BASE_TESTNET_DIR/node0/cometbft/config/priv_validator_key.json
+
+./fendermint key into-tendermint --secret-key $BASE_TESTNET_DIR/node1/fendermint/keys/validator1_key.sk \
+      --out $BASE_TESTNET_DIR/node1/cometbft/config/priv_validator_key.json
+
+./fendermint key into-tendermint --secret-key $BASE_TESTNET_DIR/node2/fendermint/keys/validator2_key.sk \
+      --out $BASE_TESTNET_DIR/node2/cometbft/config/priv_validator_key.json
+
+./fendermint key into-tendermint --secret-key $BASE_TESTNET_DIR/node3/fendermint/keys/validator3_key.sk \
+      --out $BASE_TESTNET_DIR/node3/cometbft/config/priv_validator_key.json
+
+"""
+
+[tasks.testnet-share-genesis]
+cwd = "./target/release"
+script = """
+cp $BASE_TESTNET_DIR/out/genesis.json $BASE_TESTNET_DIR/node0/cometbft/config/genesis.json
+cp $BASE_TESTNET_DIR/out/genesis.json $BASE_TESTNET_DIR/node1/cometbft/config/genesis.json
+cp $BASE_TESTNET_DIR/out/genesis.json $BASE_TESTNET_DIR/node2/cometbft/config/genesis.json
+cp $BASE_TESTNET_DIR/out/genesis.json $BASE_TESTNET_DIR/node3/cometbft/config/genesis.json
+"""
+
 [tasks.fendermint-newaccount]
 cwd = "./target/release"
 script="""
 ./fendermint genesis --genesis-file ${GENESIS_FILE} add-account --public-key ${PUB_KEY_PATH} --balance ${BALANCE}
 """
+
 
 [tasks.fendermint-newgenesis]
 cwd = "./target/release"
@@ -264,6 +422,7 @@ script = """
 dependencies = [
   "createbasedir",
 ]
+
 
 [tasks.fendermint-newgateway]
 cwd = "./target/release"
