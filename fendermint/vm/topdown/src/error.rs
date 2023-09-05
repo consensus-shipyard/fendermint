@@ -7,6 +7,8 @@ use thiserror::Error;
 /// The errors for top down checkpointing
 #[derive(Error, Debug, Eq, PartialEq, Clone)]
 pub enum Error {
+    #[error("The committed finality is not ready for query yet")]
+    CommittedFinalityNotReady,
     #[error("The latest height of the parent view is not ready")]
     HeightNotReady,
     #[error("The latest height has yet to reach the configured threshold")]

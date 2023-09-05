@@ -24,6 +24,12 @@ pub enum SequentialAppendError {
     BelowBound,
 }
 
+impl<K: PrimInt + Debug, V> Default for SequentialKeyCache<K, V> {
+    fn default() -> Self {
+        Self::sequential()
+    }
+}
+
 impl<K: PrimInt + Debug, V> SequentialKeyCache<K, V> {
     pub fn new(increment: K) -> Self {
         Self {

@@ -6,7 +6,7 @@ use crate::error::Error;
 use crate::{
     BlockHash, BlockHeight, Config, IPCParentFinality, ParentFinalityProvider, ParentViewProvider,
 };
-use async_stm::{abort, StmResult, TVar};
+use async_stm::{abort, StmError, StmResult, TVar};
 use ipc_agent_sdk::message::ipc::ValidatorSet;
 use ipc_sdk::cross::CrossMsg;
 
@@ -19,7 +19,7 @@ pub struct InMemoryFinalityProvider {
     /// This is a in memory view of the committed parent finality,
     /// it should be synced with the store committed finality, owner of the struct should enforce
     /// this.
-    last_committed_finality: TVar<IPCParentFinality>,
+    last_committed_finality: TVar<Option<IPCParentFinality>>,
 }
 
 /// Tracks the data from the parent
@@ -110,7 +110,10 @@ impl ParentViewProvider for InMemoryFinalityProvider {
 
 impl ParentFinalityProvider for InMemoryFinalityProvider {
     fn last_committed_finality(&self) -> StmResult<IPCParentFinality, Error> {
-        let finality = self.last_committed_finality.read_clone()?;
+        let finality = self
+            .last_committed_finality
+            .read_clone()?
+            .ok_or(StmError::Abort(Error::CommittedFinalityNotReady))?;
         Ok(finality)
     }
 
@@ -127,7 +130,7 @@ impl ParentFinalityProvider for InMemoryFinalityProvider {
         }
 
         let height = latest_height - self.config.chain_head_delay;
-        let last_committed_finality = self.last_committed_finality.read()?;
+        let last_committed_finality = self.last_committed_finality()?;
 
         // parent height is not ready to be proposed yet
         if height <= last_committed_finality.height {
@@ -160,14 +163,14 @@ impl ParentFinalityProvider for InMemoryFinalityProvider {
             cache
         })?;
 
-        self.last_committed_finality.write(finality.clone())?;
+        self.last_committed_finality.write(Some(finality.clone()))?;
 
         Ok(())
     }
 }
 
 impl InMemoryFinalityProvider {
-    pub fn new(config: Config, committed_finality: IPCParentFinality) -> Self {
+    pub fn new(config: Config, committed_finality: Option<IPCParentFinality>) -> Self {
         let height_data = SequentialKeyCache::sequential();
         Self {
             config,
@@ -192,7 +195,7 @@ impl InMemoryFinalityProvider {
             });
         }
 
-        let last_committed_finality = self.last_committed_finality.read()?;
+        let last_committed_finality = self.last_committed_finality()?;
         if proposal.height <= last_committed_finality.height {
             return abort(Error::HeightAlreadyCommitted(proposal.height));
         }
@@ -255,7 +258,7 @@ mod tests {
             block_hash: vec![0; 32],
         };
 
-        InMemoryFinalityProvider::new(config, genesis_finality)
+        InMemoryFinalityProvider::new(config, Some(genesis_finality))
     }
 
     fn new_cross_msg(nonce: u64) -> CrossMsg {
@@ -413,7 +416,7 @@ mod tests {
             block_hash: vec![0; 32],
         };
 
-        let provider = InMemoryFinalityProvider::new(config, genesis_finality);
+        let provider = InMemoryFinalityProvider::new(config, Some(genesis_finality));
 
         let cross_msgs_batch1 = vec![new_cross_msg(0), new_cross_msg(1), new_cross_msg(2)];
         let cross_msgs_batch2 = vec![new_cross_msg(3), new_cross_msg(4), new_cross_msg(5)];

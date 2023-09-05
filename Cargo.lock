@@ -3123,6 +3123,7 @@ dependencies = [
  "async-stm",
  "async-trait",
  "cid",
+ "clap 4.4.1",
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "ipc-agent-sdk",
