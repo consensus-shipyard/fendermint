@@ -225,8 +225,14 @@ where
                     todo!("#197: implement BottomUp checkpoint execution")
                 }
                 IpcMessage::TopDownExec(p) => {
-                    let validator_set = atomically_or_err::<_, fendermint_vm_topdown::Error, _>(|| provider.validator_set(p.height as u64)).await?
-                    .ok_or_else(|| anyhow!("cannot find validator set for block: {}", p.height))?;
+                    let validator_set =
+                        atomically_or_err::<_, fendermint_vm_topdown::Error, _>(|| {
+                            provider.validator_set(p.height as u64)
+                        })
+                        .await?
+                        .ok_or_else(|| {
+                            anyhow!("cannot find validator set for block: {}", p.height)
+                        })?;
 
                     let finality = IPCParentFinality {
                         height: p.height as u64,
@@ -238,7 +244,10 @@ where
                         .deliver(state, VerifiableMessage::NotVerify(msg))
                         .await?;
 
-                    atomically_or_err::<_, fendermint_vm_topdown::Error, _>(|| provider.on_finality_committed(&finality)).await?;
+                    atomically_or_err::<_, fendermint_vm_topdown::Error, _>(|| {
+                        provider.on_finality_committed(&finality)
+                    })
+                    .await?;
 
                     Ok(((pool, provider, state), ChainMessageApplyRet::Signed(ret)))
                 }
@@ -392,10 +401,8 @@ fn parent_finality_to_fvm(
         method_num: ipc::gateway::METHOD_INVOKE_CONTRACT,
         params,
         // we are sending a implicit message, no need to set sequence
-        sequence: 0, // read the latest
-
-        // FIXME: what's this value?
-        gas_limit: 0,
+        sequence: 0,
+        gas_limit: fvm_shared::BLOCK_GAS_LIMIT,
         gas_fee_cap: TokenAmount::zero(),
         gas_premium: TokenAmount::zero(),
     };

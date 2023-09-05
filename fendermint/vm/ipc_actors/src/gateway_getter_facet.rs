@@ -331,6 +331,33 @@ pub mod gateway_getter_facet {
                     ],
                 ),
                 (
+                    ::std::borrow::ToOwned::to_owned("getLatestParentFinality"),
+                    ::std::vec![
+                        ::ethers::core::abi::ethabi::Function {
+                            name: ::std::borrow::ToOwned::to_owned(
+                                "getLatestParentFinality",
+                            ),
+                            inputs: ::std::vec![],
+                            outputs: ::std::vec![
+                                ::ethers::core::abi::ethabi::Param {
+                                    name: ::std::string::String::new(),
+                                    kind: ::ethers::core::abi::ethabi::ParamType::Tuple(
+                                        ::std::vec![
+                                            ::ethers::core::abi::ethabi::ParamType::Uint(256usize),
+                                            ::ethers::core::abi::ethabi::ParamType::FixedBytes(32usize),
+                                        ],
+                                    ),
+                                    internal_type: ::core::option::Option::Some(
+                                        ::std::borrow::ToOwned::to_owned("struct ParentFinality"),
+                                    ),
+                                },
+                            ],
+                            constant: ::core::option::Option::None,
+                            state_mutability: ::ethers::core::abi::ethabi::StateMutability::View,
+                        },
+                    ],
+                ),
+                (
                     ::std::borrow::ToOwned::to_owned("getNetworkName"),
                     ::std::vec![
                         ::ethers::core::abi::ethabi::Function {
@@ -1378,6 +1405,14 @@ pub mod gateway_getter_facet {
                 .method_hash([81, 57, 47, 192], ())
                 .expect("method not found (this should never happen)")
         }
+        ///Calls the contract's `getLatestParentFinality` (0x0338150f) function
+        pub fn get_latest_parent_finality(
+            &self,
+        ) -> ::ethers::contract::builders::ContractCall<M, ParentFinality> {
+            self.0
+                .method_hash([3, 56, 21, 15], ())
+                .expect("method not found (this should never happen)")
+        }
         ///Calls the contract's `getNetworkName` (0x94074b03) function
         pub fn get_network_name(
             &self,
@@ -1634,6 +1669,19 @@ pub mod gateway_getter_facet {
     )]
     #[ethcall(name = "getGenesisEpoch", abi = "getGenesisEpoch()")]
     pub struct GetGenesisEpochCall;
+    ///Container type for all input parameters for the `getLatestParentFinality` function with signature `getLatestParentFinality()` and selector `0x0338150f`
+    #[derive(
+        Clone,
+        ::ethers::contract::EthCall,
+        ::ethers::contract::EthDisplay,
+        Default,
+        Debug,
+        PartialEq,
+        Eq,
+        Hash
+    )]
+    #[ethcall(name = "getLatestParentFinality", abi = "getLatestParentFinality()")]
+    pub struct GetLatestParentFinalityCall;
     ///Container type for all input parameters for the `getNetworkName` function with signature `getNetworkName()` and selector `0x94074b03`
     #[derive(
         Clone,
@@ -1879,6 +1927,7 @@ pub mod gateway_getter_facet {
         ExecutableQueue(ExecutableQueueCall),
         GetAppliedTopDownNonce(GetAppliedTopDownNonceCall),
         GetGenesisEpoch(GetGenesisEpochCall),
+        GetLatestParentFinality(GetLatestParentFinalityCall),
         GetNetworkName(GetNetworkNameCall),
         GetParentFinality(GetParentFinalityCall),
         GetSubnet(GetSubnetCall),
@@ -1940,6 +1989,12 @@ pub mod gateway_getter_facet {
             if let Ok(decoded)
                 = <GetGenesisEpochCall as ::ethers::core::abi::AbiDecode>::decode(data) {
                 return Ok(Self::GetGenesisEpoch(decoded));
+            }
+            if let Ok(decoded)
+                = <GetLatestParentFinalityCall as ::ethers::core::abi::AbiDecode>::decode(
+                    data,
+                ) {
+                return Ok(Self::GetLatestParentFinality(decoded));
             }
             if let Ok(decoded)
                 = <GetNetworkNameCall as ::ethers::core::abi::AbiDecode>::decode(data) {
@@ -2047,6 +2102,9 @@ pub mod gateway_getter_facet {
                 Self::GetGenesisEpoch(element) => {
                     ::ethers::core::abi::AbiEncode::encode(element)
                 }
+                Self::GetLatestParentFinality(element) => {
+                    ::ethers::core::abi::AbiEncode::encode(element)
+                }
                 Self::GetNetworkName(element) => {
                     ::ethers::core::abi::AbiEncode::encode(element)
                 }
@@ -2113,6 +2171,9 @@ pub mod gateway_getter_facet {
                     ::core::fmt::Display::fmt(element, f)
                 }
                 Self::GetGenesisEpoch(element) => ::core::fmt::Display::fmt(element, f),
+                Self::GetLatestParentFinality(element) => {
+                    ::core::fmt::Display::fmt(element, f)
+                }
                 Self::GetNetworkName(element) => ::core::fmt::Display::fmt(element, f),
                 Self::GetParentFinality(element) => ::core::fmt::Display::fmt(element, f),
                 Self::GetSubnet(element) => ::core::fmt::Display::fmt(element, f),
@@ -2180,6 +2241,11 @@ pub mod gateway_getter_facet {
     impl ::core::convert::From<GetGenesisEpochCall> for GatewayGetterFacetCalls {
         fn from(value: GetGenesisEpochCall) -> Self {
             Self::GetGenesisEpoch(value)
+        }
+    }
+    impl ::core::convert::From<GetLatestParentFinalityCall> for GatewayGetterFacetCalls {
+        fn from(value: GetLatestParentFinalityCall) -> Self {
+            Self::GetLatestParentFinality(value)
         }
     }
     impl ::core::convert::From<GetNetworkNameCall> for GatewayGetterFacetCalls {
@@ -2360,6 +2426,18 @@ pub mod gateway_getter_facet {
         Hash
     )]
     pub struct GetGenesisEpochReturn(pub u64);
+    ///Container type for all return fields from the `getLatestParentFinality` function with signature `getLatestParentFinality()` and selector `0x0338150f`
+    #[derive(
+        Clone,
+        ::ethers::contract::EthAbiType,
+        ::ethers::contract::EthAbiCodec,
+        Default,
+        Debug,
+        PartialEq,
+        Eq,
+        Hash
+    )]
+    pub struct GetLatestParentFinalityReturn(pub ParentFinality);
     ///Container type for all return fields from the `getNetworkName` function with signature `getNetworkName()` and selector `0x94074b03`
     #[derive(
         Clone,

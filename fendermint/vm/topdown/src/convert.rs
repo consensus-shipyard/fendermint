@@ -16,6 +16,7 @@ use std::str::FromStr;
 
 const COMMIT_PARENT_FINALITY_FUNC_NAME: &str = "commitParentFinality";
 const GET_PARENT_FINALITY_FUNC_NAME: &str = "getParentFinality";
+const GET_LATEST_PARENT_FINALITY_FUNC_NAME: &str = "getLatestParentFinality";
 
 impl From<IPCParentFinality> for gateway_router_facet::ParentFinality {
     fn from(value: IPCParentFinality) -> Self {
@@ -52,7 +53,7 @@ fn addr_payload_to_bytes(payload: Payload) -> Bytes {
             ])]);
             ethers::types::Bytes::from(b)
         }
-        _ => unimplemented!(),
+        _ => unimplemented!("unexpected payload type"),
     }
 }
 
@@ -119,6 +120,29 @@ impl EncodeWithSignature<gateway_router_facet::CommitParentFinalityCall> {
     }
 }
 
+pub fn encode_get_latest_parent_finality() -> anyhow::Result<Vec<u8>> {
+    let function = gateway_getter_facet::GATEWAYGETTERFACET_ABI
+        .functions
+        .get(GET_LATEST_PARENT_FINALITY_FUNC_NAME)
+        .ok_or_else(|| {
+            anyhow!(
+                "report bug, abi function map does not have {}",
+                GET_LATEST_PARENT_FINALITY_FUNC_NAME
+            )
+        })?
+        .get(0)
+        .ok_or_else(|| {
+            anyhow!(
+                "report bug, abi vec does not have {}",
+                GET_LATEST_PARENT_FINALITY_FUNC_NAME
+            )
+        })?;
+
+    let data = ethers::contract::encode_function_data(function, ())?;
+
+    Ok(data.to_vec())
+}
+
 impl EncodeWithSignature<gateway_getter_facet::GetParentFinalityCall> {
     pub fn encode(height: ChainEpoch) -> anyhow::Result<Vec<u8>> {
         let function = gateway_getter_facet::GATEWAYGETTERFACET_ABI
@@ -144,29 +168,26 @@ impl EncodeWithSignature<gateway_getter_facet::GetParentFinalityCall> {
     }
 }
 
-impl DecodeFunctionReturn<IPCParentFinality> {
-    pub fn decode(bytes: Vec<u8>) -> anyhow::Result<IPCParentFinality> {
-        let function = gateway_getter_facet::GATEWAYGETTERFACET_ABI
-            .functions
-            .get(GET_PARENT_FINALITY_FUNC_NAME)
-            .ok_or_else(|| {
-                anyhow!(
-                    "report bug, abi function map does not have {}",
-                    GET_PARENT_FINALITY_FUNC_NAME
-                )
-            })?
-            .get(0)
-            .ok_or_else(|| {
-                anyhow!(
-                    "report bug, abi vec does not have {}",
-                    GET_PARENT_FINALITY_FUNC_NAME
-                )
-            })?;
+pub fn decode_parent_finality_return(bytes: &[u8]) -> anyhow::Result<IPCParentFinality> {
+    let function = gateway_getter_facet::GATEWAYGETTERFACET_ABI
+        .functions
+        .get(GET_LATEST_PARENT_FINALITY_FUNC_NAME)
+        .ok_or_else(|| {
+            anyhow!(
+                "report bug, abi function map does not have {}",
+                GET_LATEST_PARENT_FINALITY_FUNC_NAME
+            )
+        })?
+        .get(0)
+        .ok_or_else(|| {
+            anyhow!(
+                "report bug, abi vec does not have {}",
+                GET_LATEST_PARENT_FINALITY_FUNC_NAME
+            )
+        })?;
 
-        let finality = ethers::contract::decode_function_data::<
-            gateway_getter_facet::ParentFinality,
-            _,
-        >(function, bytes, false)?;
-        Ok(IPCParentFinality::from(finality))
-    }
+    let finality = ethers::contract::decode_function_data::<gateway_getter_facet::ParentFinality, _>(
+        function, bytes, false,
+    )?;
+    Ok(IPCParentFinality::from(finality))
 }

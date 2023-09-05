@@ -4,7 +4,7 @@
 mod cache;
 mod error;
 mod finality;
-mod sync;
+pub mod sync;
 
 #[cfg(feature = "conversion")]
 pub mod convert;
@@ -17,7 +17,6 @@ use serde::{Deserialize, Serialize};
 pub use crate::cache::{SequentialAppendError, SequentialKeyCache, ValueIter};
 pub use crate::error::Error;
 pub use crate::finality::InMemoryFinalityProvider;
-pub use crate::sync::{IPCAgentProxy, PollingParentSyncer};
 
 type BlockHeight = u64;
 type Bytes = Vec<u8>;

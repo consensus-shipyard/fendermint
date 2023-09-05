@@ -3,7 +3,10 @@
 //! A constant running process that fetch or listener to parent state
 
 use crate::error::Error;
-use crate::{BlockHash, BlockHeight, Config, InMemoryFinalityProvider, ParentFinalityProvider};
+use crate::{
+    BlockHash, BlockHeight, Config, IPCParentFinality, InMemoryFinalityProvider,
+    ParentFinalityProvider,
+};
 use anyhow::{anyhow, Context};
 use async_stm::atomically_or_err;
 use fvm_shared::clock::ChainEpoch;
@@ -15,11 +18,46 @@ use ipc_sdk::subnet_id::SubnetID;
 use std::sync::Arc;
 use std::time::Duration;
 
+/// Query the parent finality from the block chain state
+pub trait ParentFinalityStateQuery {
+    /// Get the latest committed finality from the state
+    fn get_latest_committed_finality(&self) -> anyhow::Result<Option<IPCParentFinality>>;
+}
+
 /// Constantly syncing with parent through polling
 pub struct PollingParentSyncer {
     config: Config,
     parent_view_provider: Arc<InMemoryFinalityProvider>,
     agent: Arc<IPCAgentProxy>,
+}
+
+/// Start the polling parent syncer in the background
+pub async fn launch_polling_syncer<P: ParentFinalityStateQuery + Send + Sync + 'static>(
+    p: &P,
+    config: Config,
+    view_provider: Arc<InMemoryFinalityProvider>,
+    agent: IPCAgentProxy,
+) -> anyhow::Result<()> {
+    loop {
+        let finality = match p.get_latest_committed_finality() {
+            Ok(Some(finality)) => finality,
+            Ok(None) => {
+                tracing::debug!("app not ready for query yet");
+                continue;
+            }
+            Err(e) => {
+                tracing::warn!("cannot get committed finality: {e}");
+                continue;
+            }
+        };
+
+        atomically_or_err(|| view_provider.init(finality.clone())).await?;
+
+        let poll = PollingParentSyncer::new(config, view_provider, Arc::new(agent));
+        poll.start();
+
+        return Ok(());
+    }
 }
 
 impl PollingParentSyncer {
@@ -38,7 +76,7 @@ impl PollingParentSyncer {
 
 impl PollingParentSyncer {
     /// Start the parent finality listener in the background
-    pub fn start(self) -> anyhow::Result<()> {
+    pub fn start(self) {
         let config = self.config;
         let provider = self.parent_view_provider;
         let agent = self.agent;
@@ -56,8 +94,6 @@ impl PollingParentSyncer {
                 }
             }
         });
-
-        Ok(())
     }
 }
 

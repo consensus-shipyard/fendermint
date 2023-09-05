@@ -200,6 +200,17 @@ pub mod gateway_router_facet {
                     ],
                 ),
                 (
+                    ::std::borrow::ToOwned::to_owned("ParentFinalityAlreadyCommitted"),
+                    ::std::vec![
+                        ::ethers::core::abi::ethabi::AbiError {
+                            name: ::std::borrow::ToOwned::to_owned(
+                                "ParentFinalityAlreadyCommitted",
+                            ),
+                            inputs: ::std::vec![],
+                        },
+                    ],
+                ),
+                (
                     ::std::borrow::ToOwned::to_owned("ValidatorWeightIsZero"),
                     ::std::vec![
                         ::ethers::core::abi::ethabi::AbiError {
@@ -363,6 +374,22 @@ pub mod gateway_router_facet {
     )]
     #[etherror(name = "NotSystemActor", abi = "NotSystemActor()")]
     pub struct NotSystemActor;
+    ///Custom Error type `ParentFinalityAlreadyCommitted` with signature `ParentFinalityAlreadyCommitted()` and selector `0x2a75b082`
+    #[derive(
+        Clone,
+        ::ethers::contract::EthError,
+        ::ethers::contract::EthDisplay,
+        Default,
+        Debug,
+        PartialEq,
+        Eq,
+        Hash
+    )]
+    #[etherror(
+        name = "ParentFinalityAlreadyCommitted",
+        abi = "ParentFinalityAlreadyCommitted()"
+    )]
+    pub struct ParentFinalityAlreadyCommitted;
     ///Custom Error type `ValidatorWeightIsZero` with signature `ValidatorWeightIsZero()` and selector `0x389b457d`
     #[derive(
         Clone,
@@ -400,6 +427,7 @@ pub mod gateway_router_facet {
         NotEnoughBalance(NotEnoughBalance),
         NotRegisteredSubnet(NotRegisteredSubnet),
         NotSystemActor(NotSystemActor),
+        ParentFinalityAlreadyCommitted(ParentFinalityAlreadyCommitted),
         ValidatorWeightIsZero(ValidatorWeightIsZero),
         ValidatorsAndWeightsLengthMismatch(ValidatorsAndWeightsLengthMismatch),
         /// The standard solidity revert string, with selector
@@ -442,6 +470,12 @@ pub mod gateway_router_facet {
                 return Ok(Self::NotSystemActor(decoded));
             }
             if let Ok(decoded)
+                = <ParentFinalityAlreadyCommitted as ::ethers::core::abi::AbiDecode>::decode(
+                    data,
+                ) {
+                return Ok(Self::ParentFinalityAlreadyCommitted(decoded));
+            }
+            if let Ok(decoded)
                 = <ValidatorWeightIsZero as ::ethers::core::abi::AbiDecode>::decode(
                     data,
                 ) {
@@ -472,6 +506,9 @@ pub mod gateway_router_facet {
                     ::ethers::core::abi::AbiEncode::encode(element)
                 }
                 Self::NotSystemActor(element) => {
+                    ::ethers::core::abi::AbiEncode::encode(element)
+                }
+                Self::ParentFinalityAlreadyCommitted(element) => {
                     ::ethers::core::abi::AbiEncode::encode(element)
                 }
                 Self::ValidatorWeightIsZero(element) => {
@@ -509,6 +546,10 @@ pub mod gateway_router_facet {
                     true
                 }
                 _ if selector
+                    == <ParentFinalityAlreadyCommitted as ::ethers::contract::EthError>::selector() => {
+                    true
+                }
+                _ if selector
                     == <ValidatorWeightIsZero as ::ethers::contract::EthError>::selector() => {
                     true
                 }
@@ -534,6 +575,9 @@ pub mod gateway_router_facet {
                     ::core::fmt::Display::fmt(element, f)
                 }
                 Self::NotSystemActor(element) => ::core::fmt::Display::fmt(element, f),
+                Self::ParentFinalityAlreadyCommitted(element) => {
+                    ::core::fmt::Display::fmt(element, f)
+                }
                 Self::ValidatorWeightIsZero(element) => {
                     ::core::fmt::Display::fmt(element, f)
                 }
@@ -572,6 +616,12 @@ pub mod gateway_router_facet {
     impl ::core::convert::From<NotSystemActor> for GatewayRouterFacetErrors {
         fn from(value: NotSystemActor) -> Self {
             Self::NotSystemActor(value)
+        }
+    }
+    impl ::core::convert::From<ParentFinalityAlreadyCommitted>
+    for GatewayRouterFacetErrors {
+        fn from(value: ParentFinalityAlreadyCommitted) -> Self {
+            Self::ParentFinalityAlreadyCommitted(value)
         }
     }
     impl ::core::convert::From<ValidatorWeightIsZero> for GatewayRouterFacetErrors {

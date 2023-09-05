@@ -3,7 +3,8 @@
 
 use anyhow::{anyhow, Context};
 use fendermint_abci::ApplicationService;
-use fendermint_app::{App, AppConfig, AppStore, ParentFinalityQuery};
+use fendermint_app::ipc::AppParentFinalityQuery;
+use fendermint_app::{App, AppConfig, AppStore};
 use fendermint_rocksdb::{blockstore::NamespaceBlockstore, namespaces, RocksDb, RocksDbConfig};
 use fendermint_vm_interpreter::{
     bytes::{BytesMessageInterpreter, ProposalPrepareMode},
@@ -11,8 +12,8 @@ use fendermint_vm_interpreter::{
     fvm::FvmMessageInterpreter,
     signed::SignedMessageInterpreter,
 };
-use fendermint_vm_topdown::{IPCAgentProxy, InMemoryFinalityProvider, PollingParentSyncer};
-use fvm::engine::MultiEngine;
+use fendermint_vm_topdown::sync::{launch_polling_syncer, IPCAgentProxy};
+use fendermint_vm_topdown::InMemoryFinalityProvider;
 use std::sync::Arc;
 use tracing::info;
 
@@ -24,16 +25,6 @@ cmd! {
   }
 }
 
-// fn create_parent_finality(
-//     settings: &Settings,
-//     query: &ParentFinalityQuery<RocksDb, NamespaceBlockstore, AppStore>,
-// ) -> anyhow::Result<InMemoryFinalityProvider> {
-//     let last_committed_finality = query.get_committed_finality()?;
-//     let provider =
-//         InMemoryFinalityProvider::new(settings.parent_finality.clone(), last_committed_finality);
-//     Ok(provider)
-// }
-
 fn create_ipc_agent_proxy(settings: &Settings) -> anyhow::Result<IPCAgentProxy> {
     let url = settings.ipc.config.ipc_agent_url.parse()?;
     let subnet = settings.ipc.subnet_id.clone();
@@ -41,14 +32,6 @@ fn create_ipc_agent_proxy(settings: &Settings) -> anyhow::Result<IPCAgentProxy> 
     let json_rpc = ipc_agent_sdk::jsonrpc::JsonRpcClientImpl::new(url, None);
     let ipc_agent_client = ipc_agent_sdk::apis::IpcAgentClient::new(json_rpc);
     IPCAgentProxy::new(ipc_agent_client, subnet)
-}
-
-fn create_parent_finality(settings: &Settings) -> anyhow::Result<InMemoryFinalityProvider> {
-    let provider = InMemoryFinalityProvider::new(
-        settings.ipc.config.clone(),
-        None,
-    );
-    Ok(provider)
 }
 
 async fn run(settings: Settings) -> anyhow::Result<()> {
@@ -70,26 +53,9 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         NamespaceBlockstore::new(db.clone(), ns.state_store).context("error creating state DB")?;
 
     let resolve_pool = CheckpointPool::new();
-    let multi_engine = Arc::new(MultiEngine::new(1));
-    let db = Arc::new(db);
-    let state_store = Arc::new(state_store);
-
-    // setup top down parent finality related code
-    // let parent_finality_getter = ParentFinalityQuery::new(
-    //     db.clone(),
-    //     state_store.clone(),
-    //     multi_engine.clone(),
-    //     ns.app.clone(),
-    // );
-    let parent_finality = Arc::new(create_parent_finality(&settings)?);
-    // let parent_finality = Arc::new(create_parent_finality(&settings, &parent_finality_getter)?);
-    let ipc_agent_proxy = create_ipc_agent_proxy(&settings)?;
-    let polling_parent_syncer = PollingParentSyncer::new(
+    let parent_finality_provider = Arc::new(InMemoryFinalityProvider::uninitialized(
         settings.ipc.config.clone(),
-        parent_finality.clone(),
-        Arc::new(ipc_agent_proxy),
-    );
-    polling_parent_syncer.start()?;
+    ));
 
     let app: App<_, _, AppStore, _> = App::new(
         AppConfig {
@@ -100,11 +66,19 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         },
         db,
         state_store,
-        multi_engine,
         interpreter,
         resolve_pool,
-        parent_finality,
+        parent_finality_provider.clone(),
     )?;
+
+    let app_parent_finality_query = AppParentFinalityQuery::new(app.clone());
+    launch_polling_syncer(
+        &app_parent_finality_query,
+        settings.ipc.config.clone(),
+        parent_finality_provider,
+        create_ipc_agent_proxy(&settings)?,
+    )
+    .await?;
 
     let service = ApplicationService(app);
 

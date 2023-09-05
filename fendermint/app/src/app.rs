@@ -31,6 +31,7 @@ use fendermint_vm_topdown::InMemoryFinalityProvider;
 use fvm::engine::MultiEngine;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::chainid::ChainID;
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::version::NetworkVersion;
 use num_traits::Zero;
@@ -65,11 +66,11 @@ pub enum AppError {
 #[derive(Serialize, Deserialize)]
 pub struct AppState {
     /// Last committed block height.
-    pub(crate) block_height: BlockHeight,
+    block_height: BlockHeight,
     /// Oldest state hash height.
     oldest_state_height: BlockHeight,
     /// Last committed version of the evolving state of the FVM.
-    pub(crate) state_params: FvmStateParams,
+    state_params: FvmStateParams,
 }
 
 impl AppState {
@@ -160,17 +161,16 @@ where
 {
     pub fn new(
         config: AppConfig<S>,
-        db: Arc<DB>,
-        state_store: Arc<SS>,
-        multi_engine: Arc<MultiEngine>,
+        db: DB,
+        state_store: SS,
         interpreter: I,
         resolve_pool: CheckpointPool,
         parent_finality_provider: Arc<InMemoryFinalityProvider>,
     ) -> Result<Self> {
         let app = Self {
-            db,
-            state_store,
-            multi_engine,
+            db: Arc::new(db),
+            state_store: Arc::new(state_store),
+            multi_engine: Arc::new(MultiEngine::new(1)),
             builtin_actors_bundle: config.builtin_actors_bundle,
             namespace: config.app_namespace,
             state_hist: KVCollection::new(config.state_hist_namespace),
@@ -308,6 +308,31 @@ where
         .await?;
         self.put_exec_state(state);
         Ok(ret)
+    }
+
+    /// Get a read only fvm execution state. This is useful to perform query commands targeting
+    /// the latest state.
+    pub fn new_read_only_exec_state(
+        &self,
+    ) -> Result<Option<FvmExecState<ReadOnlyBlockstore<Arc<SS>>>>> {
+        let maybe_app_state = self.get_committed_state()?;
+
+        Ok(if let Some(app_state) = maybe_app_state {
+            let block_height = app_state.block_height;
+            let state_params = app_state.state_params;
+
+            let exec_state = FvmExecState::new(
+                ReadOnlyBlockstore::new(self.state_store.clone()),
+                self.multi_engine.as_ref(),
+                block_height as ChainEpoch,
+                state_params,
+            )
+            .context("error creating execution state")?;
+
+            Some(exec_state)
+        } else {
+            None
+        })
     }
 
     /// Look up a past state at a particular height Tendermint Core is looking for.

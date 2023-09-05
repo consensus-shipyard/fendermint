@@ -62,21 +62,29 @@ impl ParentViewData {
 
 impl ParentViewProvider for InMemoryFinalityProvider {
     fn latest_height(&self) -> StmResult<Option<BlockHeight>, Error> {
+        self.require_init()?;
+
         let h = self.parent_view_data.latest_height()?;
         Ok(h)
     }
 
     fn block_hash(&self, height: BlockHeight) -> StmResult<Option<BlockHash>, Error> {
+        self.require_init()?;
+
         let v = self.parent_view_data.block_hash(height)?;
         Ok(v)
     }
 
     fn validator_set(&self, height: BlockHeight) -> StmResult<Option<ValidatorSet>, Error> {
+        self.require_init()?;
+
         let v = self.parent_view_data.validator_set(height)?;
         Ok(v)
     }
 
     fn top_down_msgs(&self, height: BlockHeight) -> StmResult<Vec<CrossMsg>, Error> {
+        self.require_init()?;
+
         let v = self.parent_view_data.top_down_msgs(height, height)?;
         Ok(v)
     }
@@ -88,6 +96,8 @@ impl ParentViewProvider for InMemoryFinalityProvider {
         validator_set: ValidatorSet,
         top_down_msgs: Vec<CrossMsg>,
     ) -> StmResult<(), Error> {
+        self.require_init()?;
+
         if !top_down_msgs.is_empty() {
             // make sure incoming top down messages are ordered by nonce sequentially
             ensure_sequential_by_nonce(&top_down_msgs)?;
@@ -110,6 +120,8 @@ impl ParentViewProvider for InMemoryFinalityProvider {
 
 impl ParentFinalityProvider for InMemoryFinalityProvider {
     fn last_committed_finality(&self) -> StmResult<IPCParentFinality, Error> {
+        self.require_init()?;
+
         let finality = self
             .last_committed_finality
             .read_clone()?
@@ -118,6 +130,8 @@ impl ParentFinalityProvider for InMemoryFinalityProvider {
     }
 
     fn next_proposal(&self) -> StmResult<Option<IPCParentFinality>, Error> {
+        self.require_init()?;
+
         let latest_height = if let Some(h) = self.parent_view_data.latest_height()? {
             h
         } else {
@@ -150,11 +164,15 @@ impl ParentFinalityProvider for InMemoryFinalityProvider {
     }
 
     fn check_proposal(&self, proposal: &IPCParentFinality) -> StmResult<(), Error> {
+        self.require_init()?;
+
         self.check_height(proposal)?;
         self.check_block_hash(proposal)
     }
 
     fn on_finality_committed(&self, finality: &IPCParentFinality) -> StmResult<(), Error> {
+        self.require_init()?;
+
         // the height to clear
         let height = finality.height;
 
@@ -170,7 +188,17 @@ impl ParentFinalityProvider for InMemoryFinalityProvider {
 }
 
 impl InMemoryFinalityProvider {
-    pub fn new(config: Config, committed_finality: Option<IPCParentFinality>) -> Self {
+    // creates an uninitialized provider
+    pub fn uninitialized(config: Config) -> Self {
+        Self::new(config, None)
+    }
+
+    // creates an initialized provider
+    pub fn initialized(config: Config, committed_finality: IPCParentFinality) -> Self {
+        Self::new(config, Some(committed_finality))
+    }
+
+    fn new(config: Config, committed_finality: Option<IPCParentFinality>) -> Self {
         let height_data = SequentialKeyCache::sequential();
         Self {
             config,
@@ -178,6 +206,27 @@ impl InMemoryFinalityProvider {
                 height_data: TVar::new(height_data),
             },
             last_committed_finality: TVar::new(committed_finality),
+        }
+    }
+
+    /// Initialize the provider. This is because `fendermint` has yet to be initialized and might
+    /// not be able to provide an existing finality from the storage. This provider requires an
+    /// existing committed finality. Providing the finality will enable other functionalities.
+    pub fn init(&self, finality: IPCParentFinality) -> StmResult<(), Error> {
+        let committed_finality = self.last_committed_finality.read()?;
+        if committed_finality.is_some() {
+            return Err(StmError::Abort(Error::ProviderAlreadyInitialized));
+        }
+        self.last_committed_finality.write(Some(finality))?;
+        Ok(())
+    }
+
+    fn require_init(&self) -> StmResult<(), Error> {
+        let committed_finality = self.last_committed_finality.read()?;
+        if committed_finality.is_none() {
+            Err(StmError::Abort(Error::ProviderNotInitialized))
+        } else {
+            Ok(())
         }
     }
 

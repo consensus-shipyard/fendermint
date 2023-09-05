@@ -40,8 +40,8 @@ pub fn decode_fevm_create(deliver_tx: &DeliverTx) -> anyhow::Result<CreateReturn
 }
 
 /// Parse what Tendermint returns in the `data` field of [`DeliverTx`] as raw ABI return value.
-pub fn decode_fevm_invoke(deliver_tx: &DeliverTx) -> anyhow::Result<Vec<u8>> {
-    let data = decode_data(&deliver_tx.data)?;
+pub fn decode_fevm_invoke_bytes(data: &Bytes) -> anyhow::Result<Vec<u8>> {
+    let data = decode_data(data)?;
 
     // Some calls like transfers between Ethereum accounts don't return any data.
     if data.is_empty() {
@@ -53,4 +53,9 @@ pub fn decode_fevm_invoke(deliver_tx: &DeliverTx) -> anyhow::Result<Vec<u8>> {
     fvm_ipld_encoding::from_slice::<BytesDe>(&data)
         .map(|bz| bz.0)
         .map_err(|e| anyhow!("failed to deserialize bytes returned by FEVM: {e}"))
+}
+
+/// Parse what Tendermint returns in the `data` field of [`DeliverTx`] as raw ABI return value.
+pub fn decode_fevm_invoke(deliver_tx: &DeliverTx) -> anyhow::Result<Vec<u8>> {
+    decode_fevm_invoke_bytes(&deliver_tx.data)
 }
