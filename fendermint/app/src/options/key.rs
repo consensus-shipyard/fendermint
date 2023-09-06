@@ -14,7 +14,7 @@ pub enum KeyCommands {
     /// Convert a public key file from base64 into an f1 Address format an print it to STDOUT.
     Address(KeyAddressArgs),
     /// TBD
-    AddPeer(AddPeer)
+    AddPeer(AddPeer),
 }
 
 #[derive(Args, Debug)]
@@ -33,7 +33,7 @@ pub struct AddPeer {
     pub local_peers_file: PathBuf,
     /// The path to a local file with persistent peers.
     #[arg(long, short)]
-    pub network_addr: String
+    pub network_addr: String,
 }
 
 #[derive(Args, Debug)]
