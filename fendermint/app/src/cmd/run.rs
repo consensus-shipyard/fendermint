@@ -85,15 +85,22 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
     )?;
 
     if settings.ipc.is_topdown_enabled() {
-        let topdown_config = settings.ipc.top_down_config()?;
+        let topdown_config = settings.ipc.top_down_config()?.clone();
         let app_parent_finality_query = AppParentFinalityQuery::new(app.clone());
-        launch_polling_syncer(
-            &app_parent_finality_query,
-            topdown_config.clone(),
-            parent_finality_provider,
-            create_ipc_agent_proxy(topdown_config, settings.ipc.subnet_id.clone())?,
-        )
-        .await?;
+        let agent_proxy = create_ipc_agent_proxy(&topdown_config, settings.ipc.subnet_id.clone())?;
+        tokio::spawn(async move {
+            match launch_polling_syncer(
+                &app_parent_finality_query,
+                topdown_config,
+                parent_finality_provider,
+                agent_proxy,
+            )
+            .await
+            {
+                Ok(_) => {}
+                Err(e) => tracing::error!("cannot launch polling syncer: {e}"),
+            }
+        });
     }
 
     let service = ApplicationService(app);
