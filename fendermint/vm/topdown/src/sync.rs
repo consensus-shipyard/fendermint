@@ -43,10 +43,12 @@ pub async fn launch_polling_syncer<
             Ok(Some(finality)) => finality,
             Ok(None) => {
                 tracing::debug!("app not ready for query yet");
+                tokio::time::sleep(Duration::from_secs(5)).await;
                 continue;
             }
             Err(e) => {
                 tracing::warn!("cannot get committed finality: {e}");
+                tokio::time::sleep(Duration::from_secs(5)).await;
                 continue;
             }
         };

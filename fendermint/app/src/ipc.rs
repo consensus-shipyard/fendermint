@@ -62,6 +62,8 @@ where
 
         let finality = if let Some(mut exec_state) = maybe_exec_state {
             let msg = implicit_gateway_message(encode_get_latest_parent_finality()?);
+            tracing::debug!("query gateway parent finality message: {msg:?}");
+
             let (apply_ret, _) = exec_state.execute_implicit(msg)?;
 
             let data = apply_ret.msg_receipt.return_data.to_vec();
