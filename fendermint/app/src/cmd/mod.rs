@@ -12,6 +12,8 @@ use async_trait::async_trait;
 use base64::engine::GeneralPurpose;
 use base64::engine::{DecodePaddingMode, GeneralPurposeConfig};
 use base64::{alphabet, Engine};
+use fvm_shared::address::{set_current_network, Network};
+use num_traits::FromPrimitive;
 
 pub mod eth;
 pub mod genesis;
@@ -104,4 +106,9 @@ fn settings(opts: &Options) -> anyhow::Result<Settings> {
         Settings::new(&config_dir, &opts.home_dir, &opts.mode).context("error parsing settings")?;
 
     Ok(settings)
+}
+
+pub(crate) fn set_network(network: u8) {
+    let network = Network::from_u8(network).unwrap();
+    set_current_network(network);
 }

@@ -59,6 +59,8 @@ pub struct FvmSettings {
 pub struct IPCSettings {
     #[serde(deserialize_with = "deserialize_subnet_id")]
     pub subnet_id: SubnetID,
+    /// The network env, 1 for test network and 0 for mainnet
+    pub network: u8,
     /// The config for top down checkpoint. It's None if subnet id is root or not activating
     /// any top down checkpoint related operations
     pub topdown: Option<fendermint_vm_topdown::Config>,
