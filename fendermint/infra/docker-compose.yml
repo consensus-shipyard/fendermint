@@ -9,10 +9,16 @@ services:
     environment:
       - ID=0
       - LOG=${LOG:-cometbft-node0.log}
-      - CMT_PEX=false
+      - CMT_PEX=true
       - CMT_PROXY_APP=tcp://fendermint-node0:26658
+      - CMT_PERSISTENT_PEERS="${CMT_PERSISTENT_PEERS}"
     volumes:
       - ${HOME}/.ipc-testnet/node0/cometbft:/cometbft
+    healthcheck:
+      test: curl --fail http://localhost:26657 || exit 1
+      interval: 8s
+      timeout: 10s
+      retries: 20
     networks:
       localnet:
         ipv4_address: 192.167.10.2
@@ -25,10 +31,16 @@ services:
     environment:
       - ID=1
       - LOG=${LOG:-cometbft-node1.log}
-      - CMT_PEX=false
+      - CMT_PEX=true
+      - CMT_PERSISTENT_PEERS="${CMT_PERSISTENT_PEERS}"
       - CMT_PROXY_APP=tcp://fendermint-node1:26658
     volumes:
       - ${HOME}/.ipc-testnet/node1/cometbft:/cometbft
+    healthcheck:
+      test: curl --fail http://localhost:26657 || exit 1
+      interval: 8s
+      timeout: 10s
+      retries: 20
     networks:
       localnet:
         ipv4_address: 192.167.10.3
@@ -39,12 +51,18 @@ services:
     environment:
       - ID=2
       - LOG=${LOG:-cometbft-node2.log}
-      - CMT_PEX=false
+      - CMT_PEX=true
+      - CMT_PERSISTENT_PEERS="${CMT_PERSISTENT_PEERS}"
       - CMT_PROXY_APP=tcp://fendermint-node2:26658
     ports:
       - "26661-26662:26656-26657"
     volumes:
       - ${HOME}/.ipc-testnet/node2/cometbft:/cometbft
+    healthcheck:
+      test: curl --fail http://localhost:26657 || exit 1
+      interval: 8s
+      timeout: 10s
+      retries: 20
     networks:
       localnet:
         ipv4_address: 192.167.10.4
@@ -55,12 +73,16 @@ services:
     environment:
       - ID=3
       - LOG=${LOG:-cometbft-node3.log}
-      - CMT_PEX=false
       - CMT_PROXY_APP=tcp://fendermint-node3:26658
     ports:
       - "26663-26664:26656-26657"
     volumes:
       - ${HOME}/.ipc-testnet/node3/cometbft:/cometbft
+    healthcheck:
+      test: curl --fail http://localhost:26657 || exit 1
+      interval: 8s
+      timeout: 10s
+      retries: 20
     networks:
       localnet:
         ipv4_address: 192.167.10.5
@@ -124,6 +146,90 @@ services:
     networks:
       localnet:
         ipv4_address: 192.167.10.9
+
+  ethapi-node0:
+    container_name: ethapi-node0
+    image: "fendermint:latest"
+    command: "eth run"
+    build:
+      context: .
+    environment:
+      - TENDERMINT_WS_URL=ws://cometbft-node0:26657/websocket
+      - LOG_LEVEL=debug
+      - RUST_BACKTRACE=1
+    ports:
+      - 8545:8545
+    volumes:
+      - ${HOME}/.ipc-testnet/node0:/data
+    depends_on:
+      cometbft-node0:
+        condition: service_healthy
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.10
+
+  ethapi-node1:
+    container_name: ethapi-node1
+    image: "fendermint:latest"
+    command: "eth run"
+    build:
+      context: .
+    environment:
+      - TENDERMINT_WS_URL=ws://cometbft-node1:26657/websocket
+      - LOG_LEVEL=debug
+      - RUST_BACKTRACE=1
+    ports:
+      - 8546:8545
+    volumes:
+      - ${HOME}/.ipc-testnet/node1:/data
+    depends_on:
+      cometbft-node1:
+        condition: service_healthy
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.11
+
+  ethapi-node2:
+    container_name: ethapi-node2
+    image: "fendermint:latest"
+    command: "eth run"
+    build:
+      context: .
+    environment:
+      - TENDERMINT_WS_URL=ws://cometbft-node2:26657/websocket
+      - LOG_LEVEL=debug
+      - RUST_BACKTRACE=1
+    ports:
+      - 8547:8545
+    volumes:
+      - ${HOME}/.ipc-testnet/node2:/data
+    depends_on:
+      cometbft-node2:
+        condition: service_healthy
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.12
+
+  ethapi-node3:
+    container_name: ethapi-node3
+    image: "fendermint:latest"
+    command: "eth run"
+    build:
+      context: .
+    environment:
+      - TENDERMINT_WS_URL=ws://cometbft-node3:26657/websocket
+      - LOG_LEVEL=debug
+      - RUST_BACKTRACE=1
+    ports:
+      - 8548:8545
+    volumes:
+      - ${HOME}/.ipc-testnet/node3:/data
+    depends_on:
+      cometbft-node2:
+        condition: service_healthy
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.13
 
 networks:
   localnet:

@@ -13,12 +13,27 @@ pub enum KeyCommands {
     IntoTendermint(KeyIntoTendermintArgs),
     /// Convert a public key file from base64 into an f1 Address format an print it to STDOUT.
     Address(KeyAddressArgs),
+    /// TBD
+    AddPeer(AddPeer)
 }
 
 #[derive(Args, Debug)]
 pub struct KeyArgs {
     #[command(subcommand)]
     pub command: KeyCommands,
+}
+
+#[derive(Args, Debug)]
+pub struct AddPeer {
+    /// The path to node key file.
+    #[arg(long, short)]
+    pub node_key_file: PathBuf,
+    /// The path to a local file with persistent peers.
+    #[arg(long, short)]
+    pub local_peers_file: PathBuf,
+    /// The path to a local file with persistent peers.
+    #[arg(long, short)]
+    pub network_addr: String
 }
 
 #[derive(Args, Debug)]

@@ -16,7 +16,7 @@ KEY_NAME="validator_key"
 PUB_KEY_PATH="${KEYS_DIR}/${KEY_NAME}.pk"
 PRIV_KEY_PATH="${KEYS_DIR}/${KEY_NAME}.sk"
 
-NETWORK_NAME = "${CHAIN_NAME}net"
+NETWORK_NAME = "${CHAIN_NAME}testnet"
 CMT_CONTAINER_NAME = "${NETWORK_NAME}-cometbft"
 FM_CONTAINER_NAME = "${NETWORK_NAME}-fendermint"
 ETHAPI_CONTAINER_NAME = "${NETWORK_NAME}-ethapi"
@@ -123,6 +123,7 @@ script = ['''
 # Waiting before starting the Eth API for the CometBFT websocket to start listening.
 [tasks.start]
 dependencies = [
+  "teardown",
   "init",
   "network-create",
   "cometbft-init",
@@ -178,16 +179,6 @@ mkdir -p $BASE_TESTNET_DIR/node1/cometbft
 mkdir -p $BASE_TESTNET_DIR/node2/cometbft
 mkdir -p $BASE_TESTNET_DIR/node3/cometbft
 
-mkdir -p $BASE_TESTNET_DIR/node0/cometbft/config
-mkdir -p $BASE_TESTNET_DIR/node1/cometbft/config
-mkdir -p $BASE_TESTNET_DIR/node2/cometbft/config
-mkdir -p $BASE_TESTNET_DIR/node3/cometbft/config
-
-mkdir -p $BASE_TESTNET_DIR/node0/cometbft/data
-mkdir -p $BASE_TESTNET_DIR/node1/cometbft/data
-mkdir -p $BASE_TESTNET_DIR/node2/cometbft/data
-mkdir -p $BASE_TESTNET_DIR/node3/cometbft/data
-
 """
 
 [tasks.testnet-createbasedir]
@@ -198,6 +189,7 @@ dependencies = [
 
 [tasks.testnet-up]
 script = """
+export CMT_PERSISTENT_PEERS=`cat $BASE_TESTNET_DIR/peers`
 docker compose -f ./fendermint/infra/docker-compose.yml up -d
 """
 
@@ -209,7 +201,10 @@ docker compose -f ./fendermint/infra/docker-compose.yml down
 [tasks.testnet]
 dependencies = [
   "testnet-down",
+  "network-create",
+  "cometbft-pull",
   "testnet-createbasedir",
+  "testnet-cometbft-init",
   "testnet-init",
   "fendermint-deps",
   "testnet-up"
@@ -248,6 +243,26 @@ args = ["pull", "${CMT_DOCKER_IMAGE}"]
 extend = "cometbft-run"
 env = { "CMD" = "init", "FLAGS" = "-a STDOUT -a STDERR --rm" }
 
+[tasks.testnet-cometbft-init]
+env = { "CMD" = "init", "FLAGS" = "-a STDOUT -a STDERR --rm" }
+dependencies = ["testnet-cometbft-init-node0", "testnet-cometbft-init-node1", "testnet-cometbft-init-node2", "testnet-cometbft-init-node3"]
+
+[tasks.testnet-cometbft-init-node0]
+extend = "testnet-cometbft-init-run"
+env = { "CMT_DIR" = "${BASE_TESTNET_DIR}/node0/cometbft", "CMT_CONTAINER_NAME" = "node0", "FLAGS" = "-a STDOUT -a STDERR --rm"}
+
+[tasks.testnet-cometbft-init-node1]
+extend = "testnet-cometbft-init-run"
+env = { "CMT_DIR" = "${BASE_TESTNET_DIR}/node1/cometbft", "CMT_CONTAINER_NAME" = "node1", "FLAGS" = "-a STDOUT -a STDERR --rm"  }
+
+[tasks.testnet-cometbft-init-node2]
+extend = "testnet-cometbft-init-run"
+env = { "CMT_DIR" = "${BASE_TESTNET_DIR}/node2/cometbft", "CMT_CONTAINER_NAME" = "node2", "FLAGS" = "-a STDOUT -a STDERR --rm"  }
+
+[tasks.testnet-cometbft-init-node3]
+extend = "testnet-cometbft-init-run"
+env = { "CMT_DIR" = "${BASE_TESTNET_DIR}/node3/cometbft", "CMT_CONTAINER_NAME" = "node3", "FLAGS" = "-a STDOUT -a STDERR --rm"  }
+
 [tasks.cometbft-start]
 extend = "cometbft-run"
 env = { "CMD" = "start", "FLAGS" = "-d" }
@@ -255,6 +270,21 @@ env = { "CMD" = "start", "FLAGS" = "-d" }
 [tasks.cometbft-wait]
 extend = "wait"
 env = { "CARGO_MAKE_WAIT_MILLISECONDS" = "${CMT_WAIT_MILLIS}" }
+
+[tasks.testnet-cometbft-init-run]
+script = """
+docker run \
+  ${FLAGS} \
+  --name ${CMT_CONTAINER_NAME} \
+  --user $(id -u) \
+  --network ${NETWORK_NAME} \
+  --publish 26657:${CMT_HOST_PORT} \
+  --volume ${CMT_DIR}:/cometbft \
+  --env CMT_PROXY_APP=tcp://${FM_CONTAINER_NAME}:26658 \
+  --env CMT_PEX=false \
+  ${CMT_DOCKER_IMAGE} \
+  init
+"""
 
 [tasks.cometbft-run]
 script = """
@@ -300,19 +330,21 @@ fi
 [tasks.testnet-init]
 dependencies = [
   "testnet-newgenesis",
+  "testnet_peers",
   "testnet-newkey",
   "testnet-newaccount",
   "testnet-newgateway",
   "testnet-share-genesis"
 ]
 
-[tasks.fendermint-init]
-dependencies = [
-  "fendermint-newgenesis",
-  "fendermint-newkey",
-  "fendermint-newaccount",
-  "fendermint-newgateway",
-]
+[tasks.testnet-newgenesis]
+cwd = "./target/release"
+script = """
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json \
+      new --chain-name testnet --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP}
+
+cat $BASE_TESTNET_DIR/genesis.json
+"""
 
 [tasks.testnet-newkey]
 cwd = "./target/release"
@@ -329,36 +361,22 @@ mkdir -p $BASE_TESTNET_DIR/node3/fendermint/keys
 
 """
 
-[tasks.testnet-newgenesis]
-cwd = "./target/release"
-script = """
-./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json \
-      new --chain-name testnet --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP}
-"""
-
-[tasks.fendermint-newkey]
+[tasks.testnet_peers]
 cwd = "./target/release"
 script="""
-mkdir -p $KEYS_DIR
+./fendermint key add-peer --node-key-file $BASE_TESTNET_DIR/node0/cometbft/config/node_key.json --network-addr 192.167.10.2:26656 --local-peers-file $BASE_TESTNET_DIR/peers
+./fendermint key add-peer --node-key-file $BASE_TESTNET_DIR/node1/cometbft/config/node_key.json --network-addr 192.167.10.3:26656 --local-peers-file $BASE_TESTNET_DIR/peers
+./fendermint key add-peer --node-key-file $BASE_TESTNET_DIR/node2/cometbft/config/node_key.json --network-addr 192.167.10.4:26656 --local-peers-file $BASE_TESTNET_DIR/peers
+./fendermint key add-peer --node-key-file $BASE_TESTNET_DIR/node3/cometbft/config/node_key.json --network-addr 192.167.10.5:26656 --local-peers-file $BASE_TESTNET_DIR/peers
 
-./fendermint key gen --out-dir $KEYS_DIR --name $KEY_NAME;
-chmod 600 ${PRIV_KEY_PATH}
-"""
+unset CMT_PERSISTENT_PEERS
+export CMT_PERSISTENT_PEERS=`cat $BASE_TESTNET_DIR/peers`
+echo Persistent peers: $CMT_PERSISTENT_PEERS
 
-[tasks.testnet-newaccount]
-cwd = "./target/release"
-script="""
-./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json add-account \
-        --public-key $BASE_TESTNET_DIR/node0/fendermint/keys/validator0_key.pk --balance ${BALANCE}
-
-./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json add-account \
-        --public-key $BASE_TESTNET_DIR/node1/fendermint/keys/validator1_key.pk --balance ${BALANCE}
-
-./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json add-account \
-        --public-key $BASE_TESTNET_DIR/node2/fendermint/keys/validator2_key.pk --balance ${BALANCE}
-
-./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json add-account \
-        --public-key $BASE_TESTNET_DIR/node3/fendermint/keys/validator3_key.pk --balance ${BALANCE}
+sed -i'bak' "s/persistent_peers = \\"\\"/persistent_peers = \\"$CMT_PERSISTENT_PEERS\\"/" $BASE_TESTNET_DIR/node0/cometbft/config/config.toml
+sed -i'bak' "s/persistent_peers = \\"\\"/persistent_peers = \\"$CMT_PERSISTENT_PEERS\\"/" $BASE_TESTNET_DIR/node1/cometbft/config/config.toml
+sed -i'bak' "s/persistent_peers = \\"\\"/persistent_peers = \\"$CMT_PERSISTENT_PEERS\\"/" $BASE_TESTNET_DIR/node2/cometbft/config/config.toml
+sed -i'bak' "s/persistent_peers = \\"\\"/persistent_peers = \\"$CMT_PERSISTENT_PEERS\\"/" $BASE_TESTNET_DIR/node3/cometbft/config/config.toml
 """
 
 [tasks.testnet-newgateway]
@@ -396,6 +414,8 @@ script = """
 ./fendermint key into-tendermint --secret-key $BASE_TESTNET_DIR/node3/fendermint/keys/validator3_key.sk \
       --out $BASE_TESTNET_DIR/node3/cometbft/config/priv_validator_key.json
 
+cat $BASE_TESTNET_DIR/genesis.json
+
 """
 
 [tasks.testnet-share-genesis]
@@ -407,12 +427,13 @@ cp $BASE_TESTNET_DIR/out/genesis.json $BASE_TESTNET_DIR/node2/cometbft/config/ge
 cp $BASE_TESTNET_DIR/out/genesis.json $BASE_TESTNET_DIR/node3/cometbft/config/genesis.json
 """
 
-[tasks.fendermint-newaccount]
-cwd = "./target/release"
-script="""
-./fendermint genesis --genesis-file ${GENESIS_FILE} add-account --public-key ${PUB_KEY_PATH} --balance ${BALANCE}
-"""
-
+[tasks.fendermint-init]
+dependencies = [
+  "fendermint-newgenesis",
+  "fendermint-newkey",
+  "fendermint-newaccount",
+  "fendermint-newgateway",
+]
 
 [tasks.fendermint-newgenesis]
 cwd = "./target/release"
@@ -422,6 +443,39 @@ script = """
 dependencies = [
   "createbasedir",
 ]
+
+[tasks.fendermint-newkey]
+cwd = "./target/release"
+script="""
+mkdir -p $KEYS_DIR
+
+./fendermint key gen --out-dir $KEYS_DIR --name $KEY_NAME;
+chmod 600 ${PRIV_KEY_PATH}
+"""
+
+[tasks.testnet-newaccount]
+cwd = "./target/release"
+script="""
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json add-account \
+        --public-key $BASE_TESTNET_DIR/node0/fendermint/keys/validator0_key.pk --balance ${BALANCE}
+
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json add-account \
+        --public-key $BASE_TESTNET_DIR/node1/fendermint/keys/validator1_key.pk --balance ${BALANCE}
+
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json add-account \
+        --public-key $BASE_TESTNET_DIR/node2/fendermint/keys/validator2_key.pk --balance ${BALANCE}
+
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json add-account \
+        --public-key $BASE_TESTNET_DIR/node3/fendermint/keys/validator3_key.pk --balance ${BALANCE}
+
+cat $BASE_TESTNET_DIR/genesis.json
+"""
+
+[tasks.fendermint-newaccount]
+cwd = "./target/release"
+script="""
+./fendermint genesis --genesis-file ${GENESIS_FILE} add-account --public-key ${PUB_KEY_PATH} --balance ${BALANCE}
+"""
 
 
 [tasks.fendermint-newgateway]
@@ -488,7 +542,7 @@ dependencies = ["network-create"]
 [tasks.network-create]
 command = "docker"
 args = ["network", "create", "${NETWORK_NAME}"]
-ignore_errors = false
+ignore_errors = true
 
 [tasks.network-rm]
 command = "docker"

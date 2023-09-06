@@ -6,12 +6,17 @@ use fvm_shared::address::Address;
 use libsecp256k1::{PublicKey, SecretKey};
 use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
 use serde_json::json;
+use std::any::Any;
 use std::path::{Path, PathBuf};
+use tendermint_config::NodeKey;
+use tendermint_proto::Protobuf;
 
 use super::{from_b64, to_b64};
 use crate::{
     cmd,
-    options::key::{KeyAddressArgs, KeyArgs, KeyCommands, KeyGenArgs, KeyIntoTendermintArgs},
+    options::key::{
+        AddPeer, KeyAddressArgs, KeyArgs, KeyCommands, KeyGenArgs, KeyIntoTendermintArgs,
+    },
 };
 
 cmd! {
@@ -19,6 +24,7 @@ cmd! {
     match &self.command {
         KeyCommands::Gen(args) => args.exec(()).await,
         KeyCommands::IntoTendermint(args) => args.exec(()).await,
+        KeyCommands::AddPeer(args) => args.exec(()).await,
         KeyCommands::Address(args) => args.exec(()).await,
     }
   }
@@ -62,6 +68,27 @@ cmd! {
 
     std::fs::write(&self.out, json)?;
 
+    Ok(())
+  }
+}
+
+cmd! {
+  AddPeer(self) {
+    let node_key = NodeKey::load_json_file(&self.node_key_file).unwrap();
+    let peer_id : String = node_key.node_id().to_owned().to_string()+"@"+self.network_addr.as_str();
+    let peers_result = std::fs::read_to_string(&self.local_peers_file).context("failed to read peer file");
+    match peers {
+        Ok(mut v) => {
+            if v.is_empty()  {
+                std::fs::write(&self.local_peers_file, peer_id)?;
+            } else {
+                v = v.to_owned().to_string()+ "," + peer_id.as_str();
+                std::fs::write(&self.local_peers_file, v)?;
+            }
+        }
+        Err(_) => {
+                std::fs::write(&self.local_peers_file, peer_id)?;}
+        }
     Ok(())
   }
 }
