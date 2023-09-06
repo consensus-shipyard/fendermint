@@ -10,14 +10,13 @@ use anyhow::{anyhow, Context};
 use async_stm::{atomically, atomically_or_err};
 use async_trait::async_trait;
 use fendermint_vm_actor_interface::{ipc, system};
-use fendermint_vm_ipc_actors::gateway_router_facet;
 use fendermint_vm_message::ipc::ParentFinality;
 use fendermint_vm_message::{
     chain::ChainMessage,
     ipc::{BottomUpCheckpoint, CertifiedMessage, IpcMessage, SignedRelayedMessage},
 };
 use fendermint_vm_resolver::pool::{ResolveKey, ResolvePool};
-use fendermint_vm_topdown::convert::EncodeWithSignature;
+use fendermint_vm_topdown::convert::encode_commit_parent_finality_call;
 use fendermint_vm_topdown::{IPCParentFinality, ParentFinalityProvider};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
@@ -254,6 +253,9 @@ where
                     })
                     .await?;
 
+                    // TODO: execute top down messages,
+                    // TODO: see https://github.com/consensus-shipyard/fendermint/issues/241
+
                     Ok(((pool, provider, state), ChainMessageApplyRet::Signed(ret)))
                 }
             },
@@ -398,9 +400,7 @@ fn parent_finality_to_fvm(
     finality: IPCParentFinality,
     validator_set: ValidatorSet,
 ) -> anyhow::Result<FvmMessage> {
-    let params = RawBytes::new(EncodeWithSignature::<
-        gateway_router_facet::CommitParentFinalityCall,
-    >::encode(finality, validator_set)?);
+    let params = RawBytes::new(encode_commit_parent_finality_call(finality, validator_set)?);
     let msg = FvmMessage {
         version: 0,
         from: system::SYSTEM_ACTOR_ADDR,

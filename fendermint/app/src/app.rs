@@ -308,6 +308,11 @@ where
             let block_height = app_state.block_height;
             let state_params = app_state.state_params;
 
+            // wait for block production
+            if block_height == 0 {
+                return Ok(None);
+            }
+
             let exec_state = FvmExecState::new(
                 ReadOnlyBlockstore::new(self.state_store.clone()),
                 self.multi_engine.as_ref(),

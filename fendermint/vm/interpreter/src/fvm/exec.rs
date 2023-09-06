@@ -95,6 +95,7 @@ where
         let method_num = msg.method_num;
         let gas_limit = msg.gas_limit;
 
+        // system actor executes implicitly
         let (apply_ret, emitters) = if from == system::SYSTEM_ACTOR_ADDR {
             state.execute_implicit(msg)?
         } else {
