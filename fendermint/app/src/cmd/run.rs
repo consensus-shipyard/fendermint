@@ -58,10 +58,12 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
     let resolve_pool = CheckpointPool::new();
 
     let parent_finality_provider = if let Some(topdown_config) = &settings.ipc.topdown {
+        info!("topdown finality enabled");
         Arc::new(MaybeDisabledProvider::enabled(
             InMemoryFinalityProvider::uninitialized(topdown_config.clone()),
         ))
     } else {
+        info!("topdown finality disabled");
         Arc::new(MaybeDisabledProvider::disabled())
     };
 
