@@ -57,10 +57,11 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
 
     let resolve_pool = CheckpointPool::new();
 
-    let parent_finality_provider = if let Some(topdown_config) = &settings.ipc.topdown {
+    let parent_finality_provider = if settings.ipc.is_topdown_enabled() {
         info!("topdown finality enabled");
+        let config = settings.ipc.top_down_config()?.clone();
         Arc::new(MaybeDisabledProvider::enabled(
-            InMemoryFinalityProvider::uninitialized(topdown_config.clone()),
+            InMemoryFinalityProvider::uninitialized(config),
         ))
     } else {
         info!("topdown finality disabled");
@@ -81,7 +82,8 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         parent_finality_provider.clone(),
     )?;
 
-    if let Some(topdown_config) = &settings.ipc.topdown {
+    if settings.ipc.is_topdown_enabled() {
+        let topdown_config = settings.ipc.top_down_config()?;
         let app_parent_finality_query = AppParentFinalityQuery::new(app.clone());
         launch_polling_syncer(
             &app_parent_finality_query,

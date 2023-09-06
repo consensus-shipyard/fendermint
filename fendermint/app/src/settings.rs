@@ -1,6 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use anyhow::anyhow;
 use config::{Config, ConfigError, Environment, File};
 use ipc_sdk::subnet_id::SubnetID;
 use serde::de::Error;
@@ -61,6 +62,18 @@ pub struct IPCSettings {
     /// The config for top down checkpoint. It's None if subnet id is root or not activating
     /// any top down checkpoint related operations
     pub topdown: Option<fendermint_vm_topdown::Config>,
+}
+
+impl IPCSettings {
+    pub fn is_topdown_enabled(&self) -> bool {
+        !self.subnet_id.is_root() && self.topdown.is_some()
+    }
+
+    pub fn top_down_config(&self) -> anyhow::Result<&fendermint_vm_topdown::Config> {
+        self.topdown
+            .as_ref()
+            .ok_or_else(|| anyhow!("top down config missing"))
+    }
 }
 
 /// Ethereum API facade settings.
