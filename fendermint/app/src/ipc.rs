@@ -16,7 +16,7 @@ use fendermint_vm_topdown::convert::{
 use fendermint_vm_topdown::sync::ParentFinalityStateQuery;
 use fendermint_vm_topdown::IPCParentFinality;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::{BytesSer, RawBytes};
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
 
@@ -86,7 +86,7 @@ fn implicit_gateway_message(params: Vec<u8>) -> anyhow::Result<FvmMessage> {
         to: ipc::GATEWAY_ACTOR_ADDR,
         value: TokenAmount::zero(),
         method_num: ipc::gateway::METHOD_INVOKE_CONTRACT,
-        params: RawBytes::serialize(params)?,
+        params: RawBytes::serialize(BytesSer(&params))?,
         // we are sending a implicit message, no need to set sequence
         sequence: 0,
         gas_limit: fvm_shared::BLOCK_GAS_LIMIT,
