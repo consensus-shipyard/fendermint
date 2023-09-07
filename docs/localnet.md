@@ -1,10 +1,15 @@
 # Local Testnets
 
+Prerequisites:
+```bash
+make build
+```
+
 ## Single node deployment
 
-To run IPC in a rootnet just perform the following :
+To run IPC in the local rootnet just perform the following :
 ```bash
-cargo make --makefile ./fendermint/infra/Makefile.toml node
+cargo make --makefile ./infra/Makefile.toml node
 
 ```
 
@@ -12,19 +17,19 @@ It will create three docker containers (cometbft, fendermint, and eth-api).
 
 To stop run the following:
 ```bash
-cargo make --makefile ./fendermint/infra/Makefile.toml node-down
+cargo make --makefile ./infra/Makefile.toml node-down
 ```
 
 ## Local 4-nodes deployment
-To run IPC in a rootnet with 4 nodes perform the following command :
+To run IPC in the local rootnet with 4 nodes perform the following command :
 ```bash
-cargo make --makefile ./fendermint/infra/Makefile.toml testnet
+cargo make --makefile ./infra/Makefile.toml testnet
 
 ```
 
 To stop the network:
 ```bash
-cargo make --makefile ./fendermint/infra/Makefile.toml testnet-down
+cargo make --makefile ./infra/Makefile.toml testnet-down
 ```
 
 The testnet contains four logical nodes. Each node consists of cometbft, fendermint, and ethapi containers.
