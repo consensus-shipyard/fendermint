@@ -19,13 +19,8 @@ pub enum Error {
     HeightNotReady,
     #[error("The data specified in this height is not found in cache")]
     HeightNotFoundInCache(BlockHeight),
-    #[error("Exceeding current parent view's latest block height")]
-    ExceedingLatestHeight {
-        proposal: BlockHeight,
-        parent: BlockHeight,
-    },
-    #[error("The block height in the proposal is already committed")]
-    HeightAlreadyCommitted(BlockHeight),
+    #[error("Cannot query agent due to {0}")]
+    CannotQueryAgent(String),
     #[error("Proposal's block hash and parent's block hash not match")]
     BlockHashNotMatch {
         proposal: BlockHash,

@@ -3,108 +3,178 @@
 
 use crate::cache::SequentialKeyCache;
 use crate::error::Error;
+use crate::sync::IPCAgentProxy;
 use crate::{
     BlockHash, BlockHeight, Config, IPCParentFinality, ParentFinalityProvider, ParentViewProvider,
 };
-use async_stm::{abort, StmError, StmResult, TVar};
+use async_stm::{abort, Stm, StmError, StmResult, TVar};
 use ipc_agent_sdk::message::ipc::ValidatorSet;
 use ipc_sdk::cross::CrossMsg;
+use std::sync::Arc;
+use std::time::Duration;
 
 type ParentViewPayload = (BlockHash, ValidatorSet, Vec<CrossMsg>);
 
 /// The default parent finality provider
 #[derive(Clone)]
-pub struct InMemoryFinalityProvider {
+pub struct CachedFinalityProvider {
     config: Config,
-    parent_view_data: ParentViewData,
-    /// This is a in memory view of the committed parent finality,
-    /// it should be synced with the store committed finality, owner of the struct should enforce
-    /// this.
+    /// Cached data that always syncs with the latest parent chain proactively
+    cached_data: CachedData,
+    /// This is a in memory view of the committed parent finality. We need this as a starting point
+    /// for populating the cache
     last_committed_finality: TVar<Option<IPCParentFinality>>,
+    /// The ipc agent proxy that works as a back up if cache miss
+    agent: Arc<IPCAgentProxy>,
 }
 
 /// Tracks the data from the parent
 #[derive(Clone)]
-struct ParentViewData {
+struct CachedData {
     height_data: TVar<SequentialKeyCache<BlockHeight, ParentViewPayload>>,
 }
 
-impl ParentViewData {
-    fn latest_height(&self) -> StmResult<Option<BlockHeight>, Error> {
-        let cache = self.height_data.read()?;
-        // safe to unwrap, we dont allow no upper bound
-        Ok(cache.upper_bound())
+macro_rules! retry {
+    ($wait:expr, $retires:expr, $f:expr) => {{
+        let mut retries = $retires;
+        let mut wait = $wait;
+        loop {
+            match $f {
+                Err(_) => {
+                    if retries > 0 {
+                        retries -= 1;
+                        tokio::time::sleep(Duration::from_secs(wait)).await;
+                        wait *= 2;
+                    }
+                }
+                res => {
+                    break res
+                        .map(Some)
+                        .map_err(|e| StmError::Abort(Error::CannotQueryAgent(e.to_string())))
+                }
+            }
+        }
+    }};
+}
+
+#[async_trait::async_trait]
+impl ParentViewProvider for CachedFinalityProvider {
+    async fn validator_set(&self, height: BlockHeight) -> StmResult<Option<ValidatorSet>, Error> {
+        let r = self.cached_data.validator_set(height)?;
+        if r.is_some() {
+            return Ok(r);
+        }
+
+        retry!(
+            self.config.exponential_back_off_secs,
+            self.config.exponential_retry_limit,
+            self.agent.get_validator_set(height).await
+        )
     }
 
-    fn block_hash(&self, height: BlockHeight) -> StmResult<Option<BlockHash>, Error> {
-        let cache = self.height_data.read()?;
-        Ok(cache.get_value(height).map(|i| i.0.clone()))
-    }
+    async fn top_down_msgs(&self, height: BlockHeight) -> StmResult<Option<Vec<CrossMsg>>, Error> {
+        let r = self.cached_data.top_down_msgs_at_height(height)?;
+        if r.is_some() {
+            return Ok(r);
+        }
 
-    fn validator_set(&self, height: BlockHeight) -> StmResult<Option<ValidatorSet>, Error> {
-        let cache = self.height_data.read()?;
-        Ok(cache.get_value(height).map(|i| i.1.clone()))
-    }
-
-    fn top_down_msgs(
-        &self,
-        from_height: BlockHeight,
-        to_height: BlockHeight,
-    ) -> StmResult<Vec<CrossMsg>, Error> {
-        let cache = self.height_data.read()?;
-        let v = cache
-            .values_within(from_height, to_height)
-            .flat_map(|i| i.2.iter())
-            .cloned()
-            .collect();
-        Ok(v)
+        retry!(
+            self.config.exponential_back_off_secs,
+            self.config.exponential_retry_limit,
+            self.agent.get_top_down_msgs(height, height).await
+        )
     }
 }
 
-impl ParentViewProvider for InMemoryFinalityProvider {
-    fn latest_height(&self) -> StmResult<Option<BlockHeight>, Error> {
-        self.require_init()?;
+impl ParentFinalityProvider for CachedFinalityProvider {
+    fn next_proposal(&self) -> Stm<Option<IPCParentFinality>> {
+        let height = if let Some(h) = self.cached_data.latest_height()? {
+            h
+        } else {
+            return Ok(None);
+        };
 
-        let h = self.parent_view_data.latest_height()?;
-        Ok(h)
+        // safe to unwrap as latest height exists
+        let block_hash = self.cached_data.block_hash(height)?.unwrap();
+
+        Ok(Some(IPCParentFinality { height, block_hash }))
     }
 
-    fn block_hash(&self, height: BlockHeight) -> StmResult<Option<BlockHash>, Error> {
-        self.require_init()?;
-
-        let v = self.parent_view_data.block_hash(height)?;
-        Ok(v)
+    fn check_proposal(&self, proposal: &IPCParentFinality) -> Stm<bool> {
+        if !self.check_height(proposal)? {
+            return Ok(false);
+        }
+        self.check_block_hash(proposal)
     }
 
-    fn validator_set(&self, height: BlockHeight) -> StmResult<Option<ValidatorSet>, Error> {
-        self.require_init()?;
+    fn set_new_finality(&self, finality: IPCParentFinality) -> Stm<()> {
+        // the height to clear
+        let height = finality.height;
 
-        let v = self.parent_view_data.validator_set(height)?;
-        Ok(v)
+        self.cached_data.height_data.update(|mut cache| {
+            cache.remove_key_below(height + 1);
+            cache
+        })?;
+
+        self.last_committed_finality.write(Some(finality))
+    }
+}
+
+impl CachedFinalityProvider {
+    /// Creates an uninitialized provider
+    /// We need this because `fendermint` has yet to be initialized and might
+    /// not be able to provide an existing finality from the storage. This provider requires an
+    /// existing committed finality. Providing the finality will enable other functionalities.
+    pub fn uninitialized(config: Config, agent: Arc<IPCAgentProxy>) -> Self {
+        Self::new(config, None, agent)
     }
 
-    fn top_down_msgs(&self, height: BlockHeight) -> StmResult<Vec<CrossMsg>, Error> {
-        self.require_init()?;
-
-        let v = self.parent_view_data.top_down_msgs(height, height)?;
-        Ok(v)
+    /// Creates an initialized provider
+    pub fn initialized(
+        config: Config,
+        committed_finality: IPCParentFinality,
+        agent: Arc<IPCAgentProxy>,
+    ) -> Self {
+        Self::new(config, Some(committed_finality), agent)
     }
 
-    fn new_parent_view(
+    fn new(
+        config: Config,
+        committed_finality: Option<IPCParentFinality>,
+        agent: Arc<IPCAgentProxy>,
+    ) -> Self {
+        let height_data = SequentialKeyCache::sequential();
+        Self {
+            config,
+            cached_data: CachedData {
+                height_data: TVar::new(height_data),
+            },
+            last_committed_finality: TVar::new(committed_finality),
+            agent,
+        }
+    }
+
+    pub fn latest_height(&self) -> Stm<Option<BlockHeight>> {
+        self.cached_data.latest_height()
+    }
+
+    pub fn last_committed_finality(&self) -> Stm<Option<IPCParentFinality>> {
+        self.last_committed_finality.read_clone()
+    }
+
+    pub fn new_parent_view(
         &self,
         height: BlockHeight,
         block_hash: BlockHash,
         validator_set: ValidatorSet,
         top_down_msgs: Vec<CrossMsg>,
     ) -> StmResult<(), Error> {
-        self.require_init()?;
-
         if !top_down_msgs.is_empty() {
             // make sure incoming top down messages are ordered by nonce sequentially
             ensure_sequential_by_nonce(&top_down_msgs)?;
         };
 
-        let r = self.parent_view_data.height_data.modify(|mut cache| {
+        let r = self.cached_data.height_data.modify(|mut cache| {
             let r = cache
                 .append(height, (block_hash, validator_set, top_down_msgs))
                 .map_err(Error::NonSequentialParentViewInsert);
@@ -117,142 +187,64 @@ impl ParentViewProvider for InMemoryFinalityProvider {
 
         Ok(())
     }
-}
 
-impl ParentFinalityProvider for InMemoryFinalityProvider {
-    fn last_committed_finality(&self) -> StmResult<IPCParentFinality, Error> {
-        self.require_init()?;
+    fn check_height(&self, proposal: &IPCParentFinality) -> Stm<bool> {
+        let binding = self.last_committed_finality.read()?;
+        // last committed finality is not ready yet, we don't vote, just reject
+        let last_committed_finality = if let Some(f) = binding.as_ref() {
+            f
+        } else {
+            return Ok(false);
+        };
 
-        let finality = self
-            .last_committed_finality
-            .read_clone()?
-            .ok_or(StmError::Abort(Error::CommittedFinalityNotReady))?;
-        Ok(finality)
-    }
+        // the incoming proposal has height already committed, reject
+        if last_committed_finality.height >= proposal.height {
+            return Ok(false);
+        }
 
-    fn next_proposal(&self) -> StmResult<Option<IPCParentFinality>, Error> {
-        self.require_init()?;
-
-        let latest_height = if let Some(h) = self.parent_view_data.latest_height()? {
+        let latest_height = if let Some(h) = self.cached_data.latest_height()? {
             h
         } else {
-            return Ok(None);
+            // latest height is not found, meaning we dont have any prefetched cache, we just be
+            // optimistic and vote yes as the previous latest committed finality check is passed
+            // and it's valid.
+            return Ok(true);
         };
 
-        // latest height has not reached, we should wait or abort
-        if latest_height < self.config.chain_head_delay {
-            return Ok(None);
-        }
-
-        let height = latest_height - self.config.chain_head_delay;
-        let last_committed_finality = self.last_committed_finality()?;
-
-        // parent height is not ready to be proposed yet
-        if height <= last_committed_finality.height {
-            return Ok(None);
-        }
-
-        // prepare block hash and validator set
-        let height_data = self.parent_view_data.height_data.read()?;
-        let block_hash = if let Some(v) = height_data.get_value(height) {
-            let (block_hash, _, _) = v;
-            block_hash.clone()
-        } else {
-            return abort(Error::HeightNotFoundInCache(height));
-        };
-
-        Ok(Some(IPCParentFinality { height, block_hash }))
+        // requires the incoming height cannot be more advanced than our trusted parent node
+        Ok(latest_height >= proposal.height)
     }
 
-    fn check_proposal(&self, proposal: &IPCParentFinality) -> StmResult<(), Error> {
-        self.require_init()?;
-
-        self.check_height(proposal)?;
-        self.check_block_hash(proposal)
-    }
-
-    fn set_new_finality(&self, finality: IPCParentFinality) -> StmResult<(), Error> {
-        // the height to clear
-        let height = finality.height;
-
-        self.parent_view_data.height_data.update(|mut cache| {
-            cache.remove_key_below(height + 1);
-            cache
-        })?;
-
-        self.last_committed_finality.write(Some(finality))?;
-
-        Ok(())
-    }
-}
-
-impl InMemoryFinalityProvider {
-    /// Creates an uninitialized provider
-    /// We need this because `fendermint` has yet to be initialized and might
-    /// not be able to provide an existing finality from the storage. This provider requires an
-    /// existing committed finality. Providing the finality will enable other functionalities.
-    pub fn uninitialized(config: Config) -> Self {
-        Self::new(config, None)
-    }
-
-    /// Creates an initialized provider
-    pub fn initialized(config: Config, committed_finality: IPCParentFinality) -> Self {
-        Self::new(config, Some(committed_finality))
-    }
-
-    fn new(config: Config, committed_finality: Option<IPCParentFinality>) -> Self {
-        let height_data = SequentialKeyCache::sequential();
-        Self {
-            config,
-            parent_view_data: ParentViewData {
-                height_data: TVar::new(height_data),
+    fn check_block_hash(&self, proposal: &IPCParentFinality) -> Stm<bool> {
+        Ok(
+            if let Some(block_hash) = self.cached_data.block_hash(proposal.height)? {
+                block_hash == proposal.block_hash
+            } else {
+                false
             },
-            last_committed_finality: TVar::new(committed_finality),
-        }
+        )
+    }
+}
+
+impl CachedData {
+    fn latest_height(&self) -> Stm<Option<BlockHeight>> {
+        let cache = self.height_data.read()?;
+        Ok(cache.upper_bound())
     }
 
-    fn require_init(&self) -> StmResult<(), Error> {
-        let committed_finality = self.last_committed_finality.read()?;
-        if committed_finality.is_none() {
-            Err(StmError::Abort(Error::ProviderNotInitialized))
-        } else {
-            Ok(())
-        }
+    fn block_hash(&self, height: BlockHeight) -> Stm<Option<BlockHash>> {
+        let cache = self.height_data.read()?;
+        Ok(cache.get_value(height).map(|i| i.0.clone()))
     }
 
-    fn check_height(&self, proposal: &IPCParentFinality) -> StmResult<(), Error> {
-        let latest_height = if let Some(h) = self.parent_view_data.latest_height()? {
-            h
-        } else {
-            return abort(Error::HeightNotReady);
-        };
-
-        if latest_height < proposal.height {
-            return abort(Error::ExceedingLatestHeight {
-                proposal: proposal.height,
-                parent: latest_height,
-            });
-        }
-
-        let last_committed_finality = self.last_committed_finality()?;
-        if proposal.height <= last_committed_finality.height {
-            return abort(Error::HeightAlreadyCommitted(proposal.height));
-        }
-        Ok(())
+    fn validator_set(&self, height: BlockHeight) -> Stm<Option<ValidatorSet>> {
+        let cache = self.height_data.read()?;
+        Ok(cache.get_value(height).map(|i| i.1.clone()))
     }
 
-    fn check_block_hash(&self, proposal: &IPCParentFinality) -> StmResult<(), Error> {
-        if let Some(block_hash) = self.parent_view_data.block_hash(proposal.height)? {
-            if block_hash == proposal.block_hash {
-                return Ok(());
-            }
-            return abort(Error::BlockHashNotMatch {
-                proposal: proposal.block_hash.clone(),
-                parent: block_hash,
-                height: proposal.height,
-            });
-        }
-        abort(Error::BlockHashNotFound(proposal.height))
+    fn top_down_msgs_at_height(&self, height: BlockHeight) -> Stm<Option<Vec<CrossMsg>>> {
+        let cache = self.height_data.read()?;
+        Ok(cache.get_value(height).map(|i| i.2.clone()))
     }
 }
 
@@ -274,22 +266,41 @@ fn ensure_sequential_by_nonce(msgs: &[CrossMsg]) -> StmResult<(), Error> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        Config, IPCParentFinality, InMemoryFinalityProvider, ParentFinalityProvider,
-        ParentViewProvider,
-    };
+    use crate::sync::IPCAgentProxy;
+    use crate::{CachedFinalityProvider, Config, IPCParentFinality, ParentFinalityProvider};
     use async_stm::atomically_or_err;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
+    use ipc_agent_sdk::apis::IpcAgentClient;
+    use ipc_agent_sdk::jsonrpc::JsonRpcClientImpl;
     use ipc_agent_sdk::message::ipc::ValidatorSet;
     use ipc_sdk::cross::{CrossMsg, StorableMsg};
     use ipc_sdk::subnet_id::SubnetID;
+    use std::str::FromStr;
+    use std::sync::Arc;
 
-    fn new_provider() -> InMemoryFinalityProvider {
+    fn mocked_agent_proxy() -> Arc<IPCAgentProxy> {
+        let unqueriable_agent = Arc::new(
+            IPCAgentProxy::new(
+                IpcAgentClient::new(JsonRpcClientImpl::new(
+                    "http://localhost:3030/json_rpc".parse().unwrap(),
+                    None,
+                )),
+                SubnetID::from_str("/r123/f410fgbphbzatgylhgw7u4w5idbc7pwka2upfienikky").unwrap(),
+            )
+            .unwrap(),
+        );
+        unqueriable_agent
+    }
+
+    fn new_provider() -> CachedFinalityProvider {
         let config = Config {
             chain_head_delay: 20,
             polling_interval_secs: 10,
             ipc_agent_url: "".to_string(),
+            max_parent_view_block_gap: 100,
+            exponential_back_off_secs: 10,
+            exponential_retry_limit: 10,
         };
 
         let genesis_finality = IPCParentFinality {
@@ -297,7 +308,7 @@ mod tests {
             block_hash: vec![0; 32],
         };
 
-        InMemoryFinalityProvider::new(config, Some(genesis_finality))
+        CachedFinalityProvider::new(config, Some(genesis_finality), mocked_agent_proxy())
     }
 
     fn new_cross_msg(nonce: u64) -> CrossMsg {
@@ -336,7 +347,7 @@ mod tests {
             )?;
 
             let r = provider.next_proposal()?;
-            assert!(r.is_none());
+            assert!(r.is_some());
 
             // inject data
             for i in 11..=100 {
@@ -352,7 +363,7 @@ mod tests {
             }
 
             let proposal = provider.next_proposal()?.unwrap();
-            let target_block = 100 - 20; // deduct chain head delay
+            let target_block = 100;
             assert_eq!(
                 proposal,
                 IPCParentFinality {
@@ -399,7 +410,7 @@ mod tests {
             assert!(r.is_none());
 
             let f = provider.last_committed_finality()?;
-            assert_eq!(f, finality);
+            assert_eq!(f, Some(finality));
 
             Ok(())
         })
@@ -448,6 +459,9 @@ mod tests {
             chain_head_delay: 2,
             polling_interval_secs: 10,
             ipc_agent_url: "".to_string(),
+            max_parent_view_block_gap: 100,
+            exponential_back_off_secs: 10,
+            exponential_retry_limit: 10,
         };
 
         let genesis_finality = IPCParentFinality {
@@ -455,7 +469,8 @@ mod tests {
             block_hash: vec![0; 32],
         };
 
-        let provider = InMemoryFinalityProvider::new(config, Some(genesis_finality));
+        let provider =
+            CachedFinalityProvider::new(config, Some(genesis_finality), mocked_agent_proxy());
 
         let cross_msgs_batch1 = vec![new_cross_msg(0), new_cross_msg(1), new_cross_msg(2)];
         let cross_msgs_batch2 = vec![new_cross_msg(3), new_cross_msg(4), new_cross_msg(5)];
@@ -506,7 +521,7 @@ mod tests {
             let v2 = cross_msgs_batch2.clone();
             v1.extend(v2);
             let finality = IPCParentFinality {
-                height: 101,
+                height: 103,
                 block_hash: vec![1u8; 32],
             };
             let next_proposal = provider.next_proposal()?.unwrap();

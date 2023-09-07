@@ -17,7 +17,7 @@ use fendermint_vm_message::{
 use fendermint_vm_resolver::pool::{ResolveKey, ResolvePool};
 use fendermint_vm_topdown::convert::encode_commit_parent_finality_call;
 use fendermint_vm_topdown::{
-    Error, IPCParentFinality, InMemoryFinalityProvider, ParentFinalityProvider, ParentViewProvider,
+    CachedFinalityProvider, Error, IPCParentFinality, ParentFinalityProvider, ParentViewProvider,
     Toggle,
 };
 use fvm_ipld_encoding::RawBytes;
@@ -78,7 +78,7 @@ impl<I> ProposalInterpreter for ChainMessageInterpreter<I>
 where
     I: Sync + Send,
 {
-    type State = (CheckpointPool, Arc<Toggle<InMemoryFinalityProvider>>);
+    type State = (CheckpointPool, Arc<Toggle<CachedFinalityProvider>>);
     type Message = ChainMessage;
 
     /// Check whether there are any "ready" messages in the IPLD resolution mempool which can be appended to the proposal.
@@ -177,7 +177,7 @@ where
     // height and are used in queries as well.
     type State = (
         CheckpointPool,
-        Arc<Toggle<InMemoryFinalityProvider>>,
+        Arc<Toggle<CachedFinalityProvider>>,
         I::State,
     );
     type Message = ChainMessage;

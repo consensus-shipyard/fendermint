@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use crate::{
-    BlockHash, BlockHeight, Error, IPCParentFinality, ParentFinalityProvider, ParentViewProvider,
+    BlockHash, BlockHeight, CachedFinalityProvider, Error, IPCParentFinality,
+    ParentFinalityProvider, ParentViewProvider,
 };
-use async_stm::{StmError, StmResult};
+use async_stm::{Stm, StmResult};
 use ipc_agent_sdk::message::ipc::ValidatorSet;
 use ipc_sdk::cross::CrossMsg;
 
@@ -23,59 +24,67 @@ impl<P> Toggle<P> {
         Self { inner: Some(inner) }
     }
 
-    fn perform<F, T>(&self, f: F) -> StmResult<T, Error>
+    fn perform_or_else<F, T, E>(&self, f: F, other: T) -> Result<T, E>
     where
-        F: FnOnce(&P) -> StmResult<T, Error>,
+        F: FnOnce(&P) -> Result<T, E>,
     {
         match &self.inner {
             Some(p) => f(p),
-            None => Err(StmError::Abort(Error::ProviderNotEnabled)),
+            None => Ok(other),
         }
     }
 }
 
-impl<P: ParentViewProvider> ParentViewProvider for Toggle<P> {
-    fn latest_height(&self) -> StmResult<Option<BlockHeight>, Error> {
-        self.perform(|p| p.latest_height())
+#[async_trait::async_trait]
+impl<P: ParentViewProvider + Send + Sync + 'static> ParentViewProvider for Toggle<P> {
+    async fn validator_set(&self, height: BlockHeight) -> StmResult<Option<ValidatorSet>, Error> {
+        match self.inner.as_ref() {
+            Some(p) => p.validator_set(height).await,
+            None => Ok(None),
+        }
     }
 
-    fn block_hash(&self, height: BlockHeight) -> StmResult<Option<BlockHash>, Error> {
-        self.perform(|p| p.block_hash(height))
+    async fn top_down_msgs(&self, height: BlockHeight) -> StmResult<Option<Vec<CrossMsg>>, Error> {
+        match self.inner.as_ref() {
+            Some(p) => p.top_down_msgs(height).await,
+            None => Ok(None),
+        }
+    }
+}
+
+impl<P: ParentFinalityProvider + Send + Sync + 'static> ParentFinalityProvider for Toggle<P> {
+    fn next_proposal(&self) -> Stm<Option<IPCParentFinality>> {
+        self.perform_or_else(|p| p.next_proposal(), None)
     }
 
-    fn validator_set(&self, height: BlockHeight) -> StmResult<Option<ValidatorSet>, Error> {
-        self.perform(|p| p.validator_set(height))
+    fn check_proposal(&self, proposal: &IPCParentFinality) -> Stm<bool> {
+        self.perform_or_else(|p| p.check_proposal(proposal), false)
     }
 
-    fn top_down_msgs(&self, height: BlockHeight) -> StmResult<Vec<CrossMsg>, Error> {
-        self.perform(|p| p.top_down_msgs(height))
+    fn set_new_finality(&self, finality: IPCParentFinality) -> Stm<()> {
+        self.perform_or_else(|p| p.set_new_finality(finality), ())
+    }
+}
+
+impl Toggle<CachedFinalityProvider> {
+    pub fn latest_height(&self) -> Stm<Option<BlockHeight>> {
+        self.perform_or_else(|p| p.latest_height(), None)
     }
 
-    fn new_parent_view(
+    pub fn last_committed_finality(&self) -> Stm<Option<IPCParentFinality>> {
+        self.perform_or_else(|p| p.last_committed_finality(), None)
+    }
+
+    pub fn new_parent_view(
         &self,
         height: BlockHeight,
         block_hash: BlockHash,
         validator_set: ValidatorSet,
         top_down_msgs: Vec<CrossMsg>,
     ) -> StmResult<(), Error> {
-        self.perform(|p| p.new_parent_view(height, block_hash, validator_set, top_down_msgs))
-    }
-}
-
-impl<P: ParentFinalityProvider> ParentFinalityProvider for Toggle<P> {
-    fn last_committed_finality(&self) -> StmResult<IPCParentFinality, Error> {
-        self.perform(|p| p.last_committed_finality())
-    }
-
-    fn next_proposal(&self) -> StmResult<Option<IPCParentFinality>, Error> {
-        self.perform(|p| p.next_proposal())
-    }
-
-    fn check_proposal(&self, proposal: &IPCParentFinality) -> StmResult<(), Error> {
-        self.perform(|p| p.check_proposal(proposal))
-    }
-
-    fn set_new_finality(&self, finality: IPCParentFinality) -> StmResult<(), Error> {
-        self.perform(|p| p.set_new_finality(finality))
+        self.perform_or_else(
+            |p| p.new_parent_view(height, block_hash, validator_set, top_down_msgs),
+            (),
+        )
     }
 }

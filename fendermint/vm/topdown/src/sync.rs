@@ -3,9 +3,12 @@
 //! A constant running process that fetch or listener to parent state
 
 use crate::error::Error;
-use crate::{BlockHash, BlockHeight, Config, IPCParentFinality, ParentFinalityProvider};
+use crate::{
+    BlockHash, BlockHeight, CachedFinalityProvider, Config, IPCParentFinality,
+    ParentFinalityProvider, Toggle,
+};
 use anyhow::{anyhow, Context};
-use async_stm::atomically_or_err;
+use async_stm::{atomically, atomically_or_err};
 use fvm_shared::clock::ChainEpoch;
 use ipc_agent_sdk::apis::IpcAgentClient;
 use ipc_agent_sdk::jsonrpc::JsonRpcClientImpl;
@@ -23,20 +26,17 @@ pub trait ParentFinalityStateQuery {
 }
 
 /// Constantly syncing with parent through polling
-pub struct PollingParentSyncer<P> {
+pub struct PollingParentSyncer {
     config: Config,
-    parent_view_provider: Arc<P>,
+    parent_view_provider: Arc<Toggle<CachedFinalityProvider>>,
     agent: Arc<IPCAgentProxy>,
 }
 
 /// Start the polling parent syncer in the background
-pub async fn launch_polling_syncer<
-    Q: ParentFinalityStateQuery + Send + Sync + 'static,
-    P: ParentFinalityProvider + Send + Sync + 'static,
->(
+pub async fn launch_polling_syncer<Q: ParentFinalityStateQuery + Send + Sync + 'static>(
     query: &Q,
     config: Config,
-    view_provider: Arc<P>,
+    view_provider: Arc<Toggle<CachedFinalityProvider>>,
     agent: IPCAgentProxy,
 ) -> anyhow::Result<()> {
     loop {
@@ -54,7 +54,7 @@ pub async fn launch_polling_syncer<
             }
         };
 
-        atomically_or_err(|| view_provider.set_new_finality(finality.clone())).await?;
+        atomically(|| view_provider.set_new_finality(finality.clone())).await;
 
         let poll = PollingParentSyncer::new(config, view_provider, Arc::new(agent));
         poll.start();
@@ -63,8 +63,12 @@ pub async fn launch_polling_syncer<
     }
 }
 
-impl<P> PollingParentSyncer<P> {
-    pub fn new(config: Config, parent_view_provider: Arc<P>, agent: Arc<IPCAgentProxy>) -> Self {
+impl PollingParentSyncer {
+    pub fn new(
+        config: Config,
+        parent_view_provider: Arc<Toggle<CachedFinalityProvider>>,
+        agent: Arc<IPCAgentProxy>,
+    ) -> Self {
         Self {
             config,
             parent_view_provider,
@@ -73,7 +77,7 @@ impl<P> PollingParentSyncer<P> {
     }
 }
 
-impl<P: ParentFinalityProvider + Send + Sync + 'static> PollingParentSyncer<P> {
+impl PollingParentSyncer {
     /// Start the parent finality listener in the background
     pub fn start(self) {
         let config = self.config;
@@ -96,17 +100,22 @@ impl<P: ParentFinalityProvider + Send + Sync + 'static> PollingParentSyncer<P> {
     }
 }
 
-async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
+async fn sync_with_parent(
     config: &Config,
     agent_proxy: &Arc<IPCAgentProxy>,
-    provider: &Arc<T>,
+    provider: &Arc<Toggle<CachedFinalityProvider>>,
 ) -> anyhow::Result<()> {
     let mut interval = tokio::time::interval(Duration::from_secs(config.polling_interval_secs));
 
     loop {
         interval.tick().await;
 
-        let last_recorded_height = last_recorded_height(provider).await?;
+        let last_recorded_height = if let Some(h) = last_recorded_height(provider).await? {
+            h
+        } else {
+            // cannot get starting recorded height, we just wait for the next loop execution
+            continue;
+        };
 
         let parent_chain_head_height = agent_proxy
             .get_chain_head_height()
@@ -143,8 +152,9 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
         let starting_height = last_recorded_height + 1;
         let ending_height = min(
             ending_height,
-            config.max_parent_view_block_gap() + starting_height,
+            config.max_parent_view_block_gap + starting_height,
         );
+        tracing::debug!("parent view range: {starting_height}-{ending_height}");
 
         let new_parent_views =
             get_new_parent_views(agent_proxy, starting_height, ending_height).await?;
@@ -163,18 +173,20 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
 }
 
 /// Obtains the last recorded height from provider cache or from last committed finality height.
-async fn last_recorded_height<T: ParentFinalityProvider + Send + Sync + 'static>(
-    provider: &Arc<T>,
-) -> anyhow::Result<BlockHeight> {
-    let height = atomically_or_err::<_, Error, _>(|| {
-        Ok(if let Some(h) = provider.latest_height()? {
-            h
+async fn last_recorded_height(
+    provider: &Arc<Toggle<CachedFinalityProvider>>,
+) -> anyhow::Result<Option<BlockHeight>> {
+    let height = atomically(|| {
+        let h = if let Some(h) = provider.latest_height()? {
+            Some(h)
+        } else if let Some(f) = provider.last_committed_finality()? {
+            Some(f.height)
         } else {
-            let last_committed_finality = provider.last_committed_finality()?;
-            last_committed_finality.height
-        })
+            None
+        };
+        Ok(h)
     })
-    .await?;
+    .await;
 
     Ok(height)
 }

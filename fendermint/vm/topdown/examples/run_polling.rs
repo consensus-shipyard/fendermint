@@ -3,10 +3,7 @@
 use async_stm::atomically_or_err;
 use clap::Parser;
 use fendermint_vm_topdown::sync::{IPCAgentProxy, PollingParentSyncer};
-use fendermint_vm_topdown::{
-    Config, Error, IPCParentFinality, InMemoryFinalityProvider, ParentFinalityProvider,
-    ParentViewProvider,
-};
+use fendermint_vm_topdown::{CachedFinalityProvider, Config, Error, IPCParentFinality, ParentFinalityProvider, Toggle};
 use fvm_shared::address::{set_current_network, Network};
 use ipc_agent_sdk::apis::IpcAgentClient;
 use ipc_agent_sdk::jsonrpc::JsonRpcClientImpl;
@@ -70,6 +67,9 @@ async fn main() {
         chain_head_delay: 10,
         polling_interval_secs: 5,
         ipc_agent_url: opts.ipc_agent_url.clone(),
+        max_parent_view_block_gap: 100,
+        exponential_back_off_secs: 10,
+        exponential_retry_limit: 10,
     };
     let chain_head = agent_proxy.get_chain_head_height().await.unwrap();
     // Mocked committed finality as we dont have a contract to store the parent finality
@@ -77,9 +77,9 @@ async fn main() {
         height: chain_head - 20,
         block_hash: vec![0; 32],
     };
-    let provider = InMemoryFinalityProvider::initialized(config.clone(), mocked_committed_finality);
-    let provider = Arc::new(provider);
     let agent = Arc::new(agent_proxy);
+    let provider = CachedFinalityProvider::initialized(config.clone(), mocked_committed_finality, agent.clone());
+    let provider = Arc::new(Toggle::enabled(provider));
     let polling = PollingParentSyncer::new(config, provider.clone(), agent);
 
     tokio::spawn(async move {
@@ -88,19 +88,14 @@ async fn main() {
 
     loop {
         let maybe_proposal = atomically_or_err::<_, Error, _>(|| {
-            let proposal = provider.next_proposal()?;
-            if let Some(p) = proposal {
-                let msgs = provider.top_down_msgs(p.height)?;
-                return Ok(Some((p, msgs)));
-            }
-            Ok(None)
+            let p = provider.next_proposal()?;
+            Ok(p)
         })
         .await;
 
         match maybe_proposal {
-            Ok(Some((proposal, msgs))) => {
+            Ok(Some(proposal)) => {
                 println!("proposal: {proposal:?}");
-                println!("topdown messages: {:?}", msgs);
             }
             Ok(None) => println!("polling not started yet"),
             _ => unreachable!(),

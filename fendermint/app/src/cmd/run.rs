@@ -13,7 +13,7 @@ use fendermint_vm_interpreter::{
     signed::SignedMessageInterpreter,
 };
 use fendermint_vm_topdown::sync::{launch_polling_syncer, IPCAgentProxy};
-use fendermint_vm_topdown::{InMemoryFinalityProvider, Toggle};
+use fendermint_vm_topdown::{CachedFinalityProvider, Toggle};
 use ipc_sdk::subnet_id::SubnetID;
 use std::sync::Arc;
 use tracing::info;
@@ -63,7 +63,7 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
     let parent_finality_provider = if settings.ipc.is_topdown_enabled() {
         info!("topdown finality enabled");
         let config = settings.ipc.topdown_config()?.clone();
-        Arc::new(Toggle::enabled(InMemoryFinalityProvider::uninitialized(
+        Arc::new(Toggle::enabled(CachedFinalityProvider::uninitialized(
             config,
         )))
     } else {
