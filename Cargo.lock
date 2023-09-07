@@ -404,9 +404,9 @@ dependencies = [
 
 [[package]]
 name = "async-stm"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d3ab5947b620817e28fbc8e8592e862a679f75ed1e8a940a91c7c24b79c38c3"
+checksum = "d329f9e3620d0987cddea11769a8ef3ce6f60d794b891ced477033ecc6c8310e"
 dependencies = [
  "parking_lot 0.12.1",
  "tokio",
@@ -2752,6 +2752,7 @@ dependencies = [
  "fendermint_storage",
  "fendermint_vm_actor_interface",
  "fendermint_vm_core",
+ "fendermint_vm_encoding",
  "fendermint_vm_genesis",
  "fendermint_vm_interpreter",
  "fendermint_vm_message",
@@ -2763,8 +2764,13 @@ dependencies = [
  "fvm_shared",
  "hex",
  "ipc-sdk",
+ "ipc_ipld_resolver",
  "k256 0.11.6",
+ "libipld",
+ "libp2p",
+ "libp2p-bitswap",
  "libsecp256k1",
+ "multiaddr 0.16.0",
  "num-traits",
  "prost",
  "quickcheck 1.0.3",
@@ -3070,6 +3076,7 @@ dependencies = [
  "ipc-sdk",
  "ipc_ipld_resolver",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

@@ -24,7 +24,7 @@ license-file = "LICENSE-APACHE"
 anyhow = "1"
 arbitrary = { version = "1", features = ["derive"] }
 arbtest = "0.2"
-async-stm = "0.3"
+async-stm = "0.4"
 async-trait = "0.1"
 axum = { version = "0.6", features = ["ws"] }
 base64 = "0.21"
@@ -42,10 +42,12 @@ im = "15.1.0"
 jsonrpc-v2 = { version = "0.11", default-features = false, features = ["bytes-v10"] }
 k256 = "0.11" # Same as tendermint-rs
 lazy_static = "1.4"
-ed25519-consensus = { version = "2", default-features = false }
-tendermint-config = "0.33.0"
+libipld = { version = "0.14", default-features = false, features = ["dag-cbor"] }
+libp2p = "0.50"
+libp2p-bitswap = "0.25.1"
 libsecp256k1 = "0.7"
 lru_time_cache = "0.11"
+multiaddr = "0.16"
 multihash = { version = "0.16.1", default-features = false }
 num-traits = "0.2"
 paste = "1"
@@ -114,6 +116,7 @@ cid = { version = "0.8", features = ["serde-codec", "std"] }
 # Using the same tendermint-rs dependency as tower-abci. From both we are interested in v037 modules.
 tower-abci = { version = "0.7" }
 tendermint = { version = "0.31", features = ["secp256k1"] }
+tendermint-config = "0.33.0"
 tendermint-rpc = { version = "0.31", features = ["secp256k1", "http-client", "websocket-client"] }
 tendermint-proto = { version = "0.31" }
 
