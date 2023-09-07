@@ -17,7 +17,7 @@ use fendermint_vm_message::{
 };
 use fendermint_vm_resolver::pool::{ResolveKey, ResolvePool};
 use fendermint_vm_topdown::convert::encode_commit_parent_finality_call;
-use fendermint_vm_topdown::{IPCParentFinality, ParentFinalityProvider};
+use fendermint_vm_topdown::{Error, IPCParentFinality, ParentFinalityProvider};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -105,23 +105,23 @@ where
             CheckpointPoolItem::BottomUp(ckpt) => ChainMessage::Ipc(IpcMessage::BottomUpExec(ckpt)),
         });
 
+        // Append at the end - if we run out of block space, these are going to be reproposed in the next block.
+        msgs.extend(ckpts);
+
         // Prepare top down proposals
-        match atomically_or_err::<_, fendermint_vm_topdown::Error, _>(|| {
-            finality_provider.next_proposal()
-        })
-        .await?
-        {
-            None => {}
-            Some(proposal) => {
+        match atomically_or_err::<_, Error, _>(|| finality_provider.next_proposal()).await {
+            Ok(None) => {},
+            Ok(Some(proposal)) => {
                 msgs.push(ChainMessage::Ipc(IpcMessage::TopDownExec(ParentFinality {
                     height: proposal.height as ChainEpoch,
                     block_hash: proposal.block_hash,
                 })))
-            }
+            },
+            // if there are errors in proposal creation, we will not crash the app, but just
+            // give up proposal creation in the current block and retry in the next. there are other
+            Err(e) => handle_topdown_proposal_error(e)
         }
 
-        // Append at the end - if we run out of block space, these are going to be reproposed in the next block.
-        msgs.extend(ckpts);
         Ok(msgs)
     }
 
@@ -416,4 +416,17 @@ fn parent_finality_to_fvm(
     };
 
     Ok(msg)
+}
+
+/// Handles the error thrown in proposing top down parent finality.
+fn handle_topdown_proposal_error(err: Error) {
+    match err {
+        Error::HeightNotReady | Error::HeightThresholdNotReached => {
+            tracing::debug!("top down proposal error: {err:?}");
+        },
+        Error::HeightNotFoundInCache(height) => {
+            tracing::
+        }
+        _ => {}
+    }
 }

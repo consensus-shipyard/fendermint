@@ -69,7 +69,7 @@ impl IPCSettings {
         !self.subnet_id.is_root() && self.topdown.is_some()
     }
 
-    pub fn top_down_config(&self) -> anyhow::Result<&fendermint_vm_topdown::Config> {
+    pub fn topdown_config(&self) -> anyhow::Result<&fendermint_vm_topdown::Config> {
         self.topdown
             .as_ref()
             .ok_or_else(|| anyhow!("top down config missing"))

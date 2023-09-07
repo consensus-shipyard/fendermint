@@ -59,7 +59,7 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
 
     let parent_finality_provider = if settings.ipc.is_topdown_enabled() {
         info!("topdown finality enabled");
-        let config = settings.ipc.top_down_config()?.clone();
+        let config = settings.ipc.topdown_config()?.clone();
         Arc::new(MaybeDisabledProvider::enabled(
             InMemoryFinalityProvider::uninitialized(config),
         ))
@@ -83,7 +83,7 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
     )?;
 
     if settings.ipc.is_topdown_enabled() {
-        let topdown_config = settings.ipc.top_down_config()?.clone();
+        let topdown_config = settings.ipc.topdown_config()?.clone();
         let app_parent_finality_query = AppParentFinalityQuery::new(app.clone());
         let agent_proxy = create_ipc_agent_proxy(&topdown_config, settings.ipc.subnet_id.clone())?;
         tokio::spawn(async move {
