@@ -71,25 +71,41 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
     loop {
         interval.tick().await;
 
-        let starting_height = get_starting_height(provider).await?;
-        let latest_height = agent_proxy
+        let last_recorded_height = last_recorded_height(provider).await?;
+
+        let parent_chain_head_height = agent_proxy
             .get_chain_head_height()
             .await
             .context("cannot fetch parent chain head")?;
-        if latest_height < config.chain_head_delay {
+        // sanity check
+        if parent_chain_head_height < config.chain_head_delay {
             tracing::debug!("latest height not more than the chain head delay");
             continue;
         }
-        let ending_height = latest_height - config.chain_head_delay;
+        let ending_height = parent_chain_head_height - config.chain_head_delay;
 
-        tracing::debug!("starting height: {starting_height}, ending_height: {ending_height}");
+        tracing::debug!(
+            "last recorded height: {}, parent chain head: {}, ending_height: {}",
+            last_recorded_height,
+            parent_chain_head_height,
+            ending_height
+        );
+
+        if last_recorded_height == ending_height {
+            tracing::debug!("the parent has yet to produce a new block, stops at height: {last_recorded_height}");
+            continue;
+        }
 
         // we are going backwards in terms of block height, the latest block height is lower
         // than our previously fetched head. It could be a chain reorg. We clear all the cache
         // in `provider` and start from scratch
-        if starting_height > ending_height {
+        if last_recorded_height > ending_height {
             todo!()
         }
+
+        // we are adding 1 to the height because we are fetching block by block, we also configured
+        // the sequential cache to use increment == 1.
+        let starting_height = last_recorded_height + 1;
 
         let new_parent_views =
             get_new_parent_views(agent_proxy, starting_height, ending_height).await?;
@@ -107,23 +123,21 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
     }
 }
 
-/// Obtain the starting block height to perform the parent view update
-async fn get_starting_height<T: ParentFinalityProvider + Send + Sync + 'static>(
+/// Obtains the last recorded height from provider cache or from last committed finality height.
+async fn last_recorded_height<T: ParentFinalityProvider + Send + Sync + 'static>(
     provider: &Arc<T>,
 ) -> anyhow::Result<BlockHeight> {
-    let starting_height = atomically_or_err::<_, Error, _>(|| {
-        // we are adding 1 to the height because we are fetching block by block, we also configured
-        // the sequential cache to use increment == 1.
+    let height = atomically_or_err::<_, Error, _>(|| {
         Ok(if let Some(h) = provider.latest_height()? {
-            h + 1
+            h
         } else {
             let last_committed_finality = provider.last_committed_finality()?;
-            last_committed_finality.height + 1
+            last_committed_finality.height
         })
     })
     .await?;
 
-    Ok(starting_height)
+    Ok(height)
 }
 
 /// Obtain the new parent views for the input block height range

@@ -101,10 +101,7 @@ async fn main() {
                 println!("proposal: {proposal:?}");
                 println!("topdown messages: {:?}", msgs);
             }
-            Ok(None) => {}
-            Err(Error::HeightNotReady) => {
-                println!("polling not started yet");
-            }
+            Ok(None) => println!("polling not started yet"),
             _ => unreachable!(),
         }
 
