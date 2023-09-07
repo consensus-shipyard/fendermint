@@ -190,7 +190,7 @@ file we created earlier to the format CometBFT accepts. Start with the genesis f
 
 ```shell
 mv ~/.cometbft/config/genesis.json ~/.cometbft/config/genesis.json.orig
-cargo run -p fendermint_app -- \
+cargo run -p fendermint_app --release -- \
   genesis --genesis-file test-network/genesis.json \
   into-tendermint --out ~/.cometbft/config/genesis.json
 ```
@@ -280,7 +280,7 @@ one of the validators we created.
 
 ```shell
 mv ~/.cometbft/config/priv_validator_key.json ~/.cometbft/config/priv_validator_key.json.orig
-cargo run -p fendermint_app -- \
+cargo run -p fendermint_app --release -- \
   key into-tendermint --secret-key test-network/keys/bob.sk --out ~/.cometbft/config/priv_validator_key.json
 ```
 
