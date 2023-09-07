@@ -62,8 +62,6 @@ port = 8545
 # Subnet id assigned to this fendermint node. Update this to the correct subnet id.
 # TODO: fetch this value from genisis if possible.
 subnet_id = "/r0"
-# The network env, 1 for test network and 0 for mainnet
-network = 1
 
 [ipc.topdown]
 # The number of blocks behind chain head to propose parent finality.

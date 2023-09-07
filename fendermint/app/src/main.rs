@@ -8,11 +8,14 @@ mod cmd;
 mod options;
 mod settings;
 
+use crate::cmd::set_network;
 use options::Options;
 
 #[tokio::main]
 async fn main() {
     let opts: Options = Options::parse();
+
+    set_network(opts.network);
 
     // Log events to stdout.
     if let Some(level) = opts.tracing_level() {

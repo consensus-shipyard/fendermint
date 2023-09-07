@@ -18,7 +18,6 @@ use ipc_sdk::subnet_id::SubnetID;
 use std::sync::Arc;
 use tracing::info;
 
-use crate::cmd::set_network;
 use crate::{cmd, options::run::RunArgs, settings::Settings};
 
 cmd! {
@@ -58,7 +57,6 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
 
     let resolve_pool = CheckpointPool::new();
 
-    set_network(settings.ipc.network);
     let parent_finality_provider = if settings.ipc.is_topdown_enabled() {
         info!("topdown finality enabled");
         let config = settings.ipc.top_down_config()?.clone();
