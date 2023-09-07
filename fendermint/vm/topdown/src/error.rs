@@ -17,8 +17,6 @@ pub enum Error {
     CommittedFinalityNotReady,
     #[error("The latest height of the parent view is not ready")]
     HeightNotReady,
-    #[error("The latest height has yet to reach the configured threshold")]
-    HeightThresholdNotReached,
     #[error("The data specified in this height is not found in cache")]
     HeightNotFoundInCache(BlockHeight),
     #[error("Exceeding current parent view's latest block height")]

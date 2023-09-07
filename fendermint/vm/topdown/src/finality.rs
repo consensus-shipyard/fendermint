@@ -136,12 +136,12 @@ impl ParentFinalityProvider for InMemoryFinalityProvider {
         let latest_height = if let Some(h) = self.parent_view_data.latest_height()? {
             h
         } else {
-            return abort(Error::HeightNotReady);
+            return Ok(None);
         };
 
         // latest height has not reached, we should wait or abort
         if latest_height < self.config.chain_head_delay {
-            return abort(Error::HeightThresholdNotReached);
+            return Ok(None);
         }
 
         let height = latest_height - self.config.chain_head_delay;
@@ -322,8 +322,8 @@ mod tests {
         let provider = new_provider();
 
         atomically_or_err(|| {
-            let r = provider.next_proposal();
-            assert!(r.is_err());
+            let r = provider.next_proposal()?;
+            assert!(r.is_none());
 
             provider.new_parent_view(
                 10,
@@ -335,8 +335,8 @@ mod tests {
                 vec![],
             )?;
 
-            let r = provider.next_proposal();
-            assert!(r.is_err());
+            let r = provider.next_proposal()?;
+            assert!(r.is_none());
 
             // inject data
             for i in 11..=100 {
@@ -395,8 +395,8 @@ mod tests {
             provider.set_new_finality(finality.clone())?;
 
             // all cache should be cleared
-            let r = provider.next_proposal();
-            assert!(r.is_err());
+            let r = provider.next_proposal()?;
+            assert!(r.is_none());
 
             let f = provider.last_committed_finality()?;
             assert_eq!(f, finality);
