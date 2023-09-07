@@ -73,6 +73,7 @@ services:
     environment:
       - ID=3
       - LOG=${LOG:-cometbft-node3.log}
+      - CMT_PERSISTENT_PEERS="${CMT_PERSISTENT_PEERS}"
       - CMT_PROXY_APP=tcp://fendermint-node3:26658
     ports:
       - "26663-26664:26656-26657"
