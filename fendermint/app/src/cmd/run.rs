@@ -60,15 +60,18 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
 
     let resolve_pool = CheckpointPool::new();
 
-    let parent_finality_provider = if settings.ipc.is_topdown_enabled() {
+    let (parent_finality_provider, ipc_tuple) = if settings.ipc.is_topdown_enabled() {
         info!("topdown finality enabled");
         let config = settings.ipc.topdown_config()?.clone();
-        Arc::new(Toggle::enabled(CachedFinalityProvider::uninitialized(
-            config,
-        )))
+        let agent_proxy = Arc::new(create_ipc_agent_proxy(&config, settings.ipc.subnet_id.clone())?);
+        let p = Arc::new(Toggle::enabled(CachedFinalityProvider::uninitialized(
+            config.clone(),
+            agent_proxy.clone()
+        )));
+        (p, Some((agent_proxy, config)))
     } else {
         info!("topdown finality disabled");
-        Arc::new(Toggle::disabled())
+        (Arc::new(Toggle::disabled()), None)
     };
 
     let app: App<_, _, AppStore, _> = App::new(
@@ -85,14 +88,12 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         parent_finality_provider.clone(),
     )?;
 
-    if settings.ipc.is_topdown_enabled() {
-        let topdown_config = settings.ipc.topdown_config()?.clone();
+    if let Some((agent_proxy, config)) = ipc_tuple {
         let app_parent_finality_query = AppParentFinalityQuery::new(app.clone());
-        let agent_proxy = create_ipc_agent_proxy(&topdown_config, settings.ipc.subnet_id.clone())?;
         tokio::spawn(async move {
             match launch_polling_syncer(
                 &app_parent_finality_query,
-                topdown_config,
+                config,
                 parent_finality_provider,
                 agent_proxy,
             )

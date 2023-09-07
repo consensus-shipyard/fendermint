@@ -10,7 +10,7 @@ pub mod sync;
 pub mod convert;
 mod toggle;
 
-use async_stm::{Stm, StmResult};
+use async_stm::Stm;
 use async_trait::async_trait;
 use ipc_agent_sdk::message::ipc::ValidatorSet;
 use ipc_sdk::cross::CrossMsg;
@@ -56,10 +56,10 @@ pub struct IPCParentFinality {
 
 #[async_trait]
 pub trait ParentViewProvider {
-    /// Get the validator set at height
-    async fn validator_set(&self, height: BlockHeight) -> StmResult<Option<ValidatorSet>, Error>;
+    /// Get the validator set at height.
+    async fn validator_set(&self, height: BlockHeight) -> anyhow::Result<ValidatorSet>;
     /// Get the top down messages at height
-    async fn top_down_msgs(&self, height: BlockHeight) -> StmResult<Option<Vec<CrossMsg>>, Error>;
+    async fn top_down_msgs(&self, height: BlockHeight) -> anyhow::Result<Vec<CrossMsg>>;
 }
 
 pub trait ParentFinalityProvider: ParentViewProvider {

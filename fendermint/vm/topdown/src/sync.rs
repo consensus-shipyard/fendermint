@@ -37,7 +37,7 @@ pub async fn launch_polling_syncer<Q: ParentFinalityStateQuery + Send + Sync + '
     query: &Q,
     config: Config,
     view_provider: Arc<Toggle<CachedFinalityProvider>>,
-    agent: IPCAgentProxy,
+    agent: Arc<IPCAgentProxy>,
 ) -> anyhow::Result<()> {
     loop {
         let finality = match query.get_latest_committed_finality() {
@@ -56,7 +56,7 @@ pub async fn launch_polling_syncer<Q: ParentFinalityStateQuery + Send + Sync + '
 
         atomically(|| view_provider.set_new_finality(finality.clone())).await;
 
-        let poll = PollingParentSyncer::new(config, view_provider, Arc::new(agent));
+        let poll = PollingParentSyncer::new(config, view_provider, agent);
         poll.start();
 
         return Ok(());

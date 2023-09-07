@@ -1,6 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use anyhow::anyhow;
 use crate::{
     BlockHash, BlockHeight, CachedFinalityProvider, Error, IPCParentFinality,
     ParentFinalityProvider, ParentViewProvider,
@@ -24,6 +25,8 @@ impl<P> Toggle<P> {
         Self { inner: Some(inner) }
     }
 
+    pub fn is_enabled(&self) -> bool { self.inner.is_some() }
+
     fn perform_or_else<F, T, E>(&self, f: F, other: T) -> Result<T, E>
     where
         F: FnOnce(&P) -> Result<T, E>,
@@ -37,17 +40,17 @@ impl<P> Toggle<P> {
 
 #[async_trait::async_trait]
 impl<P: ParentViewProvider + Send + Sync + 'static> ParentViewProvider for Toggle<P> {
-    async fn validator_set(&self, height: BlockHeight) -> StmResult<Option<ValidatorSet>, Error> {
+    async fn validator_set(&self, height: BlockHeight) -> anyhow::Result<ValidatorSet> {
         match self.inner.as_ref() {
             Some(p) => p.validator_set(height).await,
-            None => Ok(None),
+            None => Err(anyhow!("provider is toggled off")),
         }
     }
 
-    async fn top_down_msgs(&self, height: BlockHeight) -> StmResult<Option<Vec<CrossMsg>>, Error> {
+    async fn top_down_msgs(&self, height: BlockHeight) -> anyhow::Result<Vec<CrossMsg>> {
         match self.inner.as_ref() {
             Some(p) => p.top_down_msgs(height).await,
-            None => Ok(None),
+            None => Err(anyhow!("provider is toggled off")),
         }
     }
 }

@@ -6,7 +6,7 @@ use crate::{
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
 use anyhow::{anyhow, Context};
-use async_stm::{atomically, atomically_or_err};
+use async_stm::{atomically};
 use async_trait::async_trait;
 use fendermint_vm_actor_interface::{ipc, system};
 use fendermint_vm_message::ipc::ParentFinality;
@@ -17,7 +17,7 @@ use fendermint_vm_message::{
 use fendermint_vm_resolver::pool::{ResolveKey, ResolvePool};
 use fendermint_vm_topdown::convert::encode_commit_parent_finality_call;
 use fendermint_vm_topdown::{
-    CachedFinalityProvider, Error, IPCParentFinality, ParentFinalityProvider, ParentViewProvider,
+    CachedFinalityProvider, IPCParentFinality, ParentFinalityProvider, ParentViewProvider,
     Toggle,
 };
 use fvm_ipld_encoding::RawBytes;
@@ -106,17 +106,11 @@ where
         msgs.extend(ckpts);
 
         // Prepare top down proposals
-        match atomically_or_err::<_, Error, _>(|| finality_provider.next_proposal()).await {
-            Ok(None) => {}
-            Ok(Some(proposal)) => {
-                msgs.push(ChainMessage::Ipc(IpcMessage::TopDownExec(ParentFinality {
-                    height: proposal.height as ChainEpoch,
-                    block_hash: proposal.block_hash,
-                })))
-            }
-            // if there are errors in proposal creation, we will not crash the app, but just
-            // give up proposal creation in the current block and retry in the next. there are other
-            Err(e) => handle_topdown_proposal_error(e),
+        if let Some(proposal) = atomically(|| finality_provider.next_proposal()).await {
+            msgs.push(ChainMessage::Ipc(IpcMessage::TopDownExec(ParentFinality {
+                height: proposal.height as ChainEpoch,
+                block_hash: proposal.block_hash,
+            })))
         }
 
         Ok(msgs)
@@ -152,12 +146,7 @@ where
                         height: height as u64,
                         block_hash,
                     };
-                    if atomically_or_err(|| state.1.check_proposal(&prop))
-                        .await
-                        .is_err()
-                    {
-                        return Ok(false);
-                    }
+                    return Ok(atomically(|| state.1.check_proposal(&prop)).await);
                 }
                 _ => {}
             };
@@ -229,20 +218,20 @@ where
                     todo!("#197: implement BottomUp checkpoint execution")
                 }
                 IpcMessage::TopDownExec(p) => {
-                    let validator_set =
-                        atomically_or_err::<_, fendermint_vm_topdown::Error, _>(|| {
-                            provider.validator_set(p.height as u64)
-                        })
-                        .await?
-                        .ok_or_else(|| {
-                            anyhow!("cannot find validator set for block: {}", p.height)
-                        })?;
+                    if !provider.is_enabled() {
+                        return Err(anyhow!("toggle on ipc top down to process messages"))
+                    }
+
+                    // error happens if we cannot get the validator set from ipc agent after retries
+                    let validator_set = provider.validator_set(p.height as u64)
+                        .await?;
 
                     let finality = IPCParentFinality {
                         height: p.height as u64,
                         block_hash: p.block_hash,
                     };
                     let msg = parent_finality_to_fvm(finality.clone(), validator_set)?;
+
                     let (state, ret) = self
                         .inner
                         .deliver(state, VerifiableMessage::NotVerify(msg))
@@ -251,10 +240,10 @@ where
                     // TODO: execute top down messages,
                     // TODO: see https://github.com/consensus-shipyard/fendermint/issues/241
 
-                    atomically_or_err::<_, fendermint_vm_topdown::Error, _>(|| {
+                    atomically(|| {
                         provider.set_new_finality(finality.clone())
                     })
-                    .await?;
+                    .await;
 
                     Ok(((pool, provider, state), ChainMessageApplyRet::Signed(ret)))
                 }
@@ -413,11 +402,4 @@ fn parent_finality_to_fvm(
     };
 
     Ok(msg)
-}
-
-/// Handles the error thrown in proposing top down parent finality.
-fn handle_topdown_proposal_error(err: Error) {
-    if let Error::HeightNotFoundInCache(height) = err {
-        tracing::warn!("proposal height: {height} not found in cache");
-    }
 }

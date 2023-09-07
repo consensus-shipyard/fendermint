@@ -7,7 +7,7 @@ use crate::sync::IPCAgentProxy;
 use crate::{
     BlockHash, BlockHeight, Config, IPCParentFinality, ParentFinalityProvider, ParentViewProvider,
 };
-use async_stm::{abort, Stm, StmError, StmResult, TVar};
+use async_stm::{abort, atomically, Stm, StmResult, TVar};
 use ipc_agent_sdk::message::ipc::ValidatorSet;
 use ipc_sdk::cross::CrossMsg;
 use std::sync::Arc;
@@ -47,11 +47,7 @@ macro_rules! retry {
                         wait *= 2;
                     }
                 }
-                res => {
-                    break res
-                        .map(Some)
-                        .map_err(|e| StmError::Abort(Error::CannotQueryAgent(e.to_string())))
-                }
+                res => break res
             }
         }
     }};
@@ -59,10 +55,12 @@ macro_rules! retry {
 
 #[async_trait::async_trait]
 impl ParentViewProvider for CachedFinalityProvider {
-    async fn validator_set(&self, height: BlockHeight) -> StmResult<Option<ValidatorSet>, Error> {
-        let r = self.cached_data.validator_set(height)?;
-        if r.is_some() {
-            return Ok(r);
+    /// Should always return the validator set, only when ipc agent is down after exponeitial
+    /// retries
+    async fn validator_set(&self, height: BlockHeight) -> anyhow::Result<ValidatorSet> {
+        let r = atomically(|| self.cached_data.validator_set(height)).await;
+        if let Some(v) = r {
+            return Ok(v);
         }
 
         retry!(
@@ -72,10 +70,12 @@ impl ParentViewProvider for CachedFinalityProvider {
         )
     }
 
-    async fn top_down_msgs(&self, height: BlockHeight) -> StmResult<Option<Vec<CrossMsg>>, Error> {
-        let r = self.cached_data.top_down_msgs_at_height(height)?;
-        if r.is_some() {
-            return Ok(r);
+    /// Should always return the top down messages, only when ipc agent is down after exponeitial
+    /// retries
+    async fn top_down_msgs(&self, height: BlockHeight) -> anyhow::Result<Vec<CrossMsg>> {
+        let r = atomically(|| self.cached_data.top_down_msgs_at_height(height)).await;
+        if let Some(v) = r {
+            return Ok(v);
         }
 
         retry!(
