@@ -13,6 +13,7 @@ use fvm_shared::{
     econ::TokenAmount,
     version::NetworkVersion,
 };
+use ipc_sdk::subnet_id::SubnetID;
 
 /// Decimals for filecoin in nano
 const FIL_AMOUNT_NANO_DIGITS: u32 = 9;
@@ -32,6 +33,10 @@ pub fn parse_token_amount(s: &str) -> Result<TokenAmount, String> {
     BigInt::from_str_radix(s, 10)
         .map_err(|e| format!("not a token amount: {e}"))
         .map(TokenAmount::from_atto)
+}
+
+pub fn parse_subnet_id(s: &str) -> Result<SubnetID, String> {
+    SubnetID::from_str(s).map_err(|e| format!("not a subnet id: {e}"))
 }
 
 pub fn parse_full_fil(s: &str) -> Result<TokenAmount, String> {
