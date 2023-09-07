@@ -195,7 +195,7 @@ impl InMemoryFinalityProvider {
         Self::new(config, None)
     }
 
-    // creates an initialized provider
+    /// Creates an initialized provider
     pub fn initialized(config: Config, committed_finality: IPCParentFinality) -> Self {
         Self::new(config, Some(committed_finality))
     }

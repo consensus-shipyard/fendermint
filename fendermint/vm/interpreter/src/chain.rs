@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 use crate::{
@@ -17,7 +16,10 @@ use fendermint_vm_message::{
 };
 use fendermint_vm_resolver::pool::{ResolveKey, ResolvePool};
 use fendermint_vm_topdown::convert::encode_commit_parent_finality_call;
-use fendermint_vm_topdown::{Error, IPCParentFinality, ParentFinalityProvider};
+use fendermint_vm_topdown::{
+    Error, IPCParentFinality, InMemoryFinalityProvider, ParentFinalityProvider, ParentViewProvider,
+    Toggle,
+};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -61,27 +63,22 @@ pub type ChainMessageCheckRes = Result<SignedMessageCheckRes, IllegalMessage>;
 /// Interpreter working on chain messages; in the future it will schedule
 /// CID lookups to turn references into self-contained user or cross messages.
 #[derive(Clone)]
-pub struct ChainMessageInterpreter<I, P> {
+pub struct ChainMessageInterpreter<I> {
     inner: I,
-    parent_finality_provider: PhantomData<P>,
 }
 
-impl<I, P> ChainMessageInterpreter<I, P> {
+impl<I> ChainMessageInterpreter<I> {
     pub fn new(inner: I) -> Self {
-        Self {
-            inner,
-            parent_finality_provider: Default::default(),
-        }
+        Self { inner }
     }
 }
 
 #[async_trait]
-impl<I, P> ProposalInterpreter for ChainMessageInterpreter<I, P>
+impl<I> ProposalInterpreter for ChainMessageInterpreter<I>
 where
     I: Sync + Send,
-    P: ParentFinalityProvider + Send + Sync,
 {
-    type State = (CheckpointPool, Arc<P>);
+    type State = (CheckpointPool, Arc<Toggle<InMemoryFinalityProvider>>);
     type Message = ChainMessage;
 
     /// Check whether there are any "ready" messages in the IPLD resolution mempool which can be appended to the proposal.
@@ -110,16 +107,16 @@ where
 
         // Prepare top down proposals
         match atomically_or_err::<_, Error, _>(|| finality_provider.next_proposal()).await {
-            Ok(None) => {},
+            Ok(None) => {}
             Ok(Some(proposal)) => {
                 msgs.push(ChainMessage::Ipc(IpcMessage::TopDownExec(ParentFinality {
                     height: proposal.height as ChainEpoch,
                     block_hash: proposal.block_hash,
                 })))
-            },
+            }
             // if there are errors in proposal creation, we will not crash the app, but just
             // give up proposal creation in the current block and retry in the next. there are other
-            Err(e) => handle_topdown_proposal_error(e)
+            Err(e) => handle_topdown_proposal_error(e),
         }
 
         Ok(msgs)
@@ -170,16 +167,19 @@ where
 }
 
 #[async_trait]
-impl<I, P> ExecInterpreter for ChainMessageInterpreter<I, P>
+impl<I> ExecInterpreter for ChainMessageInterpreter<I>
 where
     I: ExecInterpreter<Message = VerifiableMessage, DeliverOutput = SignedMessageApplyRes>,
-    P: ParentFinalityProvider + Send + Sync,
 {
     // The state consists of the resolver pool, which this interpreter needs, and the rest of the
     // state which the inner interpreter uses. This is a technical solution because the pool doesn't
     // fit with the state we use for execution messages further down the stack, which depend on block
     // height and are used in queries as well.
-    type State = (CheckpointPool, Arc<P>, I::State);
+    type State = (
+        CheckpointPool,
+        Arc<Toggle<InMemoryFinalityProvider>>,
+        I::State,
+    );
     type Message = ChainMessage;
     type BeginOutput = I::BeginOutput;
     type DeliverOutput = ChainMessageApplyRet;
@@ -248,13 +248,13 @@ where
                         .deliver(state, VerifiableMessage::NotVerify(msg))
                         .await?;
 
+                    // TODO: execute top down messages,
+                    // TODO: see https://github.com/consensus-shipyard/fendermint/issues/241
+
                     atomically_or_err::<_, fendermint_vm_topdown::Error, _>(|| {
                         provider.set_new_finality(finality.clone())
                     })
                     .await?;
-
-                    // TODO: execute top down messages,
-                    // TODO: see https://github.com/consensus-shipyard/fendermint/issues/241
 
                     Ok(((pool, provider, state), ChainMessageApplyRet::Signed(ret)))
                 }
@@ -280,10 +280,9 @@ where
 }
 
 #[async_trait]
-impl<I, P> CheckInterpreter for ChainMessageInterpreter<I, P>
+impl<I> CheckInterpreter for ChainMessageInterpreter<I>
 where
     I: CheckInterpreter<Message = VerifiableMessage, Output = SignedMessageCheckRes>,
-    P: Send + Sync,
 {
     type State = I::State;
     type Message = ChainMessage;
@@ -328,10 +327,9 @@ where
 }
 
 #[async_trait]
-impl<I, P> QueryInterpreter for ChainMessageInterpreter<I, P>
+impl<I> QueryInterpreter for ChainMessageInterpreter<I>
 where
     I: QueryInterpreter,
-    P: Send + Sync,
 {
     type State = I::State;
     type Query = I::Query;
@@ -347,10 +345,9 @@ where
 }
 
 #[async_trait]
-impl<I, P> GenesisInterpreter for ChainMessageInterpreter<I, P>
+impl<I> GenesisInterpreter for ChainMessageInterpreter<I>
 where
     I: GenesisInterpreter,
-    P: Send + Sync,
 {
     type State = I::State;
     type Genesis = I::Genesis;
@@ -420,13 +417,7 @@ fn parent_finality_to_fvm(
 
 /// Handles the error thrown in proposing top down parent finality.
 fn handle_topdown_proposal_error(err: Error) {
-    match err {
-        Error::HeightNotReady | Error::HeightThresholdNotReached => {
-            tracing::debug!("top down proposal error: {err:?}");
-        },
-        Error::HeightNotFoundInCache(height) => {
-            tracing::
-        }
-        _ => {}
+    if let Error::HeightNotFoundInCache(height) = err {
+        tracing::warn!("proposal height: {height} not found in cache");
     }
 }

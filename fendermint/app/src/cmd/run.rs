@@ -13,7 +13,7 @@ use fendermint_vm_interpreter::{
     signed::SignedMessageInterpreter,
 };
 use fendermint_vm_topdown::sync::{launch_polling_syncer, IPCAgentProxy};
-use fendermint_vm_topdown::{InMemoryFinalityProvider, MaybeDisabledProvider};
+use fendermint_vm_topdown::{InMemoryFinalityProvider, Toggle};
 use ipc_sdk::subnet_id::SubnetID;
 use std::sync::Arc;
 use tracing::info;
@@ -30,7 +30,10 @@ fn create_ipc_agent_proxy(
     settings: &fendermint_vm_topdown::Config,
     subnet_id: SubnetID,
 ) -> anyhow::Result<IPCAgentProxy> {
-    let url = settings.ipc_agent_url.parse().context("invalid agent URL")?;
+    let url = settings
+        .ipc_agent_url
+        .parse()
+        .context("invalid agent URL")?;
 
     let json_rpc = ipc_agent_sdk::jsonrpc::JsonRpcClientImpl::new(url, None);
     let ipc_agent_client = ipc_agent_sdk::apis::IpcAgentClient::new(json_rpc);
@@ -60,15 +63,15 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
     let parent_finality_provider = if settings.ipc.is_topdown_enabled() {
         info!("topdown finality enabled");
         let config = settings.ipc.topdown_config()?.clone();
-        Arc::new(MaybeDisabledProvider::enabled(
-            InMemoryFinalityProvider::uninitialized(config),
-        ))
+        Arc::new(Toggle::enabled(InMemoryFinalityProvider::uninitialized(
+            config,
+        )))
     } else {
         info!("topdown finality disabled");
-        Arc::new(MaybeDisabledProvider::disabled())
+        Arc::new(Toggle::disabled())
     };
 
-    let app: App<_, _, AppStore, _, _> = App::new(
+    let app: App<_, _, AppStore, _> = App::new(
         AppConfig {
             app_namespace: ns.app,
             state_hist_namespace: ns.state_hist,

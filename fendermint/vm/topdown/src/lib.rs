@@ -8,7 +8,7 @@ pub mod sync;
 
 #[cfg(feature = "conversion")]
 pub mod convert;
-mod disabled;
+mod toggle;
 
 use async_stm::StmResult;
 use ipc_agent_sdk::message::ipc::ValidatorSet;
@@ -16,9 +16,9 @@ use ipc_sdk::cross::CrossMsg;
 use serde::{Deserialize, Serialize};
 
 pub use crate::cache::{SequentialAppendError, SequentialKeyCache, ValueIter};
-pub use crate::disabled::MaybeDisabledProvider;
 pub use crate::error::Error;
 pub use crate::finality::InMemoryFinalityProvider;
+pub use crate::toggle::Toggle;
 
 pub type BlockHeight = u64;
 pub type Bytes = Vec<u8>;

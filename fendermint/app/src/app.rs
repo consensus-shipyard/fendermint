@@ -27,7 +27,7 @@ use fendermint_vm_interpreter::{
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
 use fendermint_vm_message::query::FvmQueryHeight;
-use fendermint_vm_topdown::ParentFinalityProvider;
+use fendermint_vm_topdown::{InMemoryFinalityProvider, Toggle};
 use fvm::engine::MultiEngine;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::chainid::ChainID;
@@ -101,7 +101,7 @@ pub struct AppConfig<S: KVStore> {
 
 /// Handle ABCI requests.
 #[derive(Clone)]
-pub struct App<DB, SS, S, I, P>
+pub struct App<DB, SS, S, I>
 where
     SS: Blockstore + 'static,
     S: KVStore,
@@ -138,7 +138,7 @@ where
     /// CID resolution pool.
     resolve_pool: CheckpointPool,
     /// The parent finality provider for top down checkpoint
-    parent_finality_provider: Arc<P>,
+    parent_finality_provider: Arc<Toggle<InMemoryFinalityProvider>>,
     /// State accumulating changes during block execution.
     exec_state: Arc<Mutex<Option<FvmExecState<SS>>>>,
     /// Projected (partial) state accumulating during transaction checks.
@@ -149,7 +149,7 @@ where
     state_hist_size: u64,
 }
 
-impl<DB, SS, S, I, P> App<DB, SS, S, I, P>
+impl<DB, SS, S, I> App<DB, SS, S, I>
 where
     S: KVStore
         + Codec<AppState>
@@ -158,7 +158,6 @@ where
         + Codec<FvmStateParams>,
     DB: KVWritable<S> + KVReadable<S> + Clone + 'static,
     SS: Blockstore + Clone + 'static,
-    P: ParentFinalityProvider + 'static,
 {
     pub fn new(
         config: AppConfig<S>,
@@ -166,7 +165,7 @@ where
         state_store: SS,
         interpreter: I,
         resolve_pool: CheckpointPool,
-        parent_finality_provider: Arc<P>,
+        parent_finality_provider: Arc<Toggle<InMemoryFinalityProvider>>,
     ) -> Result<Self> {
         let app = Self {
             db: Arc::new(db),
@@ -187,7 +186,7 @@ where
     }
 }
 
-impl<DB, SS, S, I, P> App<DB, SS, S, I, P>
+impl<DB, SS, S, I> App<DB, SS, S, I>
 where
     S: KVStore
         + Codec<AppState>
@@ -196,7 +195,6 @@ where
         + Codec<FvmStateParams>,
     DB: KVWritable<S> + KVReadable<S> + 'static + Clone,
     SS: Blockstore + 'static + Clone,
-    P: ParentFinalityProvider,
 {
     /// Get an owned clone of the state store.
     fn state_store_clone(&self) -> SS {
@@ -283,8 +281,23 @@ where
     /// Take the execution state, update it, put it back, return the output.
     async fn modify_exec_state<T, F, R>(&self, f: F) -> Result<T>
     where
-        F: FnOnce((CheckpointPool, Arc<P>, FvmExecState<SS>)) -> R,
-        R: Future<Output = Result<((CheckpointPool, Arc<P>, FvmExecState<SS>), T)>>,
+        F: FnOnce(
+            (
+                CheckpointPool,
+                Arc<Toggle<InMemoryFinalityProvider>>,
+                FvmExecState<SS>,
+            ),
+        ) -> R,
+        R: Future<
+            Output = Result<(
+                (
+                    CheckpointPool,
+                    Arc<Toggle<InMemoryFinalityProvider>>,
+                    FvmExecState<SS>,
+                ),
+                T,
+            )>,
+        >,
     {
         let state = self.take_exec_state();
         let ((_pool, _provider, state), ret) = f((
@@ -361,7 +374,7 @@ where
 // the `tower-abci` library would throw an exception when it tried to convert a
 // `Response::Exception` into a `ConsensusResponse` for example.
 #[async_trait]
-impl<DB, SS, S, I, P> Application for App<DB, SS, S, I, P>
+impl<DB, SS, S, I> Application for App<DB, SS, S, I>
 where
     S: KVStore
         + Codec<AppState>
@@ -371,15 +384,21 @@ where
     S::Namespace: Sync + Send,
     DB: KVWritable<S> + KVReadable<S> + Clone + Send + Sync + 'static,
     SS: Blockstore + Clone + Send + Sync + 'static,
-    P: ParentFinalityProvider + Send + Sync,
     I: GenesisInterpreter<
         State = FvmGenesisState<SS>,
         Genesis = Vec<u8>,
         Output = FvmGenesisOutput,
     >,
-    I: ProposalInterpreter<State = (CheckpointPool, Arc<P>), Message = Vec<u8>>,
+    I: ProposalInterpreter<
+        State = (CheckpointPool, Arc<Toggle<InMemoryFinalityProvider>>),
+        Message = Vec<u8>,
+    >,
     I: ExecInterpreter<
-        State = (CheckpointPool, Arc<P>, FvmExecState<SS>),
+        State = (
+            CheckpointPool,
+            Arc<Toggle<InMemoryFinalityProvider>>,
+            FvmExecState<SS>,
+        ),
         Message = Vec<u8>,
         BeginOutput = FvmApplyRet,
         DeliverOutput = BytesMessageApplyRes,
