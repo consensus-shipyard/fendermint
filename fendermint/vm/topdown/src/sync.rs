@@ -12,6 +12,7 @@ use ipc_agent_sdk::jsonrpc::JsonRpcClientImpl;
 use ipc_agent_sdk::message::ipc::ValidatorSet;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::subnet_id::SubnetID;
+use std::cmp::min;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -140,6 +141,10 @@ async fn sync_with_parent<T: ParentFinalityProvider + Send + Sync + 'static>(
         // we are adding 1 to the height because we are fetching block by block, we also configured
         // the sequential cache to use increment == 1.
         let starting_height = last_recorded_height + 1;
+        let ending_height = min(
+            ending_height,
+            config.max_parent_view_block_gap() + starting_height,
+        );
 
         let new_parent_views =
             get_new_parent_views(agent_proxy, starting_height, ending_height).await?;

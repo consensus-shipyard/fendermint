@@ -24,6 +24,8 @@ pub type BlockHeight = u64;
 pub type Bytes = Vec<u8>;
 pub type BlockHash = Bytes;
 
+const MAX_BLOCK_GAP: BlockHeight = 100;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     /// The number of blocks to delay before reporting a height as final on the parent chain.
@@ -35,6 +37,14 @@ pub struct Config {
     pub polling_interval_secs: u64,
     /// The ipc agent url
     pub ipc_agent_url: String,
+    /// Max block parent view block gap allowed
+    max_parent_view_block_gap: Option<BlockHeight>,
+}
+
+impl Config {
+    pub fn max_parent_view_block_gap(&self) -> BlockHeight {
+        self.max_parent_view_block_gap.unwrap_or(MAX_BLOCK_GAP)
+    }
 }
 
 /// The finality view for IPC parent at certain height.
