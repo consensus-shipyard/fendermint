@@ -30,7 +30,7 @@ fn create_ipc_agent_proxy(
     settings: &fendermint_vm_topdown::Config,
     subnet_id: SubnetID,
 ) -> anyhow::Result<IPCAgentProxy> {
-    let url = settings.ipc_agent_url.parse()?;
+    let url = settings.ipc_agent_url.parse().context("invalid agent URL")?;
 
     let json_rpc = ipc_agent_sdk::jsonrpc::JsonRpcClientImpl::new(url, None);
     let ipc_agent_client = ipc_agent_sdk::apis::IpcAgentClient::new(json_rpc);
