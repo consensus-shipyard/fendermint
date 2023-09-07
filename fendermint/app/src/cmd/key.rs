@@ -6,10 +6,8 @@ use fvm_shared::address::Address;
 use libsecp256k1::{PublicKey, SecretKey};
 use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
 use serde_json::json;
-use std::any::Any;
 use std::path::{Path, PathBuf};
 use tendermint_config::NodeKey;
-use tendermint_proto::Protobuf;
 
 use super::{from_b64, to_b64};
 use crate::{
