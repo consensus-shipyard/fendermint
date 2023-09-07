@@ -101,7 +101,7 @@ but it has to be one based on a public key, otherwise we would not be able to va
 Let's add an example of the other possible account type, a multi-sig account:
 
 ```shell
-cargo run -p fendermint_app -- \
+cargo run -p fendermint_app --release -- \
         genesis --genesis-file test-network/genesis.json \
         add-multisig --public-key test-network/keys/bob.pk --public-key test-network/keys/charlie.pk --public-key test-network/keys/dave.pk \
           --threshold 2 --vesting-start 0 --vesting-duration 1000000 --balance 30
@@ -154,32 +154,16 @@ The public key was spliced in as it was, in base64 format, which is how it would
 own genesis file format. Note that here we don't have the option to use `Address`, because we have to return
 these as actual `PublicKey` types to Tendermint through ABCI, not as a hash of a key.
 
-### Add ipc to the Genesis file
+### (Optional) Add ipc to the Genesis file
 
-If you need ipc related function, let's add the subnet info to the Genesis with deployed subnet id: /r31415926/t410fgbphbzatgylhgw7u4w5idbc7pwka2upfienikky
+If you need ipc related function, let's add the subnet info to the Genesis with deployed subnet id: /r31415926
 
 ```shell
 cargo run -p fendermint_app --release -- \
       genesis --genesis-file test-network/genesis.json \
       ipc \
-      gateway --subnet-id /r31415926/t410fgbphbzatgylhgw7u4w5idbc7pwka2upfienikky -b 10 -t 10 -f 1 -m 60;
+      gateway --subnet-id /r31415926 -b 10 -t 10 -f 1 -m 60;
 ```
-
-The value of power doens't matter in this case, as `bob` is our only validator. Check the result:
-
-```console
-$ cat test-network/genesis.json | jq .validators
-[
-  {
-    "public_key": "BCImfwVC/LeFJN9bB612aCtjbCYWuilf2SorSUXez/QEy8cVKNuvTU/EOTibo3hIyOQslvSouzIpR24h1kkqCSI=",
-    "power": 1
-  },
-]
-```
-
-The public key was spliced in as it was, in base64 format, which is how it would appear in Tendermint's
-own genesis file format. Note that here we don't have the option to use `Address`, because we have to return
-these as actual `PublicKey` types to Tendermint through ABCI, not as a hash of a key.
 
 ### Configure CometBFT
 
