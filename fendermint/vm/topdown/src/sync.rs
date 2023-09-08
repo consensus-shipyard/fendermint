@@ -61,6 +61,7 @@ pub async fn launch_polling_syncer<Q: ParentFinalityStateQuery + Send + Sync + '
                 continue;
             }
         };
+        tracing::info!("latest finality committed: {finality:?}");
 
         if finality.height == 0 {
             let genesis_epoch = agent.get_genesis_epoch(subnet_id).await?;
@@ -69,6 +70,7 @@ pub async fn launch_polling_syncer<Q: ParentFinalityStateQuery + Send + Sync + '
                 height: genesis_epoch as u64,
                 block_hash,
             };
+            tracing::info!("no previous finality committed, fetched from genesis epoch: {finality:?}");
         }
 
         atomically(|| view_provider.set_new_finality(finality.clone())).await;

@@ -34,6 +34,7 @@ struct CachedData {
     height_data: TVar<SequentialKeyCache<BlockHeight, ParentViewPayload>>,
 }
 
+/// Exponential backoff for futures
 macro_rules! retry {
     ($wait:expr, $retires:expr, $f:expr) => {{
         let mut retries = $retires;
