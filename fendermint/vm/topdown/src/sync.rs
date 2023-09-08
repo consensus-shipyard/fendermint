@@ -34,13 +34,14 @@ pub struct PollingParentSyncer {
 
 /// Start the polling parent syncer in the background
 pub async fn launch_polling_syncer<Q: ParentFinalityStateQuery + Send + Sync + 'static>(
+    subnet_id: &SubnetID,
     query: &Q,
     config: Config,
     view_provider: Arc<Toggle<CachedFinalityProvider>>,
     agent: Arc<IPCAgentProxy>,
 ) -> anyhow::Result<()> {
     loop {
-        let finality = match query.get_latest_committed_finality() {
+        let mut finality = match query.get_latest_committed_finality() {
             Ok(Some(finality)) => finality,
             Ok(None) => {
                 tracing::debug!("app not ready for query yet");
@@ -53,6 +54,12 @@ pub async fn launch_polling_syncer<Q: ParentFinalityStateQuery + Send + Sync + '
                 continue;
             }
         };
+
+        if finality.height == 0 {
+            let genesis_epoch = agent.get_genesis_epoch(subnet_id).await?;
+            let block_hash = agent.get_block_hash(genesis_epoch as u64).await?;
+            finality = IPCParentFinality{ height: genesis_epoch as u64, block_hash };
+        }
 
         atomically(|| view_provider.set_new_finality(finality.clone())).await;
 
@@ -244,6 +251,11 @@ impl IPCAgentProxy {
             .get_chain_head_height(&self.parent_subnet)
             .await?;
         Ok(height as BlockHeight)
+    }
+
+    pub async fn get_genesis_epoch(&self, _subnet_id: &SubnetID) -> anyhow::Result<ChainEpoch> {
+        // TODO: Mocked value, pending ipc-agent refactoring and contract update
+        Ok(10)
     }
 
     pub async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<BlockHash> {
