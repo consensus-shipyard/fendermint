@@ -96,7 +96,7 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         tokio::spawn(async move {
             match launch_polling_syncer(
                 &settings.ipc.subnet_id,
-                &app_parent_finality_query,
+                app_parent_finality_query,
                 config,
                 parent_finality_provider,
                 agent_proxy,

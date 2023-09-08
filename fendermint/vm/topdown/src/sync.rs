@@ -33,20 +33,21 @@ pub trait ParentFinalityStateQuery {
 }
 
 /// Constantly syncing with parent through polling
-pub struct PollingParentSyncer {
+pub struct PollingParentSyncer<T> {
+    subnet_id: SubnetID,
     config: Config,
     parent_view_provider: Arc<Toggle<CachedFinalityProvider>>,
     agent: Arc<IPCAgentProxy>,
+    committed_state_query: Arc<T>
 }
 
-/// Start the polling parent syncer in the background
-pub async fn launch_polling_syncer<Q: ParentFinalityStateQuery + Send + Sync + 'static>(
+/// Queries the starting finality for polling. First checks the committed finality, if none, that
+/// means the chain has just started, then query from the parent to get the genesis epoch.
+async fn query_starting_finality<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     subnet_id: &SubnetID,
-    query: &Q,
-    config: Config,
-    view_provider: Arc<Toggle<CachedFinalityProvider>>,
-    agent: Arc<IPCAgentProxy>,
-) -> anyhow::Result<()> {
+    query: &Arc<T>,
+    agent: &Arc<IPCAgentProxy>,
+) -> anyhow::Result<IPCParentFinality> {
     loop {
         let mut finality = match query.get_latest_committed_finality() {
             Ok(Some(finality)) => finality,
@@ -77,45 +78,73 @@ pub async fn launch_polling_syncer<Q: ParentFinalityStateQuery + Send + Sync + '
             );
         }
 
-        atomically(|| view_provider.set_new_finality(finality.clone())).await;
-
-        let poll = PollingParentSyncer::new(config, view_provider, agent);
-        poll.start();
-
-        return Ok(());
+        return Ok(finality);
     }
 }
 
-impl PollingParentSyncer {
+/// Start the polling parent syncer in the background
+pub async fn launch_polling_syncer<T: ParentFinalityStateQuery + Send + Sync + 'static>(
+    subnet_id: &SubnetID,
+    query: T,
+    config: Config,
+    view_provider: Arc<Toggle<CachedFinalityProvider>>,
+    agent: Arc<IPCAgentProxy>,
+) -> anyhow::Result<()> {
+    if !view_provider.is_enabled() {
+        return Err(anyhow!("provider not enabled, enable to run syncer"));
+    }
+
+    let query = Arc::new(query);
+
+    let finality = query_starting_finality(subnet_id, &query, &agent).await?;
+
+    atomically(|| view_provider.set_new_finality(finality.clone())).await;
+
+    let poll = PollingParentSyncer::new(subnet_id.clone(), config, view_provider, agent, query);
+    poll.start();
+
+    Ok(())
+}
+
+impl <T> PollingParentSyncer<T> {
     pub fn new(
+        subnet_id: SubnetID,
         config: Config,
         parent_view_provider: Arc<Toggle<CachedFinalityProvider>>,
         agent: Arc<IPCAgentProxy>,
+        query: Arc<T>,
     ) -> Self {
         Self {
+            subnet_id,
             config,
             parent_view_provider,
             agent,
+            committed_state_query: query
         }
     }
 }
 
-impl PollingParentSyncer {
+impl <T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T> {
     /// Start the parent finality listener in the background
     pub fn start(self) {
         let config = self.config;
         let provider = self.parent_view_provider;
         let agent = self.agent;
+        let query = self.committed_state_query;
+        let subnet_id = self.subnet_id;
 
         tokio::spawn(async move {
             loop {
+                let mut interval = tokio::time::interval(Duration::from_secs(config.polling_interval_secs));
+                interval.tick().await;
+
                 // Syncing with parent with the below steps:
                 // 1. Get the latest height in cache or latest height committed increment by 1 as the
                 //    starting height
                 // 2. Get the latest chain head height deduct away N blocks as the ending height
                 // 3. Fetches the data between starting and ending height
                 // 4. Update the data into cache
-                if let Err(e) = sync_with_parent(&config, &agent, &provider).await {
+                if let Err(e) = sync_with_parent(&subnet_id, &config, &agent, &provider, &query).await {
                     tracing::error!("sync with parent encountered error: {e}");
                 }
             }
@@ -123,73 +152,73 @@ impl PollingParentSyncer {
     }
 }
 
-async fn sync_with_parent(
+async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
+    subnet_id: &SubnetID,
     config: &Config,
     agent_proxy: &Arc<IPCAgentProxy>,
     provider: &Arc<Toggle<CachedFinalityProvider>>,
+    query: &Arc<T>,
 ) -> anyhow::Result<()> {
-    let mut interval = tokio::time::interval(Duration::from_secs(config.polling_interval_secs));
+    let last_recorded_height = if let Some(h) = last_recorded_height(provider).await? {
+        h
+    } else {
+        // cannot get starting recorded height, we just wait for the next loop execution
+        return Ok(());
+    };
 
-    loop {
-        interval.tick().await;
+    let parent_chain_head_height = agent_proxy
+        .get_chain_head_height()
+        .await
+        .context("cannot fetch parent chain head")?;
+    // sanity check
+    if parent_chain_head_height < config.chain_head_delay {
+        tracing::debug!("latest height not more than the chain head delay");
+        return Ok(());
+    }
+    let ending_height = parent_chain_head_height - config.chain_head_delay;
 
-        let last_recorded_height = if let Some(h) = last_recorded_height(provider).await? {
-            h
-        } else {
-            // cannot get starting recorded height, we just wait for the next loop execution
-            continue;
-        };
-
-        let parent_chain_head_height = agent_proxy
-            .get_chain_head_height()
-            .await
-            .context("cannot fetch parent chain head")?;
-        // sanity check
-        if parent_chain_head_height < config.chain_head_delay {
-            tracing::debug!("latest height not more than the chain head delay");
-            continue;
-        }
-        let ending_height = parent_chain_head_height - config.chain_head_delay;
-
-        tracing::debug!(
+    tracing::debug!(
             "last recorded height: {}, parent chain head: {}, ending_height: {}",
             last_recorded_height,
             parent_chain_head_height,
             ending_height
         );
 
-        if last_recorded_height == ending_height {
-            tracing::debug!("the parent has yet to produce a new block, stops at height: {last_recorded_height}");
-            continue;
+    if last_recorded_height == ending_height {
+        tracing::debug!("the parent has yet to produce a new block, stops at height: {last_recorded_height}");
+        return Ok(());
+    }
+
+    // we are going backwards in terms of block height, the latest block height is lower
+    // than our previously fetched head. It could be a chain reorg. We clear all the cache
+    // in `provider` and start from scratch
+    if last_recorded_height > ending_height {
+        let finality = query_starting_finality(subnet_id, query, agent_proxy).await?;
+        atomically(|| provider.reset(finality.clone())).await;
+        return Ok(());
+    }
+
+    // we are adding 1 to the height because we are fetching block by block, we also configured
+    // the sequential cache to use increment == 1.
+    let starting_height = last_recorded_height + 1;
+    let ending_height = min(ending_height, MAX_PARENT_VIEW_BLOCK_GAP + starting_height);
+    tracing::debug!("parent view range: {starting_height}-{ending_height}");
+
+    let new_parent_views =
+        get_new_parent_views(agent_proxy, starting_height, ending_height).await?;
+    tracing::debug!("new parent views: {new_parent_views:?}");
+
+    atomically_or_err::<_, Error, _>(move || {
+        for (height, block_hash, validator_set, messages) in new_parent_views.clone() {
+            provider.new_parent_view(height, block_hash, validator_set, messages)?;
         }
-
-        // we are going backwards in terms of block height, the latest block height is lower
-        // than our previously fetched head. It could be a chain reorg. We clear all the cache
-        // in `provider` and start from scratch
-        if last_recorded_height > ending_height {
-            todo!()
-        }
-
-        // we are adding 1 to the height because we are fetching block by block, we also configured
-        // the sequential cache to use increment == 1.
-        let starting_height = last_recorded_height + 1;
-        let ending_height = min(ending_height, MAX_PARENT_VIEW_BLOCK_GAP + starting_height);
-        tracing::debug!("parent view range: {starting_height}-{ending_height}");
-
-        let new_parent_views =
-            get_new_parent_views(agent_proxy, starting_height, ending_height).await?;
-        tracing::debug!("new parent views: {new_parent_views:?}");
-
-        atomically_or_err::<_, Error, _>(move || {
-            for (height, block_hash, validator_set, messages) in new_parent_views.clone() {
-                provider.new_parent_view(height, block_hash, validator_set, messages)?;
-            }
-            Ok(())
-        })
+        Ok(())
+    })
         .await?;
 
-        tracing::debug!("updated new parent views till height: {ending_height}");
-    }
+    tracing::debug!("updated new parent views till height: {ending_height}");
+
+    Ok(())
 }
 
 /// Obtains the last recorded height from provider cache or from last committed finality height.

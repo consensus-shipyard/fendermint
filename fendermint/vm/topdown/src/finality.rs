@@ -166,6 +166,12 @@ impl CachedFinalityProvider {
         self.last_committed_finality.read_clone()
     }
 
+    /// Clear the cache and set the committed finality to the provided value
+    pub fn reset(&self, finality: IPCParentFinality) -> Stm<()> {
+        self.cached_data.height_data.write(SequentialKeyCache::sequential())?;
+        self.last_committed_finality.write(Some(finality))
+    }
+
     pub fn new_parent_view(
         &self,
         height: BlockHeight,

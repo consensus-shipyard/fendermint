@@ -92,4 +92,8 @@ impl Toggle<CachedFinalityProvider> {
             (),
         )
     }
+
+    pub fn reset(&self, finality: IPCParentFinality) -> Stm<()> {
+        self.perform_or_else(|p| p.reset(finality), ())
+    }
 }

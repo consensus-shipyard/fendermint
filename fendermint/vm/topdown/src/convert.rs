@@ -4,7 +4,7 @@
 
 use crate::IPCParentFinality;
 use anyhow::anyhow;
-use ethers::abi::Token;
+use ethers::abi::{Function, Token};
 use ethers::types::Bytes;
 use ethers::types::U256;
 use fendermint_vm_ipc_actors::{gateway_getter_facet, gateway_router_facet};
@@ -71,22 +71,7 @@ pub fn encode_commit_parent_finality_call(
     finality: IPCParentFinality,
     validator_set: ValidatorSet,
 ) -> anyhow::Result<Vec<u8>> {
-    let commit_function = gateway_router_facet::GATEWAYROUTERFACET_ABI
-        .functions
-        .get(COMMIT_PARENT_FINALITY_FUNC_NAME)
-        .ok_or_else(|| {
-            anyhow!(
-                "report bug, abi function map does not have {}",
-                COMMIT_PARENT_FINALITY_FUNC_NAME
-            )
-        })?
-        .get(0)
-        .ok_or_else(|| {
-            anyhow!(
-                "report bug, abi vec does not have {}",
-                COMMIT_PARENT_FINALITY_FUNC_NAME
-            )
-        })?;
+    let commit_function = get_evm_function(COMMIT_PARENT_FINALITY_FUNC_NAME)?;
 
     let validators = validator_set.validators.unwrap_or_default();
 
@@ -112,48 +97,25 @@ pub fn encode_commit_parent_finality_call(
 }
 
 pub fn encode_get_latest_parent_finality() -> anyhow::Result<Vec<u8>> {
-    let function = gateway_getter_facet::GATEWAYGETTERFACET_ABI
-        .functions
-        .get(GET_LATEST_PARENT_FINALITY_FUNC_NAME)
-        .ok_or_else(|| {
-            anyhow!(
-                "report bug, abi function map does not have {}",
-                GET_LATEST_PARENT_FINALITY_FUNC_NAME
-            )
-        })?
-        .get(0)
-        .ok_or_else(|| {
-            anyhow!(
-                "report bug, abi vec does not have {}",
-                GET_LATEST_PARENT_FINALITY_FUNC_NAME
-            )
-        })?;
-
+    let function = get_evm_function(GET_LATEST_PARENT_FINALITY_FUNC_NAME)?;
     let data = ethers::contract::encode_function_data(function, ())?;
 
     Ok(data.to_vec())
 }
 
 pub fn decode_parent_finality_return(bytes: &[u8]) -> anyhow::Result<IPCParentFinality> {
-    let function = gateway_getter_facet::GATEWAYGETTERFACET_ABI
-        .functions
-        .get(GET_LATEST_PARENT_FINALITY_FUNC_NAME)
-        .ok_or_else(|| {
-            anyhow!(
-                "report bug, abi function map does not have {}",
-                GET_LATEST_PARENT_FINALITY_FUNC_NAME
-            )
-        })?
-        .get(0)
-        .ok_or_else(|| {
-            anyhow!(
-                "report bug, abi vec does not have {}",
-                GET_LATEST_PARENT_FINALITY_FUNC_NAME
-            )
-        })?;
-
+    let function = get_evm_function(GET_LATEST_PARENT_FINALITY_FUNC_NAME)?;
     let finality = ethers::contract::decode_function_data::<gateway_getter_facet::ParentFinality, _>(
         function, bytes, false,
     )?;
     Ok(IPCParentFinality::from(finality))
+}
+
+fn get_evm_function(method_name: &str) -> anyhow::Result<&Function> {
+    gateway_getter_facet::GATEWAYGETTERFACET_ABI
+        .functions
+        .get(method_name)
+        .ok_or_else(|| anyhow!("report bug, abi function map does not have {}", method_name))?
+        .get(0)
+        .ok_or_else(|| anyhow!("report bug, abi vec does not have {}", method_name))
 }
