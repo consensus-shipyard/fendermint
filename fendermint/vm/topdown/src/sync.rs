@@ -63,6 +63,8 @@ pub async fn launch_polling_syncer<Q: ParentFinalityStateQuery + Send + Sync + '
         };
         tracing::info!("latest finality committed: {finality:?}");
 
+        // this means there are no previous committed finality yet, we fetch from parent to get
+        // the genesis epoch of the current subnet and its corresponding block hash.
         if finality.height == 0 {
             let genesis_epoch = agent.get_genesis_epoch(subnet_id).await?;
             let block_hash = agent.get_block_hash(genesis_epoch as u64).await?;
@@ -70,7 +72,9 @@ pub async fn launch_polling_syncer<Q: ParentFinalityStateQuery + Send + Sync + '
                 height: genesis_epoch as u64,
                 block_hash,
             };
-            tracing::info!("no previous finality committed, fetched from genesis epoch: {finality:?}");
+            tracing::info!(
+                "no previous finality committed, fetched from genesis epoch: {finality:?}"
+            );
         }
 
         atomically(|| view_provider.set_new_finality(finality.clone())).await;
@@ -268,8 +272,11 @@ impl IPCAgentProxy {
     }
 
     pub async fn get_genesis_epoch(&self, _subnet_id: &SubnetID) -> anyhow::Result<ChainEpoch> {
-        // TODO: Mocked value, pending ipc-agent refactoring and contract update
-        Ok(10)
+        let r = self
+            .agent_client
+            .get_validator_set(&self.child_subnet, None)
+            .await?;
+        Ok(r.genesis_epoch)
     }
 
     pub async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<BlockHash> {
