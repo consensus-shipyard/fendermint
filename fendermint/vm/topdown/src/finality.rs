@@ -40,7 +40,8 @@ macro_rules! retry {
         let mut wait = $wait;
         loop {
             match $f {
-                Err(_) => {
+                Err(e) => {
+                    tracing::warn!("cannot query ipc agent due to: {e}, retires: {retries}, wait: {wait}");
                     if retries > 0 {
                         retries -= 1;
                         tokio::time::sleep(Duration::from_secs(wait)).await;
