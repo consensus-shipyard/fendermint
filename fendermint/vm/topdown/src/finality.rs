@@ -74,7 +74,7 @@ impl ParentViewProvider for CachedFinalityProvider {
         )
     }
 
-    /// Should always return the top down messages, only when ipc agent is down after exponeitial
+    /// Should always return the top down messages, only when ipc agent is down after exponential
     /// retries
     async fn top_down_msgs(&self, height: BlockHeight) -> anyhow::Result<Vec<CrossMsg>> {
         let r = atomically(|| self.cached_data.top_down_msgs_at_height(height)).await;

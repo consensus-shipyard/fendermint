@@ -19,7 +19,7 @@ use fendermint_vm_topdown::convert::encode_commit_parent_finality_call;
 use fendermint_vm_topdown::{
     CachedFinalityProvider, IPCParentFinality, ParentFinalityProvider, ParentViewProvider, Toggle,
 };
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::{BytesSer, RawBytes};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use ipc_agent_sdk::message::ipc::ValidatorSet;
@@ -381,7 +381,7 @@ fn parent_finality_to_fvm(
     finality: IPCParentFinality,
     validator_set: ValidatorSet,
 ) -> anyhow::Result<FvmMessage> {
-    let params = RawBytes::serialize(encode_commit_parent_finality_call(finality, validator_set)?)?;
+    let params = RawBytes::serialize(BytesSer(&encode_commit_parent_finality_call(finality, validator_set)?))?;
     let msg = FvmMessage {
         version: 0,
         from: system::SYSTEM_ACTOR_ADDR,
