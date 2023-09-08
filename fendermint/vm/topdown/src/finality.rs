@@ -47,7 +47,7 @@ macro_rules! retry {
                         wait *= 2;
                     }
                 }
-                res => break res
+                res => break res,
             }
         }
     }};
@@ -298,7 +298,6 @@ mod tests {
             chain_head_delay: 20,
             polling_interval_secs: 10,
             ipc_agent_url: "".to_string(),
-            max_parent_view_block_gap: 100,
             exponential_back_off_secs: 10,
             exponential_retry_limit: 10,
         };
@@ -459,7 +458,6 @@ mod tests {
             chain_head_delay: 2,
             polling_interval_secs: 10,
             ipc_agent_url: "".to_string(),
-            max_parent_view_block_gap: 100,
             exponential_back_off_secs: 10,
             exponential_retry_limit: 10,
         };

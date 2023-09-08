@@ -6,7 +6,7 @@ use crate::{
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
 use anyhow::{anyhow, Context};
-use async_stm::{atomically};
+use async_stm::atomically;
 use async_trait::async_trait;
 use fendermint_vm_actor_interface::{ipc, system};
 use fendermint_vm_message::ipc::ParentFinality;
@@ -17,8 +17,7 @@ use fendermint_vm_message::{
 use fendermint_vm_resolver::pool::{ResolveKey, ResolvePool};
 use fendermint_vm_topdown::convert::encode_commit_parent_finality_call;
 use fendermint_vm_topdown::{
-    CachedFinalityProvider, IPCParentFinality, ParentFinalityProvider, ParentViewProvider,
-    Toggle,
+    CachedFinalityProvider, IPCParentFinality, ParentFinalityProvider, ParentViewProvider, Toggle,
 };
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
@@ -219,12 +218,11 @@ where
                 }
                 IpcMessage::TopDownExec(p) => {
                     if !provider.is_enabled() {
-                        return Err(anyhow!("toggle on ipc top down to process messages"))
+                        return Err(anyhow!("toggle on ipc top down to process messages"));
                     }
 
                     // error happens if we cannot get the validator set from ipc agent after retries
-                    let validator_set = provider.validator_set(p.height as u64)
-                        .await?;
+                    let validator_set = provider.validator_set(p.height as u64).await?;
 
                     let finality = IPCParentFinality {
                         height: p.height as u64,
@@ -240,10 +238,7 @@ where
                     // TODO: execute top down messages,
                     // TODO: see https://github.com/consensus-shipyard/fendermint/issues/241
 
-                    atomically(|| {
-                        provider.set_new_finality(finality.clone())
-                    })
-                    .await;
+                    atomically(|| provider.set_new_finality(finality.clone())).await;
 
                     Ok(((pool, provider, state), ChainMessageApplyRet::Signed(ret)))
                 }

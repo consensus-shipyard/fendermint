@@ -1,11 +1,11 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use anyhow::anyhow;
 use crate::{
     BlockHash, BlockHeight, CachedFinalityProvider, Error, IPCParentFinality,
     ParentFinalityProvider, ParentViewProvider,
 };
+use anyhow::anyhow;
 use async_stm::{Stm, StmResult};
 use ipc_agent_sdk::message::ipc::ValidatorSet;
 use ipc_sdk::cross::CrossMsg;
@@ -25,7 +25,9 @@ impl<P> Toggle<P> {
         Self { inner: Some(inner) }
     }
 
-    pub fn is_enabled(&self) -> bool { self.inner.is_some() }
+    pub fn is_enabled(&self) -> bool {
+        self.inner.is_some()
+    }
 
     fn perform_or_else<F, T, E>(&self, f: F, other: T) -> Result<T, E>
     where

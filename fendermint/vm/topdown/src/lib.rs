@@ -36,8 +36,6 @@ pub struct Config {
     pub polling_interval_secs: u64,
     /// The ipc agent url
     pub ipc_agent_url: String,
-    /// Max block parent view block gap allowed
-    pub max_parent_view_block_gap: BlockHeight,
     /// Top down exponential back off retry base
     pub exponential_back_off_secs: u64,
     /// The max number of retries for exponential backoff before giving up

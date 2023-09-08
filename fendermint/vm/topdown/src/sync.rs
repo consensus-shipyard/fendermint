@@ -19,6 +19,13 @@ use std::cmp::min;
 use std::sync::Arc;
 use std::time::Duration;
 
+/// The max number of blocks polling should query each parent view update. If the number of blocks
+/// polled equals this value, it would stop polling for this iteration and commit the result to cache.
+const MAX_PARENT_VIEW_BLOCK_GAP: BlockHeight = 100;
+/// When polling parent view, if the number of top down messages exceeds this limit,
+/// the polling will stop for this iteration and commit the result to cache.
+const TOPDOWN_MSG_LEN_THRESHOLD: usize = 500;
+
 /// Query the parent finality from the block chain state
 pub trait ParentFinalityStateQuery {
     /// Get the latest committed finality from the state
@@ -58,7 +65,10 @@ pub async fn launch_polling_syncer<Q: ParentFinalityStateQuery + Send + Sync + '
         if finality.height == 0 {
             let genesis_epoch = agent.get_genesis_epoch(subnet_id).await?;
             let block_hash = agent.get_block_hash(genesis_epoch as u64).await?;
-            finality = IPCParentFinality{ height: genesis_epoch as u64, block_hash };
+            finality = IPCParentFinality {
+                height: genesis_epoch as u64,
+                block_hash,
+            };
         }
 
         atomically(|| view_provider.set_new_finality(finality.clone())).await;
@@ -157,10 +167,7 @@ async fn sync_with_parent(
         // we are adding 1 to the height because we are fetching block by block, we also configured
         // the sequential cache to use increment == 1.
         let starting_height = last_recorded_height + 1;
-        let ending_height = min(
-            ending_height,
-            config.max_parent_view_block_gap + starting_height,
-        );
+        let ending_height = min(ending_height, MAX_PARENT_VIEW_BLOCK_GAP + starting_height);
         tracing::debug!("parent view range: {starting_height}-{ending_height}");
 
         let new_parent_views =
@@ -205,6 +212,7 @@ async fn get_new_parent_views(
     end_height: BlockHeight,
 ) -> anyhow::Result<Vec<(BlockHeight, BlockHash, ValidatorSet, Vec<CrossMsg>)>> {
     let mut block_height_to_update = vec![];
+    let mut total_top_down_msgs = 0;
     for h in start_height..=end_height {
         let block_hash = agent_proxy
             .get_block_hash(h)
@@ -218,8 +226,12 @@ async fn get_new_parent_views(
             .get_top_down_msgs(h, h)
             .await
             .context("cannot fetch top down messages")?;
+        total_top_down_msgs += top_down_msgs.len();
 
         block_height_to_update.push((h, block_hash, validator_set, top_down_msgs));
+        if total_top_down_msgs >= TOPDOWN_MSG_LEN_THRESHOLD {
+            break;
+        }
     }
     Ok(block_height_to_update)
 }

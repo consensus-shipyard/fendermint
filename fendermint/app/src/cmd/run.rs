@@ -63,10 +63,13 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
     let (parent_finality_provider, ipc_tuple) = if settings.ipc.is_topdown_enabled() {
         info!("topdown finality enabled");
         let config = settings.ipc.topdown_config()?.clone();
-        let agent_proxy = Arc::new(create_ipc_agent_proxy(&config, settings.ipc.subnet_id.clone())?);
+        let agent_proxy = Arc::new(create_ipc_agent_proxy(
+            &config,
+            settings.ipc.subnet_id.clone(),
+        )?);
         let p = Arc::new(Toggle::enabled(CachedFinalityProvider::uninitialized(
             config.clone(),
-            agent_proxy.clone()
+            agent_proxy.clone(),
         )));
         (p, Some((agent_proxy, config)))
     } else {
