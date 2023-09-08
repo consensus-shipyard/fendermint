@@ -70,3 +70,7 @@ chain_head_delay = 900
 polling_interval_secs = 10
 # The ipc agent url
 ipc_agent_url = "http://127.0.0.1:3030/json_rpc"
+# The max number of retries for exponential backoff before giving up
+exponential_retry_limit = 20
+# Top down exponential back off retry base
+exponential_back_off_secs = 10
