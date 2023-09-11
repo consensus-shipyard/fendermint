@@ -44,8 +44,8 @@ impl From<gateway_getter_facet::ParentFinality> for IPCParentFinality {
 
 /// Converts a Rust type FVM address into its underlying payload
 /// so it can be represented internally in a Solidity contract.
-fn addr_payload_to_bytes(payload: Payload) -> Bytes {
-    match payload {
+fn addr_payload_to_bytes(payload: Payload) -> anyhow::Result<Bytes> {
+    let r = match payload {
         Payload::Secp256k1(v) => ethers::types::Bytes::from(v),
         Payload::Delegated(d) => {
             let addr = d.subaddress();
@@ -56,15 +56,16 @@ fn addr_payload_to_bytes(payload: Payload) -> Bytes {
             ])]);
             ethers::types::Bytes::from(b)
         }
-        _ => unimplemented!("unexpected payload type"),
-    }
+        _ => return Err(anyhow!("unexpected payload type")),
+    };
+    Ok(r)
 }
 
-fn convert_addr(addr: Address) -> gateway_router_facet::FvmAddress {
-    gateway_router_facet::FvmAddress {
+fn convert_addr(addr: Address) -> anyhow::Result<gateway_router_facet::FvmAddress> {
+    Ok(gateway_router_facet::FvmAddress {
         addr_type: addr.protocol() as u8,
-        payload: addr_payload_to_bytes(addr.into_payload()),
-    }
+        payload: addr_payload_to_bytes(addr.into_payload())?,
+    })
 }
 
 pub fn encode_commit_parent_finality_call(
@@ -80,7 +81,7 @@ pub fn encode_commit_parent_finality_call(
     for validator in validators {
         let raw_address = validator.worker_addr.unwrap_or(validator.addr);
         let addr = Address::from_str(&raw_address)?;
-        addresses.push(convert_addr(addr));
+        addresses.push(convert_addr(addr)?);
         weights.push(U256::from_dec_str(&validator.weight)?);
     }
 
