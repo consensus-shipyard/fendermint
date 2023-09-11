@@ -138,15 +138,6 @@ impl CachedFinalityProvider {
         Self::new(config, None, agent)
     }
 
-    /// Creates an initialized provider
-    pub fn initialized(
-        config: Config,
-        committed_finality: IPCParentFinality,
-        agent: Arc<IPCAgentProxy>,
-    ) -> Self {
-        Self::new(config, Some(committed_finality), agent)
-    }
-
     fn new(
         config: Config,
         committed_finality: Option<IPCParentFinality>,
