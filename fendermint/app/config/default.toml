@@ -56,3 +56,17 @@ host = "127.0.0.1"
 # The default port where the Ethereum API will listen to
 # JSON-RPC (POST) and WebSockets (GET) requests.
 port = 8545
+
+# IPC Parent finality related configuration
+[ipc]
+# Subnet id assigned to this fendermint node. Update this to the correct subnet id.
+# TODO: fetch this value from genisis if possible.
+subnet_id = "/r0"
+
+[ipc.config]
+# The number of blocks behind chain head to propose parent finality.
+chain_head_delay = 10
+# The number of seconds to polling ipc agent for latest parent view
+polling_interval_secs = 10
+# The ipc agent url
+ipc_agent_url = "http://127.0.0.1:3030/json_rpc"

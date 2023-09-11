@@ -27,6 +27,7 @@ use fendermint_vm_interpreter::{
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
 use fendermint_vm_message::query::FvmQueryHeight;
+use fendermint_vm_topdown::InMemoryFinalityProvider;
 use fvm::engine::MultiEngine;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::chainid::ChainID;
@@ -135,6 +136,8 @@ where
     interpreter: Arc<I>,
     /// CID resolution pool.
     resolve_pool: CheckpointPool,
+    /// The parent finality provider for top down checkpoint
+    parent_finality_provider: Arc<InMemoryFinalityProvider>,
     /// State accumulating changes during block execution.
     exec_state: Arc<Mutex<Option<FvmExecState<SS>>>>,
     /// Projected (partial) state accumulating during transaction checks.
@@ -161,6 +164,7 @@ where
         state_store: SS,
         interpreter: I,
         resolve_pool: CheckpointPool,
+        parent_finality_provider: Arc<InMemoryFinalityProvider>,
     ) -> Result<Self> {
         let app = Self {
             db: Arc::new(db),
@@ -172,6 +176,7 @@ where
             state_hist_size: config.state_hist_size,
             interpreter: Arc::new(interpreter),
             resolve_pool,
+            parent_finality_provider,
             exec_state: Arc::new(Mutex::new(None)),
             check_state: Arc::new(tokio::sync::Mutex::new(None)),
         };
@@ -333,7 +338,10 @@ where
         Genesis = Vec<u8>,
         Output = FvmGenesisOutput,
     >,
-    I: ProposalInterpreter<State = CheckpointPool, Message = Vec<u8>>,
+    I: ProposalInterpreter<
+        State = (CheckpointPool, Arc<InMemoryFinalityProvider>),
+        Message = Vec<u8>,
+    >,
     I: ExecInterpreter<
         State = (CheckpointPool, FvmExecState<SS>),
         Message = Vec<u8>,
@@ -530,7 +538,13 @@ where
 
         let txs = self
             .interpreter
-            .prepare(self.resolve_pool.clone(), txs)
+            .prepare(
+                (
+                    self.resolve_pool.clone(),
+                    self.parent_finality_provider.clone(),
+                ),
+                txs,
+            )
             .await
             .context("failed to prepare proposal")?;
 
@@ -549,7 +563,13 @@ where
 
         let accept = self
             .interpreter
-            .process(self.resolve_pool.clone(), txs)
+            .process(
+                (
+                    self.resolve_pool.clone(),
+                    self.parent_finality_provider.clone(),
+                ),
+                txs,
+            )
             .await
             .context("failed to process proposal")?;
 

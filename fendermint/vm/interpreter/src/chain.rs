@@ -1,3 +1,4 @@
+use std::sync::Arc;
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 use crate::{
@@ -6,15 +7,18 @@ use crate::{
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
 use anyhow::Context;
-use async_stm::atomically;
+use async_stm::{atomically, atomically_or_err};
 use async_trait::async_trait;
 use fendermint_vm_actor_interface::ipc;
+use fendermint_vm_message::ipc::ParentFinality;
 use fendermint_vm_message::{
     chain::ChainMessage,
     ipc::{BottomUpCheckpoint, CertifiedMessage, IpcMessage, SignedRelayedMessage},
 };
 use fendermint_vm_resolver::pool::{ResolveKey, ResolvePool};
+use fendermint_vm_topdown::{IPCParentFinality, InMemoryFinalityProvider, ParentFinalityProvider};
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
 
@@ -69,7 +73,7 @@ impl<I> ProposalInterpreter for ChainMessageInterpreter<I>
 where
     I: Sync + Send,
 {
-    type State = CheckpointPool;
+    type State = (CheckpointPool, Arc<InMemoryFinalityProvider>);
     type Message = ChainMessage;
 
     /// Check whether there are any "ready" messages in the IPLD resolution mempool which can be appended to the proposal.
@@ -78,9 +82,13 @@ where
     /// account the transactions which are part of top-down or bottom-up checkpoints, to stay within gas limits.
     async fn prepare(
         &self,
-        pool: Self::State,
+        state: Self::State,
         mut msgs: Vec<Self::Message>,
     ) -> anyhow::Result<Vec<Self::Message>> {
+        let (pool, finality_provider) = state;
+
+        // Prepare bottom up proposals
+
         // Collect resolved CIDs ready to be proposed from the pool.
         let ckpts = atomically(|| pool.collect_resolved()).await;
 
@@ -89,32 +97,65 @@ where
             CheckpointPoolItem::BottomUp(ckpt) => ChainMessage::Ipc(IpcMessage::BottomUpExec(ckpt)),
         });
 
+        // Prepare top down proposals
+        match atomically_or_err::<_, fendermint_vm_topdown::Error, _>(|| {
+            finality_provider.next_proposal()
+        })
+        .await?
+        {
+            None => {}
+            Some(proposal) => {
+                msgs.push(ChainMessage::Ipc(IpcMessage::TopDownExec(ParentFinality {
+                    height: proposal.height as ChainEpoch,
+                    block_hash: proposal.block_hash,
+                })))
+            }
+        }
+
         // Append at the end - if we run out of block space, these are going to be reproposed in the next block.
         msgs.extend(ckpts);
         Ok(msgs)
     }
 
     /// Perform finality checks on top-down transactions and availability checks on bottom-up transactions.
-    async fn process(&self, pool: Self::State, msgs: Vec<Self::Message>) -> anyhow::Result<bool> {
+    async fn process(&self, state: Self::State, msgs: Vec<Self::Message>) -> anyhow::Result<bool> {
         for msg in msgs {
-            if let ChainMessage::Ipc(IpcMessage::BottomUpExec(msg)) = msg {
-                let item = CheckpointPoolItem::BottomUp(msg);
+            match msg {
+                ChainMessage::Ipc(IpcMessage::BottomUpExec(msg)) => {
+                    let item = CheckpointPoolItem::BottomUp(msg);
 
-                // We can just look in memory because when we start the application, we should retrieve any
-                // pending checkpoints (relayed but not executed) from the ledger, so they should be there.
-                // We don't have to validate the checkpoint here, because
-                // 1) we validated it when it was relayed, and
-                // 2) if a validator proposes something invalid, we can make them pay during execution.
-                let is_resolved = atomically(|| match pool.get_status(&item)? {
-                    None => Ok(false),
-                    Some(status) => status.is_resolved(),
-                })
-                .await;
+                    // We can just look in memory because when we start the application, we should retrieve any
+                    // pending checkpoints (relayed but not executed) from the ledger, so they should be there.
+                    // We don't have to validate the checkpoint here, because
+                    // 1) we validated it when it was relayed, and
+                    // 2) if a validator proposes something invalid, we can make them pay during execution.
+                    let is_resolved = atomically(|| match state.0.get_status(&item)? {
+                        None => Ok(false),
+                        Some(status) => status.is_resolved(),
+                    })
+                    .await;
 
-                if !is_resolved {
-                    return Ok(false);
+                    if !is_resolved {
+                        return Ok(false);
+                    }
                 }
-            }
+                ChainMessage::Ipc(IpcMessage::TopDownExec(ParentFinality {
+                    height,
+                    block_hash,
+                })) => {
+                    let prop = IPCParentFinality {
+                        height: height as u64,
+                        block_hash,
+                    };
+                    if atomically_or_err(|| state.1.check_proposal(&prop))
+                        .await
+                        .is_err()
+                    {
+                        return Ok(false);
+                    }
+                }
+                _ => {}
+            };
         }
         Ok(true)
     }
@@ -178,7 +219,7 @@ where
                 IpcMessage::BottomUpExec(_) => {
                     todo!("#197: implement BottomUp checkpoint execution")
                 }
-                IpcMessage::TopDown => {
+                IpcMessage::TopDownExec(_) => {
                     todo!("implement TopDown handling; this is just a placeholder")
                 }
             },
@@ -239,7 +280,7 @@ where
 
                         Ok((state, Ok(ret)))
                     }
-                    IpcMessage::TopDown | IpcMessage::BottomUpExec(_) => {
+                    IpcMessage::TopDownExec(_) | IpcMessage::BottomUpExec(_) => {
                         // Users cannot send these messages, only validators can propose them in blocks.
                         Ok((state, Err(IllegalMessage)))
                     }

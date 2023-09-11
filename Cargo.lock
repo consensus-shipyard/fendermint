@@ -2797,12 +2797,14 @@ dependencies = [
  "fendermint_vm_interpreter",
  "fendermint_vm_message",
  "fendermint_vm_resolver",
+ "fendermint_vm_topdown",
  "fvm",
  "fvm_ipld_blockstore",
  "fvm_ipld_car",
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
+ "ipc-agent-sdk",
  "ipc-sdk 0.0.1 (git+https://github.com/consensus-shipyard/ipc-actors.git)",
  "k256 0.11.6",
  "libsecp256k1",
@@ -3041,6 +3043,7 @@ dependencies = [
  "fendermint_vm_ipc_actors",
  "fendermint_vm_message",
  "fendermint_vm_resolver",
+ "fendermint_vm_topdown",
  "futures-core",
  "futures-util",
  "fvm",
@@ -4536,7 +4539,7 @@ dependencies = [
 [[package]]
 name = "ipc-agent-sdk"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=update-sdk#21b84ad8d52f973aa2663f63ab3a5a2b1f5fd4ab"
+source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#2117492a2f0028d44310b91e1eb9c3d689cbf84c"
 dependencies = [
  "anyhow",
  "async-channel",

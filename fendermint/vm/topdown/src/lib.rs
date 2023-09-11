@@ -20,7 +20,7 @@ type BlockHeight = u64;
 type Bytes = Vec<u8>;
 type BlockHash = Bytes;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     /// The number of blocks to delay before reporting a height as final on the parent chain.
     /// To propose a certain number of epochs delayed from the latest height, we see to be
@@ -29,6 +29,8 @@ pub struct Config {
     pub chain_head_delay: BlockHeight,
     /// Parent syncing cron period, in seconds
     pub polling_interval_secs: u64,
+    /// The ipc agent url
+    pub ipc_agent_url: String,
 }
 
 /// The finality view for IPC parent at certain height.
