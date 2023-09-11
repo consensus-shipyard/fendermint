@@ -8,14 +8,16 @@ mod cmd;
 mod options;
 mod settings;
 
-use crate::cmd::set_network;
+use crate::cmd::set_network_from_env;
 use options::Options;
 
 #[tokio::main]
 async fn main() {
-    let opts: Options = Options::parse();
+    // Need to set env before Options is parsed because Options contains fvm Address related
+    // parameter, such as subnet id. Setting the network after Options is parsed will lead to error
+    set_network_from_env().expect("cannot set fvm address network from env");
 
-    set_network(opts.network);
+    let opts: Options = Options::parse();
 
     // Log events to stdout.
     if let Some(level) = opts.tracing_level() {

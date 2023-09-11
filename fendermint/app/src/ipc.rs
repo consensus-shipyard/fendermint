@@ -4,8 +4,7 @@
 
 use crate::app::{AppState, AppStoreKey};
 use crate::{App, BlockHeight};
-use bytes::Bytes;
-use fendermint_rpc::response::decode_fevm_invoke_bytes;
+use anyhow::anyhow;
 use fendermint_storage::{Codec, Encode, KVReadable, KVStore, KVWritable};
 use fendermint_vm_actor_interface::{ipc, system};
 use fendermint_vm_interpreter::fvm::state::FvmStateParams;
@@ -16,7 +15,7 @@ use fendermint_vm_topdown::convert::{
 use fendermint_vm_topdown::sync::ParentFinalityStateQuery;
 use fendermint_vm_topdown::IPCParentFinality;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{BytesSer, RawBytes};
+use fvm_ipld_encoding::{BytesDe, BytesSer, RawBytes};
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
 
@@ -68,7 +67,9 @@ where
             let (apply_ret, _) = exec_state.execute_implicit(msg)?;
 
             let data = apply_ret.msg_receipt.return_data.to_vec();
-            let decoded = decode_fevm_invoke_bytes(&Bytes::from(data))?;
+            let decoded = fvm_ipld_encoding::from_slice::<BytesDe>(&data)
+                .map(|bz| bz.0)
+                .map_err(|e| anyhow!("failed to deserialize bytes returned by FEVM: {e}"))?;
             Some(decode_parent_finality_return(decoded.as_slice())?)
         } else {
             None

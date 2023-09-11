@@ -21,6 +21,9 @@ pub mod key;
 pub mod rpc;
 pub mod run;
 
+/// FVM address network, mainnet is 0
+const TEST_NETWORK: &str = "1";
+
 /// A [`GeneralPurpose`] engine using the [`alphabet::STANDARD`] base64 alphabet
 /// padding bytes when writing but requireing no padding when reading.
 const B64_ENGINE: GeneralPurpose = GeneralPurpose::new(
@@ -111,4 +114,15 @@ fn settings(opts: &Options) -> anyhow::Result<Settings> {
 pub(crate) fn set_network(network: u8) {
     let network = Network::from_u8(network).unwrap();
     set_current_network(network);
+}
+
+pub(crate) fn set_network_from_env() -> anyhow::Result<()> {
+    let network_raw = std::env::var("NETWORK")
+        // default to testnet
+        .unwrap_or_else(|_| String::from(TEST_NETWORK))
+        .parse()?;
+
+    set_network(network_raw);
+
+    Ok(())
 }

@@ -10,14 +10,15 @@ pub mod sync;
 pub mod convert;
 mod toggle;
 
-use async_stm::StmResult;
+use async_stm::Stm;
+use async_trait::async_trait;
 use ipc_agent_sdk::message::ipc::ValidatorSet;
 use ipc_sdk::cross::CrossMsg;
 use serde::{Deserialize, Serialize};
 
 pub use crate::cache::{SequentialAppendError, SequentialKeyCache, ValueIter};
 pub use crate::error::Error;
-pub use crate::finality::InMemoryFinalityProvider;
+pub use crate::finality::CachedFinalityProvider;
 pub use crate::toggle::Toggle;
 
 pub type BlockHeight = u64;
@@ -35,6 +36,10 @@ pub struct Config {
     pub polling_interval_secs: u64,
     /// The ipc agent url
     pub ipc_agent_url: String,
+    /// Top down exponential back off retry base
+    pub exponential_back_off_secs: u64,
+    /// The max number of retries for exponential backoff before giving up
+    pub exponential_retry_limit: usize,
 }
 
 /// The finality view for IPC parent at certain height.
@@ -47,32 +52,19 @@ pub struct IPCParentFinality {
     pub block_hash: BlockHash,
 }
 
+#[async_trait]
 pub trait ParentViewProvider {
-    /// Get the latest height of the parent recorded
-    fn latest_height(&self) -> StmResult<Option<BlockHeight>, Error>;
-    /// Get the block hash at height
-    fn block_hash(&self, height: BlockHeight) -> StmResult<Option<BlockHash>, Error>;
-    /// Get the validator set at height
-    fn validator_set(&self, height: BlockHeight) -> StmResult<Option<ValidatorSet>, Error>;
+    /// Get the validator set at height.
+    async fn validator_set(&self, height: BlockHeight) -> anyhow::Result<ValidatorSet>;
     /// Get the top down messages at height
-    fn top_down_msgs(&self, height: BlockHeight) -> StmResult<Vec<CrossMsg>, Error>;
-    /// There is a new parent view is ready to be updated
-    fn new_parent_view(
-        &self,
-        height: BlockHeight,
-        block_hash: BlockHash,
-        validator_set: ValidatorSet,
-        top_down_msgs: Vec<CrossMsg>,
-    ) -> StmResult<(), Error>;
+    async fn top_down_msgs(&self, height: BlockHeight) -> anyhow::Result<Vec<CrossMsg>>;
 }
 
 pub trait ParentFinalityProvider: ParentViewProvider {
-    /// Obtains the last committed finality
-    fn last_committed_finality(&self) -> StmResult<IPCParentFinality, Error>;
     /// Latest proposal for parent finality
-    fn next_proposal(&self) -> StmResult<Option<IPCParentFinality>, Error>;
+    fn next_proposal(&self) -> Stm<Option<IPCParentFinality>>;
     /// Check if the target proposal is valid
-    fn check_proposal(&self, proposal: &IPCParentFinality) -> StmResult<(), Error>;
+    fn check_proposal(&self, proposal: &IPCParentFinality) -> Stm<bool>;
     /// Called when finality is committed
-    fn set_new_finality(&self, finality: IPCParentFinality) -> StmResult<(), Error>;
+    fn set_new_finality(&self, finality: IPCParentFinality) -> Stm<()>;
 }

@@ -27,7 +27,7 @@ use fendermint_vm_interpreter::{
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
 use fendermint_vm_message::query::FvmQueryHeight;
-use fendermint_vm_topdown::{InMemoryFinalityProvider, Toggle};
+use fendermint_vm_topdown::{CachedFinalityProvider, Toggle};
 use fvm::engine::MultiEngine;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::chainid::ChainID;
@@ -138,7 +138,7 @@ where
     /// CID resolution pool.
     resolve_pool: CheckpointPool,
     /// The parent finality provider for top down checkpoint
-    parent_finality_provider: Arc<Toggle<InMemoryFinalityProvider>>,
+    parent_finality_provider: Arc<Toggle<CachedFinalityProvider>>,
     /// State accumulating changes during block execution.
     exec_state: Arc<Mutex<Option<FvmExecState<SS>>>>,
     /// Projected (partial) state accumulating during transaction checks.
@@ -165,7 +165,7 @@ where
         state_store: SS,
         interpreter: I,
         resolve_pool: CheckpointPool,
-        parent_finality_provider: Arc<Toggle<InMemoryFinalityProvider>>,
+        parent_finality_provider: Arc<Toggle<CachedFinalityProvider>>,
     ) -> Result<Self> {
         let app = Self {
             db: Arc::new(db),
@@ -284,7 +284,7 @@ where
         F: FnOnce(
             (
                 CheckpointPool,
-                Arc<Toggle<InMemoryFinalityProvider>>,
+                Arc<Toggle<CachedFinalityProvider>>,
                 FvmExecState<SS>,
             ),
         ) -> R,
@@ -292,7 +292,7 @@ where
             Output = Result<(
                 (
                     CheckpointPool,
-                    Arc<Toggle<InMemoryFinalityProvider>>,
+                    Arc<Toggle<CachedFinalityProvider>>,
                     FvmExecState<SS>,
                 ),
                 T,
@@ -390,13 +390,13 @@ where
         Output = FvmGenesisOutput,
     >,
     I: ProposalInterpreter<
-        State = (CheckpointPool, Arc<Toggle<InMemoryFinalityProvider>>),
+        State = (CheckpointPool, Arc<Toggle<CachedFinalityProvider>>),
         Message = Vec<u8>,
     >,
     I: ExecInterpreter<
         State = (
             CheckpointPool,
-            Arc<Toggle<InMemoryFinalityProvider>>,
+            Arc<Toggle<CachedFinalityProvider>>,
             FvmExecState<SS>,
         ),
         Message = Vec<u8>,

@@ -120,7 +120,8 @@ pub mod ipc {
     use fendermint_vm_encoding::IsHumanReadable;
     use fvm_shared::econ::TokenAmount;
     use ipc_sdk::subnet_id::SubnetID;
-    use serde::{Deserialize, Serialize};
+    use serde::de::Error;
+    use serde::{Deserialize, Deserializer, Serialize};
     use serde_with::serde_as;
 
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -138,6 +139,15 @@ pub mod ipc {
         #[serde_as(as = "IsHumanReadable")]
         pub msg_fee: TokenAmount,
         pub majority_percentage: u8,
+    }
+
+    /// A serde deserialization method to deserialize a subnet path string into a [`SubnetID`].
+    pub fn deserialize_subnet_id<'de, D>(deserializer: D) -> Result<SubnetID, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.parse::<SubnetID>().map_err(Error::custom)
     }
 }
 

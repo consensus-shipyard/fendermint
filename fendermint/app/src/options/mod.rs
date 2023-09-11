@@ -47,10 +47,6 @@ pub struct Options {
     #[arg(short, long, default_value = "info", value_enum, env = "LOG_LEVEL")]
     pub log_level: LogLevel,
 
-    /// The network env, 1 for test network and 0 for mainnet
-    #[arg(short, long, default_value = "1", value_enum, env = "NETWORK")]
-    pub network: u8,
-
     #[command(subcommand)]
     pub command: Commands,
 }

@@ -3,9 +3,9 @@
 
 use anyhow::anyhow;
 use config::{Config, ConfigError, Environment, File};
+use fendermint_vm_genesis::ipc::deserialize_subnet_id;
 use ipc_sdk::subnet_id::SubnetID;
-use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use serde_with::{serde_as, DurationSeconds};
 use std::{
     path::{Path, PathBuf},
@@ -174,15 +174,6 @@ pub fn expand_tilde<P: AsRef<Path>>(path: P) -> PathBuf {
             }
         })
         .unwrap_or(p)
-}
-
-/// A serde deserialization method to deserialize a subnet path string into a [`SubnetID`].
-pub(crate) fn deserialize_subnet_id<'de, D>(deserializer: D) -> anyhow::Result<SubnetID, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s = String::deserialize(deserializer)?;
-    s.parse::<SubnetID>().map_err(Error::custom)
 }
 
 #[cfg(test)]
