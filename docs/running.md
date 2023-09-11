@@ -162,7 +162,22 @@ If you need ipc related function, let's add the subnet info to the Genesis with 
 cargo run -p fendermint_app --release -- \
       genesis --genesis-file test-network/genesis.json \
       ipc \
-      gateway --subnet-id /r31415926 -b 10 -t 10 -f 1 -m 60;
+      gateway --subnet-id /r31415926 \
+      --bottom-up-check-period 10 --top-down-check-period 10 \
+      --msg-fee 1 --majority-percentage 60;
+```
+Check the result:
+```console
+$ cat test-network/genesis.json | jq .ipc
+{
+  "gateway": {
+    "subnet_id": "/r31415926",
+    "bottom_up_check_period": 10,
+    "top_down_check_period": 10,
+    "msg_fee": "1",
+    "majority_percentage": 60
+  }
+}
 ```
 
 ### Configure CometBFT

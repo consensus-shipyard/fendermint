@@ -6,9 +6,7 @@ use std::path::PathBuf;
 use clap::{Args, Subcommand, ValueEnum};
 use ipc_sdk::subnet_id::SubnetID;
 
-use super::parse::{
-    parse_full_fil, parse_network_version, parse_percentage, parse_subnet_id, parse_token_amount,
-};
+use super::parse::{parse_full_fil, parse_network_version, parse_percentage, parse_token_amount};
 use fvm_shared::{econ::TokenAmount, version::NetworkVersion};
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -123,7 +121,7 @@ pub enum GenesisIpcCommands {
 #[derive(Args, Debug, Clone)]
 pub struct GenesisIpcGatewayArgs {
     /// Set the current subnet ID, which is the path from the root to the subnet actor in the parent.
-    #[arg(long, short, value_parser = parse_subnet_id)]
+    #[arg(long, short)]
     pub subnet_id: SubnetID,
 
     #[arg(long, short)]

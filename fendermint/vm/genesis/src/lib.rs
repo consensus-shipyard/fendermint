@@ -121,7 +121,7 @@ pub mod ipc {
     use fvm_shared::econ::TokenAmount;
     use ipc_sdk::subnet_id::SubnetID;
     use serde::de::Error;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use serde::{Deserialize, Deserializer, Serialize};
     use serde_with::serde_as;
 
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -132,8 +132,7 @@ pub mod ipc {
     #[serde_as]
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
     pub struct GatewayParams {
-        #[serde(deserialize_with = "deserialize_subnet_id")]
-        #[serde(serialize_with = "serialize_subnet_id_to_str")]
+        #[serde_as(as = "IsHumanReadable")]
         pub subnet_id: SubnetID,
         pub bottom_up_check_period: u64,
         pub top_down_check_period: u64,
@@ -149,13 +148,6 @@ pub mod ipc {
     {
         let s = String::deserialize(deserializer)?;
         s.parse::<SubnetID>().map_err(Error::custom)
-    }
-
-    pub fn serialize_subnet_id_to_str<S>(id: &SubnetID, s: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        s.serialize_str(&id.to_string())
     }
 }
 

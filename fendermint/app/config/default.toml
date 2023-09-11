@@ -62,15 +62,3 @@ port = 8545
 # Subnet id assigned to this fendermint node. Update this to the correct subnet id.
 # TODO: fetch this value from genisis if possible.
 subnet_id = "/r0"
-
-[ipc.topdown]
-# The number of blocks behind chain head to propose parent finality.
-chain_head_delay = 900
-# The number of seconds to polling ipc agent for latest parent view
-polling_interval_secs = 10
-# The ipc agent url
-ipc_agent_url = "http://127.0.0.1:3030/json_rpc"
-# The max number of retries for exponential backoff before giving up
-exponential_retry_limit = 20
-# Top down exponential back off retry base
-exponential_back_off_secs = 10

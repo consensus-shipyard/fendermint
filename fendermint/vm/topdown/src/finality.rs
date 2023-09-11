@@ -168,7 +168,9 @@ impl CachedFinalityProvider {
 
     /// Clear the cache and set the committed finality to the provided value
     pub fn reset(&self, finality: IPCParentFinality) -> Stm<()> {
-        self.cached_data.height_data.write(SequentialKeyCache::sequential())?;
+        self.cached_data
+            .height_data
+            .write(SequentialKeyCache::sequential())?;
         self.last_committed_finality.write(Some(finality))
     }
 
@@ -290,7 +292,7 @@ mod tests {
     use std::sync::Arc;
 
     fn mocked_agent_proxy() -> Arc<IPCAgentProxy> {
-        let unqueriable_agent = Arc::new(
+        Arc::new(
             IPCAgentProxy::new(
                 IpcAgentClient::new(JsonRpcClientImpl::new(
                     "http://localhost:3030/json_rpc".parse().unwrap(),
@@ -299,8 +301,7 @@ mod tests {
                 SubnetID::from_str("/r123/f410fgbphbzatgylhgw7u4w5idbc7pwka2upfienikky").unwrap(),
             )
             .unwrap(),
-        );
-        unqueriable_agent
+        )
     }
 
     fn new_provider() -> CachedFinalityProvider {

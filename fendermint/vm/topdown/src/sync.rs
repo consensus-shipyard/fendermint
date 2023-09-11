@@ -38,7 +38,7 @@ pub struct PollingParentSyncer<T> {
     config: Config,
     parent_view_provider: Arc<Toggle<CachedFinalityProvider>>,
     agent: Arc<IPCAgentProxy>,
-    committed_state_query: Arc<T>
+    committed_state_query: Arc<T>,
 }
 
 /// Queries the starting finality for polling. First checks the committed finality, if none, that
@@ -106,7 +106,7 @@ pub async fn launch_polling_syncer<T: ParentFinalityStateQuery + Send + Sync + '
     Ok(())
 }
 
-impl <T> PollingParentSyncer<T> {
+impl<T> PollingParentSyncer<T> {
     pub fn new(
         subnet_id: SubnetID,
         config: Config,
@@ -119,12 +119,12 @@ impl <T> PollingParentSyncer<T> {
             config,
             parent_view_provider,
             agent,
-            committed_state_query: query
+            committed_state_query: query,
         }
     }
 }
 
-impl <T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T> {
+impl<T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T> {
     /// Start the parent finality listener in the background
     pub fn start(self) {
         let config = self.config;
@@ -135,7 +135,8 @@ impl <T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T
 
         tokio::spawn(async move {
             loop {
-                let mut interval = tokio::time::interval(Duration::from_secs(config.polling_interval_secs));
+                let mut interval =
+                    tokio::time::interval(Duration::from_secs(config.polling_interval_secs));
                 interval.tick().await;
 
                 // Syncing with parent with the below steps:
@@ -144,7 +145,9 @@ impl <T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T
                 // 2. Get the latest chain head height deduct away N blocks as the ending height
                 // 3. Fetches the data between starting and ending height
                 // 4. Update the data into cache
-                if let Err(e) = sync_with_parent(&subnet_id, &config, &agent, &provider, &query).await {
+                if let Err(e) =
+                    sync_with_parent(&subnet_id, &config, &agent, &provider, &query).await
+                {
                     tracing::error!("sync with parent encountered error: {e}");
                 }
             }
@@ -178,14 +181,16 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     let ending_height = parent_chain_head_height - config.chain_head_delay;
 
     tracing::debug!(
-            "last recorded height: {}, parent chain head: {}, ending_height: {}",
-            last_recorded_height,
-            parent_chain_head_height,
-            ending_height
-        );
+        "last recorded height: {}, parent chain head: {}, ending_height: {}",
+        last_recorded_height,
+        parent_chain_head_height,
+        ending_height
+    );
 
     if last_recorded_height == ending_height {
-        tracing::debug!("the parent has yet to produce a new block, stops at height: {last_recorded_height}");
+        tracing::debug!(
+            "the parent has yet to produce a new block, stops at height: {last_recorded_height}"
+        );
         return Ok(());
     }
 
@@ -214,7 +219,7 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
         }
         Ok(())
     })
-        .await?;
+    .await?;
 
     tracing::debug!("updated new parent views till height: {ending_height}");
 
