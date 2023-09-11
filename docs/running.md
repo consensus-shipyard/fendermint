@@ -164,7 +164,7 @@ cargo run -p fendermint_app --release -- \
       ipc \
       gateway --subnet-id /r31415926 \
       --bottom-up-check-period 10 --top-down-check-period 10 \
-      --msg-fee 1 --majority-percentage 60;
+      --msg-fee 1 --majority-percentage 65;
 ```
 Check the result:
 ```console
