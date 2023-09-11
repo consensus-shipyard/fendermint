@@ -39,20 +39,25 @@ macro_rules! retry {
     ($wait:expr, $retires:expr, $f:expr) => {{
         let mut retries = $retires;
         let mut wait = $wait;
+
         loop {
-            match $f {
-                Err(e) => {
-                    tracing::warn!(
-                        "cannot query ipc agent due to: {e}, retires: {retries}, wait: {wait}"
-                    );
-                    if retries > 0 {
-                        retries -= 1;
-                        tokio::time::sleep(Duration::from_secs(wait)).await;
-                        wait *= 2;
-                    }
+            let res = $f;
+            if let Err(e) = &res {
+                tracing::warn!(
+                    "cannot query ipc agent due to: {e}, retires: {retries}, wait: {wait}"
+                );
+                if retries > 0 {
+                    retries -= 1;
+
+                    let to_sleep = Duration::from_secs(wait);
+                    tokio::time::sleep(to_sleep).await;
+
+                    wait *= 2;
+                    continue;
                 }
-                res => break res,
             }
+
+            break res;
         }
     }};
 }
@@ -289,7 +294,9 @@ mod tests {
     use ipc_sdk::cross::{CrossMsg, StorableMsg};
     use ipc_sdk::subnet_id::SubnetID;
     use std::str::FromStr;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use tokio::time::Duration;
 
     fn mocked_agent_proxy() -> Arc<IPCAgentProxy> {
         Arc::new(
@@ -540,5 +547,28 @@ mod tests {
         })
         .await
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_retry() {
+        struct Test {
+            nums_run: AtomicUsize,
+        }
+
+        impl Test {
+            async fn run(&self) -> Result<(), &'static str> {
+                self.nums_run.fetch_add(1, Ordering::SeqCst);
+                Err("mocked error")
+            }
+        }
+
+        let t = Test {
+            nums_run: AtomicUsize::new(0),
+        };
+
+        let res = retry!(1, 2, t.run().await);
+        assert!(res.is_err());
+        // execute the first time, retries twice
+        assert_eq!(t.nums_run.load(Ordering::SeqCst), 3);
     }
 }

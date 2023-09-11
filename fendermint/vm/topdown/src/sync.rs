@@ -139,12 +139,6 @@ impl<T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T>
                     tokio::time::interval(Duration::from_secs(config.polling_interval_secs));
                 interval.tick().await;
 
-                // Syncing with parent with the below steps:
-                // 1. Get the latest height in cache or latest height committed increment by 1 as the
-                //    starting height
-                // 2. Get the latest chain head height deduct away N blocks as the ending height
-                // 3. Fetches the data between starting and ending height
-                // 4. Update the data into cache
                 if let Err(e) =
                     sync_with_parent(&subnet_id, &config, &agent, &provider, &query).await
                 {
@@ -155,6 +149,12 @@ impl<T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T>
     }
 }
 
+/// Syncing with parent with the below steps:
+/// 1. Get the latest height in cache or latest height committed increment by 1 as the
+///    starting height
+/// 2. Get the latest chain head height deduct away N blocks as the ending height
+/// 3. Fetches the data between starting and ending height
+/// 4. Update the data into cache
 async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     subnet_id: &SubnetID,
     config: &Config,
@@ -178,6 +178,7 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
         tracing::debug!("latest height not more than the chain head delay");
         return Ok(());
     }
+
     let ending_height = parent_chain_head_height - config.chain_head_delay;
 
     tracing::debug!(
