@@ -18,14 +18,14 @@ use crate::{
 };
 
 cmd! {
-  KeyArgs(self) {
-    match &self.command {
-        KeyCommands::Gen(args) => args.exec(()).await,
-        KeyCommands::IntoTendermint(args) => args.exec(()).await,
-        KeyCommands::AddPeer(args) => args.exec(()).await,
-        KeyCommands::Address(args) => args.exec(()).await,
+    KeyArgs(self) {
+        match &self.command {
+            KeyCommands::Gen(args) => args.exec(()).await,
+            KeyCommands::IntoTendermint(args) => args.exec(()).await,
+            KeyCommands::AddPeer(args) => args.exec(()).await,
+            KeyCommands::Address(args) => args.exec(()).await,
+        }
     }
-  }
 }
 
 cmd! {
@@ -71,34 +71,35 @@ cmd! {
 }
 
 cmd! {
-  AddPeer(self) {
-    let node_key = NodeKey::load_json_file(&self.node_key_file).context("failed to read node key file")?;
-    let peer_id = format!("{}@{}", node_key.node_id(), self.network_addr);
-    let peers = std::fs::read_to_string(&self.local_peers_file).context("failed to read peer file");
-    match peers {
-        Ok(mut v) => {
-            if v.is_empty()  {
+    AddPeer(self) {
+        let node_key = NodeKey::load_json_file(&self.node_key_file).context("failed to read node key file")?;
+        let peer_id = format!("{}@{}", node_key.node_id(), self.network_addr);
+        let peers = std::fs::read_to_string(&self.local_peers_file).context("failed to read peer file");
+        match peers {
+            Ok(mut v) => {
+                if v.is_empty()  {
+                    std::fs::write(&self.local_peers_file, peer_id)?;
+                } else {
+                    v.push_str(",");
+                    v.push_str(peer_id.as_str());
+                    std::fs::write(&self.local_peers_file, v)?;
+                }
+            }
+            Err(_) => {
                 std::fs::write(&self.local_peers_file, peer_id)?;
-            } else {
-                v.push("," + peer_id.as_str());
-                std::fs::write(&self.local_peers_file, v)?;
             }
         }
-        Err(_) => {
-                std::fs::write(&self.local_peers_file, peer_id)?;
-            }
-        }
-    Ok(())
+        Ok(())
   }
 }
 
 cmd! {
-  KeyAddressArgs(self) {
-    let pk = read_public_key(&self.public_key)?;
-    let addr = Address::new_secp256k1(&pk.serialize())?;
-    println!("{}", addr);
-    Ok(())
-  }
+    KeyAddressArgs(self) {
+        let pk = read_public_key(&self.public_key)?;
+        let addr = Address::new_secp256k1(&pk.serialize())?;
+        println!("{}", addr);
+        Ok(())
+    }
 }
 
 fn secret_to_b64(sk: &SecretKey) -> String {
