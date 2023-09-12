@@ -79,7 +79,7 @@ cmd! {
         if peers.is_empty()  {
             peers.push_str(&peer_id);
         } else {
-            peers.push_str(",");
+            peers.push(',');
             peers.push_str(peer_id.as_str());
         }
 
