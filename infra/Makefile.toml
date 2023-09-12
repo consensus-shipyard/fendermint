@@ -251,6 +251,7 @@ dependencies = [
 script = """
 export CMT_PERSISTENT_PEERS=`cat $BASE_TESTNET_DIR/peers`
 export CHAIN_NAME=$CHAIN_NAME
+export BASE_TESTNET_DIR=$BASE_TESTNET_DIR
 docker compose -f ./infra/docker-compose.yml up -d
 """
 

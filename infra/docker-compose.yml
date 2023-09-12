@@ -13,7 +13,7 @@ services:
       - CMT_PROXY_APP=tcp://fendermint-node0:26658
       - CMT_PERSISTENT_PEERS="${CMT_PERSISTENT_PEERS}"
     volumes:
-      - ${HOME}/.ipc-testnet/node0/cometbft:/cometbft
+      - $BASE_TESTNET_DIR/node0/cometbft:/cometbft
     healthcheck:
       test: curl --fail http://localhost:26657 || exit 1
       interval: 8s
@@ -35,7 +35,7 @@ services:
       - CMT_PERSISTENT_PEERS="${CMT_PERSISTENT_PEERS}"
       - CMT_PROXY_APP=tcp://fendermint-node1:26658
     volumes:
-      - ${HOME}/.ipc-testnet/node1/cometbft:/cometbft
+      - $BASE_TESTNET_DIR/node1/cometbft:/cometbft
     healthcheck:
       test: curl --fail http://localhost:26657 || exit 1
       interval: 8s
@@ -57,7 +57,7 @@ services:
     ports:
       - "26661-26662:26656-26657"
     volumes:
-      - ${HOME}/.ipc-testnet/node2/cometbft:/cometbft
+      - $BASE_TESTNET_DIR/node2/cometbft:/cometbft
     healthcheck:
       test: curl --fail http://localhost:26657 || exit 1
       interval: 8s
@@ -78,7 +78,7 @@ services:
     ports:
       - "26663-26664:26656-26657"
     volumes:
-      - ${HOME}/.ipc-testnet/node3/cometbft:/cometbft
+      - $BASE_TESTNET_DIR/node3/cometbft:/cometbft
     healthcheck:
       test: curl --fail http://localhost:26657 || exit 1
       interval: 8s
@@ -98,7 +98,7 @@ services:
       - FM_CHAIN_NAME=$CHAIN_NAME
       - LOG_LEVEL=info
     volumes:
-      - ${HOME}/.ipc-testnet/node0:/data
+      - $BASE_TESTNET_DIR/node0:/data
     networks:
       localnet:
         ipv4_address: 192.167.10.6
@@ -113,7 +113,7 @@ services:
       - FM_CHAIN_NAME=$CHAIN_NAME
       - LOG_LEVEL=info
     volumes:
-      - ${HOME}/.ipc-testnet/node1:/data
+      - $BASE_TESTNET_DIR/node1:/data
     networks:
       localnet:
         ipv4_address: 192.167.10.7
@@ -128,7 +128,7 @@ services:
       - FM_CHAIN_NAME=$CHAIN_NAME
       - LOG_LEVEL=info
     volumes:
-      - ${HOME}/.ipc-testnet/node2:/data
+      - $BASE_TESTNET_DIR/node2:/data
     networks:
       localnet:
         ipv4_address: 192.167.10.8
@@ -143,7 +143,7 @@ services:
       - FM_CHAIN_NAME=$CHAIN_NAME
       - LOG_LEVEL=info
     volumes:
-      - ${HOME}/.ipc-testnet/node3:/data
+      - $BASE_TESTNET_DIR/node3:/data
     networks:
       localnet:
         ipv4_address: 192.167.10.9
@@ -161,7 +161,7 @@ services:
     ports:
       - 8545:8545
     volumes:
-      - ${HOME}/.ipc-testnet/node0:/data
+      - $BASE_TESTNET_DIR/node0:/data
     depends_on:
       cometbft-node0:
         condition: service_healthy
@@ -182,7 +182,7 @@ services:
     ports:
       - 8546:8545
     volumes:
-      - ${HOME}/.ipc-testnet/node1:/data
+      - $BASE_TESTNET_DIR/node1:/data
     depends_on:
       cometbft-node1:
         condition: service_healthy
@@ -203,7 +203,7 @@ services:
     ports:
       - 8547:8545
     volumes:
-      - ${HOME}/.ipc-testnet/node2:/data
+      - $BASE_TESTNET_DIR/node2:/data
     depends_on:
       cometbft-node2:
         condition: service_healthy
@@ -224,7 +224,7 @@ services:
     ports:
       - 8548:8545
     volumes:
-      - ${HOME}/.ipc-testnet/node3:/data
+      - $BASE_TESTNET_DIR/node3:/data
     depends_on:
       cometbft-node2:
         condition: service_healthy
