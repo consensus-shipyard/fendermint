@@ -3,7 +3,7 @@ version: '3'
 services:
   cometbft-node0:
     container_name: cometbft-node0
-    image: "cometbft/cometbft:v0.37.x"
+    image: "cometbft/cometbft:${COMETBFT_VERSION}"
     ports:
       - "26656-26657:26656-26657"
     environment:
@@ -25,7 +25,7 @@ services:
 
   cometbft-node1:
     container_name: cometbft-node1
-    image: "cometbft/cometbft:v0.37.x"
+    image: "cometbft/cometbft:${COMETBFT_VERSION}"
     ports:
       - "26659-26660:26656-26657"
     environment:
@@ -47,7 +47,7 @@ services:
 
   cometbft-node2:
     container_name: cometbft-node2
-    image: "cometbft/cometbft:v0.37.x"
+    image: "cometbft/cometbft:${COMETBFT_VERSION}"
     environment:
       - ID=2
       - LOG=${LOG:-cometbft-node2.log}
@@ -69,7 +69,7 @@ services:
 
   cometbft-node3:
     container_name: cometbft-node3
-    image: "cometbft/cometbft:v0.37.x"
+    image: "cometbft/cometbft:${COMETBFT_VERSION}"
     environment:
       - ID=3
       - LOG=${LOG:-cometbft-node3.log}
@@ -91,8 +91,6 @@ services:
   fendermint-node0:
     container_name: fendermint-node0
     image: "fendermint:latest"
-    build:
-      context: .
     environment:
       - FM_DATA_DIR=/data/fendermint/data
       - FM_CHAIN_NAME=$CHAIN_NAME
@@ -106,8 +104,6 @@ services:
   fendermint-node1:
     container_name: fendermint-node1
     image: "fendermint:latest"
-    build:
-      context: .
     environment:
       - FM_DATA_DIR=/data/fendermint/data
       - FM_CHAIN_NAME=$CHAIN_NAME
@@ -121,8 +117,6 @@ services:
   fendermint-node2:
     container_name: fendermint-node2
     image: "fendermint:latest"
-    build:
-      context: .
     environment:
       - FM_DATA_DIR=/data/fendermint/data
       - FM_CHAIN_NAME=$CHAIN_NAME
@@ -136,8 +130,6 @@ services:
   fendermint-node3:
     container_name: fendermint-node3
     image: "fendermint:latest"
-    build:
-      context: .
     environment:
       - FM_DATA_DIR=/data/fendermint/data
       - FM_CHAIN_NAME=$CHAIN_NAME
@@ -152,8 +144,6 @@ services:
     container_name: ethapi-node0
     image: "fendermint:latest"
     command: "eth run"
-    build:
-      context: .
     environment:
       - TENDERMINT_WS_URL=ws://cometbft-node0:26657/websocket
       - LOG_LEVEL=debug
@@ -173,8 +163,6 @@ services:
     container_name: ethapi-node1
     image: "fendermint:latest"
     command: "eth run"
-    build:
-      context: .
     environment:
       - TENDERMINT_WS_URL=ws://cometbft-node1:26657/websocket
       - LOG_LEVEL=debug
@@ -194,8 +182,6 @@ services:
     container_name: ethapi-node2
     image: "fendermint:latest"
     command: "eth run"
-    build:
-      context: .
     environment:
       - TENDERMINT_WS_URL=ws://cometbft-node2:26657/websocket
       - LOG_LEVEL=debug
@@ -215,8 +201,6 @@ services:
     container_name: ethapi-node3
     image: "fendermint:latest"
     command: "eth run"
-    build:
-      context: .
     environment:
       - TENDERMINT_WS_URL=ws://cometbft-node3:26657/websocket
       - LOG_LEVEL=debug
