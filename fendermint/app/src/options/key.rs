@@ -13,7 +13,7 @@ pub enum KeyCommands {
     IntoTendermint(KeyIntoTendermintArgs),
     /// Convert a public key file from base64 into an f1 Address format an print it to STDOUT.
     Address(KeyAddressArgs),
-    /// TBD
+    /// Get the peer ID corresponding to a node ID and its network address and print it to a local file.
     AddPeer(AddPeer),
 }
 
