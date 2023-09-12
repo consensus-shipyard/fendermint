@@ -74,21 +74,16 @@ cmd! {
     AddPeer(self) {
         let node_key = NodeKey::load_json_file(&self.node_key_file).context("failed to read node key file")?;
         let peer_id = format!("{}@{}", node_key.node_id(), self.network_addr);
-        let peers = std::fs::read_to_string(&self.local_peers_file).context("failed to read peer file");
-        match peers {
-            Ok(mut v) => {
-                if v.is_empty()  {
-                    std::fs::write(&self.local_peers_file, peer_id)?;
-                } else {
-                    v.push_str(",");
-                    v.push_str(peer_id.as_str());
-                    std::fs::write(&self.local_peers_file, v)?;
-                }
-            }
-            Err(_) => {
-                std::fs::write(&self.local_peers_file, peer_id)?;
-            }
+        let mut peers = std::fs::read_to_string(&self.local_peers_file).unwrap_or_default();
+
+        if peers.is_empty()  {
+            peers.push_str(&peer_id);
+        } else {
+            peers.push_str(",");
+            peers.push_str(peer_id.as_str());
         }
+
+        std::fs::write(&self.local_peers_file, peers).context("failed to write to the peers file")?;
         Ok(())
   }
 }

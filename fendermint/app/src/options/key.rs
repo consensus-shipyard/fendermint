@@ -26,12 +26,14 @@ pub struct KeyArgs {
 #[derive(Args, Debug)]
 pub struct AddPeer {
     /// The path to a CometBFT node key file.
-    #[arg(long, short)]
+    #[arg(long, short = 'n')]
     pub node_key_file: PathBuf,
-    /// The path to a local file with persistent peers.
+    /// The path to a temporal local file where the peer IDs will be added.
+    /// The file will be created if it doesn't exist.
     #[arg(long, short)]
     pub local_peers_file: PathBuf,
-    /// The path to a local file with persistent peers.
+    /// The target CometBFT node network interface in the following format `IP:Port`.
+    /// For example: `192.168.10.7:26656`.
     #[arg(long, short)]
     pub network_addr: String,
 }

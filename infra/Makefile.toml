@@ -249,8 +249,8 @@ dependencies = [
 
 [tasks.testnet-up]
 script = """
-export =`cat $BASE_TESTNET_DIR/peers`
-docker compose -f ./fendermint/infra/docker-compose.yml up -d
+export CMT_PERSISTENT_PEERS=`cat $BASE_TESTNET_DIR/peers`
+docker compose -f ./infra/docker-compose.yml up -d
 """
 
 [tasks.testnet-down]
@@ -261,7 +261,7 @@ dependencies = [
 
 [tasks.testnet-docker-compose-down]
 script = """
-docker compose -f ./fendermint/infra/docker-compose.yml down
+docker compose -f ./infra/docker-compose.yml down
 """
 
 [tasks.testnet-init]
