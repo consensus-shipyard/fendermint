@@ -123,3 +123,27 @@ pub enum Commands {
     /// Subcommands related to the Ethereum API facade.
     Eth(EthArgs),
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::*;
+    use clap::Parser;
+    use fvm_shared::address::Network;
+
+    #[test]
+    fn parse_global() {
+        let cmd = "fendermint --network testnet genesis --genesis-file ./genesis.json ipc gateway --subnet-id /r123/t0456 -b 10 -t 10 -f 10 -m 65";
+        let opts: GlobalOptions = GlobalOptions::parse_from(cmd.split_ascii_whitespace());
+        assert_eq!(opts.global.network, Network::Testnet);
+    }
+
+    #[test]
+    fn ignore_help() {
+        let cmd = "fendermint --help";
+        let _opts: GlobalOptions = GlobalOptions::parse_from(cmd.split_ascii_whitespace());
+
+        // The following would print the help in tests and quit.
+        // I'm not sure what's the best way to test that this is not happening, besides eyeballing the output.
+        // let _opts: Options = Options::parse_from(cmd.split_ascii_whitespace());
+    }
+}
