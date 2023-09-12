@@ -5,8 +5,6 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
-use crate::settings::expand_tilde;
-
 use self::{eth::EthArgs, genesis::GenesisArgs, key::KeyArgs, rpc::RpcArgs, run::RunArgs};
 
 pub mod eth;
@@ -65,7 +63,7 @@ impl Options {
     }
 
     pub fn config_dir(&self) -> PathBuf {
-        expand_tilde(self.home_dir.join("config"))
+        self.home_dir.join("config")
     }
 }
 

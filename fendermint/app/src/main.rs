@@ -4,11 +4,11 @@
 use clap::Parser;
 use tracing_subscriber::FmtSubscriber;
 
-mod cmd;
-mod options;
-mod settings;
+pub use fendermint_app_options as options;
+use fendermint_app_options::Options;
 
-use options::Options;
+mod cmd;
+mod settings;
 
 #[tokio::main]
 async fn main() {
