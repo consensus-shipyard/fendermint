@@ -2,7 +2,7 @@
 
 Prerequisites:
 ```bash
-make build
+make build docker-build
 ```
 
 ## Single node deployment
