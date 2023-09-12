@@ -2742,7 +2742,6 @@ dependencies = [
  "base64 0.21.2",
  "bytes",
  "cid",
- "clap 4.3.23",
  "config 0.13.3",
  "dirs",
  "fendermint_abci",

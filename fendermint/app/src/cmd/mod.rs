@@ -5,7 +5,7 @@
 
 use crate::{
     options::{Commands, Options},
-    settings::{Settings, expand_tilde},
+    settings::{expand_tilde, Settings},
 };
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
