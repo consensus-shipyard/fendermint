@@ -51,4 +51,5 @@ The deployment process is as follows:
 - Create the `genesis` file for Fendermint
 - Share the genesis among all Fendermint nodes
 - Run Fendermint application in 4 containers
+- Run CometBFT in 4 containers
 - Run Eth API in 4 containers
