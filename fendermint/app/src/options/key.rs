@@ -25,7 +25,7 @@ pub struct KeyArgs {
 
 #[derive(Args, Debug)]
 pub struct AddPeer {
-    /// The path to node key file.
+    /// The path to a CometBFT node key file.
     #[arg(long, short)]
     pub node_key_file: PathBuf,
     /// The path to a local file with persistent peers.
