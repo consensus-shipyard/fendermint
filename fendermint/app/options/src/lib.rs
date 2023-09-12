@@ -3,7 +3,8 @@
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use fvm_shared::address::Network;
 
 use self::{eth::EthArgs, genesis::GenesisArgs, key::KeyArgs, rpc::RpcArgs, run::RunArgs};
 
@@ -15,6 +16,19 @@ pub mod run;
 
 mod parse;
 
+use parse::parse_network;
+
+/// Parse the main arguments by:
+/// 1. Parsing the [GlobalOptions]
+/// 2. Setting any system wide parameters based on the globals
+/// 3. Parsing and returning the final [Options]
+pub fn parse() -> Options {
+    let opts: GlobalOptions = GlobalOptions::parse();
+    fvm_shared::address::set_current_network(opts.global.network);
+    let opts: Options = Options::parse();
+    opts
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 pub enum LogLevel {
     Off,
@@ -23,6 +37,30 @@ pub enum LogLevel {
     Info,
     Debug,
     Trace,
+}
+
+/// Options which set some global value that affects the parsing of other options.
+#[derive(Args, Debug)]
+pub struct GlobalArgs {
+    /// Set the FVM Network.
+    #[arg(short, long, default_value = "mainnet", env = "FVM_NETWORK", value_parser = parse_network)]
+    pub network: Network,
+}
+
+/// A version of options that does partial matching on the arguments, with its only interest
+/// being the capture of global parameters that need to take effect first, before we parse [Options].
+///
+/// This one doesn't handle `--help` or `help` so that it is passed on to the next parser,
+/// where the full set of commands and arguments can be printed properly.
+#[derive(Parser, Debug)]
+#[command(version, disable_help_flag = true)]
+pub struct GlobalOptions {
+    #[command(flatten)]
+    pub global: GlobalArgs,
+
+    /// Capture all the normal commands, basically to ingore them.
+    #[arg(allow_hyphen_values = true, trailing_var_arg = true)]
+    pub cmd: Vec<String>,
 }
 
 #[derive(Parser, Debug)]
@@ -44,6 +82,10 @@ pub struct Options {
     /// Set the logging level.
     #[arg(short, long, default_value = "info", value_enum, env = "LOG_LEVEL")]
     pub log_level: LogLevel,
+
+    /// Global options repeated here for discoverability.
+    #[command(flatten)]
+    pub global: GlobalArgs,
 
     #[command(subcommand)]
     pub command: Commands,
