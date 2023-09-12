@@ -80,7 +80,7 @@ cmd! {
             if v.is_empty()  {
                 std::fs::write(&self.local_peers_file, peer_id)?;
             } else {
-                v = v.to_owned().to_string()+ "," + peer_id.as_str();
+                v.push("," + peer_id.as_str());
                 std::fs::write(&self.local_peers_file, v)?;
             }
         }
