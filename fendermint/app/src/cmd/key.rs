@@ -73,7 +73,7 @@ cmd! {
 cmd! {
   AddPeer(self) {
     let node_key = NodeKey::load_json_file(&self.node_key_file).unwrap();
-    let peer_id : String = node_key.node_id().to_owned().to_string()+"@"+self.network_addr.as_str();
+    let peer_id = format!("{}@{}", node_key.node_id(), self.network_addr);
     let peers = std::fs::read_to_string(&self.local_peers_file).context("failed to read peer file");
     match peers {
         Ok(mut v) => {
