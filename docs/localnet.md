@@ -41,7 +41,7 @@ ETH-API is accessible on the following interfaces:
 - `192.167.10.12:8545`
 - `192.167.10.13:8545`
 
-## Development
+## Deployment process
 
 The deployment process is as follows:
 - Remove all docker containers, files, networks, etc. from the previous deployment
