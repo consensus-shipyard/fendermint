@@ -95,7 +95,7 @@ services:
       context: .
     environment:
       - FM_DATA_DIR=/data/fendermint/data
-      - FM_CHAIN_NAME=root
+      - FM_CHAIN_NAME=$CHAIN_NAME
       - LOG_LEVEL=info
     volumes:
       - ${HOME}/.ipc-testnet/node0:/data
@@ -110,7 +110,7 @@ services:
       context: .
     environment:
       - FM_DATA_DIR=/data/fendermint/data
-      - FM_CHAIN_NAME=root
+      - FM_CHAIN_NAME=$CHAIN_NAME
       - LOG_LEVEL=info
     volumes:
       - ${HOME}/.ipc-testnet/node1:/data
@@ -125,7 +125,7 @@ services:
       context: .
     environment:
       - FM_DATA_DIR=/data/fendermint/data
-      - FM_CHAIN_NAME=root
+      - FM_CHAIN_NAME=$CHAIN_NAME
       - LOG_LEVEL=info
     volumes:
       - ${HOME}/.ipc-testnet/node2:/data
@@ -140,7 +140,7 @@ services:
       context: .
     environment:
       - FM_DATA_DIR=/data/fendermint/data
-      - FM_CHAIN_NAME=root
+      - FM_CHAIN_NAME=$CHAIN_NAME
       - LOG_LEVEL=info
     volumes:
       - ${HOME}/.ipc-testnet/node3:/data
