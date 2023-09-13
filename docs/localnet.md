@@ -33,13 +33,19 @@ cargo make --makefile ./infra/Makefile.toml testnet-down
 ```
 
 The testnet contains four logical nodes. Each node consists of cometbft, fendermint, and ethapi containers.
-The testnet internal network is `192.167.10.0/24`.
+The Docker internal network is `192.167.10.0/24`.
 
-ETH-API is accessible on the following interfaces:
+ETH-API is accessible on the following interfaces on the Docker internal network:
 - `192.167.10.10:8545`
 - `192.167.10.11:8545`
 - `192.167.10.12:8545`
 - `192.167.10.13:8545`
+
+and on the following interfaces from the host machine:
+- `127.0.0.1:8545`
+- `127.0.0.1:8546`
+- `127.0.0.1:8547`
+- `127.0.0.1:8548`
 
 ## Deployment process
 
