@@ -81,8 +81,8 @@ where
 /// Parse the FVM network and set the global value.
 pub fn parse_network(s: &str) -> Result<Network, String> {
     match s.to_lowercase().as_str() {
-        "main" | "mainnet" => Ok(Network::Mainnet),
-        "test" | "testnet" => Ok(Network::Testnet),
+        "main" | "mainnet" | "f" => Ok(Network::Mainnet),
+        "test" | "testnet" | "t" => Ok(Network::Testnet),
         n => {
             let n: u8 = n
                 .parse()
