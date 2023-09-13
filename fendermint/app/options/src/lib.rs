@@ -39,16 +39,16 @@ pub enum LogLevel {
     Trace,
 }
 
-/// Options which set some global value that affects the parsing of other options.
 #[derive(Args, Debug)]
 pub struct GlobalArgs {
-    /// Set the FVM Network.
-    #[arg(short, long, default_value = "mainnet", env = "FVM_NETWORK", value_parser = parse_network)]
+    /// Set the FVM Address Network. It's value affects whether `f` (main) or `t` (test) prefixed addresses are accepted.
+    #[arg(short, long, default_value = "mainnet", env = "FM_NETWORK", value_parser = parse_network)]
     pub network: Network,
 }
 
 /// A version of options that does partial matching on the arguments, with its only interest
-/// being the capture of global parameters that need to take effect first, before we parse [Options].
+/// being the capture of global parameters that need to take effect first, before we parse [Options],
+/// because their value affects how others arse parsed.
 ///
 /// This one doesn't handle `--help` or `help` so that it is passed on to the next parser,
 /// where the full set of commands and arguments can be printed properly.
@@ -83,7 +83,7 @@ pub struct Options {
     #[arg(short, long, default_value = "info", value_enum, env = "LOG_LEVEL")]
     pub log_level: LogLevel,
 
-    /// Global options repeated here for discoverability.
+    /// Global options repeated here for discoverability, so they show up in `--help` among the others.
     #[command(flatten)]
     pub global: GlobalArgs,
 
@@ -112,7 +112,7 @@ impl Options {
 #[allow(clippy::large_enum_variant)]
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Run the [`App`], listening to ABCI requests from Tendermint.
+    /// Run the `App`, listening to ABCI requests from Tendermint.
     Run(RunArgs),
     /// Subcommands related to the construction of signing keys.
     Key(KeyArgs),
