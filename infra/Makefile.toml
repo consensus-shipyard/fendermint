@@ -166,21 +166,25 @@ run_task = { name = [
   "network-rm",
 ]}
 
+# This task create all necessary data structures to run Fendermint:
+# the genesis file with necessary entities and cryptographic keys.
 [tasks.node-config]
 dependencies = [
-  "fendermint-newgenesis",
-  "fendermint-newkey",
-  "fendermint-newaccount",
-  "fendermint-newgateway",
+  "fendermint-new-genesis",
+  "fendermint-new-key",
+  "fendermint-new-account",
+  "fendermint-add-validator",
+  "fendermint-new-gateway",
+  "fendermint-export-keys"
 ]
 
-[tasks.fendermint-newgenesis]
+[tasks.fendermint-new-genesis]
 cwd = "./target/release"
 script = """
 ./fendermint genesis --genesis-file ${GENESIS_FILE} new --chain-name ${CHAIN_NAME} --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP}
 """
 
-[tasks.fendermint-newkey]
+[tasks.fendermint-new-key]
 cwd = "./target/release"
 script="""
 mkdir -p $KEYS_DIR
@@ -189,24 +193,32 @@ mkdir -p $KEYS_DIR
 chmod 600 ${PRIV_KEY_PATH}
 """
 
-[tasks.fendermint-newaccount]
+[tasks.fendermint-new-account]
 cwd = "./target/release"
 script="""
 ./fendermint genesis --genesis-file ${GENESIS_FILE} add-account --public-key ${PUB_KEY_PATH} --balance ${BALANCE}
 """
 
 
-[tasks.fendermint-newgateway]
+[tasks.fendermint-add-validator]
 cwd = "./target/release"
 script = """
 ./fendermint genesis --genesis-file ${GENESIS_FILE} add-validator --public-key ${PUB_KEY_PATH} --power 1
+"""
 
+[tasks.fendermint-new-gateway]
+cwd = "./target/release"
+script = """
 ./fendermint genesis --genesis-file ${GENESIS_FILE} ipc gateway --subnet-id /r0 \
     --top-down-check-period 10 \
     --bottom-up-check-period 10 \
     --msg-fee 10 \
     --majority-percentage 66
+"""
 
+[tasks.fendermint-export-keys]
+cwd = "./target/release"
+script = """
 ./fendermint genesis --genesis-file ${GENESIS_FILE} into-tendermint --out ${CMT_DIR}/config/genesis.json
 
 ./fendermint key into-tendermint --secret-key ${PRIV_KEY_PATH} --out ${CMT_DIR}/config/priv_validator_key.json

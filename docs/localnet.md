@@ -33,7 +33,7 @@ cargo make --makefile ./infra/Makefile.toml testnet-down
 ```
 
 The testnet contains four logical nodes. Each node consists of cometbft, fendermint, and ethapi containers.
-The testnet network is `192.167.10.0/24`.
+The testnet internal network is `192.167.10.0/24`.
 
 ETH-API is accessible on the following interfaces:
 - `192.167.10.10:8545`
