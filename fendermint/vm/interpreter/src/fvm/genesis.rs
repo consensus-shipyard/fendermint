@@ -476,6 +476,8 @@ mod tests {
         // Make sure we have IPC enabled.
         genesis.ipc = Some(IpcParams::arbitrary(&mut g));
 
+        eprintln!("genesis = {genesis:?}");
+
         let bundle = std::fs::read(bundle_path()).expect("failed to read bundle");
         let store = MemoryBlockstore::new();
         let multi_engine = Arc::new(MultiEngine::default());
@@ -501,7 +503,11 @@ mod tests {
             .bottom_up_check_period(exec_state)
             .expect("error calling the gateway");
 
-        assert_eq!(period, genesis.ipc.unwrap().gateway.bottom_up_check_period);
+        assert_eq!(
+            period,
+            // There is a minimum defined in the Solidity file.
+            genesis.ipc.unwrap().gateway.bottom_up_check_period.max(10)
+        );
 
         let _state_root = state.commit().expect("failed to commit");
     }
