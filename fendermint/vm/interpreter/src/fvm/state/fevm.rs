@@ -15,8 +15,8 @@ use fvm_shared::{address::Address, econ::TokenAmount, message::Message};
 
 use super::FvmExecState;
 
-type MockProvider = ep::Provider<ep::MockProvider>;
-type MockContractCall<T> = ethers::prelude::ContractCall<MockProvider, T>;
+pub type MockProvider = ep::Provider<ep::MockProvider>;
+pub type MockContractCall<T> = ethers::prelude::ContractCall<MockProvider, T>;
 
 /// Facilitate calling FEVM contracts through their Ethers ABI bindings by
 /// 1. serializing parameters,

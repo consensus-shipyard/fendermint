@@ -452,7 +452,6 @@ fn circ_supply(g: &Genesis) -> TokenAmount {
 mod tests {
     use std::sync::Arc;
 
-    use fendermint_vm_actor_interface::{eam::EthAddress, ipc};
     use fendermint_vm_genesis::{ipc::IpcParams, Genesis};
     use fvm::engine::MultiEngine;
     use quickcheck::Arbitrary;
@@ -460,7 +459,7 @@ mod tests {
     use crate::{
         fvm::{
             bundle::{bundle_path, contracts_path},
-            state::fevm::ContractCaller,
+            state::ipc::GatewayCaller,
             store::memory::MemoryBlockstore,
             FvmMessageInterpreter,
         },
@@ -496,13 +495,10 @@ mod tests {
 
         // Try calling a method on the IPC Gateway.
         let exec_state = state.exec_state().expect("should be in exec stage");
-        let caller = ContractCaller::new(
-            EthAddress::from_id(ipc::GATEWAY_ACTOR_ID),
-            fendermint_vm_ipc_actors::gateway_getter_facet::GatewayGetterFacet::new,
-        );
+        let caller = GatewayCaller::new();
 
         let period = caller
-            .call(exec_state, |c| c.bottom_up_check_period())
+            .bottom_up_check_period(exec_state)
             .expect("error calling the gateway");
 
         assert_eq!(period, genesis.ipc.unwrap().gateway.bottom_up_check_period);
