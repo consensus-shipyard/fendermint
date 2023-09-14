@@ -9,6 +9,7 @@ use fendermint_vm_actor_interface::{cron, system};
 use fvm::executor::ApplyRet;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::{address::Address, ActorID, MethodNum, BLOCK_GAS_LIMIT};
+use tendermint_rpc::Client;
 
 use crate::ExecInterpreter;
 
@@ -29,9 +30,10 @@ pub struct FvmApplyRet {
 }
 
 #[async_trait]
-impl<DB> ExecInterpreter for FvmMessageInterpreter<DB>
+impl<DB, TC> ExecInterpreter for FvmMessageInterpreter<DB, TC>
 where
     DB: Blockstore + 'static + Send + Sync,
+    TC: Client + Send + Sync + 'static,
 {
     type State = FvmExecState<DB>;
     type Message = FvmMessage;
