@@ -145,7 +145,10 @@ where
                         height: height as u64,
                         block_hash,
                     };
-                    return Ok(atomically(|| state.1.check_proposal(&prop)).await);
+                    let is_final = atomically(|| state.1.check_proposal(&prop)).await;
+                    if !is_final {
+                      return Ok(false);
+                    }
                 }
                 _ => {}
             };
