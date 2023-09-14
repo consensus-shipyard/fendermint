@@ -506,6 +506,7 @@ mod tests {
         assert_eq!(
             period,
             // There is a minimum defined in the Solidity file.
+            // TODO: Remove the `.max(10)` after https://github.com/consensus-shipyard/ipc-solidity-actors/pull/201 is merged.
             genesis.ipc.unwrap().gateway.bottom_up_check_period.max(10)
         );
 
