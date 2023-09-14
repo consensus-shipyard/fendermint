@@ -28,3 +28,9 @@ impl GatewayCaller {
         self.getter.call(state, |c| c.bottom_up_check_period())
     }
 }
+
+impl Default for GatewayCaller {
+    fn default() -> Self {
+        Self::new()
+    }
+}
