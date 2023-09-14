@@ -36,10 +36,10 @@ The testnet contains four logical nodes. Each node consists of cometbft, fenderm
 The Docker internal network is `192.167.10.0/24`.
 
 ETH-API is accessible on the following interfaces on the Docker internal network:
-- `192.167.10.10:8545`
-- `192.167.10.11:8545`
-- `192.167.10.12:8545`
-- `192.167.10.13:8545`
+- `192.167.10.10:8545` or `ethapi-node0:8545`
+- `192.167.10.11:8545` or `ethapi-node1:8545`
+- `192.167.10.12:8545` or `ethapi-node2:8545`
+- `192.167.10.13:8545` or `ethapi-node3:8545`
 
 and on the following interfaces from the host machine:
 - `127.0.0.1:8545`
