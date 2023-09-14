@@ -18,7 +18,7 @@ pub use exec::FvmApplyRet;
 use fendermint_eth_hardhat::Hardhat;
 pub use fendermint_vm_message::query::FvmQuery;
 pub use genesis::FvmGenesisOutput;
-use libsecp256k1::SecretKey;
+use libsecp256k1::{PublicKey, SecretKey};
 pub use query::FvmQueryRet;
 
 pub type FvmMessage = fvm_shared::message::Message;
@@ -29,8 +29,8 @@ pub struct FvmMessageInterpreter<DB, C> {
     contracts: Hardhat,
     /// Tendermint client for broadcasting transactions and run API queries.
     _client: C,
-    /// If this is a validator node, this should be the secret key we can use to sign transactions.
-    _validator_key: Option<SecretKey>,
+    /// If this is a validator node, this should be the key we can use to sign transactions.
+    _validator_key: Option<(SecretKey, PublicKey)>,
     /// Overestimation rate applied to gas to ensure that the
     /// message goes through in the gas estimation.
     gas_overestimation_rate: f64,
@@ -52,6 +52,8 @@ impl<DB, C> FvmMessageInterpreter<DB, C> {
         gas_search_step: f64,
         exec_in_check: bool,
     ) -> Self {
+        // Derive the public keys so it's available to check whether this node is a validator at any point in time.
+        let validator_key = validator_key.map(|sk| (sk, PublicKey::from_secret_key(&sk)));
         Self {
             _client: client,
             _validator_key: validator_key,
