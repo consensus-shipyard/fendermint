@@ -29,7 +29,12 @@ cmd! {
 ///
 /// This method acts as our composition root.
 async fn run(settings: Settings) -> anyhow::Result<()> {
-    let interpreter = FvmMessageInterpreter::<NamespaceBlockstore>::new(
+    let client = tendermint_rpc::HttpClient::new(settings.tendermint_rpc_url()?)
+        .context("failed to create Tendermint client")?;
+
+    let interpreter = FvmMessageInterpreter::<NamespaceBlockstore, _>::new(
+        client,
+        None,
         settings.contracts_dir(),
         settings.fvm.gas_overestimation_rate,
         settings.fvm.gas_search_step,

@@ -9,6 +9,10 @@ data_dir = "data"
 contracts_dir = "contracts"
 # Builtin actor bundle CAR file.
 builtin_actors_bundle = "bundle.car"
+# Where to reach CometBFT for queries or broadcasting transactions.
+tendermint_rpc_url = "http://127.0.0.1:26657"
+# Secp256k1 private key used for signing transactions. Leave empty if not validating.
+validator_key = "keys/validator.sk"
 
 [abci]
 # Number of concurrent requests allowed to reach the application.
