@@ -175,7 +175,7 @@ $ cat test-network/genesis.json | jq .ipc
     "bottom_up_check_period": 10,
     "top_down_check_period": 10,
     "msg_fee": "1",
-    "majority_percentage": 60
+    "majority_percentage": 65
   }
 }
 ```
