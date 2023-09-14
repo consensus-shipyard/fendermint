@@ -221,7 +221,7 @@ where
                 }
                 IpcMessage::TopDownExec(p) => {
                     if !provider.is_enabled() {
-                        return Err(anyhow!("toggle on ipc top down to process messages"));
+                        return Err(anyhow!("cannot execute IPC top-down message: parent provider disabled"));
                     }
 
                     // error happens if we cannot get the validator set from ipc agent after retries
