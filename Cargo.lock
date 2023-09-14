@@ -3038,6 +3038,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tendermint",
  "tendermint-rpc",
  "thiserror",
  "tokio",

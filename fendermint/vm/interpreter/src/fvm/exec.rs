@@ -1,9 +1,8 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::collections::HashMap;
-
 use async_trait::async_trait;
+use std::collections::HashMap;
 
 use fendermint_vm_actor_interface::{cron, system};
 use fvm::executor::ApplyRet;
@@ -121,7 +120,28 @@ where
     }
 
     async fn end(&self, state: Self::State) -> anyhow::Result<(Self::State, Self::EndOutput)> {
-        // TODO: Epoch transitions for checkpointing.
+        // TODO #252: Epoch transitions for checkpointing.
+        // TODO #254: Construct checkpoint.
+        // TODO #255: Broadcast signature, if validating.
+
+        #[cfg(test)]
+        {
+            use anyhow::Context;
+            use tendermint_rpc::endpoint::validators;
+            use tendermint_rpc::Paging;
+
+            let height: tendermint::block::Height = state
+                .block_height()
+                .try_into()
+                .context("block height is not u64")?;
+
+            let validators: validators::Response =
+                self._client.validators(height, Paging::All).await?;
+
+            // This is the power table.
+            let _validators = validators.validators;
+        }
+
         Ok((state, ()))
     }
 }
