@@ -210,17 +210,14 @@ impl CachedFinalityProvider {
             return Ok(false);
         }
 
-        let latest_height = if let Some(h) = self.cached_data.latest_height()? {
-            h
+        if let Some(latest_height) = self.cached_data.latest_height()? {
+            // requires the incoming height cannot be more advanced than our trusted parent node
+            Ok(latest_height >= proposal.height)
         } else {
             // latest height is not found, meaning we dont have any prefetched cache, we just be
-            // optimistic and vote yes as the previous latest committed finality check is passed
-            // and it's valid.
-            return Ok(true);
-        };
-
-        // requires the incoming height cannot be more advanced than our trusted parent node
-        Ok(latest_height >= proposal.height)
+            // strict and vote no simply because we don't know..
+            Ok(false)
+        }
     }
 
     fn check_block_hash(&self, proposal: &IPCParentFinality) -> Stm<bool> {

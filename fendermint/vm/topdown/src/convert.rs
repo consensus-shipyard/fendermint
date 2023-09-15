@@ -23,12 +23,12 @@ impl TryFrom<IPCParentFinality> for gateway_router_facet::ParentFinality {
             return Err(anyhow!("invalid block hash length, expecting 32"));
         }
 
-        let mut array = [0u8; 32];
-        array.copy_from_slice(&value.block_hash[0..32]);
+        let mut block_hash = [0u8; 32];
+        block_hash.copy_from_slice(&value.block_hash[0..32]);
 
         Ok(Self {
             height: U256::from(value.height),
-            block_hash: array,
+            block_hash,
         })
     }
 }

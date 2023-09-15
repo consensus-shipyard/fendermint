@@ -99,6 +99,9 @@ pub struct AppConfig<S: KVStore> {
     pub builtin_actors_bundle: PathBuf,
 }
 
+/// The type alias for the actual parent finality provider
+type ParentFinalityProvider = Toggle<CachedFinalityProvider>;
+
 /// Handle ABCI requests.
 #[derive(Clone)]
 pub struct App<DB, SS, S, I>
@@ -138,7 +141,7 @@ where
     /// CID resolution pool.
     resolve_pool: CheckpointPool,
     /// The parent finality provider for top down checkpoint
-    parent_finality_provider: Arc<Toggle<CachedFinalityProvider>>,
+    parent_finality_provider: Arc<ParentFinalityProvider>,
     /// State accumulating changes during block execution.
     exec_state: Arc<Mutex<Option<FvmExecState<SS>>>>,
     /// Projected (partial) state accumulating during transaction checks.
@@ -165,7 +168,7 @@ where
         state_store: SS,
         interpreter: I,
         resolve_pool: CheckpointPool,
-        parent_finality_provider: Arc<Toggle<CachedFinalityProvider>>,
+        parent_finality_provider: Arc<ParentFinalityProvider>,
     ) -> Result<Self> {
         let app = Self {
             db: Arc::new(db),
@@ -284,7 +287,7 @@ where
         F: FnOnce(
             (
                 CheckpointPool,
-                Arc<Toggle<CachedFinalityProvider>>,
+                Arc<ParentFinalityProvider>,
                 FvmExecState<SS>,
             ),
         ) -> R,
@@ -292,7 +295,7 @@ where
             Output = Result<(
                 (
                     CheckpointPool,
-                    Arc<Toggle<CachedFinalityProvider>>,
+                    Arc<ParentFinalityProvider>,
                     FvmExecState<SS>,
                 ),
                 T,
@@ -390,13 +393,13 @@ where
         Output = FvmGenesisOutput,
     >,
     I: ProposalInterpreter<
-        State = (CheckpointPool, Arc<Toggle<CachedFinalityProvider>>),
+        State = (CheckpointPool, Arc<ParentFinalityProvider>),
         Message = Vec<u8>,
     >,
     I: ExecInterpreter<
         State = (
             CheckpointPool,
-            Arc<Toggle<CachedFinalityProvider>>,
+            Arc<ParentFinalityProvider>,
             FvmExecState<SS>,
         ),
         Message = Vec<u8>,

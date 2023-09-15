@@ -34,7 +34,6 @@ pub trait ParentFinalityStateQuery {
 
 /// Constantly syncing with parent through polling
 pub struct PollingParentSyncer<T> {
-    subnet_id: SubnetID,
     config: Config,
     parent_view_provider: Arc<Toggle<CachedFinalityProvider>>,
     agent: Arc<IPCAgentProxy>,
@@ -44,7 +43,6 @@ pub struct PollingParentSyncer<T> {
 /// Queries the starting finality for polling. First checks the committed finality, if none, that
 /// means the chain has just started, then query from the parent to get the genesis epoch.
 async fn query_starting_finality<T: ParentFinalityStateQuery + Send + Sync + 'static>(
-    subnet_id: &SubnetID,
     query: &Arc<T>,
     agent: &Arc<IPCAgentProxy>,
 ) -> anyhow::Result<IPCParentFinality> {
@@ -67,7 +65,7 @@ async fn query_starting_finality<T: ParentFinalityStateQuery + Send + Sync + 'st
         // this means there are no previous committed finality yet, we fetch from parent to get
         // the genesis epoch of the current subnet and its corresponding block hash.
         if finality.height == 0 {
-            let genesis_epoch = agent.get_genesis_epoch(subnet_id).await?;
+            let genesis_epoch = agent.get_genesis_epoch().await?;
             let block_hash = agent.get_block_hash(genesis_epoch as u64).await?;
             finality = IPCParentFinality {
                 height: genesis_epoch as u64,
@@ -84,7 +82,6 @@ async fn query_starting_finality<T: ParentFinalityStateQuery + Send + Sync + 'st
 
 /// Start the polling parent syncer in the background
 pub async fn launch_polling_syncer<T: ParentFinalityStateQuery + Send + Sync + 'static>(
-    subnet_id: &SubnetID,
     query: T,
     config: Config,
     view_provider: Arc<Toggle<CachedFinalityProvider>>,
@@ -96,11 +93,11 @@ pub async fn launch_polling_syncer<T: ParentFinalityStateQuery + Send + Sync + '
 
     let query = Arc::new(query);
 
-    let finality = query_starting_finality(subnet_id, &query, &agent).await?;
+    let finality = query_starting_finality(&query, &agent).await?;
 
     atomically(|| view_provider.set_new_finality(finality.clone())).await;
 
-    let poll = PollingParentSyncer::new(subnet_id.clone(), config, view_provider, agent, query);
+    let poll = PollingParentSyncer::new(config, view_provider, agent, query);
     poll.start();
 
     Ok(())
@@ -108,14 +105,12 @@ pub async fn launch_polling_syncer<T: ParentFinalityStateQuery + Send + Sync + '
 
 impl<T> PollingParentSyncer<T> {
     pub fn new(
-        subnet_id: SubnetID,
         config: Config,
         parent_view_provider: Arc<Toggle<CachedFinalityProvider>>,
         agent: Arc<IPCAgentProxy>,
         query: Arc<T>,
     ) -> Self {
         Self {
-            subnet_id,
             config,
             parent_view_provider,
             agent,
@@ -131,16 +126,16 @@ impl<T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T>
         let provider = self.parent_view_provider;
         let agent = self.agent;
         let query = self.committed_state_query;
-        let subnet_id = self.subnet_id;
+
+        let mut interval =
+            tokio::time::interval(Duration::from_secs(config.polling_interval_secs));
 
         tokio::spawn(async move {
             loop {
-                let mut interval =
-                    tokio::time::interval(Duration::from_secs(config.polling_interval_secs));
                 interval.tick().await;
 
                 if let Err(e) =
-                    sync_with_parent(&subnet_id, &config, &agent, &provider, &query).await
+                    sync_with_parent(&config, &agent, &provider, &query).await
                 {
                     tracing::error!("sync with parent encountered error: {e}");
                 }
@@ -156,7 +151,6 @@ impl<T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T>
 /// 3. Fetches the data between starting and ending height
 /// 4. Update the data into cache
 async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
-    subnet_id: &SubnetID,
     config: &Config,
     agent_proxy: &Arc<IPCAgentProxy>,
     provider: &Arc<Toggle<CachedFinalityProvider>>,
@@ -199,7 +193,7 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     // than our previously fetched head. It could be a chain reorg. We clear all the cache
     // in `provider` and start from scratch
     if last_recorded_height > ending_height {
-        let finality = query_starting_finality(subnet_id, query, agent_proxy).await?;
+        let finality = query_starting_finality(query, agent_proxy).await?;
         atomically(|| provider.reset(finality.clone())).await;
         return Ok(());
     }
@@ -277,9 +271,13 @@ async fn get_new_parent_views(
     Ok(block_height_to_update)
 }
 
+/// The proxy to ipc agent
 pub struct IPCAgentProxy {
     agent_client: IpcAgentClient<JsonRpcClientImpl>,
+    /// The parent subnet for the child subnet we are target. We can derive from child subnet,
+    /// but storing it separately so that we dont have to derive every time.
     parent_subnet: SubnetID,
+    /// The child subnet that this node belongs to.
     child_subnet: SubnetID,
 }
 
@@ -306,20 +304,25 @@ impl IPCAgentProxy {
         Ok(height as BlockHeight)
     }
 
-    pub async fn get_genesis_epoch(&self, _subnet_id: &SubnetID) -> anyhow::Result<ChainEpoch> {
+    /// Get the genesis epoch of the child subnet, i.e. the epoch that the subnet was created in
+    /// the parent subnet.
+    pub async fn get_genesis_epoch(&self) -> anyhow::Result<ChainEpoch> {
         let r = self
             .agent_client
+            // passing None to height as we are fetching the latest data
             .get_validator_set(&self.child_subnet, None)
             .await?;
         Ok(r.genesis_epoch)
     }
 
+    /// Getting the block hash at the target height.
     pub async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<BlockHash> {
         self.agent_client
             .get_block_hash(&self.parent_subnet, height as ChainEpoch)
             .await
     }
 
+    /// Get the top down messages from the starting to the ending height.
     pub async fn get_top_down_msgs(
         &self,
         start_height: BlockHeight,
@@ -334,6 +337,7 @@ impl IPCAgentProxy {
             .await
     }
 
+    /// Get the validator set at the specified height.
     pub async fn get_validator_set(&self, height: BlockHeight) -> anyhow::Result<ValidatorSet> {
         let r = self
             .agent_client

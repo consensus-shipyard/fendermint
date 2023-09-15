@@ -116,7 +116,7 @@ where
     }
 
     /// Perform finality checks on top-down transactions and availability checks on bottom-up transactions.
-    async fn process(&self, state: Self::State, msgs: Vec<Self::Message>) -> anyhow::Result<bool> {
+    async fn process(&self, (pool, provider): Self::State, msgs: Vec<Self::Message>) -> anyhow::Result<bool> {
         for msg in msgs {
             match msg {
                 ChainMessage::Ipc(IpcMessage::BottomUpExec(msg)) => {
@@ -127,7 +127,7 @@ where
                     // We don't have to validate the checkpoint here, because
                     // 1) we validated it when it was relayed, and
                     // 2) if a validator proposes something invalid, we can make them pay during execution.
-                    let is_resolved = atomically(|| match state.0.get_status(&item)? {
+                    let is_resolved = atomically(|| match pool.get_status(&item)? {
                         None => Ok(false),
                         Some(status) => status.is_resolved(),
                     })
@@ -145,7 +145,7 @@ where
                         height: height as u64,
                         block_hash,
                     };
-                    let is_final = atomically(|| state.1.check_proposal(&prop)).await;
+                    let is_final = atomically(|| provider.check_proposal(&prop)).await;
                     if !is_final {
                       return Ok(false);
                     }
