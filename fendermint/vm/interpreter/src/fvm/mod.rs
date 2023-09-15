@@ -21,6 +21,8 @@ pub use genesis::FvmGenesisOutput;
 use libsecp256k1::{PublicKey, SecretKey};
 pub use query::FvmQueryRet;
 
+use self::state::ipc::GatewayCaller;
+
 pub type FvmMessage = fvm_shared::message::Message;
 
 /// Interpreter working on already verified unsigned messages.
@@ -40,6 +42,8 @@ pub struct FvmMessageInterpreter<DB, C> {
     /// Indicate whether transactions should be fully executed during the checks performed
     /// when they are added to the mempool, or just the most basic ones are performed.
     exec_in_check: bool,
+    /// Helper to call the IPC Gateway contract.
+    gateway: GatewayCaller,
     _phantom_db: PhantomData<DB>,
 }
 
@@ -61,6 +65,7 @@ impl<DB, C> FvmMessageInterpreter<DB, C> {
             gas_overestimation_rate,
             gas_search_step,
             exec_in_check,
+            gateway: GatewayCaller::default(),
             _phantom_db: PhantomData,
         }
     }

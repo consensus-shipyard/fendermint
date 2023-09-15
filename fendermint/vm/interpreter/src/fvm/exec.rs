@@ -1,8 +1,11 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use anyhow::Context;
 use async_trait::async_trait;
 use std::collections::HashMap;
+use tendermint_rpc::endpoint::validators;
+use tendermint_rpc::Paging;
 
 use fendermint_vm_actor_interface::{cron, system};
 use fvm::executor::ApplyRet;
@@ -12,7 +15,10 @@ use tendermint_rpc::Client;
 
 use crate::ExecInterpreter;
 
-use super::{state::FvmExecState, FvmMessage, FvmMessageInterpreter};
+use super::{
+    state::{ipc::Configuration, FvmExecState},
+    FvmMessage, FvmMessageInterpreter,
+};
 
 /// The return value extended with some things from the message that
 /// might not be available to the caller, because of the message lookups
@@ -119,27 +125,35 @@ where
         Ok((state, ret))
     }
 
-    async fn end(&self, state: Self::State) -> anyhow::Result<(Self::State, Self::EndOutput)> {
-        // TODO #252: Epoch transitions for checkpointing.
-        // TODO #254: Construct checkpoint.
-        // TODO #255: Broadcast signature, if validating.
-
-        #[cfg(test)]
-        {
-            use anyhow::Context;
-            use tendermint_rpc::endpoint::validators;
-            use tendermint_rpc::Paging;
-
+    async fn end(&self, mut state: Self::State) -> anyhow::Result<(Self::State, Self::EndOutput)> {
+        // Epoch transitions for checkpointing.
+        if self.gateway.enabled(&mut state)? {
             let height: tendermint::block::Height = state
                 .block_height()
                 .try_into()
                 .context("block height is not u64")?;
 
-            let validators: validators::Response =
-                self._client.validators(height, Paging::All).await?;
+            let checkpoint_period = self.gateway.bottom_up_check_period(&mut state)?;
 
-            // This is the power table.
-            let _validators = validators.validators;
+            if height.value() % checkpoint_period == 0 {
+                // TODO #254: Put the next configuration number for the parent to expect in the checkpoint.
+                let _next_config_number =
+                    match self.gateway.activate_next_configuration(&mut state)? {
+                        Configuration::Unchanged(cnr) => cnr,
+                        Configuration::Activated(membership) => {
+                            let current_validators: validators::Response =
+                                self._client.validators(height, Paging::All).await?;
+
+                            let _current_validators = current_validators.validators;
+
+                            // TODO #252: Work out the difference between the current and the next validators.
+                            membership.configuration_number
+                        }
+                    };
+
+                // TODO #254: Construct checkpoint.
+                // TODO #255: Broadcast signature, if validating.
+            }
         }
 
         Ok((state, ()))
