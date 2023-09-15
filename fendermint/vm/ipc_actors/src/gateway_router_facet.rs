@@ -231,6 +231,13 @@ pub mod gateway_router_facet {
                                     ),
                                 },
                                 ::ethers::core::abi::ethabi::Param {
+                                    name: ::std::borrow::ToOwned::to_owned("n"),
+                                    kind: ::ethers::core::abi::ethabi::ParamType::Uint(64usize),
+                                    internal_type: ::core::option::Option::Some(
+                                        ::std::borrow::ToOwned::to_owned("uint64"),
+                                    ),
+                                },
+                                ::ethers::core::abi::ethabi::Param {
                                     name: ::std::borrow::ToOwned::to_owned("validators"),
                                     kind: ::ethers::core::abi::ethabi::ParamType::Array(
                                         ::std::boxed::Box::new(
@@ -428,6 +435,17 @@ pub mod gateway_router_facet {
                     ],
                 ),
                 (
+                    ::std::borrow::ToOwned::to_owned("OldConfigurationNumber"),
+                    ::std::vec![
+                        ::ethers::core::abi::ethabi::AbiError {
+                            name: ::std::borrow::ToOwned::to_owned(
+                                "OldConfigurationNumber",
+                            ),
+                            inputs: ::std::vec![],
+                        },
+                    ],
+                ),
+                (
                     ::std::borrow::ToOwned::to_owned("ParentFinalityAlreadyCommitted"),
                     ::std::vec![
                         ::ethers::core::abi::ethabi::AbiError {
@@ -537,15 +555,16 @@ pub mod gateway_router_facet {
                 .method_hash([212, 225, 73, 168], (commit,))
                 .expect("method not found (this should never happen)")
         }
-        ///Calls the contract's `commitParentFinality` (0x89f23a50) function
+        ///Calls the contract's `commitParentFinality` (0x9fa68440) function
         pub fn commit_parent_finality(
             &self,
             finality: ParentFinality,
+            n: u64,
             validators: ::std::vec::Vec<FvmAddress>,
             weights: ::std::vec::Vec<::ethers::core::types::U256>,
         ) -> ::ethers::contract::builders::ContractCall<M, ()> {
             self.0
-                .method_hash([137, 242, 58, 80], (finality, validators, weights))
+                .method_hash([159, 166, 132, 64], (finality, n, validators, weights))
                 .expect("method not found (this should never happen)")
         }
     }
@@ -747,6 +766,19 @@ pub mod gateway_router_facet {
     )]
     #[etherror(name = "NotSystemActor", abi = "NotSystemActor()")]
     pub struct NotSystemActor;
+    ///Custom Error type `OldConfigurationNumber` with signature `OldConfigurationNumber()` and selector `0x6e8d7c4a`
+    #[derive(
+        Clone,
+        ::ethers::contract::EthError,
+        ::ethers::contract::EthDisplay,
+        Default,
+        Debug,
+        PartialEq,
+        Eq,
+        Hash
+    )]
+    #[etherror(name = "OldConfigurationNumber", abi = "OldConfigurationNumber()")]
+    pub struct OldConfigurationNumber;
     ///Custom Error type `ParentFinalityAlreadyCommitted` with signature `ParentFinalityAlreadyCommitted()` and selector `0x2a75b082`
     #[derive(
         Clone,
@@ -822,6 +854,7 @@ pub mod gateway_router_facet {
         NotInitialized(NotInitialized),
         NotRegisteredSubnet(NotRegisteredSubnet),
         NotSystemActor(NotSystemActor),
+        OldConfigurationNumber(OldConfigurationNumber),
         ParentFinalityAlreadyCommitted(ParentFinalityAlreadyCommitted),
         SubnetNotActive(SubnetNotActive),
         ValidatorWeightIsZero(ValidatorWeightIsZero),
@@ -912,6 +945,12 @@ pub mod gateway_router_facet {
                 return Ok(Self::NotSystemActor(decoded));
             }
             if let Ok(decoded)
+                = <OldConfigurationNumber as ::ethers::core::abi::AbiDecode>::decode(
+                    data,
+                ) {
+                return Ok(Self::OldConfigurationNumber(decoded));
+            }
+            if let Ok(decoded)
                 = <ParentFinalityAlreadyCommitted as ::ethers::core::abi::AbiDecode>::decode(
                     data,
                 ) {
@@ -979,6 +1018,9 @@ pub mod gateway_router_facet {
                     ::ethers::core::abi::AbiEncode::encode(element)
                 }
                 Self::NotSystemActor(element) => {
+                    ::ethers::core::abi::AbiEncode::encode(element)
+                }
+                Self::OldConfigurationNumber(element) => {
                     ::ethers::core::abi::AbiEncode::encode(element)
                 }
                 Self::ParentFinalityAlreadyCommitted(element) => {
@@ -1058,6 +1100,10 @@ pub mod gateway_router_facet {
                     true
                 }
                 _ if selector
+                    == <OldConfigurationNumber as ::ethers::contract::EthError>::selector() => {
+                    true
+                }
+                _ if selector
                     == <ParentFinalityAlreadyCommitted as ::ethers::contract::EthError>::selector() => {
                     true
                 }
@@ -1112,6 +1158,9 @@ pub mod gateway_router_facet {
                     ::core::fmt::Display::fmt(element, f)
                 }
                 Self::NotSystemActor(element) => ::core::fmt::Display::fmt(element, f),
+                Self::OldConfigurationNumber(element) => {
+                    ::core::fmt::Display::fmt(element, f)
+                }
                 Self::ParentFinalityAlreadyCommitted(element) => {
                     ::core::fmt::Display::fmt(element, f)
                 }
@@ -1201,6 +1250,11 @@ pub mod gateway_router_facet {
             Self::NotSystemActor(value)
         }
     }
+    impl ::core::convert::From<OldConfigurationNumber> for GatewayRouterFacetErrors {
+        fn from(value: OldConfigurationNumber) -> Self {
+            Self::OldConfigurationNumber(value)
+        }
+    }
     impl ::core::convert::From<ParentFinalityAlreadyCommitted>
     for GatewayRouterFacetErrors {
         fn from(value: ParentFinalityAlreadyCommitted) -> Self {
@@ -1259,7 +1313,7 @@ pub mod gateway_router_facet {
     pub struct CommitChildCheckCall {
         pub commit: BottomUpCheckpoint,
     }
-    ///Container type for all input parameters for the `commitParentFinality` function with signature `commitParentFinality((uint256,bytes32),(uint8,bytes)[],uint256[])` and selector `0x89f23a50`
+    ///Container type for all input parameters for the `commitParentFinality` function with signature `commitParentFinality((uint256,bytes32),uint64,(uint8,bytes)[],uint256[])` and selector `0x9fa68440`
     #[derive(
         Clone,
         ::ethers::contract::EthCall,
@@ -1272,10 +1326,11 @@ pub mod gateway_router_facet {
     )]
     #[ethcall(
         name = "commitParentFinality",
-        abi = "commitParentFinality((uint256,bytes32),(uint8,bytes)[],uint256[])"
+        abi = "commitParentFinality((uint256,bytes32),uint64,(uint8,bytes)[],uint256[])"
     )]
     pub struct CommitParentFinalityCall {
         pub finality: ParentFinality,
+        pub n: u64,
         pub validators: ::std::vec::Vec<FvmAddress>,
         pub weights: ::std::vec::Vec<::ethers::core::types::U256>,
     }
