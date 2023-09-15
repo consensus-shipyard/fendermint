@@ -1,23 +1,16 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use clap::Parser;
 use tracing_subscriber::FmtSubscriber;
 
-mod cmd;
-mod options;
-mod settings;
+pub use fendermint_app_options as options;
 
-use crate::cmd::set_network_from_env;
-use options::Options;
+mod cmd;
+mod settings;
 
 #[tokio::main]
 async fn main() {
-    // Need to set env before Options is parsed because Options contains fvm Address related
-    // parameter, such as subnet id. Setting the network after Options is parsed will lead to error
-    set_network_from_env().expect("cannot set fvm address network from env");
-
-    let opts: Options = Options::parse();
+    let opts = options::parse();
 
     // Log events to stdout.
     if let Some(level) = opts.tracing_level() {

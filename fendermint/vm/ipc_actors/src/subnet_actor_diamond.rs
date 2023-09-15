@@ -323,7 +323,7 @@ pub mod subnet_actor_diamond {
         ::ethers::core::abi::Abi,
     > = ::ethers::contract::Lazy::new(__abi);
     #[rustfmt::skip]
-    const __DEPLOYED_BYTECODE: &[u8] = b"`\x80`@R`\x046\x10a\0-W`\x005`\xE0\x1C\x80c\x91\xBEMA\x14a\0DW\x80c\xA1\xAD\xA3\x03\x14a\0sWa\0<V[6a\0<Wa\0:a\0\x9AV[\0[a\0:a\0\xC7V[4\x80\x15a\0PW`\0\x80\xFD[Pa\0`g\r\xE0\xB6\xB3\xA7d\0\0\x81V[`@Q\x90\x81R` \x01[`@Q\x80\x91\x03\x90\xF3[4\x80\x15a\0\x7FW`\0\x80\xFD[Pa\0\x88`\n\x81V[`@Q`\xFF\x90\x91\x16\x81R` \x01a\0jV[`\rT`\x01`\x01`\xA0\x1B\x03\x163\x14a\0\xC5W`@Qc\xE7\xE6\x01\xDB`\xE0\x1B\x81R`\x04\x01`@Q\x80\x91\x03\x90\xFD[V[`\0\x805`\x01`\x01`\xE0\x1B\x03\x19\x16\x81R\x7F\x80n\x0C\xBB\x9F\xCE)k\xBC3jH\xF4+\xF1\xDB\xC6\x97\"\xD1\x8D\x90\xD6\xFEp[u\x82\xC2\xBBK\xD2` \x81\x90R`@\x90\x91 T\x81\x90`\x01`\x01`\xA0\x1B\x03\x16\x80a\x01>W`@Qc\n\x82\xDDs`\xE3\x1B\x81R`\x01`\x01`\xE0\x1B\x03\x19`\x005\x16`\x04\x82\x01R`$\x01`@Q\x80\x91\x03\x90\xFD[6`\0\x807`\0\x806`\0\x84Z\xF4=`\0\x80>\x80\x80\x15a\x01]W=`\0\xF3[=`\0\xFD\xFE\xA2dipfsX\"\x12 :\xFDh\xADJ\xF8\x0B\x10\xB1\xF67U@\xDB\xC6^[\xD6\xF1\x11\x89\x9A\xB0\xED\x19\x19\r\x82<7\xE5\xCDdsolcC\0\x08\x13\x003";
+    const __DEPLOYED_BYTECODE: &[u8] = b"`\x80`@R`\x046\x10a\0-W`\x005`\xE0\x1C\x80c\x91\xBEMA\x14a\0DW\x80c\xA1\xAD\xA3\x03\x14a\0sWa\0<V[6a\0<Wa\0:a\0\x9AV[\0[a\0:a\0\xC7V[4\x80\x15a\0PW`\0\x80\xFD[Pa\0`g\r\xE0\xB6\xB3\xA7d\0\0\x81V[`@Q\x90\x81R` \x01[`@Q\x80\x91\x03\x90\xF3[4\x80\x15a\0\x7FW`\0\x80\xFD[Pa\0\x88`\n\x81V[`@Q`\xFF\x90\x91\x16\x81R` \x01a\0jV[`\rT`\x01`\x01`\xA0\x1B\x03\x163\x14a\0\xC5W`@Qc\xE7\xE6\x01\xDB`\xE0\x1B\x81R`\x04\x01`@Q\x80\x91\x03\x90\xFD[V[`\0\x805`\x01`\x01`\xE0\x1B\x03\x19\x16\x81R\x7F\x80n\x0C\xBB\x9F\xCE)k\xBC3jH\xF4+\xF1\xDB\xC6\x97\"\xD1\x8D\x90\xD6\xFEp[u\x82\xC2\xBBK\xD2` \x81\x90R`@\x90\x91 T\x81\x90`\x01`\x01`\xA0\x1B\x03\x16\x80a\x01>W`@Qc\n\x82\xDDs`\xE3\x1B\x81R`\x01`\x01`\xE0\x1B\x03\x19`\x005\x16`\x04\x82\x01R`$\x01`@Q\x80\x91\x03\x90\xFD[6`\0\x807`\0\x806`\0\x84Z\xF4=`\0\x80>\x80\x80\x15a\x01]W=`\0\xF3[=`\0\xFD\xFE\xA2dipfsX\"\x12 WWz\xB0s\x83\x1A^P\xE7\x1B\xC5\xE7!\x1Ft\xD0G\xF8\x91i<k!\xCD_,\xE4\xCC\x9E\xB6\xE1dsolcC\0\x08\x13\x003";
     /// The deployed bytecode of the contract.
     pub static SUBNETACTORDIAMOND_DEPLOYED_BYTECODE: ::ethers::core::types::Bytes = ::ethers::core::types::Bytes::from_static(
         __DEPLOYED_BYTECODE,
@@ -575,62 +575,59 @@ pub mod subnet_actor_diamond {
             data: impl AsRef<[u8]>,
         ) -> ::core::result::Result<Self, ::ethers::core::abi::AbiError> {
             let data = data.as_ref();
-            if let Ok(decoded)
-                = <::std::string::String as ::ethers::core::abi::AbiDecode>::decode(
-                    data,
-                ) {
+            if let Ok(decoded) = <::std::string::String as ::ethers::core::abi::AbiDecode>::decode(
+                data,
+            ) {
                 return Ok(Self::RevertString(decoded));
             }
-            if let Ok(decoded)
-                = <CannotAddFunctionToDiamondThatAlreadyExists as ::ethers::core::abi::AbiDecode>::decode(
-                    data,
-                ) {
+            if let Ok(decoded) = <CannotAddFunctionToDiamondThatAlreadyExists as ::ethers::core::abi::AbiDecode>::decode(
+                data,
+            ) {
                 return Ok(Self::CannotAddFunctionToDiamondThatAlreadyExists(decoded));
             }
-            if let Ok(decoded)
-                = <CannotAddSelectorsToZeroAddress as ::ethers::core::abi::AbiDecode>::decode(
-                    data,
-                ) {
+            if let Ok(decoded) = <CannotAddSelectorsToZeroAddress as ::ethers::core::abi::AbiDecode>::decode(
+                data,
+            ) {
                 return Ok(Self::CannotAddSelectorsToZeroAddress(decoded));
             }
-            if let Ok(decoded)
-                = <FunctionNotFound as ::ethers::core::abi::AbiDecode>::decode(data) {
+            if let Ok(decoded) = <FunctionNotFound as ::ethers::core::abi::AbiDecode>::decode(
+                data,
+            ) {
                 return Ok(Self::FunctionNotFound(decoded));
             }
-            if let Ok(decoded)
-                = <GatewayCannotBeZero as ::ethers::core::abi::AbiDecode>::decode(data) {
+            if let Ok(decoded) = <GatewayCannotBeZero as ::ethers::core::abi::AbiDecode>::decode(
+                data,
+            ) {
                 return Ok(Self::GatewayCannotBeZero(decoded));
             }
-            if let Ok(decoded)
-                = <IncorrectFacetCutAction as ::ethers::core::abi::AbiDecode>::decode(
-                    data,
-                ) {
+            if let Ok(decoded) = <IncorrectFacetCutAction as ::ethers::core::abi::AbiDecode>::decode(
+                data,
+            ) {
                 return Ok(Self::IncorrectFacetCutAction(decoded));
             }
-            if let Ok(decoded)
-                = <InitializationFunctionReverted as ::ethers::core::abi::AbiDecode>::decode(
-                    data,
-                ) {
+            if let Ok(decoded) = <InitializationFunctionReverted as ::ethers::core::abi::AbiDecode>::decode(
+                data,
+            ) {
                 return Ok(Self::InitializationFunctionReverted(decoded));
             }
-            if let Ok(decoded)
-                = <InvalidMajorityPercentage as ::ethers::core::abi::AbiDecode>::decode(
-                    data,
-                ) {
+            if let Ok(decoded) = <InvalidMajorityPercentage as ::ethers::core::abi::AbiDecode>::decode(
+                data,
+            ) {
                 return Ok(Self::InvalidMajorityPercentage(decoded));
             }
-            if let Ok(decoded)
-                = <NoBytecodeAtAddress as ::ethers::core::abi::AbiDecode>::decode(data) {
+            if let Ok(decoded) = <NoBytecodeAtAddress as ::ethers::core::abi::AbiDecode>::decode(
+                data,
+            ) {
                 return Ok(Self::NoBytecodeAtAddress(decoded));
             }
-            if let Ok(decoded)
-                = <NoSelectorsProvidedForFacetForCut as ::ethers::core::abi::AbiDecode>::decode(
-                    data,
-                ) {
+            if let Ok(decoded) = <NoSelectorsProvidedForFacetForCut as ::ethers::core::abi::AbiDecode>::decode(
+                data,
+            ) {
                 return Ok(Self::NoSelectorsProvidedForFacetForCut(decoded));
             }
-            if let Ok(decoded)
-                = <NotGateway as ::ethers::core::abi::AbiDecode>::decode(data) {
+            if let Ok(decoded) = <NotGateway as ::ethers::core::abi::AbiDecode>::decode(
+                data,
+            ) {
                 return Ok(Self::NotGateway(decoded));
             }
             Err(::ethers::core::abi::Error::InvalidData.into())
@@ -848,16 +845,14 @@ pub mod subnet_actor_diamond {
             data: impl AsRef<[u8]>,
         ) -> ::core::result::Result<Self, ::ethers::core::abi::AbiError> {
             let data = data.as_ref();
-            if let Ok(decoded)
-                = <MinCheckpointPeriodCall as ::ethers::core::abi::AbiDecode>::decode(
-                    data,
-                ) {
+            if let Ok(decoded) = <MinCheckpointPeriodCall as ::ethers::core::abi::AbiDecode>::decode(
+                data,
+            ) {
                 return Ok(Self::MinCheckpointPeriod(decoded));
             }
-            if let Ok(decoded)
-                = <MinCollateralAmountCall as ::ethers::core::abi::AbiDecode>::decode(
-                    data,
-                ) {
+            if let Ok(decoded) = <MinCollateralAmountCall as ::ethers::core::abi::AbiDecode>::decode(
+                data,
+            ) {
                 return Ok(Self::MinCollateralAmount(decoded));
             }
             Err(::ethers::core::abi::Error::InvalidData.into())

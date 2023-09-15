@@ -5,7 +5,7 @@
 
 use crate::{
     options::{Commands, Options},
-    settings::Settings,
+    settings::{expand_tilde, Settings},
 };
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
@@ -95,7 +95,7 @@ pub async fn exec(opts: &Options) -> anyhow::Result<()> {
 
 /// Try to parse the settings in the configuration directory.
 fn settings(opts: &Options) -> anyhow::Result<Settings> {
-    let config_dir = match opts.config_dir() {
+    let config_dir = match expand_tilde(opts.config_dir()) {
         d if !d.exists() => return Err(anyhow!("'{d:?}' does not exist")),
         d if !d.is_dir() => return Err(anyhow!("'{d:?}' is a not a directory")),
         d => d,
@@ -109,20 +109,4 @@ fn settings(opts: &Options) -> anyhow::Result<Settings> {
         Settings::new(&config_dir, &opts.home_dir, &opts.mode).context("error parsing settings")?;
 
     Ok(settings)
-}
-
-pub(crate) fn set_network(network: u8) {
-    let network = Network::from_u8(network).unwrap();
-    set_current_network(network);
-}
-
-pub(crate) fn set_network_from_env() -> anyhow::Result<()> {
-    let network_raw = std::env::var("NETWORK")
-        // default to testnet
-        .unwrap_or_else(|_| String::from(TEST_NETWORK))
-        .parse()?;
-
-    set_network(network_raw);
-
-    Ok(())
 }

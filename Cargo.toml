@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "fendermint/abci",
   "fendermint/app",
+  "fendermint/app/options",
   "fendermint/eth/*",
   "fendermint/rocksdb",
   "fendermint/rpc",
@@ -42,8 +43,12 @@ im = "15.1.0"
 jsonrpc-v2 = { version = "0.11", default-features = false, features = ["bytes-v10"] }
 k256 = "0.11" # Same as tendermint-rs
 lazy_static = "1.4"
+libipld = { version = "0.14", default-features = false, features = ["dag-cbor"] }
+libp2p = "0.50"
+libp2p-bitswap = "0.25.1"
 libsecp256k1 = "0.7"
 lru_time_cache = "0.11"
+multiaddr = "0.16"
 multihash = { version = "0.16.1", default-features = false }
 num-traits = "0.2"
 paste = "1"
@@ -116,8 +121,8 @@ tendermint-rpc = { version = "0.31", features = ["secp256k1", "http-client", "we
 tendermint-proto = { version = "0.31" }
 
 # Using the IPC SDK without the `fil-actor` feature so as not to depend on the actor `Runtime`.
-ipc-sdk = { git = "https://github.com/consensus-shipyard/ipc-actors.git", default-features = false }
-ipc-agent = { git = "https://github.com/consensus-shipyard/ipc-agent.git", branch = "dev" }
+ipc-sdk = { git = "https://github.com/consensus-shipyard/ipc-actors.git", default-features = false, branch = "main" }
+ipc-agent = { git = "https://github.com/consensus-shipyard/ipc-agent.git", branch = "main" }
 ipc-agent-sdk = { git = "https://github.com/consensus-shipyard/ipc-agent.git", branch = "dev" }
 ipc_ipld_resolver = { git = "https://github.com/consensus-shipyard/ipc-ipld-resolver.git", branch = "main" }
 
