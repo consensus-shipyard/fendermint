@@ -23,12 +23,31 @@ pub type MockContractCall<T> = ethers::prelude::ContractCall<MockProvider, T>;
 /// 1. serializing parameters,
 /// 2. sending a message to the FVM, and
 /// 3. deserializing the return value
+///
+/// Example:
+/// ```no_run
+/// use fendermint_vm_actor_interface::{eam::EthAddress, ipc::GATEWAY_ACTOR_ID};
+/// use fendermint_vm_ipc_actors::gateway_getter_facet::GatewayGetterFacet;
+/// # use fendermint_vm_interpreter::fvm::state::fevm::ContractCaller;
+/// # use fendermint_vm_interpreter::fvm::state::FvmExecState;
+/// # use fendermint_vm_interpreter::fvm::store::memory::MemoryBlockstore as DB;
+///
+/// let caller = ContractCaller::new(
+///     EthAddress::from_id(GATEWAY_ACTOR_ID),
+///     GatewayGetterFacet::new
+/// );
+///
+/// let mut state: FvmExecState<DB> = todo!();
+///
+/// let _period: u64 = caller.call(&mut state, |c| c.bottom_up_check_period()).unwrap();
+/// ```
 pub struct ContractCaller<C> {
     addr: Address,
     contract: C,
 }
 
 impl<C> ContractCaller<C> {
+    /// Create a new contract caller with the contract's Ethereum address and ABI bindings:
     pub fn new<F>(addr: EthAddress, contract: F) -> Self
     where
         F: FnOnce(et::Address, Arc<MockProvider>) -> C,
