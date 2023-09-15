@@ -70,11 +70,15 @@ lazy_static! {
 
 pub mod gateway {
     use super::SubnetID;
+    use anyhow::bail;
     use ethers::contract::{EthAbiCodec, EthAbiType};
     use ethers::core::types::{H160, U256};
     use fendermint_vm_genesis::ipc::GatewayParams;
-    use fvm_shared::address::Payload;
+    use fendermint_vm_genesis::ValidatorKey;
+    use fendermint_vm_ipc_actors::gateway_manager_facet::Membership;
+    use fvm_shared::address::{Address, Payload, Protocol};
     use fvm_shared::econ::TokenAmount;
+    use libsecp256k1::PublicKey;
 
     use crate::eam::{self, EthAddress};
 
@@ -122,6 +126,50 @@ pub mod gateway {
                 min_collateral: tokens_to_u256(value.min_collateral),
                 msg_fee: tokens_to_u256(value.msg_fee),
                 majority_percentage: value.majority_percentage,
+            })
+        }
+    }
+
+    /// Tendermint compatible validator set.
+    pub struct ValidatorSet {
+        pub configuration_number: u64,
+        /// Validators with their voting power.
+        pub validators: Vec<(ValidatorKey, u64)>,
+    }
+
+    impl TryFrom<Membership> for ValidatorSet {
+        type Error = anyhow::Error;
+
+        fn try_from(value: Membership) -> Result<Self, Self::Error> {
+            let mut validators = Vec::new();
+            let max_weight = U256::from(u64::MAX);
+
+            for v in value.validators {
+                if v.addr.addr_type != Protocol::Secp256k1 as u8 {
+                    // We can't use delegated addresses for validation.
+                    // However, when we saved the membership, there is a `worker_addr` field
+                    // that should have contained a public key type address. If not, ignore.
+                    continue;
+                }
+
+                // Tendermint limits the weights to u64, so anything above that is wasted.
+                let w = if v.weight > max_weight {
+                    u64::MAX
+                } else {
+                    v.weight.as_u64()
+                };
+
+                let pk: PublicKey =
+                    todo!("oops, we can't restore a public key from an f1 type Address :O");
+
+                let vk = ValidatorKey(pk);
+
+                validators.push((vk, w));
+            }
+
+            Ok(Self {
+                configuration_number: value.configuration_number,
+                validators,
             })
         }
     }
