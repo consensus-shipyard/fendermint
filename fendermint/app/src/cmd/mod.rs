@@ -12,17 +12,12 @@ use async_trait::async_trait;
 use base64::engine::GeneralPurpose;
 use base64::engine::{DecodePaddingMode, GeneralPurposeConfig};
 use base64::{alphabet, Engine};
-use fvm_shared::address::{set_current_network, Network};
-use num_traits::FromPrimitive;
 
 pub mod eth;
 pub mod genesis;
 pub mod key;
 pub mod rpc;
 pub mod run;
-
-/// FVM address network, mainnet is 0
-const TEST_NETWORK: &str = "1";
 
 /// A [`GeneralPurpose`] engine using the [`alphabet::STANDARD`] base64 alphabet
 /// padding bytes when writing but requireing no padding when reading.

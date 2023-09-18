@@ -116,7 +116,11 @@ where
     }
 
     /// Perform finality checks on top-down transactions and availability checks on bottom-up transactions.
-    async fn process(&self, (pool, provider): Self::State, msgs: Vec<Self::Message>) -> anyhow::Result<bool> {
+    async fn process(
+        &self,
+        (pool, provider): Self::State,
+        msgs: Vec<Self::Message>,
+    ) -> anyhow::Result<bool> {
         for msg in msgs {
             match msg {
                 ChainMessage::Ipc(IpcMessage::BottomUpExec(msg)) => {
@@ -147,7 +151,7 @@ where
                     };
                     let is_final = atomically(|| provider.check_proposal(&prop)).await;
                     if !is_final {
-                      return Ok(false);
+                        return Ok(false);
                     }
                 }
                 _ => {}
@@ -225,7 +229,9 @@ where
                 }
                 IpcMessage::TopDownExec(p) => {
                     if !provider.is_enabled() {
-                        return Err(anyhow!("cannot execute IPC top-down message: parent provider disabled"));
+                        return Err(anyhow!(
+                            "cannot execute IPC top-down message: parent provider disabled"
+                        ));
                     }
 
                     // error happens if we cannot get the validator set from ipc agent after retries

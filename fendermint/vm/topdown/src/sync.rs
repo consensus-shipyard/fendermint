@@ -127,16 +127,13 @@ impl<T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T>
         let agent = self.agent;
         let query = self.committed_state_query;
 
-        let mut interval =
-            tokio::time::interval(Duration::from_secs(config.polling_interval_secs));
+        let mut interval = tokio::time::interval(Duration::from_secs(config.polling_interval_secs));
 
         tokio::spawn(async move {
             loop {
                 interval.tick().await;
 
-                if let Err(e) =
-                    sync_with_parent(&config, &agent, &provider, &query).await
-                {
+                if let Err(e) = sync_with_parent(&config, &agent, &provider, &query).await {
                     tracing::error!("sync with parent encountered error: {e}");
                 }
             }

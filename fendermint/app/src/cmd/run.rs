@@ -12,13 +12,13 @@ use fendermint_vm_interpreter::{
     fvm::FvmMessageInterpreter,
     signed::SignedMessageInterpreter,
 };
+use fendermint_vm_resolver::ipld::IpldResolver;
 use fendermint_vm_topdown::sync::{launch_polling_syncer, IPCAgentProxy};
 use fendermint_vm_topdown::{CachedFinalityProvider, Toggle};
 use ipc_sdk::subnet_id::SubnetID;
-use std::sync::Arc;
-use fendermint_vm_resolver::ipld::IpldResolver;
 use libp2p::identity::secp256k1;
 use libp2p::identity::Keypair;
+use std::sync::Arc;
 use tracing::info;
 
 use crate::cmd::key::read_secret_key;
@@ -30,7 +30,6 @@ cmd! {
   }
 }
 
-<<<<<<< HEAD
 fn create_ipc_agent_proxy(
     settings: &fendermint_vm_topdown::Config,
     subnet_id: SubnetID,
@@ -45,11 +44,9 @@ fn create_ipc_agent_proxy(
     IPCAgentProxy::new(ipc_agent_client, subnet_id)
 }
 
-=======
 /// Run the Fendermint ABCI Application.
 ///
 /// This method acts as our composition root.
->>>>>>> 77fbdd0b0ab0f09378c5669340ef3298336a99a6
 async fn run(settings: Settings) -> anyhow::Result<()> {
     let interpreter = FvmMessageInterpreter::<NamespaceBlockstore>::new(
         settings.contracts_dir(),

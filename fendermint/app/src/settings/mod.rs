@@ -68,7 +68,7 @@ pub struct FvmSettings {
     pub exec_in_check: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct IPCSettings {
     #[serde(deserialize_with = "deserialize_subnet_id")]
     pub subnet_id: SubnetID,

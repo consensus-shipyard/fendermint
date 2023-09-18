@@ -122,7 +122,7 @@ tendermint-proto = { version = "0.31" }
 
 # Using the IPC SDK without the `fil-actor` feature so as not to depend on the actor `Runtime`.
 ipc-sdk = { git = "https://github.com/consensus-shipyard/ipc-actors.git", default-features = false, branch = "main" }
-ipc-agent = { git = "https://github.com/consensus-shipyard/ipc-agent.git", branch = "main" }
+ipc-agent = { git = "https://github.com/consensus-shipyard/ipc-agent.git", branch = "dev" }
 ipc-agent-sdk = { git = "https://github.com/consensus-shipyard/ipc-agent.git", branch = "dev" }
 ipc_ipld_resolver = { git = "https://github.com/consensus-shipyard/ipc-ipld-resolver.git", branch = "main" }
 
