@@ -279,6 +279,8 @@ dependencies = [
 [tasks.testnet-docker-compose-down]
 script = """
 export CMT_PERSISTENT_PEERS="UNDEFINED"
+if [ -z $GID ]; then export GID=$(id -g); fi
+if [ -z $UID ]; then export UID=$(id -u); fi
 docker compose -f ./infra/docker-compose.yml down
 """
 
