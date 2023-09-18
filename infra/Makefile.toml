@@ -163,7 +163,7 @@ run_task = { name = [
   "fendermint-rm",
   "ethapi-stop",
   "ethapi-rm",
-  "network-rm",
+  "network-rm"
 ]}
 
 # This task create all necessary data structures to run Fendermint:
@@ -262,6 +262,8 @@ dependencies = [
 
 [tasks.testnet-up]
 script = """
+if [ -z $GID ]; then export GID=$(id -g); fi
+if [ -z $UID ]; then export UID=$(id -u); fi
 export CMT_PERSISTENT_PEERS=`cat $BASE_TESTNET_DIR/peers`
 export CHAIN_NAME=$CHAIN_NAME
 export BASE_TESTNET_DIR=$BASE_TESTNET_DIR
@@ -271,7 +273,7 @@ docker compose -f ./infra/docker-compose.yml up -d
 [tasks.testnet-down]
 dependencies = [
   "testnet-docker-compose-down",
-  "network-rm"
+  "network-rm",
 ]
 
 [tasks.testnet-docker-compose-down]
