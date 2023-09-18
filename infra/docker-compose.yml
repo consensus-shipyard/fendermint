@@ -3,6 +3,7 @@ version: '3'
 services:
   cometbft-node0:
     container_name: cometbft-node0
+    user: ${UID}:${GID}
     image: "cometbft/cometbft:${COMETBFT_VERSION}"
     ports:
       - "26656-26657:26656-26657"
@@ -25,6 +26,7 @@ services:
 
   cometbft-node1:
     container_name: cometbft-node1
+    user: ${UID}:${GID}
     image: "cometbft/cometbft:${COMETBFT_VERSION}"
     ports:
       - "26659-26660:26656-26657"
@@ -47,6 +49,7 @@ services:
 
   cometbft-node2:
     container_name: cometbft-node2
+    user: ${UID}:${GID}
     image: "cometbft/cometbft:${COMETBFT_VERSION}"
     environment:
       - ID=2
@@ -69,6 +72,7 @@ services:
 
   cometbft-node3:
     container_name: cometbft-node3
+    user: ${UID}:${GID}
     image: "cometbft/cometbft:${COMETBFT_VERSION}"
     environment:
       - ID=3
@@ -90,6 +94,7 @@ services:
 
   fendermint-node0:
     container_name: fendermint-node0
+    user: ${UID}:${GID}
     image: "fendermint:latest"
     environment:
       - FM_DATA_DIR=/data/fendermint/data
@@ -103,6 +108,7 @@ services:
 
   fendermint-node1:
     container_name: fendermint-node1
+    user: ${UID}:${GID}
     image: "fendermint:latest"
     environment:
       - FM_DATA_DIR=/data/fendermint/data
@@ -116,6 +122,7 @@ services:
 
   fendermint-node2:
     container_name: fendermint-node2
+    user: ${UID}:${GID}
     image: "fendermint:latest"
     environment:
       - FM_DATA_DIR=/data/fendermint/data
@@ -129,6 +136,7 @@ services:
 
   fendermint-node3:
     container_name: fendermint-node3
+    user: ${UID}:${GID}
     image: "fendermint:latest"
     environment:
       - FM_DATA_DIR=/data/fendermint/data
@@ -142,6 +150,7 @@ services:
 
   ethapi-node0:
     container_name: ethapi-node0
+    user: ${UID}:${GID}
     image: "fendermint:latest"
     command: "eth run"
     environment:
@@ -161,6 +170,7 @@ services:
 
   ethapi-node1:
     container_name: ethapi-node1
+    user: ${UID}:${GID}
     image: "fendermint:latest"
     command: "eth run"
     environment:
@@ -180,6 +190,7 @@ services:
 
   ethapi-node2:
     container_name: ethapi-node2
+    user: ${UID}:${GID}
     image: "fendermint:latest"
     command: "eth run"
     environment:
@@ -199,6 +210,7 @@ services:
 
   ethapi-node3:
     container_name: ethapi-node3
+    user: ${UID}:${GID}
     image: "fendermint:latest"
     command: "eth run"
     environment:
