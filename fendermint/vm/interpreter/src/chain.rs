@@ -247,7 +247,6 @@ where
                         .inner
                         .deliver(state, VerifiableMessage::NotVerify(msg))
                         .await?;
-
                     // TODO: execute top down messages,
                     // TODO: see https://github.com/consensus-shipyard/fendermint/issues/241
 

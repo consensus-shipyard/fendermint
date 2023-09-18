@@ -1,7 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use config::{Config, ConfigError, Environment, File};
 use fendermint_vm_genesis::ipc::deserialize_subnet_id;
 use ipc_sdk::subnet_id::SubnetID;
