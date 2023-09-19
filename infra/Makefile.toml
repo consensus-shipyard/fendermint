@@ -16,7 +16,7 @@ CHAIN_NAME = { value = "root", condition = { env_not_set = ["CHAIN_NAME"] }}
 BALANCE = { value = "1000", condition = { env_not_set = ["BALANCE"] }}
 BASE_FEE = { value = "1000", condition = { env_not_set = ["BASE_FEE"] }}
 TIMESTAMP = { value = "1680101412", condition = { env_not_set = ["TIMESTAMP"] }}
-
+BASE_DIR="${HOME}/.ipc/${CHAIN_NAME}"
 FM_DIR="${BASE_DIR}/fendermint"
 CMT_DIR="${BASE_DIR}/cometbft"
 
@@ -45,12 +45,6 @@ CARGO_MAKE_WAIT_MILLISECONDS = 5000
 CMT_WAIT_MILLIS = 10000
 # Keep example logs to a minimum.
 VERBOSITY = ""
-
-[env.node]
-BASE_DIR="${HOME}/.ipc/${CHAIN_NAME}"
-
-[env.testnet]
-BASE_DIR="${HOME}/.ipc-testnet"
 
 [tasks.info]
 script="""

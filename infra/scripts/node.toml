@@ -1,6 +1,3 @@
-########################################################################################################################
-# Single node
-########################################################################################################################
 [tasks.node]
 workspace = false
 dependencies = [
@@ -58,21 +55,21 @@ run_task = { name = [
 # the genesis file with necessary entities and cryptographic keys.
 [tasks.node-config]
 dependencies = [
-    "fendermint-new-genesis",
-    "fendermint-new-key",
-    "fendermint-new-account",
-    "fendermint-add-validator",
-    "fendermint-new-gateway",
-    "fendermint-export-keys"
+    "node-script-new-genesis",
+    "node-script-new-key",
+    "node-script-new-account",
+    "node-script-add-validator",
+    "node-script-new-gateway",
+    "node-script-export-keys"
 ]
 
-[tasks.fendermint-new-genesis]
+[tasks.node-script-new-genesis]
 cwd = "./target/release"
 script = """
 ./fendermint genesis --genesis-file ${GENESIS_FILE} new --chain-name ${CHAIN_NAME} --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP}
 """
 
-[tasks.fendermint-new-key]
+[tasks.node-script-new-key]
 cwd = "./target/release"
 script="""
 mkdir -p $KEYS_DIR
@@ -81,20 +78,20 @@ mkdir -p $KEYS_DIR
 chmod 600 ${PRIV_KEY_PATH}
 """
 
-[tasks.fendermint-new-account]
+[tasks.node-script-new-account]
 cwd = "./target/release"
 script="""
 ./fendermint genesis --genesis-file ${GENESIS_FILE} add-account --public-key ${PUB_KEY_PATH} --balance ${BALANCE}
 """
 
 
-[tasks.fendermint-add-validator]
+[tasks.node-script-add-validator]
 cwd = "./target/release"
 script = """
 ./fendermint genesis --genesis-file ${GENESIS_FILE} add-validator --public-key ${PUB_KEY_PATH} --power 1
 """
 
-[tasks.fendermint-new-gateway]
+[tasks.node-script-new-gateway]
 cwd = "./target/release"
 script = """
 ./fendermint genesis --genesis-file ${GENESIS_FILE} ipc gateway --subnet-id /r0 \
@@ -104,7 +101,7 @@ script = """
     --majority-percentage 66
 """
 
-[tasks.fendermint-export-keys]
+[tasks.node-script-export-keys]
 cwd = "./target/release"
 script = """
 ./fendermint genesis --genesis-file ${GENESIS_FILE} into-tendermint --out ${CMT_DIR}/config/genesis.json
@@ -112,25 +109,3 @@ script = """
 ./fendermint key into-tendermint --secret-key ${PRIV_KEY_PATH} --out ${CMT_DIR}/config/priv_validator_key.json
 chmod 600 ${CMT_DIR}/config/priv_validator_key.json
 """
-
-[tasks.fendermint-start]
-extend = "fendermint-run"
-env = { "ENTRY" = "fendermint", "CMD" = "run", "FLAGS" = "-d" }
-
-[tasks.fendermint-run]
-script = """
-docker run \
-  ${FLAGS} \
-  --name ${FM_CONTAINER_NAME} \
-  --init \
-  --user $(id -u) \
-  --network ${NETWORK_NAME} \
-  --volume ${BASE_DIR}:/data \
-  --env FM_DATA_DIR=/data/fendermint/data \
-  --env FM_CHAIN_NAME=${NETWORK_NAME} \
-  --env LOG_LEVEL=info \
-  --entrypoint ${ENTRY} \
-  ${FM_DOCKER_IMAGE} \
-  ${CMD}
-"""
-dependencies = ["docker-network-create", "fendermint-deps"]

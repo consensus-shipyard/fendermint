@@ -1,3 +1,25 @@
+[tasks.fendermint-start]
+extend = "fendermint-run"
+env = { "ENTRY" = "fendermint", "CMD" = "run", "FLAGS" = "-d" }
+
+[tasks.fendermint-run]
+script = """
+docker run \
+  ${FLAGS} \
+  --name ${FM_CONTAINER_NAME} \
+  --init \
+  --user $(id -u) \
+  --network ${NETWORK_NAME} \
+  --volume ${BASE_DIR}:/data \
+  --env FM_DATA_DIR=/data/fendermint/data \
+  --env FM_CHAIN_NAME=${NETWORK_NAME} \
+  --env LOG_LEVEL=info \
+  --entrypoint ${ENTRY} \
+  ${FM_DOCKER_IMAGE} \
+  ${CMD}
+"""
+dependencies = ["docker-network-create", "fendermint-deps"]
+
 [tasks.fendermint-deps]
 script = """
 # Check if the image exists

@@ -6,7 +6,7 @@ dependencies = [
     "testnet-down",
     "testnet-init",
     "fendermint-deps",
-    "testnet-fendermint-config",
+    "testnet-config",
     "testnet-up"
 ]
 
@@ -89,17 +89,17 @@ env = { "CMD" = "init", "NETWORK_NAME"="${NETWORK_NAME}", "CMT_DIR" = "${BASE_DI
 extend = "cometbft-init"
 env = { "CMD" = "init", "NETWORK_NAME"="${NETWORK_NAME}", "CMT_DIR" = "${BASE_DIR}/node3/cometbft", "CMT_CONTAINER_NAME" = "cometbft-node3", "FLAGS" = "-a STDOUT -a STDERR --rm"  }
 
-[tasks.testnet-fendermint-config]
+[tasks.testnet-config]
 dependencies = [
-    "testnet-config-newgenesis",
-    "testnet-config-peers",
-    "testnet-config-newkey",
-    "testnet-config-newaccount",
-    "testnet-config-newgateway",
-    "testnet-share-genesis"
+    "testnet-script-new-genesis",
+    "testnet-script-add-peers",
+    "testnet-script-new-key",
+    "testnet-script-new-account",
+    "testnet-script-new-gateway",
+    "testnet-script-share-genesis"
 ]
 
-[tasks.testnet-config-newgenesis]
+[tasks.testnet-script-new-genesis]
 cwd = "./target/release"
 script = """
 ./fendermint genesis --genesis-file $BASE_DIR/genesis.json \
@@ -108,7 +108,7 @@ script = """
 cat $BASE_DIR/genesis.json
 """
 
-[tasks.testnet-config-newkey]
+[tasks.testnet-script-new-key]
 cwd = "./target/release"
 script="""
 for i in $(seq 0 3); do
@@ -117,7 +117,7 @@ for i in $(seq 0 3); do
 done
 """
 
-[tasks.testnet-config-newaccount]
+[tasks.testnet-script-new-account]
 cwd = "./target/release"
 script="""
 for i in $(seq 0 3); do
@@ -126,7 +126,7 @@ for i in $(seq 0 3); do
 done
 """
 
-[tasks.testnet-config-peers]
+[tasks.testnet-script-add-peers]
 cwd = "./target/release"
 script="""
 for i in $(seq 0 3); do
@@ -145,7 +145,7 @@ for i in $(seq 0 3); do
 done
 """
 
-[tasks.testnet-config-newgateway]
+[tasks.testnet-script-new-gateway]
 cwd = "./target/release"
 script = """
 for i in $(seq 0 3); do
@@ -175,7 +175,7 @@ echo "GENESIS:"
 cat $BASE_DIR/genesis.json
 """
 
-[tasks.testnet-share-genesis]
+[tasks.testnet-script-share-genesis]
 cwd = "./target/release"
 script = """
 for i in $(seq 0 3); do
