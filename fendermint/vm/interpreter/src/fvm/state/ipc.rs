@@ -9,6 +9,7 @@ use fendermint_vm_actor_interface::{eam::EthAddress, ipc::GATEWAY_ACTOR_ID};
 use fendermint_vm_ipc_actors::gateway_getter_facet::GatewayGetterFacet;
 use fvm_ipld_blockstore::Blockstore;
 
+#[derive(Clone)]
 pub struct GatewayCaller {
     getter: ContractCaller<GatewayGetterFacet<MockProvider>>,
 }

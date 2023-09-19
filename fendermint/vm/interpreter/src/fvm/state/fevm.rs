@@ -41,6 +41,7 @@ pub type MockContractCall<T> = ethers::prelude::ContractCall<MockProvider, T>;
 ///
 /// let _period: u64 = caller.call(&mut state, |c| c.bottom_up_check_period()).unwrap();
 /// ```
+#[derive(Clone)]
 pub struct ContractCaller<C> {
     addr: Address,
     contract: C,
