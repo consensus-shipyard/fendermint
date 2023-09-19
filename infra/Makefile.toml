@@ -17,10 +17,6 @@ BALANCE = { value = "1000", condition = { env_not_set = ["BALANCE"] }}
 BASE_FEE = { value = "1000", condition = { env_not_set = ["BASE_FEE"] }}
 TIMESTAMP = { value = "1680101412", condition = { env_not_set = ["TIMESTAMP"] }}
 
-BASE_DIR="${HOME}/.ipc/${CHAIN_NAME}"
-
-BASE_TESTNET_DIR="${HOME}/.ipc-testnet"
-
 FM_DIR="${BASE_DIR}/fendermint"
 CMT_DIR="${BASE_DIR}/cometbft"
 
@@ -50,22 +46,11 @@ CMT_WAIT_MILLIS = 10000
 # Keep example logs to a minimum.
 VERBOSITY = ""
 
-[env.ci]
-CMT_WAIT_MILLIS = 20000
-# Help debug any issues with simplecoin by logging requests and responses.
-VERBOSITY = "--verbose"
+[env.node]
+BASE_DIR="${HOME}/.ipc/${CHAIN_NAME}"
 
-# infrastructure workflows:
-# cargo install cargo-make
-#
-# cd fendermint/testing/smoke-test
-# - then -
-# cargo make --profile ci
-# - or -
-# cargo make setup
-# cargo make test
-# docker logs smoke-ethapi
-# cargo make teardown
+[env.testnet]
+BASE_DIR="${HOME}/.ipc-testnet"
 
 [tasks.info]
 script="""
