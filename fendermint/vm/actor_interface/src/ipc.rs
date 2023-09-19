@@ -10,7 +10,10 @@ use fendermint_vm_genesis::Validator;
 use fendermint_vm_ipc_actors as ia;
 pub use fendermint_vm_ipc_actors::gateway_manager_facet::SubnetID;
 use lazy_static::lazy_static;
-use merkle_tree_rs::standard::StandardMerkleTree;
+use merkle_tree_rs::{
+    core::process_proof,
+    standard::{standard_leaf_hash, LeafType, StandardMerkleTree},
+};
 
 use crate::{
     diamond::{EthContract, EthContractMap, EthFacet},
@@ -74,6 +77,11 @@ lazy_static! {
     };
 }
 
+lazy_static! {
+    pub static ref VALIDATOR_TREE_FIELDS: Vec<String> =
+        vec!["address".to_owned(), "uint256".to_owned()];
+}
+
 /// Construct a Merkle tree from the power table in a format which can be validated by
 /// https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/cryptography/MerkleProof.sol
 ///
@@ -83,34 +91,62 @@ pub struct ValidatorMerkleTree {
 }
 
 impl ValidatorMerkleTree {
-    pub fn new(power_table: &[Validator]) -> anyhow::Result<Self> {
+    pub fn new(validators: &[Validator]) -> anyhow::Result<Self> {
         // Using the 20 byte address for keys because that's what the Solidity library returns
         // when recovering a public key from a signature.
-        let values = power_table
-            .into_iter()
-            .map(|v| {
-                let addr = EthAddress::new_secp256k1(&v.public_key.0.serialize())?;
-                let addr = et::Address::from_slice(&addr.0);
-                let addr = format!("{addr:?}");
-
-                let power = et::U256::from(v.power.0);
-                let power = power.to_string();
-
-                Ok(vec![addr, power])
-            })
+        let values = validators
+            .iter()
+            .map(Self::validator_to_vec)
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        let tree = StandardMerkleTree::of(values, &["address".into(), "uint256".into()]);
+        let tree = StandardMerkleTree::of(&values, &VALIDATOR_TREE_FIELDS);
 
         Ok(Self { tree })
     }
 
     pub fn root_hash(&self) -> [u8; 32] {
-        let root = self.tree.root();
-        let root = root.trim_start_matches("0x");
+        Self::parse_hash(self.tree.root())
+    }
+
+    /// Create a Merkle proof for a validator.
+    ///
+    /// __DANGER__: This will panic if the validator is not in the tree.
+    pub fn prove(&self, validator: &Validator) -> anyhow::Result<Vec<[u8; 32]>> {
+        let v = Self::validator_to_vec(validator)?;
+        let proof = self.tree.get_proof(LeafType::LeafBytes(v));
+        Ok(proof.into_iter().map(Self::parse_hash).collect())
+    }
+
+    /// Validate a proof against a known root hash.
+    pub fn validate(
+        validator: &Validator,
+        root: &[u8; 32],
+        proof: &[[u8; 32]],
+    ) -> anyhow::Result<bool> {
+        let v = Self::validator_to_vec(validator)?;
+        let h = standard_leaf_hash(v, &VALIDATOR_TREE_FIELDS);
+        let p = proof.iter().map(|p| et::Bytes::from(p)).collect::<Vec<_>>();
+        let r = process_proof(&h, &p);
+        Ok(root.as_ref() == r.as_ref())
+    }
+
+    /// Parse a 0x prefixed hexadecimal string as bytes.
+    fn parse_hash(h: String) -> [u8; 32] {
         let mut bz = [0u8; 32];
-        hex::decode_to_slice(root, &mut bz).expect("root is a 0x prefixed hex");
+        hex::decode_to_slice(h.trim_start_matches("0x"), &mut bz)
+            .expect("hash is a 0x prefixed hex");
         bz
+    }
+
+    /// Convert a validator to what we can pass to the tree.
+    fn validator_to_vec(validator: &Validator) -> anyhow::Result<Vec<String>> {
+        let addr = EthAddress::new_secp256k1(&validator.public_key.0.serialize())?;
+        let addr = et::Address::from_slice(&addr.0);
+        let addr = format!("{addr:?}");
+
+        let power = et::U256::from(validator.power.0);
+        let power = power.to_string();
+        Ok(vec![addr, power])
     }
 }
 
@@ -275,6 +311,11 @@ mod tests {
         }
 
         let tree = ValidatorMerkleTree::new(&validators).expect("failed to create tree");
-        let _root = tree.root_hash();
+        let root = tree.root_hash();
+
+        let validator = validators.first().unwrap();
+        let proof = tree.prove(validator).expect("failed to prove");
+
+        assert!(ValidatorMerkleTree::validate(validator, &root, &proof).expect("failed to validate"))
     }
 }
