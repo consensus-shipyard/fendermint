@@ -8,7 +8,7 @@ use fvm::{
     call_manager::DefaultCallManager,
     engine::MultiEngine,
     executor::{ApplyFailure, ApplyKind, ApplyRet, DefaultExecutor, Executor},
-    machine::{DefaultMachine, Machine, NetworkConfig},
+    machine::{DefaultMachine, Machine, Manifest, NetworkConfig},
     state_tree::StateTree,
     DefaultKernel,
 };
@@ -136,6 +136,11 @@ where
     /// Get a mutable reference to the underlying [StateTree].
     pub fn state_tree_mut(&mut self) -> &mut StateTree<MachineBlockstore<DB>> {
         self.executor.state_tree_mut()
+    }
+
+    /// Built-in actor manifest to inspect code CIDs.
+    pub fn builtin_actors(&self) -> &Manifest {
+        self.executor.builtin_actors()
     }
 
     /// Collect all the event emitters' delegated addresses, for those who have any.
