@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::Context;
+use fendermint_vm_actor_interface::ipc::ValidatorMerkleTree;
 use fendermint_vm_genesis::{Power, Validator, ValidatorKey};
 use fvm_ipld_blockstore::Blockstore;
 use tendermint::block::Height;
@@ -44,7 +45,8 @@ where
     // TODO #252: Merge the changes into the power table.
 
     // TODO #254: Construct a Merkle tree from the power table.
-    let _validator_root_hash = validator_merkle_tree(&power_table);
+    let _tree =
+        ValidatorMerkleTree::new(&power_table).context("failed to create validator tree")?;
 
     // TODO #254: Put the next configuration number for the parent to expect in the checkpoint.
     // TODO #254: Construct checkpoint.
@@ -85,8 +87,4 @@ where
     }
 
     Ok(power_table)
-}
-
-fn validator_merkle_tree(_power_table: &PowerTable) -> [u8; 32] {
-    todo!()
 }

@@ -5,11 +5,17 @@
 // Here we define stable IDs for them, so we can deploy the
 // Solidity contracts during genesis.
 
+use ethers::core::types as et;
+use fendermint_vm_genesis::Validator;
 use fendermint_vm_ipc_actors as ia;
 pub use fendermint_vm_ipc_actors::gateway_manager_facet::SubnetID;
 use lazy_static::lazy_static;
+use merkle_tree_rs::standard::StandardMerkleTree;
 
-use crate::diamond::{EthContract, EthContractMap, EthFacet};
+use crate::{
+    diamond::{EthContract, EthContractMap, EthFacet},
+    eam::EthAddress,
+};
 
 define_id!(GATEWAY { id: 64 });
 define_id!(SUBNETREGISTRY { id: 65 });
@@ -66,6 +72,46 @@ lazy_static! {
         .into_iter()
         .collect()
     };
+}
+
+/// Construct a Merkle tree from the power table in a format which can be validated by
+/// https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/cryptography/MerkleProof.sol
+///
+/// The reference implementation is https://github.com/OpenZeppelin/merkle-tree/
+pub struct ValidatorMerkleTree {
+    tree: StandardMerkleTree,
+}
+
+impl ValidatorMerkleTree {
+    pub fn new(power_table: &[Validator]) -> anyhow::Result<Self> {
+        // Using the 20 byte address for keys because that's what the Solidity library returns
+        // when recovering a public key from a signature.
+        let values = power_table
+            .into_iter()
+            .map(|v| {
+                let addr = EthAddress::new_secp256k1(&v.public_key.0.serialize())?;
+                let addr = et::Address::from_slice(&addr.0);
+                let addr = format!("{addr:?}");
+
+                let power = et::U256::from(v.power.0);
+                let power = power.to_string();
+
+                Ok(vec![addr, power])
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        let tree = StandardMerkleTree::of(values, &["address".into(), "uint256".into()]);
+
+        Ok(Self { tree })
+    }
+
+    pub fn root_hash(&self) -> [u8; 32] {
+        let root = self.tree.root();
+        let root = root.trim_start_matches("0x");
+        let mut bz = [0u8; 32];
+        hex::decode_to_slice(root, &mut bz).expect("root is a 0x prefixed hex");
+        bz
+    }
 }
 
 pub mod gateway {
@@ -189,6 +235,10 @@ pub mod gateway {
 mod tests {
     use anyhow::bail;
     use ethers_core::abi::{Constructor, ParamType, Token};
+    use fendermint_vm_genesis::Validator;
+    use quickcheck_macros::quickcheck;
+
+    use super::ValidatorMerkleTree;
 
     /// Check all tokens against expected parameters; return any offending one.
     ///
@@ -216,5 +266,15 @@ mod tests {
     /// Based on [Constructor::param_types]
     pub fn constructor_param_types(cons: &Constructor) -> Vec<ParamType> {
         cons.inputs.iter().map(|p| p.kind.clone()).collect()
+    }
+
+    #[quickcheck]
+    fn merkleize_validators(validators: Vec<Validator>) {
+        if validators.is_empty() {
+            return;
+        }
+
+        let tree = ValidatorMerkleTree::new(&validators).expect("failed to create tree");
+        let _root = tree.root_hash();
     }
 }
