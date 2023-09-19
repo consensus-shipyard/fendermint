@@ -70,13 +70,12 @@ lazy_static! {
 
 pub mod gateway {
     use super::SubnetID;
-    use anyhow::bail;
     use ethers::contract::{EthAbiCodec, EthAbiType};
     use ethers::core::types::{H160, U256};
     use fendermint_vm_genesis::ipc::GatewayParams;
     use fendermint_vm_genesis::ValidatorKey;
     use fendermint_vm_ipc_actors::gateway_manager_facet::Membership;
-    use fvm_shared::address::{Address, Payload, Protocol};
+    use fvm_shared::address::{Payload, Protocol};
     use fvm_shared::econ::TokenAmount;
     use libsecp256k1::PublicKey;
 

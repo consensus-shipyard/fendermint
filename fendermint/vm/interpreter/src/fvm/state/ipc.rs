@@ -41,6 +41,12 @@ impl GatewayCaller {
         }
     }
 
+    /// Return true if the current subnet is the root subnet.
+    pub fn is_root<DB: Blockstore>(&self, state: &mut FvmExecState<DB>) -> anyhow::Result<bool> {
+        let subnet_id = self.getter.call(state, |c| c.get_network_name())?;
+        Ok(subnet_id.route.is_empty())
+    }
+
     /// Fetch the period at which this subnet should checkpoint itself to the parent.
     pub fn bottom_up_check_period<DB: Blockstore>(
         &self,

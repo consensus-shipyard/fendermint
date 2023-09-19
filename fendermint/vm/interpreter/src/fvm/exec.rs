@@ -127,7 +127,7 @@ where
 
     async fn end(&self, mut state: Self::State) -> anyhow::Result<(Self::State, Self::EndOutput)> {
         // Epoch transitions for checkpointing.
-        if self.gateway.enabled(&mut state)? {
+        if self.gateway.enabled(&mut state)? && !self.gateway.is_root(&mut state)? {
             let height: tendermint::block::Height = state
                 .block_height()
                 .try_into()

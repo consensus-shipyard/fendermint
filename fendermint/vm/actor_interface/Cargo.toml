@@ -12,6 +12,7 @@ license.workspace = true
 anyhow = { workspace = true }
 ethers = { workspace = true }
 lazy_static = { workspace = true }
+libsecp256k1 = { workspace = true }
 paste = { workspace = true }
 serde = { workspace = true }
 serde_tuple = { workspace = true }
