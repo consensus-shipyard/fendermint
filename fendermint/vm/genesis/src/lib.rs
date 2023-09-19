@@ -110,6 +110,21 @@ impl TryFrom<ValidatorKey> for tendermint::PublicKey {
     }
 }
 
+impl TryFrom<tendermint::PublicKey> for ValidatorKey {
+    type Error = anyhow::Error;
+
+    fn try_from(value: tendermint::PublicKey) -> Result<Self, Self::Error> {
+        match value {
+            tendermint::PublicKey::Secp256k1(key) => {
+                let bz = key.to_sec1_bytes();
+                let pk = PublicKey::parse_slice(&bz, None)?;
+                Ok(Self(pk))
+            }
+            other => Err(anyhow!("unexpected validator key type: {other:?}")),
+        }
+    }
+}
+
 /// A genesis validator with their initial power.
 ///
 /// An [`Address`] would be enough to validate signatures, however

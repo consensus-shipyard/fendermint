@@ -13,6 +13,7 @@ use fendermint_storage::{
     Codec, Encode, KVCollection, KVRead, KVReadable, KVStore, KVWritable, KVWrite,
 };
 use fendermint_vm_core::Timestamp;
+use fendermint_vm_genesis::Validator;
 use fendermint_vm_interpreter::bytes::{
     BytesMessageApplyRes, BytesMessageCheckRes, BytesMessageQuery, BytesMessageQueryRes,
 };
@@ -339,7 +340,7 @@ where
         Message = Vec<u8>,
         BeginOutput = FvmApplyRet,
         DeliverOutput = BytesMessageApplyRes,
-        EndOutput = (),
+        EndOutput = Vec<Validator>,
     >,
     I: CheckInterpreter<
         State = FvmExecState<ReadOnlyBlockstore<SS>>,
@@ -624,7 +625,7 @@ where
             .await
             .context("end failed")?;
 
-        Ok(to_end_block(ret))
+        Ok(to_end_block(ret)?)
     }
 
     /// Commit the current state at the current height.
