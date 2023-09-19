@@ -1,0 +1,136 @@
+########################################################################################################################
+# Single node
+########################################################################################################################
+[tasks.node]
+workspace = false
+dependencies = [
+    "node-down",
+    "node-init",
+    "node-network-create",
+    "cometbft-init",
+    "fendermint-deps",
+    "node-config",
+    "fendermint-start",
+    "cometbft-start",
+    "cometbft-wait",
+    "ethapi-start"
+]
+
+[tasks.node-network-create]
+env = { "NETWORK_NAME"="${NETWORK_NAME}"}
+extend = "docker-network-create"
+
+
+[tasks.node-init]
+dependencies = [
+    "node-clear",
+    "node-mkdir",
+]
+
+[tasks.node-clear]
+script="""
+echo clearing all IPC data
+rm -rf ${BASE_DIR}
+"""
+
+[tasks.node-mkdir]
+script="""
+echo creating directories: $BASE_DIR $FM_DIR $CMT_DIR
+mkdir -p $BASE_DIR
+mkdir -p $FM_DIR
+
+mkdir -p $CMT_DIR
+"""
+
+[tasks.node-down]
+# `dependencies` doesn't seem to work with `cleanup_task`.
+run_task = { name = [
+    "cometbft-stop",
+    "cometbft-rm",
+    "fendermint-stop",
+    "fendermint-rm",
+    "ethapi-stop",
+    "ethapi-rm",
+    "docker-network-rm"
+]}
+
+# This task create all necessary data structures to run Fendermint:
+# the genesis file with necessary entities and cryptographic keys.
+[tasks.node-config]
+dependencies = [
+    "fendermint-new-genesis",
+    "fendermint-new-key",
+    "fendermint-new-account",
+    "fendermint-add-validator",
+    "fendermint-new-gateway",
+    "fendermint-export-keys"
+]
+
+[tasks.fendermint-new-genesis]
+cwd = "./target/release"
+script = """
+./fendermint genesis --genesis-file ${GENESIS_FILE} new --chain-name ${CHAIN_NAME} --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP}
+"""
+
+[tasks.fendermint-new-key]
+cwd = "./target/release"
+script="""
+mkdir -p $KEYS_DIR
+
+./fendermint key gen --out-dir $KEYS_DIR --name $KEY_NAME;
+chmod 600 ${PRIV_KEY_PATH}
+"""
+
+[tasks.fendermint-new-account]
+cwd = "./target/release"
+script="""
+./fendermint genesis --genesis-file ${GENESIS_FILE} add-account --public-key ${PUB_KEY_PATH} --balance ${BALANCE}
+"""
+
+
+[tasks.fendermint-add-validator]
+cwd = "./target/release"
+script = """
+./fendermint genesis --genesis-file ${GENESIS_FILE} add-validator --public-key ${PUB_KEY_PATH} --power 1
+"""
+
+[tasks.fendermint-new-gateway]
+cwd = "./target/release"
+script = """
+./fendermint genesis --genesis-file ${GENESIS_FILE} ipc gateway --subnet-id /r0 \
+    --top-down-check-period 10 \
+    --bottom-up-check-period 10 \
+    --msg-fee 10 \
+    --majority-percentage 66
+"""
+
+[tasks.fendermint-export-keys]
+cwd = "./target/release"
+script = """
+./fendermint genesis --genesis-file ${GENESIS_FILE} into-tendermint --out ${CMT_DIR}/config/genesis.json
+
+./fendermint key into-tendermint --secret-key ${PRIV_KEY_PATH} --out ${CMT_DIR}/config/priv_validator_key.json
+chmod 600 ${CMT_DIR}/config/priv_validator_key.json
+"""
+
+[tasks.fendermint-start]
+extend = "fendermint-run"
+env = { "ENTRY" = "fendermint", "CMD" = "run", "FLAGS" = "-d" }
+
+[tasks.fendermint-run]
+script = """
+docker run \
+  ${FLAGS} \
+  --name ${FM_CONTAINER_NAME} \
+  --init \
+  --user $(id -u) \
+  --network ${NETWORK_NAME} \
+  --volume ${BASE_DIR}:/data \
+  --env FM_DATA_DIR=/data/fendermint/data \
+  --env FM_CHAIN_NAME=${NETWORK_NAME} \
+  --env LOG_LEVEL=info \
+  --entrypoint ${ENTRY} \
+  ${FM_DOCKER_IMAGE} \
+  ${CMD}
+"""
+dependencies = ["docker-network-create", "fendermint-deps"]

@@ -1,0 +1,24 @@
+[tasks.fendermint-deps]
+script = """
+# Check if the image exists
+# TODO: Check the version or use a flag to always re-build?
+if docker images | awk '{print $1":"$2}' | grep fendermint; then
+    echo fendermint image already exists
+    docker images | grep fendermint
+else
+    cd ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}
+    make docker-build
+fi
+"""
+
+[tasks.fendermint-rm]
+extend = "docker-rm"
+env = { "CONTAINER_NAME" = "${FM_CONTAINER_NAME}" }
+
+[tasks.fendermint-stop]
+extend = "docker-stop"
+env = { "CONTAINER_NAME" = "${FM_CONTAINER_NAME}" }
+
+[tasks.fendermint-logs]
+extend = "docker-logs"
+env = { "CONTAINER_NAME" = "${FM_CONTAINER_NAME}" }

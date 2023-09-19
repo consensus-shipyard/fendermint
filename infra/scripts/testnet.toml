@@ -1,0 +1,180 @@
+########################################################################################################################
+# Testnet node
+########################################################################################################################
+[tasks.testnet]
+dependencies = [
+    "testnet-down",
+    "testnet-init",
+    "fendermint-deps",
+    "testnet-fendermint-config",
+    "testnet-up"
+]
+
+[tasks.testnet-up]
+script = """
+if [ -z $GID ]; then export GID=$(id -g); fi
+if [ -z $UID ]; then export UID=$(id -u); fi
+export CMT_PERSISTENT_PEERS=`cat $BASE_TESTNET_DIR/peers`
+export CHAIN_NAME=$CHAIN_NAME
+export BASE_TESTNET_DIR=$BASE_TESTNET_DIR
+docker compose -f ./infra/docker-compose.yml up -d
+"""
+
+[tasks.testnet-down]
+dependencies = [
+    "testnet-docker-compose-down",
+    "docker-network-rm",
+]
+
+[tasks.testnet-docker-compose-down]
+script = """
+export CMT_PERSISTENT_PEERS="UNDEFINED"
+if [ -z $GID ]; then export GID=$(id -g); fi
+if [ -z $UID ]; then export UID=$(id -u); fi
+docker compose -f ./infra/docker-compose.yml down
+"""
+
+[tasks.testnet-init]
+dependencies = [
+    "testnet-clear",
+    "testnet-network-create",
+    "cometbft-pull",
+    "testnet-mkdir",
+    "testnet-cometbft-init",
+    "testnet-mkdir",
+]
+
+[tasks.testnet-network-create]
+env = { "NETWORK_NAME"="${NETWORK_NAME}"}
+extend = "docker-network-create"
+
+[tasks.testnet-clear]
+script="""
+echo clearing all IPC data
+rm -rf ${BASE_TESTNET_DIR}
+"""
+
+[tasks.testnet-mkdir]
+script="""
+mkdir -p $BASE_TESTNET_DIR
+mkdir -p $BASE_TESTNET_DIR/out
+
+for i in $(seq 0 3); do
+    mkdir -p $BASE_TESTNET_DIR/node${i}
+    mkdir -p $BASE_TESTNET_DIR/node${i}/fendermint
+    mkdir -p $BASE_TESTNET_DIR/node${i}/cometbft
+done
+"""
+
+[tasks.testnet-cometbft-init]
+dependencies = ["testnet-cometbft-init-node0", "testnet-cometbft-init-node1", "testnet-cometbft-init-node2", "testnet-cometbft-init-node3"]
+
+[tasks.testnet-cometbft-init-node0]
+extend = "cometbft-init"
+env = { "CMD" = "init", "NETWORK_NAME"="${NETWORK_NAME}", "CMT_DIR" = "${BASE_TESTNET_DIR}/node0/cometbft", "CMT_CONTAINER_NAME" = "cometbft-node0", "FLAGS" = "-a STDOUT -a STDERR --rm"}
+
+[tasks.testnet-cometbft-init-node1]
+extend = "cometbft-init"
+env = { "CMD" = "init", "NETWORK_NAME"="${NETWORK_NAME}", "CMT_DIR" = "${BASE_TESTNET_DIR}/node1/cometbft", "CMT_CONTAINER_NAME" = "cometbft-node1", "FLAGS" = "-a STDOUT -a STDERR --rm"  }
+
+[tasks.testnet-cometbft-init-node2]
+extend = "cometbft-init"
+env = { "CMD" = "init", "NETWORK_NAME"="${NETWORK_NAME}", "CMT_DIR" = "${BASE_TESTNET_DIR}/node2/cometbft", "CMT_CONTAINER_NAME" = "cometbft-node2", "FLAGS" = "-a STDOUT -a STDERR --rm"  }
+
+[tasks.testnet-cometbft-init-node3]
+extend = "cometbft-init"
+env = { "CMD" = "init", "NETWORK_NAME"="${NETWORK_NAME}", "CMT_DIR" = "${BASE_TESTNET_DIR}/node3/cometbft", "CMT_CONTAINER_NAME" = "cometbft-node3", "FLAGS" = "-a STDOUT -a STDERR --rm"  }
+
+[tasks.testnet-fendermint-config]
+dependencies = [
+    "testnet-config-newgenesis",
+    "testnet-config-peers",
+    "testnet-config-newkey",
+    "testnet-config-newaccount",
+    "testnet-config-newgateway",
+    "testnet-share-genesis"
+]
+
+[tasks.testnet-config-newgenesis]
+cwd = "./target/release"
+script = """
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json \
+      new --chain-name ${CHAIN_NAME} --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP}
+
+cat $BASE_TESTNET_DIR/genesis.json
+"""
+
+[tasks.testnet-config-newkey]
+cwd = "./target/release"
+script="""
+for i in $(seq 0 3); do
+    mkdir -p $BASE_TESTNET_DIR/node${i}/fendermint/keys
+    ./fendermint key gen --out-dir $BASE_TESTNET_DIR/node${i}/fendermint/keys --name validator${i}_key
+done
+"""
+
+[tasks.testnet-config-newaccount]
+cwd = "./target/release"
+script="""
+for i in $(seq 0 3); do
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json add-account \
+        --public-key $BASE_TESTNET_DIR/node${i}/fendermint/keys/validator${i}_key.pk --balance ${BALANCE}
+done
+"""
+
+[tasks.testnet-config-peers]
+cwd = "./target/release"
+script="""
+for i in $(seq 0 3); do
+    ./fendermint key add-peer \
+        --node-key-file $BASE_TESTNET_DIR/node${i}/cometbft/config/node_key.json \
+        --network-addr 192.167.10.$((${i}+2)):26656 \
+        --local-peers-file $BASE_TESTNET_DIR/peers
+done
+
+unset CMT_PERSISTENT_PEERS
+export CMT_PERSISTENT_PEERS=`cat $BASE_TESTNET_DIR/peers`
+echo Persistent peers: $CMT_PERSISTENT_PEERS
+
+for i in $(seq 0 3); do
+    sed -i'bak' "s/persistent_peers = \\"\\"/persistent_peers = \\"$CMT_PERSISTENT_PEERS\\"/" $BASE_TESTNET_DIR/node${i}/cometbft/config/config.toml
+done
+"""
+
+[tasks.testnet-config-newgateway]
+cwd = "./target/release"
+script = """
+for i in $(seq 0 3); do
+    ./fendermint genesis \
+        --genesis-file $BASE_TESTNET_DIR/genesis.json add-validator \
+        --public-key $BASE_TESTNET_DIR/node${i}/fendermint/keys/validator${i}_key.pk \
+        --power 1
+done
+
+./fendermint genesis --genesis-file $BASE_TESTNET_DIR/genesis.json ipc gateway --subnet-id /r0 \
+    --top-down-check-period 10 \
+    --bottom-up-check-period 10 \
+    --msg-fee 10 \
+    --majority-percentage 66
+
+./fendermint genesis \
+    --genesis-file $BASE_TESTNET_DIR/genesis.json into-tendermint \
+    --out $BASE_TESTNET_DIR/out/genesis.json
+
+for i in $(seq 0 3); do
+    ./fendermint key into-tendermint \
+        --secret-key $BASE_TESTNET_DIR/node${i}/fendermint/keys/validator${i}_key.sk \
+        --out $BASE_TESTNET_DIR/node${i}/cometbft/config/priv_validator_key.json
+done
+
+echo "GENESIS:"
+cat $BASE_TESTNET_DIR/genesis.json
+"""
+
+[tasks.testnet-share-genesis]
+cwd = "./target/release"
+script = """
+for i in $(seq 0 3); do
+    cp $BASE_TESTNET_DIR/out/genesis.json $BASE_TESTNET_DIR/node${i}/cometbft/config/genesis.json
+done
+"""
