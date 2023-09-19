@@ -2986,6 +2986,7 @@ dependencies = [
 name = "fendermint_vm_genesis"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "arbitrary",
  "cid",
  "fendermint_testing",
@@ -3004,6 +3005,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
+ "tendermint",
 ]
 
 [[package]]
