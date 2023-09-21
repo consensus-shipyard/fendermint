@@ -15,11 +15,15 @@ use tendermint_rpc::{endpoint::validators, Client, Paging};
 
 use super::state::{ipc::GatewayCaller, FvmExecState};
 
-// TODO #248: Define checkpoint type.
 pub type Checkpoint = BottomUpCheckpoint;
 
-/// Validator voting power.
-pub type PowerTable = Vec<Validator>;
+/// Validator voting power snapshot.
+#[derive(Debug, Clone)]
+pub struct PowerTable(pub Vec<Validator>);
+
+/// Changes in the power table.
+#[derive(Debug, Clone, Default)]
+pub struct PowerUpdates(pub Vec<Validator>);
 
 /// Construct and store a checkpoint if this is the end of the checkpoint period.
 /// Perform end-of-checkpoint-period transitions in the ledger.
@@ -27,7 +31,7 @@ pub async fn maybe_create_checkpoint<C, DB>(
     client: &C,
     gateway: &GatewayCaller<DB>,
     state: &mut FvmExecState<DB>,
-) -> anyhow::Result<Option<(Checkpoint, PowerTable)>>
+) -> anyhow::Result<Option<(Checkpoint, PowerUpdates)>>
 where
     C: Client + Sync + Send + 'static,
     DB: Blockstore + Sync + Send + 'static,
@@ -47,7 +51,7 @@ where
                 .context("failed to get the power table")?;
 
             // TODO #252: Take the next changes from the gateway.
-            let power_updates = Vec::new();
+            let power_updates = PowerUpdates(Vec::new());
 
             // TODO #252: Merge the changes into the power table.
             let next_power_table = merge_power(power_table, power_updates.clone());
@@ -70,7 +74,7 @@ where
 
             // Save the checkpoint in the ledger.
             gateway
-                .create_bottom_up_checkpoint(state, checkpoint.clone(), &next_power_table)
+                .create_bottom_up_checkpoint(state, checkpoint.clone(), &next_power_table.0)
                 .context("failed to store checkpoint")?;
 
             Ok(Some((checkpoint, power_updates)))
@@ -115,19 +119,19 @@ where
         });
     }
 
-    Ok(power_table)
+    Ok(PowerTable(power_table))
 }
 
-fn merge_power(curr: PowerTable, updates: PowerTable) -> PowerTable {
+fn merge_power(curr: PowerTable, updates: PowerUpdates) -> PowerTable {
     // Serializing the key because the wrapped types don't implement Hash or Ord.
     let mut next = HashMap::<[u8; SECP_PUB_LEN], Validator>::new();
 
-    for v in curr {
+    for v in curr.0 {
         let pk = v.public_key.0.serialize();
         next.insert(pk, v);
     }
 
-    for v in updates {
+    for v in updates.0 {
         let pk = v.public_key.0.serialize();
         if v.power.0 == 0 {
             next.remove(&pk);
@@ -136,5 +140,5 @@ fn merge_power(curr: PowerTable, updates: PowerTable) -> PowerTable {
         }
     }
 
-    next.drain().map(|(_, v)| v).collect()
+    PowerTable(next.drain().map(|(_, v)| v).collect())
 }

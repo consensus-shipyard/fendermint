@@ -15,6 +15,7 @@ pub mod store;
 pub mod bundle;
 
 pub use check::FvmCheckRet;
+pub use checkpoint::PowerUpdates;
 pub use exec::FvmApplyRet;
 use fendermint_eth_hardhat::Hardhat;
 pub use fendermint_vm_message::query::FvmQuery;

@@ -3,6 +3,7 @@
 
 use anyhow::Context;
 use async_trait::async_trait;
+use fendermint_vm_genesis::Validator;
 use std::collections::HashMap;
 
 use fendermint_vm_actor_interface::{cron, system};
@@ -14,7 +15,7 @@ use tendermint_rpc::Client;
 use crate::ExecInterpreter;
 
 use super::{
-    checkpoint::{self, PowerTable},
+    checkpoint::{self, PowerUpdates},
     state::FvmExecState,
     FvmMessage, FvmMessageInterpreter,
 };
@@ -46,7 +47,7 @@ where
     /// Return validator power updates.
     /// Currently ignoring events as there aren't any emitted by the smart contract,
     /// but keep in mind that if there were, those would have to be propagated.
-    type EndOutput = PowerTable;
+    type EndOutput = Vec<Validator>;
 
     async fn begin(
         &self,
@@ -136,9 +137,9 @@ where
             // TODO #255: Asynchronously broadcast signature, if validating.
             updates
         } else {
-            PowerTable::default()
+            PowerUpdates::default()
         };
 
-        Ok((state, updates))
+        Ok((state, updates.0))
     }
 }

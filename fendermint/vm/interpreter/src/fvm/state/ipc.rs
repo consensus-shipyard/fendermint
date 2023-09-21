@@ -53,7 +53,7 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         self.subnet_id(state).map(|id| id.route.is_empty())
     }
 
-    /// Return the current ID.
+    /// Return the current subnet ID.
     pub fn subnet_id(&self, state: &mut FvmExecState<DB>) -> anyhow::Result<SubnetID> {
         self.getter.call(state, |c| c.get_network_name())
     }
