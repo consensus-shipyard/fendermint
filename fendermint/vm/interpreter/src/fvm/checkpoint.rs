@@ -1,15 +1,12 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::collections::HashMap;
-
 use anyhow::{anyhow, Context};
 use ethers::types as et;
 use fendermint_vm_actor_interface::ipc::BottomUpCheckpoint;
 use fendermint_vm_genesis::{Power, Validator, ValidatorKey};
 use fendermint_vm_ipc_actors::gateway_router_facet::SubnetID;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_shared::address::SECP_PUB_LEN;
 use tendermint::block::Height;
 use tendermint_rpc::{endpoint::validators, Client, Paging};
 
@@ -27,11 +24,14 @@ pub struct PowerUpdates(pub Vec<Validator>);
 
 /// Construct and store a checkpoint if this is the end of the checkpoint period.
 /// Perform end-of-checkpoint-period transitions in the ledger.
+///
+/// If we are the boundary, return the validators eligible to sign and any updates
+/// to the power table, along with the checkpoint that needs to be signed by validators.
 pub async fn maybe_create_checkpoint<C, DB>(
     client: &C,
     gateway: &GatewayCaller<DB>,
     state: &mut FvmExecState<DB>,
-) -> anyhow::Result<Option<(Checkpoint, PowerUpdates)>>
+) -> anyhow::Result<Option<(Checkpoint, PowerTable, PowerUpdates)>>
 where
     C: Client + Sync + Send + 'static,
     DB: Blockstore + Sync + Send + 'static,
@@ -41,6 +41,10 @@ where
         .block_height()
         .try_into()
         .context("block height is not u64")?;
+
+    let block_hash = state
+        .block_hash()
+        .ok_or_else(|| anyhow!("block hash not set"))?;
 
     match should_create_checkpoint(gateway, state, height)? {
         None => Ok(None),
@@ -53,15 +57,8 @@ where
             // TODO #252: Take the next changes from the gateway.
             let power_updates = PowerUpdates(Vec::new());
 
-            // TODO #252: Merge the changes into the power table.
-            let next_power_table = merge_power(power_table, power_updates.clone());
-
             // TODO: #252: Take the configuration number of the last change.
             let next_configuration_number = 0;
-
-            let block_hash = state
-                .block_hash()
-                .ok_or_else(|| anyhow!("block hash not set"))?;
 
             // Construct checkpoint.
             let checkpoint = BottomUpCheckpoint {
@@ -73,11 +70,12 @@ where
             };
 
             // Save the checkpoint in the ledger.
+            // Pass in the current power table, because these are the validators who can sign this checkpoint.
             gateway
-                .create_bottom_up_checkpoint(state, checkpoint.clone(), &next_power_table.0)
+                .create_bottom_up_checkpoint(state, checkpoint.clone(), &power_table.0)
                 .context("failed to store checkpoint")?;
 
-            Ok(Some((checkpoint, power_updates)))
+            Ok(Some((checkpoint, power_table, power_updates)))
         }
     }
 }
@@ -120,25 +118,4 @@ where
     }
 
     Ok(PowerTable(power_table))
-}
-
-fn merge_power(curr: PowerTable, updates: PowerUpdates) -> PowerTable {
-    // Serializing the key because the wrapped types don't implement Hash or Ord.
-    let mut next = HashMap::<[u8; SECP_PUB_LEN], Validator>::new();
-
-    for v in curr.0 {
-        let pk = v.public_key.0.serialize();
-        next.insert(pk, v);
-    }
-
-    for v in updates.0 {
-        let pk = v.public_key.0.serialize();
-        if v.power.0 == 0 {
-            next.remove(&pk);
-        } else {
-            next.insert(pk, v);
-        }
-    }
-
-    PowerTable(next.drain().map(|(_, v)| v).collect())
 }
