@@ -34,7 +34,7 @@ pub struct FvmMessageInterpreter<DB, C> {
     /// Tendermint client for broadcasting transactions and run API queries.
     client: C,
     /// If this is a validator node, this should be the key we can use to sign transactions.
-    _validator_key: Option<(SecretKey, PublicKey)>,
+    validator_key: Option<(SecretKey, PublicKey)>,
     /// Overestimation rate applied to gas to ensure that the
     /// message goes through in the gas estimation.
     gas_overestimation_rate: f64,
@@ -63,7 +63,7 @@ impl<DB, C> FvmMessageInterpreter<DB, C> {
         });
         Self {
             client,
-            _validator_key: validator_key,
+            validator_key,
             contracts: Hardhat::new(contracts_dir),
             gas_overestimation_rate,
             gas_search_step,

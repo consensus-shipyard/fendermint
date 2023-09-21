@@ -7,6 +7,7 @@ use fendermint_vm_actor_interface::ipc::BottomUpCheckpoint;
 use fendermint_vm_genesis::{Power, Validator, ValidatorKey};
 use fendermint_vm_ipc_actors::gateway_router_facet::SubnetID;
 use fvm_ipld_blockstore::Blockstore;
+use libsecp256k1::SecretKey;
 use tendermint::block::Height;
 use tendermint_rpc::{endpoint::validators, Client, Paging};
 
@@ -78,6 +79,19 @@ where
             Ok(Some((checkpoint, power_table, power_updates)))
         }
     }
+}
+
+/// As a validator, sign the checkpoint and broadcast a transaction to add our signature to the ledger.
+pub async fn broadcast_signature<C>(
+    _client: C,
+    _checkpoint: Checkpoint,
+    _secret_key: SecretKey,
+    _power: Power,
+) -> anyhow::Result<()>
+where
+    C: Client,
+{
+    Ok(())
 }
 
 fn should_create_checkpoint<DB>(
