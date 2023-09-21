@@ -98,7 +98,7 @@ script = """
     --top-down-check-period 10 \
     --bottom-up-check-period 10 \
     --msg-fee 10 \
-    --majority-percentage 66
+    --majority-percentage 67
 """
 
 [tasks.node-script-export-keys]
