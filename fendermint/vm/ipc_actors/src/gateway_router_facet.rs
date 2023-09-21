@@ -343,6 +343,7 @@ pub mod gateway_router_facet {
                                                 ],
                                             ),
                                             ::ethers::core::abi::ethabi::ParamType::Uint(64usize),
+                                            ::ethers::core::abi::ethabi::ParamType::FixedBytes(32usize),
                                             ::ethers::core::abi::ethabi::ParamType::Uint(64usize),
                                             ::ethers::core::abi::ethabi::ParamType::FixedBytes(32usize),
                                         ],
@@ -844,7 +845,7 @@ pub mod gateway_router_facet {
                 .method_hash([159, 166, 132, 64], (finality, n, validators, weights))
                 .expect("method not found (this should never happen)")
         }
-        ///Calls the contract's `createBottomUpCheckpoint` (0x529abdb4) function
+        ///Calls the contract's `createBottomUpCheckpoint` (0xa656ca5b) function
         pub fn create_bottom_up_checkpoint(
             &self,
             checkpoint: BottomUpCheckpointNew,
@@ -853,7 +854,7 @@ pub mod gateway_router_facet {
         ) -> ::ethers::contract::builders::ContractCall<M, ()> {
             self.0
                 .method_hash(
-                    [82, 154, 189, 180],
+                    [166, 86, 202, 91],
                     (checkpoint, membership_root_hash, membership_weight),
                 )
                 .expect("method not found (this should never happen)")
@@ -2028,7 +2029,7 @@ pub mod gateway_router_facet {
         pub validators: ::std::vec::Vec<FvmAddress>,
         pub weights: ::std::vec::Vec<::ethers::core::types::U256>,
     }
-    ///Container type for all input parameters for the `createBottomUpCheckpoint` function with signature `createBottomUpCheckpoint(((uint64,address[]),uint64,uint64,bytes32),bytes32,uint256)` and selector `0x529abdb4`
+    ///Container type for all input parameters for the `createBottomUpCheckpoint` function with signature `createBottomUpCheckpoint(((uint64,address[]),uint64,bytes32,uint64,bytes32),bytes32,uint256)` and selector `0xa656ca5b`
     #[derive(
         Clone,
         ::ethers::contract::EthCall,
@@ -2041,7 +2042,7 @@ pub mod gateway_router_facet {
     )]
     #[ethcall(
         name = "createBottomUpCheckpoint",
-        abi = "createBottomUpCheckpoint(((uint64,address[]),uint64,uint64,bytes32),bytes32,uint256)"
+        abi = "createBottomUpCheckpoint(((uint64,address[]),uint64,bytes32,uint64,bytes32),bytes32,uint256)"
     )]
     pub struct CreateBottomUpCheckpointCall {
         pub checkpoint: BottomUpCheckpointNew,
@@ -2181,7 +2182,7 @@ pub mod gateway_router_facet {
         pub prev_hash: [u8; 32],
         pub proof: ::ethers::core::types::Bytes,
     }
-    ///`BottomUpCheckpointNew((uint64,address[]),uint64,uint64,bytes32)`
+    ///`BottomUpCheckpointNew((uint64,address[]),uint64,bytes32,uint64,bytes32)`
     #[derive(
         Clone,
         ::ethers::contract::EthAbiType,
@@ -2195,6 +2196,7 @@ pub mod gateway_router_facet {
     pub struct BottomUpCheckpointNew {
         pub subnet_id: SubnetID,
         pub block_height: u64,
+        pub block_hash: [u8; 32],
         pub next_configuration_number: u64,
         pub cross_messages_hash: [u8; 32],
     }

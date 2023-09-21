@@ -23,6 +23,8 @@ use serde::{Deserialize, Serialize};
 use crate::fvm::externs::FendermintExterns;
 use fendermint_vm_core::{chainid::HasChainID, Timestamp};
 
+pub type BlockHash = [u8; 32];
+
 pub type ActorAddressMap = HashMap<ActorID, Address>;
 
 /// The result of the message application bundled with any delegated addresses of event emitters.
@@ -53,6 +55,12 @@ where
 {
     executor:
         DefaultExecutor<DefaultKernel<DefaultCallManager<DefaultMachine<DB, FendermintExterns>>>>,
+
+    /// Hash of the block currently being executed. For queries and checks this is empty.
+    ///
+    /// The main motivation to add it here was to make it easier to pass in data to the
+    /// execution interpreter without having to add yet another piece to track at the app level.
+    block_hash: Option<BlockHash>,
 }
 
 impl<DB> FvmExecState<DB>
@@ -87,7 +95,16 @@ where
         let machine = DefaultMachine::new(&mc, blockstore, FendermintExterns)?;
         let executor = DefaultExecutor::new(engine, machine)?;
 
-        Ok(Self { executor })
+        Ok(Self {
+            executor,
+            block_hash: None,
+        })
+    }
+
+    /// Set the block hash during execution.
+    pub fn with_block_hash(mut self, block_hash: BlockHash) -> Self {
+        self.block_hash = Some(block_hash);
+        self
     }
 
     /// Execute message implicitly.
@@ -126,6 +143,11 @@ where
     /// The height of the currently executing block.
     pub fn block_height(&self) -> ChainEpoch {
         self.executor.context().epoch
+    }
+
+    /// Identity of the block being executed, if we are indeed executing any blocks.
+    pub fn block_hash(&self) -> Option<BlockHash> {
+        self.block_hash
     }
 
     /// The timestamp of the currently executing block.

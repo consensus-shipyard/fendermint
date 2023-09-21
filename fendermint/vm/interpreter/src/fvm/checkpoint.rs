@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use ethers::types as et;
 use fendermint_vm_actor_interface::ipc::BottomUpCheckpoint;
 use fendermint_vm_genesis::{Power, Validator, ValidatorKey};
@@ -55,10 +55,15 @@ where
             // TODO: #252: Take the configuration number of the last change.
             let next_configuration_number = 0;
 
+            let block_hash = state
+                .block_hash()
+                .ok_or_else(|| anyhow!("block hash not set"))?;
+
             // Construct checkpoint.
             let checkpoint = BottomUpCheckpoint {
                 subnet_id,
                 block_height: height.value(),
+                block_hash,
                 next_configuration_number,
                 cross_messages_hash: et::H256::zero().0,
             };
