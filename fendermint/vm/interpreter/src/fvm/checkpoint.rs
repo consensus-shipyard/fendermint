@@ -1,12 +1,15 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::collections::HashMap;
+
 use anyhow::Context;
 use ethers::types as et;
 use fendermint_vm_actor_interface::ipc::BottomUpCheckpoint;
 use fendermint_vm_genesis::{Power, Validator, ValidatorKey};
 use fendermint_vm_ipc_actors::gateway_router_facet::SubnetID;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_shared::address::SECP_PUB_LEN;
 use tendermint::block::Height;
 use tendermint_rpc::{endpoint::validators, Client, Paging};
 
@@ -38,12 +41,18 @@ where
     match should_create_checkpoint(gateway, state, height)? {
         None => Ok(None),
         Some(subnet_id) => {
+            // Get the current power table.
             let power_table = power_table(client, height)
                 .await
                 .context("failed to get the power table")?;
 
             // TODO #252: Take the next changes from the gateway.
+            let power_updates = Vec::new();
+
             // TODO #252: Merge the changes into the power table.
+            let next_power_table = merge_power(power_table, power_updates.clone());
+
+            // TODO: #252: Take the configuration number of the last change.
             let next_configuration_number = 0;
 
             // Construct checkpoint.
@@ -56,10 +65,10 @@ where
 
             // Save the checkpoint in the ledger.
             gateway
-                .create_bottom_up_checkpoint(state, checkpoint.clone(), &power_table)
+                .create_bottom_up_checkpoint(state, checkpoint.clone(), &next_power_table)
                 .context("failed to store checkpoint")?;
 
-            Ok(Some((checkpoint, power_table)))
+            Ok(Some((checkpoint, power_updates)))
         }
     }
 }
@@ -102,4 +111,25 @@ where
     }
 
     Ok(power_table)
+}
+
+fn merge_power(curr: PowerTable, updates: PowerTable) -> PowerTable {
+    // Serializing the key because the wrapped types don't implement Hash or Ord.
+    let mut next = HashMap::<[u8; SECP_PUB_LEN], Validator>::new();
+
+    for v in curr {
+        let pk = v.public_key.0.serialize();
+        next.insert(pk, v);
+    }
+
+    for v in updates {
+        let pk = v.public_key.0.serialize();
+        if v.power.0 == 0 {
+            next.remove(&pk);
+        } else {
+            next.insert(pk, v);
+        }
+    }
+
+    next.drain().map(|(_, v)| v).collect()
 }
