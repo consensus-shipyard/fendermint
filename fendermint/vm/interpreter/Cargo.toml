@@ -10,7 +10,7 @@ license.workspace = true
 
 [dependencies]
 fendermint_vm_actor_interface = { path = "../actor_interface" }
-ipc_actors_abis = { git = "https://github.com/consensus-shipyard/ipc-solidity-actors.git", branch = "dev" }
+ipc_actors_abis = { workspace = true }
 fendermint_vm_core = { path = "../core" }
 fendermint_vm_genesis = { path = "../genesis" }
 fendermint_vm_message = { path = "../message" }
