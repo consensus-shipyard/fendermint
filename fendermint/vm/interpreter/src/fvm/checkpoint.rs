@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::Context;
-use fendermint_vm_actor_interface::ipc::ValidatorMerkleTree;
+use ethers::types as et;
+use fendermint_vm_actor_interface::ipc::BottomUpCheckpoint;
 use fendermint_vm_genesis::{Power, Validator, ValidatorKey};
+use fendermint_vm_ipc_actors::gateway_router_facet::SubnetID;
 use fvm_ipld_blockstore::Blockstore;
 use tendermint::block::Height;
 use tendermint_rpc::{endpoint::validators, Client, Paging};
@@ -11,7 +13,7 @@ use tendermint_rpc::{endpoint::validators, Client, Paging};
 use super::state::{ipc::GatewayCaller, FvmExecState};
 
 // TODO #248: Define checkpoint type.
-pub type Checkpoint = ();
+pub type Checkpoint = BottomUpCheckpoint;
 
 /// Validator voting power.
 pub type PowerTable = Vec<Validator>;
@@ -33,43 +35,56 @@ where
         .try_into()
         .context("block height is not u64")?;
 
-    if !should_create_checkpoint(gateway, state, height)? {
-        return Ok(None);
+    match should_create_checkpoint(gateway, state, height)? {
+        None => Ok(None),
+        Some(subnet_id) => {
+            let power_table = power_table(client, height)
+                .await
+                .context("failed to get the power table")?;
+
+            // TODO #252: Take the next changes from the gateway.
+            // TODO #252: Merge the changes into the power table.
+            let next_configuration_number = 0;
+
+            // Construct checkpoint.
+            let checkpoint = BottomUpCheckpoint {
+                subnet_id,
+                block_height: height.value(),
+                next_configuration_number,
+                cross_messages_hash: et::H256::zero().0,
+            };
+
+            // Save the checkpoint in the ledger.
+            gateway
+                .create_bottom_up_checkpoint(state, checkpoint.clone(), &power_table)
+                .context("failed to store checkpoint")?;
+
+            Ok(Some((checkpoint, power_table)))
+        }
     }
-
-    let power_table = power_table(client, height)
-        .await
-        .context("failed to get the power table")?;
-
-    // TODO #252: Take the next changes from the gateway.
-    // TODO #252: Merge the changes into the power table.
-
-    // TODO #254: Construct a Merkle tree from the power table.
-    let _tree =
-        ValidatorMerkleTree::new(&power_table).context("failed to create validator tree")?;
-
-    // TODO #254: Put the next configuration number for the parent to expect in the checkpoint.
-    // TODO #254: Construct checkpoint.
-    let checkpoint = ();
-
-    Ok(Some((checkpoint, power_table)))
 }
 
 fn should_create_checkpoint<DB>(
     gateway: &GatewayCaller,
     state: &mut FvmExecState<DB>,
     height: Height,
-) -> anyhow::Result<bool>
+) -> anyhow::Result<Option<SubnetID>>
 where
     DB: Blockstore,
 {
-    if !gateway.enabled(state)? {
-        Ok(false)
-    } else if gateway.is_root(state)? {
-        Ok(false)
-    } else {
-        Ok(height.value() % gateway.bottom_up_check_period(state)? == 0)
+    if gateway.enabled(state)? {
+        let id = gateway.subnet_id(state)?;
+        let is_root = id.route.is_empty();
+
+        if !is_root && height.value() % gateway.bottom_up_check_period(state)? == 0 {
+            let id = SubnetID {
+                root: id.root,
+                route: id.route,
+            };
+            return Ok(Some(id));
+        }
     }
+    Ok(None)
 }
 
 async fn power_table<C>(client: &C, height: Height) -> anyhow::Result<PowerTable>

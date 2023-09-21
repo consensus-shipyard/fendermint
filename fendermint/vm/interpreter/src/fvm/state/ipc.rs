@@ -5,13 +5,21 @@ use super::{
     fevm::{ContractCaller, MockProvider},
     FvmExecState,
 };
-use fendermint_vm_actor_interface::{eam::EthAddress, ipc::GATEWAY_ACTOR_ID};
-use fendermint_vm_ipc_actors::gateway_getter_facet::GatewayGetterFacet;
+use anyhow::Context;
+use ethers::types as et;
+use fendermint_vm_actor_interface::{
+    eam::EthAddress,
+    ipc::{ValidatorMerkleTree, GATEWAY_ACTOR_ID},
+};
+use fendermint_vm_genesis::Validator;
+use fendermint_vm_ipc_actors::gateway_getter_facet::{GatewayGetterFacet, SubnetID};
+use fendermint_vm_ipc_actors::gateway_router_facet::{BottomUpCheckpointNew, GatewayRouterFacet};
 use fvm_ipld_blockstore::Blockstore;
 
 #[derive(Clone)]
 pub struct GatewayCaller {
     getter: ContractCaller<GatewayGetterFacet<MockProvider>>,
+    router: ContractCaller<GatewayRouterFacet<MockProvider>>,
 }
 
 impl GatewayCaller {
@@ -19,6 +27,7 @@ impl GatewayCaller {
         let addr = EthAddress::from_id(GATEWAY_ACTOR_ID);
         Self {
             getter: ContractCaller::new(addr, GatewayGetterFacet::new),
+            router: ContractCaller::new(addr, GatewayRouterFacet::new),
         }
     }
 
@@ -32,15 +41,44 @@ impl GatewayCaller {
 
     /// Return true if the current subnet is the root subnet.
     pub fn is_root<DB: Blockstore>(&self, state: &mut FvmExecState<DB>) -> anyhow::Result<bool> {
-        let subnet_id = self.getter.call(state, |c| c.get_network_name())?;
-        Ok(subnet_id.route.is_empty())
+        self.subnet_id(state).map(|id| id.route.is_empty())
     }
 
+    /// Return the current ID.
+    pub fn subnet_id<DB: Blockstore>(
+        &self,
+        state: &mut FvmExecState<DB>,
+    ) -> anyhow::Result<SubnetID> {
+        self.getter.call(state, |c| c.get_network_name())
+    }
+
+    /// Fetch the period with which the current subnet has to submit checkpoints to its parent.
     pub fn bottom_up_check_period<DB: Blockstore>(
         &self,
         state: &mut FvmExecState<DB>,
     ) -> anyhow::Result<u64> {
         self.getter.call(state, |c| c.bottom_up_check_period())
+    }
+
+    /// Insert a new checkpoint at the period boundary.
+    pub fn create_bottom_up_checkpoint<DB: Blockstore>(
+        &self,
+        state: &mut FvmExecState<DB>,
+        checkpoint: BottomUpCheckpointNew,
+        power_table: &Vec<Validator>,
+    ) -> anyhow::Result<()> {
+        // Construct a Merkle tree from the power table, which we can use to validate validator set membership
+        // when the signatures are submitted in transactions for accumulation.
+        let tree =
+            ValidatorMerkleTree::new(power_table).context("failed to create validator tree")?;
+
+        let total_power = power_table.iter().fold(et::U256::zero(), |p, v| {
+            p.saturating_add(et::U256::from(v.power.0))
+        });
+
+        self.router.call(state, |c| {
+            c.create_bottom_up_checkpoint(checkpoint, tree.root_hash().0, total_power)
+        })
     }
 }
 

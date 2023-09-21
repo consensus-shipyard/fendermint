@@ -134,7 +134,6 @@ where
                 .context("failed to create checkpoint")?
         {
             // TODO #255: Asynchronously broadcast signature, if validating.
-            // TODO #252: Return changeset to Tendermint.
             updates
         } else {
             PowerTable::default()
