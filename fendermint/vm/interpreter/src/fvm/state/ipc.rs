@@ -6,8 +6,8 @@ use super::{
     FvmExecState,
 };
 use fendermint_vm_actor_interface::{eam::EthAddress, ipc};
-use ipc_actors_abis::gateway_getter_facet::GatewayGetterFacet;
 use fvm_ipld_blockstore::Blockstore;
+use ipc_actors_abis::gateway_getter_facet::GatewayGetterFacet;
 
 pub struct GatewayCaller {
     getter: ContractCaller<GatewayGetterFacet<MockProvider>>,
