@@ -22,7 +22,7 @@ pub type PowerTable = Vec<Validator>;
 /// Perform end-of-checkpoint-period transitions in the ledger.
 pub async fn maybe_create_checkpoint<C, DB>(
     client: &C,
-    gateway: &GatewayCaller,
+    gateway: &GatewayCaller<DB>,
     state: &mut FvmExecState<DB>,
 ) -> anyhow::Result<Option<(Checkpoint, PowerTable)>>
 where
@@ -65,7 +65,7 @@ where
 }
 
 fn should_create_checkpoint<DB>(
-    gateway: &GatewayCaller,
+    gateway: &GatewayCaller<DB>,
     state: &mut FvmExecState<DB>,
     height: Height,
 ) -> anyhow::Result<Option<SubnetID>>

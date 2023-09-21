@@ -1,6 +1,6 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
-use std::{marker::PhantomData, path::PathBuf};
+use std::path::PathBuf;
 
 mod check;
 mod checkpoint;
@@ -43,8 +43,7 @@ pub struct FvmMessageInterpreter<DB, C> {
     /// Indicate whether transactions should be fully executed during the checks performed
     /// when they are added to the mempool, or just the most basic ones are performed.
     exec_in_check: bool,
-    gateway: GatewayCaller,
-    _phantom_db: PhantomData<DB>,
+    gateway: GatewayCaller<DB>,
 }
 
 impl<DB, C> FvmMessageInterpreter<DB, C> {
@@ -66,7 +65,6 @@ impl<DB, C> FvmMessageInterpreter<DB, C> {
             gas_search_step,
             exec_in_check,
             gateway: GatewayCaller::default(),
-            _phantom_db: PhantomData,
         }
     }
 }
