@@ -5,13 +5,15 @@
 // Here we define stable IDs for them, so we can deploy the
 // Solidity contracts during genesis.
 
+use anyhow::Context;
 use ethers::core::types as et;
 use fendermint_vm_genesis::Validator;
 use fendermint_vm_ipc_actors as ia;
 pub use fendermint_vm_ipc_actors::gateway_manager_facet::SubnetID;
 use lazy_static::lazy_static;
 use merkle_tree_rs::{
-    core::process_proof,
+    core::{process_proof, Hash},
+    format::Raw,
     standard::{standard_leaf_hash, LeafType, StandardMerkleTree},
 };
 
@@ -87,7 +89,7 @@ lazy_static! {
 ///
 /// The reference implementation is https://github.com/OpenZeppelin/merkle-tree/
 pub struct ValidatorMerkleTree {
-    tree: StandardMerkleTree,
+    tree: StandardMerkleTree<Raw>,
 }
 
 impl ValidatorMerkleTree {
@@ -99,43 +101,32 @@ impl ValidatorMerkleTree {
             .map(Self::validator_to_vec)
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        let tree = StandardMerkleTree::of(&values, &VALIDATOR_TREE_FIELDS);
+        let tree = StandardMerkleTree::of(&values, &VALIDATOR_TREE_FIELDS)
+            .context("failed to construct Merkle tree")?;
 
         Ok(Self { tree })
     }
 
-    pub fn root_hash(&self) -> [u8; 32] {
-        Self::parse_hash(self.tree.root())
+    pub fn root_hash(&self) -> Hash {
+        self.tree.root()
     }
 
     /// Create a Merkle proof for a validator.
-    ///
-    /// __DANGER__: This will panic if the validator is not in the tree.
-    pub fn prove(&self, validator: &Validator) -> anyhow::Result<Vec<[u8; 32]>> {
+    pub fn prove(&self, validator: &Validator) -> anyhow::Result<Vec<Hash>> {
         let v = Self::validator_to_vec(validator)?;
-        let proof = self.tree.get_proof(LeafType::LeafBytes(v));
-        Ok(proof.into_iter().map(Self::parse_hash).collect())
+        let proof = self
+            .tree
+            .get_proof(LeafType::LeafBytes(v))
+            .context("failed to produce Merkle proof")?;
+        Ok(proof)
     }
 
     /// Validate a proof against a known root hash.
-    pub fn validate(
-        validator: &Validator,
-        root: &[u8; 32],
-        proof: &[[u8; 32]],
-    ) -> anyhow::Result<bool> {
+    pub fn validate(validator: &Validator, root: &Hash, proof: &[Hash]) -> anyhow::Result<bool> {
         let v = Self::validator_to_vec(validator)?;
-        let h = standard_leaf_hash(v, &VALIDATOR_TREE_FIELDS);
-        let p = proof.iter().map(|p| et::Bytes::from(p)).collect::<Vec<_>>();
-        let r = process_proof(&h, &p);
-        Ok(root.as_ref() == r.as_ref())
-    }
-
-    /// Parse a 0x prefixed hexadecimal string as bytes.
-    fn parse_hash(h: String) -> [u8; 32] {
-        let mut bz = [0u8; 32];
-        hex::decode_to_slice(h.trim_start_matches("0x"), &mut bz)
-            .expect("hash is a 0x prefixed hex");
-        bz
+        let h = standard_leaf_hash(v, &VALIDATOR_TREE_FIELDS)?;
+        let r = process_proof(&h, proof).context("failed to process Merkle proof")?;
+        Ok(*root == r)
     }
 
     /// Convert a validator to what we can pass to the tree.

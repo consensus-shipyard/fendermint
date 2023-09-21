@@ -129,4 +129,4 @@ ipc_ipld_resolver = { git = "https://github.com/consensus-shipyard/ipc-ipld-reso
 # Use stable-only features.
 gcra = { git = "https://github.com/consensus-shipyard/gcra-rs.git", branch = "main" }
 
-merkle-tree-rs = { git = "https://github.com/consensus-shipyard/merkle-tree-rs.git", branch = "main" }
+merkle-tree-rs = { git = "https://github.com/consensus-shipyard/merkle-tree-rs.git", branch = "dev" }
