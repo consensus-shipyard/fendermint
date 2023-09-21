@@ -34,7 +34,7 @@ test: $(BUILTIN_ACTORS_BUNDLE) $(IPC_ACTORS_ABI)
 e2e: docker-build
 	cd fendermint/testing/smoke-test && cargo make --profile $(PROFILE)
 
-clean: clean-ipc-actors-abi
+clean:
 	cargo clean
 	cd $(BUILTIN_ACTORS_DIR) && cargo clean
 	rm $(BUILTIN_ACTORS_BUNDLE)
@@ -88,15 +88,6 @@ $(BUILTIN_ACTORS_BUNDLE): $(BUILTIN_ACTORS_CODE)
 	git checkout $(BUILTIN_ACTORS_TAG) && \
 	rustup target add wasm32-unknown-unknown && \
 	cargo run --release -- -o output/$(shell basename $@)
-
-
-# Compile the ABI artifacts and Rust bindings for the IPC Solidity actors.
-ipc-actors-abi: $(IPC_ACTORS_ABI)
-	cargo build --release -p fendermint_vm_ipc_actors
-
-# Force reompilation of the IPC actors.
-clean-ipc-actors-abi:
-	rm -rf $(IPC_ACTORS_ABI)
 
 # Clone the IPC Solidity actors if necessary and compile the ABI, putting down a marker at the end.
 $(IPC_ACTORS_ABI): $(IPC_ACTORS_CODE) | forge

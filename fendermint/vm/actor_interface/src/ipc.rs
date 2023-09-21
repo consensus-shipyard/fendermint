@@ -1,12 +1,12 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-// The IPC actors have bindings in `fendermint_vm_ipc_actors`.
+// The IPC actors have bindings in `ipc_actors_abis`.
 // Here we define stable IDs for them, so we can deploy the
 // Solidity contracts during genesis.
 
-use fendermint_vm_ipc_actors as ia;
-pub use fendermint_vm_ipc_actors::gateway_manager_facet::SubnetID;
+use ipc_actors_abis as ia;
+pub use ipc_actors_abis::gateway_manager_facet::SubnetID;
 use lazy_static::lazy_static;
 
 use crate::diamond::{EthContract, EthContractMap, EthFacet};
@@ -162,7 +162,7 @@ pub mod gateway {
 
             let tokens = cp.into_tokens();
 
-            let cons = fendermint_vm_ipc_actors::gateway_diamond::GATEWAYDIAMOND_ABI
+            let cons = ipc_actors_abis::gateway_diamond::GATEWAYDIAMOND_ABI
                 .constructor()
                 .expect("Gateway has a constructor");
 

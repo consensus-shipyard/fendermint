@@ -6,7 +6,7 @@ use super::{
     FvmExecState,
 };
 use fendermint_vm_actor_interface::{eam::EthAddress, ipc};
-use fendermint_vm_ipc_actors::gateway_getter_facet::GatewayGetterFacet;
+use ipc_actors_abis::gateway_getter_facet::GatewayGetterFacet;
 use fvm_ipld_blockstore::Blockstore;
 
 pub struct GatewayCaller {
