@@ -68,7 +68,7 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         &self,
         state: &mut FvmExecState<DB>,
         checkpoint: BottomUpCheckpointNew,
-        power_table: &Vec<Validator>,
+        power_table: &[Validator],
     ) -> anyhow::Result<()> {
         // Construct a Merkle tree from the power table, which we can use to validate validator set membership
         // when the signatures are submitted in transactions for accumulation.

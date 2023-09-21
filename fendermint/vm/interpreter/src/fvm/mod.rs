@@ -58,7 +58,7 @@ impl<DB, C> FvmMessageInterpreter<DB, C> {
         // Derive the public keys so it's available to check whether this node is a validator at any point in time.
         let validator_key = validator_key.map(|sk| (sk, PublicKey::from_secret_key(&sk)));
         Self {
-            client: client,
+            client,
             _validator_key: validator_key,
             contracts: Hardhat::new(contracts_dir),
             gas_overestimation_rate,
