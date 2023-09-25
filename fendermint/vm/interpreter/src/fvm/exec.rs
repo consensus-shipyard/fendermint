@@ -135,22 +135,29 @@ where
                 .context("failed to create checkpoint")?
         {
             // Asynchronously broadcast signature, if validating.
-            if let Some((sk, pk)) = self.validator_key {
-                if let Some(validator) =
-                    power_table.0.iter().find(|v| v.public_key.0 == pk).cloned()
+            if let Some(ref ctx) = self.validator_ctx {
+                if let Some(validator) = power_table
+                    .0
+                    .iter()
+                    .find(|v| v.public_key.0 == ctx.public_key)
+                    .cloned()
                 {
-                    let client = self.client.clone();
+                    let secret_key = ctx.secret_key;
+                    let broadcaster = ctx.broadcaster.clone();
                     let gateway = self.gateway.clone();
+                    let chain_id = state.chain_id();
+
                     tokio::spawn(async move {
                         let height = checkpoint.block_height;
 
                         let res = checkpoint::broadcast_signature(
-                            client,
+                            &broadcaster,
                             &gateway,
                             checkpoint,
                             &power_table,
                             &validator,
-                            &sk,
+                            &secret_key,
+                            &chain_id,
                         )
                         .await;
 

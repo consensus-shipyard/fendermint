@@ -22,6 +22,7 @@ use libsecp256k1::{PublicKey, SecretKey};
 
 #[derive(Clone)]
 pub struct GatewayCaller<DB> {
+    addr: EthAddress,
     getter: ContractCaller<GatewayGetterFacet<MockProvider>, DB>,
     router: ContractCaller<GatewayRouterFacet<MockProvider>, DB>,
 }
@@ -36,9 +37,14 @@ impl<DB> GatewayCaller<DB> {
     pub fn new(gateway_actor_id: ActorID) -> Self {
         let addr = EthAddress::from_id(gateway_actor_id);
         Self {
+            addr,
             getter: ContractCaller::new(addr, GatewayGetterFacet::new),
             router: ContractCaller::new(addr, GatewayRouterFacet::new),
         }
+    }
+
+    pub fn addr(&self) -> EthAddress {
+        self.addr
     }
 }
 

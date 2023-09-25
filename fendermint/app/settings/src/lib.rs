@@ -3,6 +3,7 @@
 
 use anyhow::Context;
 use config::{Config, ConfigError, Environment, File};
+use fvm_shared::econ::TokenAmount;
 use ipc_sdk::subnet_id::SubnetID;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -72,6 +73,11 @@ pub struct FvmSettings {
     /// Enabling this option is required to fully support "pending" queries in the Ethereum API,
     /// otherwise only the nonces and balances are projected into a partial state.
     pub exec_in_check: bool,
+
+    /// Gas fee used when broadcasting transactions.
+    pub gas_fee_cap: TokenAmount,
+    /// Gas premium used when broadcasting transactions.
+    pub gas_premium: TokenAmount,
 }
 
 #[derive(Debug, Deserialize, Clone)]

@@ -7,11 +7,15 @@ use fendermint_vm_actor_interface::ipc::BottomUpCheckpoint;
 use fendermint_vm_genesis::{Power, Validator, ValidatorKey};
 use fendermint_vm_ipc_actors::gateway_router_facet::SubnetID;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_shared::{address::Address, chainid::ChainID};
 use libsecp256k1::SecretKey;
 use tendermint::block::Height;
 use tendermint_rpc::{endpoint::validators, Client, Paging};
 
-use super::state::{ipc::GatewayCaller, FvmExecState};
+use super::{
+    broadcast::Broadcaster,
+    state::{ipc::GatewayCaller, FvmExecState},
+};
 
 pub type Checkpoint = BottomUpCheckpoint;
 
@@ -83,22 +87,26 @@ where
 
 /// As a validator, sign the checkpoint and broadcast a transaction to add our signature to the ledger.
 pub async fn broadcast_signature<C, DB>(
-    _client: C,
+    broadcaster: &Broadcaster<C>,
     gateway: &GatewayCaller<DB>,
     checkpoint: Checkpoint,
     power_table: &PowerTable,
     validator: &Validator,
     secret_key: &SecretKey,
+    chain_id: &ChainID,
 ) -> anyhow::Result<()>
 where
-    C: Client,
+    C: Client + Send + Sync,
     DB: Blockstore,
 {
-    let _calldata = gateway
+    let calldata = gateway
         .add_checkpoint_signature_calldata(checkpoint, &power_table.0, validator, secret_key)
         .context("failed to produce checkpoint signature calldata")?;
 
-    // TODO: Broadcaster
+    broadcaster
+        .fevm_invoke(Address::from(gateway.addr()), calldata, chain_id)
+        .await
+        .context("failed to broadcast signature")?;
 
     Ok(())
 }
