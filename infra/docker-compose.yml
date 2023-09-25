@@ -1,99 +1,29 @@
-version: '3'
-
 services:
-  cometbft-node0:
-    container_name: cometbft-node0
+  cometbft-node:
+    container_name: cometbft-node${NODE_ID}
     user: ${UID}:${GID}
     image: "cometbft/cometbft:${COMETBFT_VERSION}"
     ports:
-      - "26656-26657:26656-26657"
+      - "${PORT1}-${PORT2}:26656-26657"
     environment:
-      - ID=0
-      - LOG=${LOG:-cometbft-node0.log}
+      - ID=${NODE_ID}
+      - LOG=${LOG:-cometbft-node${NODE_ID}.log}
       - CMT_PEX=true
-      - CMT_PROXY_APP=tcp://fendermint-node0:26658
+      - CMT_PROXY_APP=tcp://fendermint-node${NODE_ID}:26658
       - CMT_PERSISTENT_PEERS="${CMT_PERSISTENT_PEERS}"
     volumes:
-      - $BASE_DIR/node0/cometbft:/cometbft
+      - $BASE_DIR/node${NODE_ID}/cometbft:/cometbft
     healthcheck:
       test: curl --fail http://localhost:26657 || exit 1
       interval: 8s
       timeout: 10s
       retries: 20
     networks:
-      localnet:
-        ipv4_address: 192.167.10.2
+      testnet:
+        ipv4_address: ${CMT_NODE_ADDR}
 
-  cometbft-node1:
-    container_name: cometbft-node1
-    user: ${UID}:${GID}
-    image: "cometbft/cometbft:${COMETBFT_VERSION}"
-    ports:
-      - "26659-26660:26656-26657"
-    environment:
-      - ID=1
-      - LOG=${LOG:-cometbft-node1.log}
-      - CMT_PEX=true
-      - CMT_PERSISTENT_PEERS="${CMT_PERSISTENT_PEERS}"
-      - CMT_PROXY_APP=tcp://fendermint-node1:26658
-    volumes:
-      - $BASE_DIR/node1/cometbft:/cometbft
-    healthcheck:
-      test: curl --fail http://localhost:26657 || exit 1
-      interval: 8s
-      timeout: 10s
-      retries: 20
-    networks:
-      localnet:
-        ipv4_address: 192.167.10.3
-
-  cometbft-node2:
-    container_name: cometbft-node2
-    user: ${UID}:${GID}
-    image: "cometbft/cometbft:${COMETBFT_VERSION}"
-    environment:
-      - ID=2
-      - LOG=${LOG:-cometbft-node2.log}
-      - CMT_PEX=true
-      - CMT_PERSISTENT_PEERS="${CMT_PERSISTENT_PEERS}"
-      - CMT_PROXY_APP=tcp://fendermint-node2:26658
-    ports:
-      - "26661-26662:26656-26657"
-    volumes:
-      - $BASE_DIR/node2/cometbft:/cometbft
-    healthcheck:
-      test: curl --fail http://localhost:26657 || exit 1
-      interval: 8s
-      timeout: 10s
-      retries: 20
-    networks:
-      localnet:
-        ipv4_address: 192.167.10.4
-
-  cometbft-node3:
-    container_name: cometbft-node3
-    user: ${UID}:${GID}
-    image: "cometbft/cometbft:${COMETBFT_VERSION}"
-    environment:
-      - ID=3
-      - LOG=${LOG:-cometbft-node3.log}
-      - CMT_PERSISTENT_PEERS="${CMT_PERSISTENT_PEERS}"
-      - CMT_PROXY_APP=tcp://fendermint-node3:26658
-    ports:
-      - "26663-26664:26656-26657"
-    volumes:
-      - $BASE_DIR/node3/cometbft:/cometbft
-    healthcheck:
-      test: curl --fail http://localhost:26657 || exit 1
-      interval: 8s
-      timeout: 10s
-      retries: 20
-    networks:
-      localnet:
-        ipv4_address: 192.167.10.5
-
-  fendermint-node0:
-    container_name: fendermint-node0
+  fendermint-node:
+    container_name: fendermint-node${NODE_ID}
     user: ${UID}:${GID}
     image: "fendermint:latest"
     environment:
@@ -101,137 +31,31 @@ services:
       - FM_CHAIN_NAME=$CHAIN_NAME
       - LOG_LEVEL=info
     volumes:
-      - $BASE_DIR/node0:/data
+      - $BASE_DIR/node${NODE_ID}:/data
     networks:
-      localnet:
-        ipv4_address: 192.167.10.6
+      testnet:
+        ipv4_address: ${FMT_NODE_ADDR}
 
-  fendermint-node1:
-    container_name: fendermint-node1
-    user: ${UID}:${GID}
-    image: "fendermint:latest"
-    environment:
-      - FM_DATA_DIR=/data/fendermint/data
-      - FM_CHAIN_NAME=$CHAIN_NAME
-      - LOG_LEVEL=info
-    volumes:
-      - $BASE_DIR/node1:/data
-    networks:
-      localnet:
-        ipv4_address: 192.167.10.7
-
-  fendermint-node2:
-    container_name: fendermint-node2
-    user: ${UID}:${GID}
-    image: "fendermint:latest"
-    environment:
-      - FM_DATA_DIR=/data/fendermint/data
-      - FM_CHAIN_NAME=$CHAIN_NAME
-      - LOG_LEVEL=info
-    volumes:
-      - $BASE_DIR/node2:/data
-    networks:
-      localnet:
-        ipv4_address: 192.167.10.8
-
-  fendermint-node3:
-    container_name: fendermint-node3
-    user: ${UID}:${GID}
-    image: "fendermint:latest"
-    environment:
-      - FM_DATA_DIR=/data/fendermint/data
-      - FM_CHAIN_NAME=$CHAIN_NAME
-      - LOG_LEVEL=info
-    volumes:
-      - $BASE_DIR/node3:/data
-    networks:
-      localnet:
-        ipv4_address: 192.167.10.9
-
-  ethapi-node0:
-    container_name: ethapi-node0
+  ethapi-node:
+    container_name: ethapi-node${NODE_ID}
     user: ${UID}:${GID}
     image: "fendermint:latest"
     command: "eth run"
     environment:
-      - TENDERMINT_WS_URL=ws://cometbft-node0:26657/websocket
+      - TENDERMINT_WS_URL=ws://cometbft-node${NODE_ID}:26657/websocket
       - LOG_LEVEL=debug
       - RUST_BACKTRACE=1
     ports:
-      - 8545:8545
+      - ${PORT3}:8545
     volumes:
-      - $BASE_DIR/node0:/data
+      - $BASE_DIR/node${NODE_ID}:/data
     depends_on:
-      cometbft-node0:
+      cometbft-node:
         condition: service_healthy
     networks:
-      localnet:
-        ipv4_address: 192.167.10.10
-
-  ethapi-node1:
-    container_name: ethapi-node1
-    user: ${UID}:${GID}
-    image: "fendermint:latest"
-    command: "eth run"
-    environment:
-      - TENDERMINT_WS_URL=ws://cometbft-node1:26657/websocket
-      - LOG_LEVEL=debug
-      - RUST_BACKTRACE=1
-    ports:
-      - 8546:8545
-    volumes:
-      - $BASE_DIR/node1:/data
-    depends_on:
-      cometbft-node1:
-        condition: service_healthy
-    networks:
-      localnet:
-        ipv4_address: 192.167.10.11
-
-  ethapi-node2:
-    container_name: ethapi-node2
-    user: ${UID}:${GID}
-    image: "fendermint:latest"
-    command: "eth run"
-    environment:
-      - TENDERMINT_WS_URL=ws://cometbft-node2:26657/websocket
-      - LOG_LEVEL=debug
-      - RUST_BACKTRACE=1
-    ports:
-      - 8547:8545
-    volumes:
-      - $BASE_DIR/node2:/data
-    depends_on:
-      cometbft-node2:
-        condition: service_healthy
-    networks:
-      localnet:
-        ipv4_address: 192.167.10.12
-
-  ethapi-node3:
-    container_name: ethapi-node3
-    user: ${UID}:${GID}
-    image: "fendermint:latest"
-    command: "eth run"
-    environment:
-      - TENDERMINT_WS_URL=ws://cometbft-node3:26657/websocket
-      - LOG_LEVEL=debug
-      - RUST_BACKTRACE=1
-    ports:
-      - 8548:8545
-    volumes:
-      - $BASE_DIR/node3:/data
-    depends_on:
-      cometbft-node2:
-        condition: service_healthy
-    networks:
-      localnet:
-        ipv4_address: 192.167.10.13
+      testnet:
+        ipv4_address: ${ETHAPI_NODE_ADDR}
 
 networks:
-  localnet:
-    driver: bridge
-    ipam:
-      driver: default
-      config:
-        - subnet: 192.167.10.0/16
+  testnet:
+    external: true
