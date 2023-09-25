@@ -118,7 +118,7 @@ impl<DB: Blockstore> GatewayCaller<DB> {
             ValidatorMerkleTree::new(power_table).context("failed to construct Merkle tree")?;
 
         let membership_proof = tree
-            .prove(&validator)
+            .prove(validator)
             .context("failed to construct Merkle proof")?
             .into_iter()
             .map(|p| p.into())

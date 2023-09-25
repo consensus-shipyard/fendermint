@@ -157,7 +157,7 @@ where
                             &power_table,
                             &validator,
                             &secret_key,
-                            &chain_id,
+                            chain_id,
                         )
                         .await;
 

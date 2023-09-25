@@ -3,13 +3,14 @@
 
 use anyhow::{anyhow, bail, Context};
 use ethers::types as et;
-use fendermint_rpc::client::FendermintClient;
+use fendermint_rpc::message::GasParams;
 use fendermint_rpc::query::QueryClient;
-use fendermint_vm_actor_interface::evm;
-use fendermint_vm_message::{chain::ChainMessage, query::FvmQueryHeight, signed::SignedMessage};
-use fvm_ipld_encoding::{BytesSer, RawBytes};
+use fendermint_rpc::tx::{CallClient, TxClient, TxCommit};
+use fendermint_rpc::{client::FendermintClient, message::MessageFactory};
+use fendermint_vm_message::query::FvmQueryHeight;
 use fvm_shared::{address::Address, chainid::ChainID, econ::TokenAmount, BLOCK_GAS_LIMIT};
-use libsecp256k1::SecretKey;
+use libsecp256k1::{PublicKey, SecretKey};
+use num_traits::Zero;
 use tendermint_rpc::Client;
 
 /// Broadcast transactions to Tendermint.
@@ -17,61 +18,84 @@ use tendermint_rpc::Client;
 /// This is typically something only active validators would want to do
 /// from within Fendermint as part of the block lifecycle, for example
 /// to submit their signatures to the ledger.
+///
+/// The broadcaster encapsulates the tactics for figuring out the nonce,
+/// the gas limit, potential retries, etc.
 #[derive(Clone)]
 pub struct Broadcaster<C> {
     client: FendermintClient<C>,
-    addr: Address,
     secret_key: SecretKey,
+    addr: Address,
     gas_fee_cap: TokenAmount,
     gas_premium: TokenAmount,
 }
 
 impl<C> Broadcaster<C>
 where
-    C: Client + Send + Sync,
+    C: Client + Clone + Send + Sync,
 {
     pub fn new(
-        _client: C,
-        _secret_key: SecretKey,
-        _gas_fee_cap: TokenAmount,
-        _gas_premium: TokenAmount,
+        client: C,
+        secret_key: SecretKey,
+        gas_fee_cap: TokenAmount,
+        gas_premium: TokenAmount,
     ) -> Self {
-        todo!()
+        let client = FendermintClient::new(client);
+        // TODO: We could use f410 addresses to send the transaction, but the `MessageFactory` assumes f1.
+        let addr = Address::new_secp256k1(&PublicKey::from_secret_key(&secret_key).serialize())
+            .expect("public key is 65 bytes");
+        Self {
+            client,
+            secret_key,
+            addr,
+            gas_fee_cap,
+            gas_premium,
+        }
     }
 
     pub async fn fevm_invoke(
         &self,
-        to: Address,
+        contract: Address,
         calldata: et::Bytes,
-        chain_id: &ChainID,
+        chain_id: ChainID,
     ) -> anyhow::Result<()> {
-        let params = RawBytes::serialize(BytesSer(&calldata))?;
+        let sequence = self
+            .sequence()
+            .await
+            .context("failed to get broadcaster sequence")?;
 
-        let mut message = fvm_shared::message::Message {
-            version: Default::default(),
-            from: self.addr,
-            to,
-            sequence: 0,
-            value: TokenAmount::from_whole(0),
-            method_num: evm::Method::InvokeContract as u64,
-            params,
+        let factory = MessageFactory::new(self.secret_key, sequence, chain_id)
+            .context("failed to create MessageFactory")?;
+
+        // Using the bound client as a one-shot transaction sender.
+        let mut client = self.client.clone().bind(factory);
+
+        // TODO: Maybe we should implement something like the Ethereum facade for estimating fees?
+        // I don't want to call the Ethereum API directly (it would be one more dependency).
+        // Another option is for Fendermint to recognise transactions coming from validators
+        // and always put them into the block to facilitate checkpointing.
+        let mut gas_params = GasParams {
             gas_limit: BLOCK_GAS_LIMIT,
-            // TODO: Maybe we should implement something like the Ethereum facade for estimating fees?
-            // I don't want to call the Ethereum API directly (it would be one more dependency).
-            // Another option is for Fendermint to recognise transactions coming from validators
-            // and always put them into the block to facilitate checkpointing.
             gas_fee_cap: self.gas_fee_cap.clone(),
             gas_premium: self.gas_premium.clone(),
         };
 
-        let gas_estimate = self
-            .client
-            .estimate_gas(message.clone(), FvmQueryHeight::Committed)
+        // Not expecting to send any tokens to the contracts.
+        let value = TokenAmount::zero();
+
+        let gas_estimate = client
+            .fevm_estimate_gas(
+                contract,
+                calldata.0.clone(),
+                value.clone(),
+                gas_params.clone(),
+                FvmQueryHeight::Committed,
+            )
             .await
-            .context("failed to estimate broadcaster gas")?;
+            .context("failed to estimate gas")?;
 
         if gas_estimate.value.exit_code.is_success() {
-            message.gas_limit = gas_estimate.value.gas_limit;
+            gas_params.gas_limit = gas_estimate.value.gas_limit;
         } else {
             bail!(
                 "failed to estimate gas: {} - {}",
@@ -80,22 +104,34 @@ where
             );
         }
 
-        message.sequence = self
-            .sequence()
-            .await
-            .context("failed to get broadcaster sequence")?;
+        let res =
+            TxClient::<TxCommit>::fevm_invoke(&mut client, contract, calldata.0, value, gas_params)
+                .await
+                .context("failed to invoke contract")?;
 
-        let message = SignedMessage::new_secp256k1(message, &self.secret_key, chain_id)?;
-        let _message = ChainMessage::Signed(message);
-
-        todo!()
+        if res.response.check_tx.code.is_err() {
+            bail!(
+                "broadcasted transaction failed during check: {} - {}",
+                res.response.check_tx.code.value(),
+                res.response.check_tx.info
+            );
+        } else if res.response.deliver_tx.code.is_err() {
+            // TODO: Retry?
+            bail!(
+                "broadcasted transaction failed during deliver: {} - {}",
+                res.response.deliver_tx.code.value(),
+                res.response.deliver_tx.info
+            );
+        } else {
+            Ok(())
+        }
     }
 
     /// Fetch the current nonce to be used in the next message.
     async fn sequence(&self) -> anyhow::Result<u64> {
         let res = self
             .client
-            .actor_state(&self.addr, FvmQueryHeight::Pending)
+            .actor_state(&self.addr, FvmQueryHeight::Committed)
             .await
             .context("failed to get broadcaster actor state")?;
 

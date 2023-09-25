@@ -93,11 +93,11 @@ pub async fn broadcast_signature<C, DB>(
     power_table: &PowerTable,
     validator: &Validator,
     secret_key: &SecretKey,
-    chain_id: &ChainID,
+    chain_id: ChainID,
 ) -> anyhow::Result<()>
 where
-    C: Client + Send + Sync,
-    DB: Blockstore,
+    C: Client + Clone + Send + Sync + 'static,
+    DB: Blockstore + Send + Sync + 'static,
 {
     let calldata = gateway
         .add_checkpoint_signature_calldata(checkpoint, &power_table.0, validator, secret_key)
