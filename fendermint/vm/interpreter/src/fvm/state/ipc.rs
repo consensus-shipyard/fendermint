@@ -5,8 +5,9 @@ use super::{
     fevm::{ContractCaller, MockProvider},
     FvmExecState,
 };
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use ethers::types as et;
+use ethers::{abi::Tokenize, utils::keccak256};
 use fendermint_vm_actor_interface::{
     eam::EthAddress,
     ipc::{ValidatorMerkleTree, GATEWAY_ACTOR_ID},
@@ -14,8 +15,10 @@ use fendermint_vm_actor_interface::{
 use fendermint_vm_genesis::Validator;
 use fendermint_vm_ipc_actors::gateway_getter_facet::{GatewayGetterFacet, SubnetID};
 use fendermint_vm_ipc_actors::gateway_router_facet::{BottomUpCheckpointNew, GatewayRouterFacet};
+use fendermint_vm_message::signed::sign_secp256k1;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::ActorID;
+use libsecp256k1::{PublicKey, SecretKey};
 
 #[derive(Clone)]
 pub struct GatewayCaller<DB> {
@@ -82,5 +85,50 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         self.router.call(state, |c| {
             c.create_bottom_up_checkpoint(checkpoint, tree.root_hash().0, total_power)
         })
+    }
+
+    /// Construct the input parameters for adding a signature to the checkpoint.
+    ///
+    /// This will need to be broadcasted as a transaction.
+    pub fn add_checkpoint_signature_calldata(
+        &self,
+        checkpoint: BottomUpCheckpointNew,
+        power_table: &[Validator],
+        validator: &Validator,
+        secret_key: &SecretKey,
+    ) -> anyhow::Result<et::Bytes> {
+        debug_assert_eq!(
+            validator.public_key.0,
+            PublicKey::from_secret_key(secret_key)
+        );
+
+        let height = checkpoint.block_height;
+        let weight = et::U256::from(validator.power.0);
+
+        let hash = keccak256(ethers::abi::encode(&checkpoint.into_tokens()));
+        let signature = et::Bytes::from(sign_secp256k1(secret_key, &hash));
+
+        let tree =
+            ValidatorMerkleTree::new(power_table).context("failed to construct Merkle tree")?;
+
+        let membership_proof = tree
+            .prove(&validator)
+            .context("failed to construct Merkle proof")?
+            .into_iter()
+            .map(|p| p.into())
+            .collect();
+
+        let call = self.router.contract().add_checkpoint_signature(
+            height,
+            membership_proof,
+            weight,
+            signature,
+        );
+
+        let calldata = call
+            .calldata()
+            .ok_or_else(|| anyhow!("no calldata for adding signature"))?;
+
+        Ok(calldata)
     }
 }

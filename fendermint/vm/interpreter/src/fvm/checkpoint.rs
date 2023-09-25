@@ -51,7 +51,7 @@ where
         None => Ok(None),
         Some(subnet_id) => {
             // Get the current power table.
-            let power_table = power_table(client, height)
+            let power_table = get_power_table(client, height)
                 .await
                 .context("failed to get the power table")?;
 
@@ -82,15 +82,24 @@ where
 }
 
 /// As a validator, sign the checkpoint and broadcast a transaction to add our signature to the ledger.
-pub async fn broadcast_signature<C>(
+pub async fn broadcast_signature<C, DB>(
     _client: C,
-    _checkpoint: Checkpoint,
-    _secret_key: SecretKey,
-    _power: Power,
+    gateway: &GatewayCaller<DB>,
+    checkpoint: Checkpoint,
+    power_table: &PowerTable,
+    validator: &Validator,
+    secret_key: &SecretKey,
 ) -> anyhow::Result<()>
 where
     C: Client,
+    DB: Blockstore,
 {
+    let _calldata = gateway
+        .add_checkpoint_signature_calldata(checkpoint, &power_table.0, validator, secret_key)
+        .context("failed to produce checkpoint signature calldata")?;
+
+    // TODO: Broadcaster
+
     Ok(())
 }
 
@@ -117,7 +126,7 @@ where
     Ok(None)
 }
 
-async fn power_table<C>(client: &C, height: Height) -> anyhow::Result<PowerTable>
+async fn get_power_table<C>(client: &C, height: Height) -> anyhow::Result<PowerTable>
 where
     C: Client + Sync + Send + 'static,
 {

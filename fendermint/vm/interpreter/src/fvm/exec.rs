@@ -37,7 +37,7 @@ pub struct FvmApplyRet {
 #[async_trait]
 impl<DB, TC> ExecInterpreter for FvmMessageInterpreter<DB, TC>
 where
-    DB: Blockstore + 'static + Send + Sync,
+    DB: Blockstore + Clone + 'static + Send + Sync,
     TC: Client + Clone + Send + Sync + 'static,
 {
     type State = FvmExecState<DB>;
@@ -129,21 +129,32 @@ where
     }
 
     async fn end(&self, mut state: Self::State) -> anyhow::Result<(Self::State, Self::EndOutput)> {
-        let updates = if let Some((checkpoint, signatories, updates)) =
+        let updates = if let Some((checkpoint, power_table, updates)) =
             checkpoint::maybe_create_checkpoint(&self.client, &self.gateway, &mut state)
                 .await
                 .context("failed to create checkpoint")?
         {
             // Asynchronously broadcast signature, if validating.
             if let Some((sk, pk)) = self.validator_key {
-                if let Some(validator) = signatories.0.iter().find(|v| v.public_key.0 == pk) {
+                if let Some(validator) =
+                    power_table.0.iter().find(|v| v.public_key.0 == pk).cloned()
+                {
                     let client = self.client.clone();
-                    let power = validator.power.clone();
-                    let height = checkpoint.block_height;
+                    let gateway = self.gateway.clone();
                     tokio::spawn(async move {
-                        if let Err(e) =
-                            checkpoint::broadcast_signature(client, checkpoint, sk, power).await
-                        {
+                        let height = checkpoint.block_height;
+
+                        let res = checkpoint::broadcast_signature(
+                            client,
+                            &gateway,
+                            checkpoint,
+                            &power_table,
+                            &validator,
+                            &sk,
+                        )
+                        .await;
+
+                        if let Err(e) = res {
                             tracing::error!(error =? e, height, "error broadcasting checkpoint signature");
                         }
                     });
