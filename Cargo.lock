@@ -2758,6 +2758,7 @@ dependencies = [
  "dirs",
  "fendermint_abci",
  "fendermint_app_options",
+ "fendermint_crypto",
  "fendermint_eth_api",
  "fendermint_rocksdb",
  "fendermint_rpc",
@@ -2781,7 +2782,6 @@ dependencies = [
  "libipld",
  "libp2p",
  "libp2p-bitswap",
- "libsecp256k1",
  "multiaddr 0.16.0",
  "num-traits",
  "prost",
@@ -2818,6 +2818,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fendermint_crypto"
+version = "0.1.0"
+dependencies = [
+ "libsecp256k1",
+ "rand 0.8.5",
+ "zeroize",
+]
+
+[[package]]
 name = "fendermint_eth_api"
 version = "0.1.0"
 dependencies = [
@@ -2828,6 +2837,7 @@ dependencies = [
  "clap 4.4.4",
  "ethers",
  "ethers-core",
+ "fendermint_crypto",
  "fendermint_rpc",
  "fendermint_testing",
  "fendermint_vm_actor_interface",
@@ -2838,7 +2848,6 @@ dependencies = [
  "hex",
  "jsonrpc-v2",
  "lazy_static",
- "libsecp256k1",
  "lru_time_cache",
  "paste",
  "quickcheck 1.0.3",
@@ -2893,6 +2902,7 @@ dependencies = [
  "cid",
  "clap 4.4.4",
  "ethers",
+ "fendermint_crypto",
  "fendermint_vm_actor_interface",
  "fendermint_vm_genesis",
  "fendermint_vm_message",
@@ -2900,7 +2910,6 @@ dependencies = [
  "fvm_shared",
  "hex",
  "lazy_static",
- "libsecp256k1",
  "prost",
  "serde",
  "tendermint",
@@ -2949,6 +2958,7 @@ dependencies = [
  "cid",
  "ethers",
  "ethers-core",
+ "fendermint_crypto",
  "fendermint_vm_genesis",
  "fendermint_vm_ipc_actors",
  "fil_actors_evm_shared",
@@ -2957,7 +2967,6 @@ dependencies = [
  "fvm_ipld_hamt 0.6.1",
  "fvm_shared",
  "lazy_static",
- "libsecp256k1",
  "paste",
  "quickcheck 1.0.3",
  "quickcheck_macros",
@@ -3000,6 +3009,7 @@ version = "0.1.0"
 dependencies = [
  "arbitrary",
  "cid",
+ "fendermint_crypto",
  "fendermint_testing",
  "fendermint_vm_core",
  "fendermint_vm_encoding",
@@ -3008,7 +3018,6 @@ dependencies = [
  "fvm_shared",
  "hex",
  "ipc-sdk",
- "libsecp256k1",
  "num-traits",
  "quickcheck 1.0.3",
  "quickcheck_macros",
@@ -3027,6 +3036,7 @@ dependencies = [
  "async-trait",
  "cid",
  "ethers",
+ "fendermint_crypto",
  "fendermint_eth_hardhat",
  "fendermint_vm_actor_interface",
  "fendermint_vm_core",
@@ -3043,7 +3053,6 @@ dependencies = [
  "fvm_shared",
  "hex",
  "libipld",
- "libsecp256k1",
  "num-traits",
  "pin-project",
  "quickcheck 1.0.3",
@@ -3076,6 +3085,7 @@ dependencies = [
  "cid",
  "ethers",
  "ethers-core",
+ "fendermint_crypto",
  "fendermint_testing",
  "fendermint_vm_actor_interface",
  "fendermint_vm_encoding",
@@ -3085,7 +3095,6 @@ dependencies = [
  "hex",
  "ipc-sdk",
  "lazy_static",
- "libsecp256k1",
  "num-traits",
  "quickcheck 1.0.3",
  "quickcheck_macros",
