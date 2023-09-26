@@ -3,13 +3,15 @@
 //! A Genesis data structure similar to [genesis.Template](https://github.com/filecoin-project/lotus/blob/v1.20.4/genesis/types.go)
 //! in Lotus, which is used to [initialize](https://github.com/filecoin-project/lotus/blob/v1.20.4/chain/gen/genesis/genesis.go) the state tree.
 
-use fendermint_crypto::{normalize_public_key, PublicKey};
-use fendermint_vm_core::Timestamp;
-use fvm_shared::version::NetworkVersion;
-use fvm_shared::{address::Address, econ::TokenAmount};
+use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
+use fvm_shared::version::NetworkVersion;
+use fvm_shared::{address::Address, econ::TokenAmount};
+
+use fendermint_crypto::{normalize_public_key, PublicKey};
+use fendermint_vm_core::Timestamp;
 use fendermint_vm_encoding::IsHumanReadable;
 
 #[cfg(feature = "arb")]
@@ -89,6 +91,34 @@ impl ValidatorKey {
 
     pub fn public_key(&self) -> &PublicKey {
         &self.0
+    }
+}
+
+impl TryFrom<ValidatorKey> for tendermint::PublicKey {
+    type Error = anyhow::Error;
+
+    fn try_from(value: ValidatorKey) -> Result<Self, Self::Error> {
+        let bz = value.0.serialize();
+
+        let key = tendermint::crypto::default::ecdsa_secp256k1::VerifyingKey::from_sec1_bytes(&bz)
+            .map_err(|e| anyhow!("failed to convert public key: {e}"))?;
+
+        Ok(tendermint::public_key::PublicKey::Secp256k1(key))
+    }
+}
+
+impl TryFrom<tendermint::PublicKey> for ValidatorKey {
+    type Error = anyhow::Error;
+
+    fn try_from(value: tendermint::PublicKey) -> Result<Self, Self::Error> {
+        match value {
+            tendermint::PublicKey::Secp256k1(key) => {
+                let bz = key.to_sec1_bytes();
+                let pk = PublicKey::parse_slice(&bz, None)?;
+                Ok(Self(pk))
+            }
+            other => Err(anyhow!("unexpected validator key type: {other:?}")),
+        }
     }
 }
 
