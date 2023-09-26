@@ -6,10 +6,11 @@ use config::{Config, ConfigError, Environment, File};
 use fvm_shared::econ::TokenAmount;
 use ipc_sdk::subnet_id::SubnetID;
 use serde::Deserialize;
+use serde_with::serde_as;
 use std::path::{Path, PathBuf};
 use tendermint_rpc::Url;
 
-use fendermint_vm_encoding::human_readable_str;
+use fendermint_vm_encoding::{human_readable_delegate, human_readable_str};
 
 use self::eth::EthSettings;
 use self::resolver::ResolverSettings;
@@ -17,12 +18,15 @@ use self::resolver::ResolverSettings;
 pub mod eth;
 pub mod resolver;
 
-/// Marker to be used with the `human_readable_str!` macro.
+/// Marker to be used with the `#[serde_as(as = "IsHumanReadable")]` annotations.
 ///
-/// We can't use the one in `fendermint_vm_encoding` because we can't implement traits for it here.
+/// We can't just import `fendermint_vm_encoding::IsHumanReadable` because we can't implement traits for it here,
+/// however we can use the `human_readable_delegate!` macro to delegate from this to that for the types we need
+/// and it will look the same.
 struct IsHumanReadable;
 
-human_readable_str!(IsHumanReadable, SubnetID);
+human_readable_str!(SubnetID);
+human_readable_delegate!(TokenAmount);
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct SocketAddress {
@@ -59,6 +63,7 @@ pub struct DbSettings {
     pub state_hist_size: u64,
 }
 
+#[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct FvmSettings {
     /// Overestimation rate applied to gas estimations to ensure that the
@@ -75,8 +80,10 @@ pub struct FvmSettings {
     pub exec_in_check: bool,
 
     /// Gas fee used when broadcasting transactions.
+    #[serde_as(as = "IsHumanReadable")]
     pub gas_fee_cap: TokenAmount,
     /// Gas premium used when broadcasting transactions.
+    #[serde_as(as = "IsHumanReadable")]
     pub gas_premium: TokenAmount,
 }
 
