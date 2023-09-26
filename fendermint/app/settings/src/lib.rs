@@ -116,7 +116,7 @@ macro_rules! home_relative {
       impl $settings {
         $(
         pub fn $name(&self, home_dir: &std::path::Path) -> std::path::PathBuf {
-            $crate::settings::expand_path(home_dir, &self.$name)
+            $crate::expand_path(home_dir, &self.$name)
         }
         )+
       }
@@ -228,7 +228,7 @@ mod tests {
 
     fn parse_config(run_mode: &str) -> Settings {
         let current_dir = PathBuf::from(".");
-        let default_dir = PathBuf::from("config");
+        let default_dir = PathBuf::from("../config");
         Settings::new(&default_dir, &current_dir, run_mode).unwrap()
     }
 
