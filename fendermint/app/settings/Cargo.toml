@@ -1,6 +1,6 @@
 [package]
 name = "fendermint_app_settings"
-description = "Fendermint configuration settings"
+description = "Fendermint configuration settings. The defaults are in fendermint/app/config/default.toml"
 version = "0.1.0"
 authors.workspace = true
 edition.workspace = true
@@ -18,8 +18,8 @@ serde = { workspace = true }
 serde_with = { workspace = true }
 tendermint-rpc = { workspace = true }
 
+fvm_shared = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 ipc-sdk = { workspace = true }
 
 fendermint_vm_encoding = { path = "../../vm/encoding" }
-fendermint_eth_api = { path = "../../eth/api" }
