@@ -5,6 +5,7 @@ members = [
   "fendermint/app",
   "fendermint/app/options",
   "fendermint/crypto",
+  "fendermint/app/settings",
   "fendermint/eth/*",
   "fendermint/rocksdb",
   "fendermint/rpc",
