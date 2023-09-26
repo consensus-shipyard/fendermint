@@ -21,8 +21,13 @@ case $1 in
 esac
 
 if [ "$1" == "start" ]; then
-  docker network create --subnet 192.167.10.0/16 testnet
+  # we need to remove the network with the same name
+  # because that network might me created without subnet with necessary IP address space
+  docker network rm -f ${NETWORK_NAME}
+  docker network create --subnet 192.167.10.0/16 ${NETWORK_NAME}
 fi
+
+export NETWORK_NAME=${NETWORK_NAME}
 
 for i in $(seq 0 3); do
 	export NODE_ID=${i}
@@ -41,5 +46,5 @@ done
 wait $(jobs -p)
 
 if [ "$1" == "stop" ]; then
-  docker network rm -f testnet
+  docker network rm -f ${NETWORK_NAME}
 fi
