@@ -3,15 +3,16 @@
 
 use anyhow::{anyhow, bail, Context};
 use ethers::types as et;
+use fvm_shared::{address::Address, chainid::ChainID, econ::TokenAmount, BLOCK_GAS_LIMIT};
+use num_traits::Zero;
+use tendermint_rpc::Client;
+
+use fendermint_crypto::SecretKey;
 use fendermint_rpc::message::GasParams;
 use fendermint_rpc::query::QueryClient;
 use fendermint_rpc::tx::{CallClient, TxClient, TxCommit};
 use fendermint_rpc::{client::FendermintClient, message::MessageFactory};
 use fendermint_vm_message::query::FvmQueryHeight;
-use fvm_shared::{address::Address, chainid::ChainID, econ::TokenAmount, BLOCK_GAS_LIMIT};
-use libsecp256k1::{PublicKey, SecretKey};
-use num_traits::Zero;
-use tendermint_rpc::Client;
 
 /// Broadcast transactions to Tendermint.
 ///
@@ -42,7 +43,7 @@ where
     ) -> Self {
         let client = FendermintClient::new(client);
         // TODO: We could use f410 addresses to send the transaction, but the `MessageFactory` assumes f1.
-        let addr = Address::new_secp256k1(&PublicKey::from_secret_key(&secret_key).serialize())
+        let addr = Address::new_secp256k1(&secret_key.public_key().serialize())
             .expect("public key is 65 bytes");
         Self {
             client,
@@ -64,7 +65,7 @@ where
             .await
             .context("failed to get broadcaster sequence")?;
 
-        let factory = MessageFactory::new(self.secret_key, sequence, chain_id)
+        let factory = MessageFactory::new(self.secret_key.clone(), sequence, chain_id)
             .context("failed to create MessageFactory")?;
 
         // Using the bound client as a one-shot transaction sender.

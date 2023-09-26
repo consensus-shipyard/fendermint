@@ -44,9 +44,10 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
     };
 
     let validator_ctx = validator_key.map(|sk| {
+        // For now we are using the validator key for submitting transactions.
         let broadcaster = Broadcaster::new(
             client.clone(),
-            sk,
+            sk.clone(),
             settings.fvm.gas_fee_cap.clone(),
             settings.fvm.gas_premium.clone(),
         );

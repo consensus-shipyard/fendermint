@@ -142,7 +142,7 @@ where
                     .find(|v| v.public_key.0 == ctx.public_key)
                     .cloned()
                 {
-                    let secret_key = ctx.secret_key;
+                    let secret_key = ctx.secret_key.clone();
                     let broadcaster = ctx.broadcaster.clone();
                     let gateway = self.gateway.clone();
                     let chain_id = state.chain_id();

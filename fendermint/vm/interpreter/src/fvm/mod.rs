@@ -43,7 +43,7 @@ pub struct ValidatorContext<C> {
 impl<C> ValidatorContext<C> {
     pub fn new(secret_key: SecretKey, broadcaster: Broadcaster<C>) -> Self {
         // Derive the public keys so it's available to check whether this node is a validator at any point in time.
-        let public_key = PublicKey::from_secret_key(&secret_key);
+        let public_key = secret_key.public_key();
         Self {
             secret_key,
             public_key,

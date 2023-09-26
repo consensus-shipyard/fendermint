@@ -1,13 +1,14 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use super::{
-    fevm::{ContractCaller, MockProvider},
-    FvmExecState,
-};
 use anyhow::{anyhow, Context};
 use ethers::types as et;
 use ethers::{abi::Tokenize, utils::keccak256};
+
+use fvm_ipld_blockstore::Blockstore;
+use fvm_shared::ActorID;
+
+use fendermint_crypto::SecretKey;
 use fendermint_vm_actor_interface::{
     eam::EthAddress,
     ipc::{ValidatorMerkleTree, GATEWAY_ACTOR_ID},
@@ -16,9 +17,11 @@ use fendermint_vm_genesis::Validator;
 use fendermint_vm_ipc_actors::gateway_getter_facet::{GatewayGetterFacet, SubnetID};
 use fendermint_vm_ipc_actors::gateway_router_facet::{BottomUpCheckpointNew, GatewayRouterFacet};
 use fendermint_vm_message::signed::sign_secp256k1;
-use fvm_ipld_blockstore::Blockstore;
-use fvm_shared::ActorID;
-use libsecp256k1::{PublicKey, SecretKey};
+
+use super::{
+    fevm::{ContractCaller, MockProvider},
+    FvmExecState,
+};
 
 #[derive(Clone)]
 pub struct GatewayCaller<DB> {
@@ -103,10 +106,7 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         validator: &Validator,
         secret_key: &SecretKey,
     ) -> anyhow::Result<et::Bytes> {
-        debug_assert_eq!(
-            validator.public_key.0,
-            PublicKey::from_secret_key(secret_key)
-        );
+        debug_assert_eq!(validator.public_key.0, secret_key.public_key());
 
         let height = checkpoint.block_height;
         let weight = et::U256::from(validator.power.0);
