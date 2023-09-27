@@ -15,6 +15,27 @@ use fendermint_rpc::tx::{CallClient, TxClient, TxCommit};
 use fendermint_rpc::{client::FendermintClient, message::MessageFactory};
 use fendermint_vm_message::query::FvmQueryHeight;
 
+macro_rules! retry {
+    ($max_retries:expr, $block:expr) => {{
+        let mut attempt = 0;
+        let value = loop {
+            match $block {
+                Err((code, msg)) if attempt == $max_retries || !can_retry(code) => {
+                    bail!(msg);
+                }
+                Err((_, msg)) => {
+                    tracing::warn!(error = msg, attempt, "retry broadcast");
+                    attempt += 1;
+                }
+                Ok(value) => {
+                    break value;
+                }
+            }
+        };
+        value
+    }};
+}
+
 /// Broadcast transactions to Tendermint.
 ///
 /// This is typically something only active validators would want to do
@@ -66,9 +87,7 @@ where
         calldata: et::Bytes,
         chain_id: ChainID,
     ) -> anyhow::Result<()> {
-        let mut attempt = 0;
-
-        loop {
+        let tx_hash = retry!(self.max_retries, {
             let sequence = self
                 .sequence()
                 .await
@@ -125,37 +144,32 @@ where
             .await
             .context("failed to invoke contract")?;
 
-            let (code, err) = if res.response.check_tx.code.is_err() {
-                (
+            if res.response.check_tx.code.is_err() {
+                Err((
                     res.response.check_tx.code,
                     format!(
                         "broadcasted transaction failed during check: {} - {}",
                         res.response.check_tx.code.value(),
                         res.response.check_tx.info
                     ),
-                )
+                ))
             } else if res.response.deliver_tx.code.is_err() {
-                (
+                Err((
                     res.response.deliver_tx.code,
                     format!(
                         "broadcasted transaction failed during deliver: {} - {}",
                         res.response.deliver_tx.code.value(),
                         res.response.deliver_tx.info
                     ),
-                )
+                ))
             } else {
-                let tx_hash = res.response.hash;
-                tracing::debug!(?tx_hash, "fevm transaction committed");
-                return Ok(());
-            };
-
-            if attempt == self.max_retries || !can_retry(code) {
-                bail!(err);
-            } else {
-                tracing::warn!(error = err, attempt, "retry broadcast");
-                attempt += 1;
+                Ok(res.response.hash)
             }
-        }
+        });
+
+        tracing::debug!(?tx_hash, "fevm transaction committed");
+
+        Ok(())
     }
 
     /// Fetch the current nonce to be used in the next message.
