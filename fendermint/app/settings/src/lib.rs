@@ -84,6 +84,15 @@ pub struct DbSettings {
     pub state_hist_size: u64,
 }
 
+/// Settings affecting how we deal with failures in trying to send transactions to the local CometBFT node.
+/// It is not expected to be unavailable, however we might get into race conditions about the nonce which
+/// would need us to try creating a completely new transaction and try again.
+#[derive(Debug, Deserialize, Clone)]
+pub struct BroadcastSettings {
+    /// Number of times to retry broadcasting a transaction.
+    pub max_retries: u8,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
     /// Home directory configured on the CLI, to which all paths in settings can be set relative.
@@ -105,6 +114,7 @@ pub struct Settings {
     pub eth: EthSettings,
     pub fvm: FvmSettings,
     pub resolver: ResolverSettings,
+    pub broadcast: BroadcastSettings,
 }
 
 #[macro_export]

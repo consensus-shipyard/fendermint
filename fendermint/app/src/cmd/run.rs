@@ -63,7 +63,9 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
             sk.clone(),
             settings.fvm.gas_fee_cap.clone(),
             settings.fvm.gas_premium.clone(),
-        );
+        )
+        .with_max_retries(settings.broadcast.max_retries);
+
         ValidatorContext::new(sk, broadcaster)
     });
 
