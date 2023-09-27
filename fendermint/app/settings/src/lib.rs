@@ -189,12 +189,6 @@ impl Settings {
         &self.home_dir
     }
 
-    /// Indicate whether we have configured the IPLD Resolver to run.
-    pub fn resolver_enabled(&self) -> bool {
-        !self.resolver.connection.listen_addr.is_empty()
-            && self.resolver.subnet_id != *ipc_sdk::subnet_id::UNDEF
-    }
-
     /// Tendermint RPC URL from the environment or the config file.
     pub fn tendermint_rpc_url(&self) -> anyhow::Result<Url> {
         // Prefer the "standard" env var used in the CLI.
@@ -260,13 +254,13 @@ mod tests {
     #[test]
     fn parse_default_config() {
         let settings = parse_config("");
-        assert!(!settings.resolver_enabled());
+        assert!(!settings.resolver.enabled());
     }
 
     #[test]
     fn parse_test_config() {
         let settings = parse_config("test");
-        assert!(settings.resolver_enabled());
+        assert!(settings.resolver.enabled());
     }
 
     #[test]

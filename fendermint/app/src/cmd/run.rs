@@ -89,7 +89,7 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
 
     let resolve_pool = CheckpointPool::new();
 
-    if settings.resolver_enabled() {
+    if settings.resolver.enabled() {
         let service =
             make_resolver_service(&settings, db.clone(), state_store.clone(), ns.bit_store)?;
 
