@@ -13,4 +13,4 @@ plantuml.jar:
 
 %.png: plantuml.jar %.puml
 	@# Using pipelining to preserve file names.
-	cat $*.puml | java -jar plantuml.jar -pipe > $*.png
+	cat $*.puml | java -DPLANTUML_LIMIT_SIZE=8192 -jar plantuml.jar -pipe > $*.png
