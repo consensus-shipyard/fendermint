@@ -79,6 +79,10 @@ child_cometbft -> child_fendermint ++: deliver_tx(TopDownCheckpoint)
 return receipts
 
 child_cometbft -> child_fendermint ++: deliver_tx(SignedMessage invoking the Gateway)
+  note left
+    Example of a transaction execution\n
+    enqueueing a bottom-up message.
+  end note
   child_fendermint -> child_actors ++: invoke with Message
     child_actors   -> child_gateway ++: send bottom-up CrossMsg
       child_gateway -> child_gateway : accumulate CrossMsgs
