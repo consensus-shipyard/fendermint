@@ -59,7 +59,7 @@ child_cometbft ->] : broadcast proposal
 child_cometbft <-] : receive proposal
 child_cometbft -> child_fendermint ++: process_proposal(TopDownCheckpoint)
   child_fendermint -> child_syncer ++: check finality of parent block height
-  return is final?
+  return is known and final or not
 return accept or reject
 
 
@@ -92,7 +92,6 @@ return receipts
 
 == End of Checkpoint Period ==
 
-child_cometbft <-] : receive block
 child_cometbft -> child_fendermint ++: end_block
 alt block height % bottom-up checkpoint period == 0
   child_fendermint -> child_cometbft ++: get current validator set
@@ -105,7 +104,7 @@ alt block height % bottom-up checkpoint period == 0
   return new configurations
   child_fendermint -> child_fendermint : set next configuration number in checkpoint
 
-  child_fendermint -> child_gateway ++: call GatewayGetterFacet::bottom_up_checkpoints
+  child_fendermint -> child_gateway ++: call GatewayGetterFacet::bottom_up_messages
   return bottom-up CrossMsgs
   child_fendermint -> child_fendermint : set CrossMsgs hash in checkpoint
 
