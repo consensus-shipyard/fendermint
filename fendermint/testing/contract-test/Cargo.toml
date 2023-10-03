@@ -1,0 +1,13 @@
+[package]
+name = "contract-test"
+description = "Model based testing for smart contracts"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+fendermint_testing = { path = ".." }
+fendermint_vm_interpreter = { path = "../../vm/interpreter", features = ["bundle"] }
