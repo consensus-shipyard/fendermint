@@ -15,8 +15,10 @@ use fendermint_vm_actor_interface::{
 };
 use fendermint_vm_genesis::Validator;
 use fendermint_vm_message::signed::sign_secp256k1;
-use ipc_actors_abis::gateway_getter_facet::{GatewayGetterFacet, SubnetID};
-use ipc_actors_abis::gateway_router_facet::{BottomUpCheckpoint, GatewayRouterFacet};
+use ipc_actors_abis::gateway_getter_facet as getter;
+use ipc_actors_abis::gateway_getter_facet::GatewayGetterFacet;
+use ipc_actors_abis::gateway_router_facet as router;
+use ipc_actors_abis::gateway_router_facet::GatewayRouterFacet;
 
 use super::{
     fevm::{ContractCaller, MockProvider},
@@ -66,7 +68,7 @@ impl<DB: Blockstore> GatewayCaller<DB> {
     }
 
     /// Return the current subnet ID.
-    pub fn subnet_id(&self, state: &mut FvmExecState<DB>) -> anyhow::Result<SubnetID> {
+    pub fn subnet_id(&self, state: &mut FvmExecState<DB>) -> anyhow::Result<getter::SubnetID> {
         self.getter.call(state, |c| c.get_network_name())
     }
 
@@ -75,11 +77,30 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         self.getter.call(state, |c| c.bottom_up_check_period())
     }
 
+    /// Fetch the bottom-up messages enqueued for a given checkpoint height.
+    pub fn bottom_up_msgs(
+        &self,
+        state: &mut FvmExecState<DB>,
+        height: u64,
+    ) -> anyhow::Result<Vec<getter::CrossMsg>> {
+        self.getter.call(state, |c| c.bottom_up_messages(height))
+    }
+
+    /// Fetch the bottom-up messages enqueued in a given checkpoint.
+    pub fn bottom_up_msgs_hash(
+        &self,
+        state: &mut FvmExecState<DB>,
+        height: u64,
+    ) -> anyhow::Result<[u8; 32]> {
+        let msgs = self.bottom_up_msgs(state, height)?;
+        Ok(abi_hash(msgs))
+    }
+
     /// Insert a new checkpoint at the period boundary.
     pub fn create_bottom_up_checkpoint(
         &self,
         state: &mut FvmExecState<DB>,
-        checkpoint: BottomUpCheckpoint,
+        checkpoint: router::BottomUpCheckpoint,
         power_table: &[Validator],
     ) -> anyhow::Result<()> {
         // Construct a Merkle tree from the power table, which we can use to validate validator set membership
@@ -96,12 +117,20 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         })
     }
 
+    /// Retrieve checkpoints which have not reached a quorum.
+    pub fn incomplete_checkpoints(
+        &self,
+        state: &mut FvmExecState<DB>,
+    ) -> anyhow::Result<Vec<getter::BottomUpCheckpoint>> {
+        self.getter.call(state, |c| c.get_incomplete_checkpoints())
+    }
+
     /// Construct the input parameters for adding a signature to the checkpoint.
     ///
     /// This will need to be broadcasted as a transaction.
     pub fn add_checkpoint_signature_calldata(
         &self,
-        checkpoint: BottomUpCheckpoint,
+        checkpoint: router::BottomUpCheckpoint,
         power_table: &[Validator],
         validator: &Validator,
         secret_key: &SecretKey,
@@ -111,7 +140,7 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         let height = checkpoint.block_height;
         let weight = et::U256::from(validator.power.0);
 
-        let hash = keccak256(ethers::abi::encode(&checkpoint.into_tokens()));
+        let hash = abi_hash(checkpoint);
         let signature = et::Bytes::from(sign_secp256k1(secret_key, &hash));
 
         let tree =
@@ -137,4 +166,9 @@ impl<DB: Blockstore> GatewayCaller<DB> {
 
         Ok(calldata)
     }
+}
+
+/// Hash some value in the same way we'd hash it in Solidity.
+fn abi_hash<T: Tokenize>(value: T) -> [u8; 32] {
+    keccak256(ethers::abi::encode(&value.into_tokens()))
 }
