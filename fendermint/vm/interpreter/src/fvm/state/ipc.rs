@@ -117,6 +117,14 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         })
     }
 
+    /// Retrieve checkpoints which have not reached a quorum.
+    pub fn incomplete_checkpoints(
+        &self,
+        state: &mut FvmExecState<DB>,
+    ) -> anyhow::Result<Vec<getter::BottomUpCheckpoint>> {
+        self.getter.call(state, |c| c.get_incomplete_checkpoints())
+    }
+
     /// Construct the input parameters for adding a signature to the checkpoint.
     ///
     /// This will need to be broadcasted as a transaction.
