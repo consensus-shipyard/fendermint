@@ -32,8 +32,6 @@ fil_actors_evm_shared = { workspace = true }
 # frc42_dispatch = { workspace = true }
 
 fendermint_vm_genesis = { path = "../genesis" }
-fendermint_vm_ipc_actors = { path = "../ipc_actors" }
-
 
 [dev-dependencies]
 ethers-core = { workspace = true }
