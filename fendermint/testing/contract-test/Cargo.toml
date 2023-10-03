@@ -9,5 +9,15 @@ license.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = { workspace = true }
+fvm = { workspace = true }
+fvm_shared = { workspace = true }
+tendermint-rpc = { workspace = true }
+
 fendermint_testing = { path = ".." }
 fendermint_vm_interpreter = { path = "../../vm/interpreter", features = ["bundle"] }
+fendermint_vm_genesis = { path = "../../vm/genesis", features = ["arb"] }
+
+[dev-dependencies]
+tokio = { workspace = true }
+quickcheck = { workspace = true }

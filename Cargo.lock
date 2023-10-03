@@ -1321,8 +1321,15 @@ checksum = "f7144d30dcf0fafbce74250a3963025d8d52177934239851c917d29f1df280c2"
 name = "contract-test"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "fendermint_testing",
+ "fendermint_vm_genesis",
  "fendermint_vm_interpreter",
+ "fvm",
+ "fvm_shared",
+ "quickcheck 1.0.3",
+ "tendermint-rpc",
+ "tokio",
 ]
 
 [[package]]
