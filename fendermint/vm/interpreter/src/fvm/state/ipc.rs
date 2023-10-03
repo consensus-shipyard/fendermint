@@ -77,15 +77,12 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         self.getter.call(state, |c| c.bottom_up_check_period())
     }
 
-    /// Fetch the bottom-up messages enqueued in a given checkpoint.
+    /// Fetch the bottom-up messages enqueued for a given checkpoint height.
     pub fn bottom_up_msgs(
         &self,
         state: &mut FvmExecState<DB>,
         height: u64,
     ) -> anyhow::Result<Vec<getter::CrossMsg>> {
-        // NOTE: This particular method is marked as deprecated but it's currently the only known way to retrieve
-        //       the cross messages, which get accumulated here. The rest of the fields we can ignore. In the future
-        //       we can probably call a dedicated method that only deals with messages, not the legacy checkpoint.
         self.getter.call(state, |c| c.bottom_up_messages(height))
     }
 
