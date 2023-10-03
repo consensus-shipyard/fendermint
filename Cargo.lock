@@ -1322,12 +1322,14 @@ name = "contract-test"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arbitrary",
+ "arbtest",
  "fendermint_testing",
  "fendermint_vm_genesis",
  "fendermint_vm_interpreter",
  "fvm",
  "fvm_shared",
- "quickcheck 1.0.3",
+ "rand 0.8.5",
  "tendermint-rpc",
  "tokio",
 ]

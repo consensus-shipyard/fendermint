@@ -12,33 +12,101 @@
 //! cargo test --release -p contract-test --test staking
 //! ```
 
-use fendermint_vm_genesis::{ipc::IpcParams, Genesis};
-use fendermint_vm_interpreter::fvm::state::ipc::GatewayCaller;
-use quickcheck::Arbitrary;
+use arbitrary::{Arbitrary, Unstructured};
+use fendermint_testing::{smt::StateMachine, state_machine_test};
+use fendermint_vm_genesis::Genesis;
+use fendermint_vm_interpreter::fvm::{
+    state::{ipc::GatewayCaller, FvmExecState},
+    store::memory::MemoryBlockstore,
+};
 
-// TODO: Map Arbitrary to Unstructured
-// TODO: Create a system for the parent and another for the child.
-// TODO: Create a StateMachine for testing a parent and child pair.
-#[test]
-fn probe() {
-    let mut g = quickcheck::Gen::new(5);
-
-    let mut genesis = Genesis::arbitrary(&mut g);
-    // Make sure we have IPC enabled.
-    genesis.ipc = Some(IpcParams::arbitrary(&mut g));
-
-    // The only async part in this test should be the initialization.
-    let rt = tokio::runtime::Runtime::new().expect("create tokio runtime for init");
-    let (mut state, _out) = rt
-        .block_on(contract_test::init_exec_state(genesis))
-        .expect("genesis initialized");
-
-    let gateway = GatewayCaller::default();
-
-    // Some dummy test.
-    let period = gateway
-        .bottom_up_check_period(&mut state)
-        .expect("IPC enabled");
-
-    assert_ne!(period, 0);
+/// System Under Test for staking.
+struct StakingSystem {
+    /// FVM state initialized with the parent genesis, and a subnet created for the child.
+    parent_state: FvmExecState<MemoryBlockstore>,
+    /// FVM state initialized with the child genesis.
+    child_state: FvmExecState<MemoryBlockstore>,
+    gateway: GatewayCaller<MemoryBlockstore>,
 }
+
+/// Reference implementation for staking.
+#[derive(Debug, Clone)]
+struct StakingState {
+    /// The parent genesis should include a bunch of accounts we can use to join a subnet.
+    parent_genesis: Genesis,
+    /// The child genesis should start with a subset of the parent accounts being validators.
+    child_genesis: Genesis,
+}
+
+impl arbitrary::Arbitrary<'_> for StakingState {
+    fn arbitrary(u: &mut Unstructured<'_>) -> arbitrary::Result<Self> {
+        todo!()
+    }
+}
+
+struct StakingMachine;
+
+impl StateMachine for StakingMachine {
+    type System = StakingSystem;
+
+    type State = StakingState;
+
+    type Command = ();
+
+    type Result = ();
+
+    fn gen_state(&self, u: &mut Unstructured) -> arbitrary::Result<Self::State> {
+        StakingState::arbitrary(u)
+    }
+
+    fn new_system(&self, state: &Self::State) -> Self::System {
+        let rt = tokio::runtime::Runtime::new().expect("create tokio runtime for init");
+
+        let (parent_state, _) = rt
+            .block_on(contract_test::init_exec_state(state.parent_genesis.clone()))
+            .expect("failed to init parent");
+
+        let (child_state, _) = rt
+            .block_on(contract_test::init_exec_state(state.child_genesis.clone()))
+            .expect("failed to init child");
+
+        let gateway = GatewayCaller::default();
+
+        StakingSystem {
+            parent_state,
+            child_state,
+            gateway,
+        }
+    }
+
+    fn gen_command(
+        &self,
+        u: &mut Unstructured,
+        state: &Self::State,
+    ) -> arbitrary::Result<Self::Command> {
+        Ok(())
+    }
+
+    fn run_command(&self, system: &mut Self::System, cmd: &Self::Command) -> Self::Result {
+        todo!()
+    }
+
+    fn check_result(&self, cmd: &Self::Command, pre_state: &Self::State, result: &Self::Result) {
+        todo!()
+    }
+
+    fn next_state(&self, cmd: &Self::Command, state: Self::State) -> Self::State {
+        todo!()
+    }
+
+    fn check_system(
+        &self,
+        cmd: &Self::Command,
+        post_state: &Self::State,
+        post_system: &Self::System,
+    ) {
+        todo!()
+    }
+}
+
+state_machine_test!(staking, 20000 ms, 100 steps, StakingMachine);

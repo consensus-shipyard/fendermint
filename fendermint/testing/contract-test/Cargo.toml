@@ -14,10 +14,12 @@ fvm = { workspace = true }
 fvm_shared = { workspace = true }
 tendermint-rpc = { workspace = true }
 
-fendermint_testing = { path = ".." }
+fendermint_vm_genesis = { path = "../../vm/genesis" }
+fendermint_testing = { path = "..", features = ["smt"] }
 fendermint_vm_interpreter = { path = "../../vm/interpreter", features = ["bundle"] }
-fendermint_vm_genesis = { path = "../../vm/genesis", features = ["arb"] }
 
 [dev-dependencies]
+arbitrary = { workspace = true }
+arbtest = { workspace = true }
+rand = { workspace = true }
 tokio = { workspace = true }
-quickcheck = { workspace = true }
