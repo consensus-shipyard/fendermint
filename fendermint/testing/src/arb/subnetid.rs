@@ -53,8 +53,8 @@ impl arbitrary::Arbitrary<'_> for ArbSubnetAddress {
         } else {
             // Only expecting EAM managed delegated addresses.
             let mut subaddr = [0u8; 20];
-            for i in 0..20 {
-                subaddr[i] = u8::arbitrary(u)?;
+            for b in &mut subaddr {
+                *b = u8::arbitrary(u)?;
             }
             Address::new_delegated(10, &subaddr).unwrap()
         };

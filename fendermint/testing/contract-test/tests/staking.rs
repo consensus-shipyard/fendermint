@@ -12,7 +12,7 @@
 //! ```text
 //! cargo test --release -p contract-test --test staking
 //! ```
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use arbitrary::{Arbitrary, Unstructured};
 use fendermint_crypto::{PublicKey, SecretKey};
@@ -42,37 +42,18 @@ struct StakingSystem {
     gateway: GatewayCaller<MemoryBlockstore>,
 }
 
-/// Reference implementation for staking.
 #[derive(Debug, Clone)]
-struct StakingState {
-    /// Accounts with secret key of accounts in case the contract wants to validate signatures.
-    accounts: HashMap<Address, StakingAccount>,
-    /// The parent genesis should include a bunch of accounts we can use to join a subnet.
-    parent_genesis: Genesis,
-    /// The child genesis describes the initial validator set to join the subnet
-    child_genesis: Genesis,
-    /// Currently active child validator set.
-    child_validators: HashMap<Address, Power>,
+enum StakingOp {
+    Deposit(TokenAmount),
+    Withdraw(TokenAmount),
 }
 
-impl StakingState {
-    fn new(accounts: Vec<StakingAccount>, parent_genesis: Genesis, child_genesis: Genesis) -> Self {
-        let child_validators = child_genesis
-            .validators
-            .iter()
-            .map(|v| {
-                let addr = Address::new_secp256k1(&v.public_key.0.serialize()).unwrap();
-                (addr, v.power)
-            })
-            .collect();
-
-        Self {
-            accounts: accounts.into_iter().map(|a| (a.addr, a)).collect(),
-            parent_genesis,
-            child_genesis,
-            child_validators,
-        }
-    }
+/// The staking message that goes towards the subnet to increase or decrease power.
+#[derive(Debug, Clone)]
+struct StakingUpdate {
+    configuration_number: u64,
+    addr: Address,
+    op: StakingOp,
 }
 
 #[derive(Debug, Clone)]
@@ -84,6 +65,58 @@ struct StakingAccount {
     initial_balance: TokenAmount,
     /// Balance after the effects of deposits/withdrawals.
     current_balance: TokenAmount,
+}
+
+/// Reference implementation for staking.
+#[derive(Debug, Clone)]
+struct StakingState {
+    /// Accounts with secret key of accounts in case the contract wants to validate signatures.
+    accounts: HashMap<Address, StakingAccount>,
+    /// List of account addresses to help pick a random one.
+    addrs: Vec<Address>,
+    /// The parent genesis should include a bunch of accounts we can use to join a subnet.
+    parent_genesis: Genesis,
+    /// The child genesis describes the initial validator set to join the subnet
+    child_genesis: Genesis,
+    /// Currently active child validator set.
+    child_validators: HashMap<Address, Power>,
+    /// The configuration number to be incremented before each staking operation; 0 belongs to the genesis.
+    configuration_number: u64,
+    /// Unconfirmed staking operations.
+    pending_updates: VecDeque<StakingUpdate>,
+}
+
+impl StakingState {
+    pub fn new(
+        accounts: Vec<StakingAccount>,
+        parent_genesis: Genesis,
+        child_genesis: Genesis,
+    ) -> Self {
+        let child_validators = child_genesis
+            .validators
+            .iter()
+            .map(|v| {
+                let addr = Address::new_secp256k1(&v.public_key.0.serialize()).unwrap();
+                (addr, v.power)
+            })
+            .collect();
+
+        let accounts = accounts
+            .into_iter()
+            .map(|a| (a.addr, a))
+            .collect::<HashMap<_, _>>();
+        let addrs = accounts.keys().cloned().collect();
+
+        Self {
+            accounts,
+            addrs,
+            parent_genesis,
+            child_genesis,
+            child_validators,
+            configuration_number: 0,
+            pending_updates: VecDeque::new(),
+        }
+    }
 }
 
 impl arbitrary::Arbitrary<'_> for StakingState {
@@ -104,9 +137,10 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             let addr = Address::new_secp256k1(&pk.serialize()).unwrap();
 
             // Create with a non-zero balance so we can pick anyone to be a validator and deposit some collateral.
-            let b = ArbTokenAmount::arbitrary(u)?
-                .0
-                .max(TokenAmount::from_atto(1));
+            let b = ArbTokenAmount::arbitrary(u)?.0;
+            let b = b.max(TokenAmount::from_atto(1));
+            // Limit the balance to the u64 range, so we don't have to worry about power conversions.
+            let b = TokenAmount::from_atto(b.atto() % BigInt::from(u64::MAX));
 
             let a = StakingAccount {
                 public_key: pk,
@@ -170,10 +204,8 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             .take(num_validators)
             .map(|a| {
                 // Power has to be a u64.
-                let p = ArbTokenAmount::arbitrary(u)?.0.atto() % BigInt::from(u64::MAX);
-                // Cannot have more than the balance.
-                let p = p.max(a.initial_balance.atto().clone()).min(BigInt::from(1));
-                let p = Power(p.try_into().expect("power must be u64"));
+                let p = BigInt::arbitrary(u)? % a.initial_balance.atto();
+                let p = Power(p.try_into().expect("balances are u64"));
                 let v = Validator {
                     public_key: ValidatorKey(a.public_key),
                     power: p,
@@ -209,6 +241,15 @@ impl arbitrary::Arbitrary<'_> for StakingState {
     }
 }
 
+enum StakingCommand {
+    /// Bottom-up checkpoint; confirms all staking operations up to the configuration number.
+    Checkpoint { next_configuration_number: u64 },
+    /// Increase the collateral of a validator; when it goes from 0 this means joining the subnet.
+    Stake(Address, TokenAmount),
+    /// Decrease the collateral of a validator; if it goes to 0 it means leaving the subnet.
+    Unstake(Address, TokenAmount),
+}
+
 struct StakingMachine;
 
 impl StateMachine for StakingMachine {
@@ -216,7 +257,7 @@ impl StateMachine for StakingMachine {
 
     type State = StakingState;
 
-    type Command = ();
+    type Command = StakingCommand;
 
     type Result = ();
 
@@ -248,14 +289,46 @@ impl StateMachine for StakingMachine {
         u: &mut Unstructured,
         state: &Self::State,
     ) -> arbitrary::Result<Self::Command> {
-        Ok(())
+        let cmd = match u.choose(&["checkpoint", "stake", "unstake"]).unwrap() {
+            &"checkpoint" => {
+                let cn = match state.pending_updates.len() {
+                    0 => state.configuration_number,
+                    n => {
+                        let idx = u.choose_index(n).expect("non-zero");
+                        state.pending_updates[idx].configuration_number
+                    }
+                };
+                StakingCommand::Checkpoint {
+                    next_configuration_number: cn,
+                }
+            }
+            &"stake" => {
+                let a = u.choose(&state.addrs).expect("accounts not empty");
+                let a = state.accounts.get(a).expect("account exists");
+                // Limit ourselves to the outstanding balance - the user would not be able to send more value to the contract.
+                let b = BigInt::arbitrary(u)? % a.current_balance.atto();
+                let b = TokenAmount::from_atto(b);
+                StakingCommand::Stake(a.addr, b)
+            }
+            &"unstake" => {
+                let a = u.choose(&state.addrs).expect("accounts not empty");
+                let a = state.accounts.get(a).expect("account exists");
+                // We can try sending requests to unbond arbitrarily large amounts of collateral - the system should catch any attempt to steal.
+                let b = ArbTokenAmount::arbitrary(u)?.0;
+                StakingCommand::Stake(a.addr, b)
+            }
+            other => unimplemented!("unknown command: {other}"),
+        };
+        Ok(cmd)
     }
 
     fn run_command(&self, system: &mut Self::System, cmd: &Self::Command) -> Self::Result {
         todo!()
     }
 
-    fn check_result(&self, cmd: &Self::Command, pre_state: &Self::State, result: &Self::Result) {}
+    fn check_result(&self, cmd: &Self::Command, pre_state: &Self::State, result: &Self::Result) {
+        todo!()
+    }
 
     fn next_state(&self, cmd: &Self::Command, state: Self::State) -> Self::State {
         todo!()
@@ -267,6 +340,7 @@ impl StateMachine for StakingMachine {
         post_state: &Self::State,
         post_system: &Self::System,
     ) {
+        todo!()
     }
 }
 
