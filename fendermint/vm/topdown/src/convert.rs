@@ -4,15 +4,10 @@
 
 use crate::IPCParentFinality;
 use anyhow::anyhow;
-use ethers::abi::{Function, Token};
-use ethers::types::Bytes;
+use ethers::abi::Function;
 use ethers::types::U256;
-use fendermint_vm_ipc_actors::{gateway_getter_facet, gateway_router_facet};
-use fvm_shared::address::{Address, Payload};
-use ipc_agent_sdk::message::ipc::ValidatorSet;
-use std::str::FromStr;
+use ipc_actors_abis::{gateway_getter_facet, gateway_router_facet};
 
-const COMMIT_PARENT_FINALITY_FUNC_NAME: &str = "commitParentFinality";
 const GET_LATEST_PARENT_FINALITY_FUNC_NAME: &str = "getLatestParentFinality";
 
 impl TryFrom<IPCParentFinality> for gateway_router_facet::ParentFinality {
@@ -40,61 +35,6 @@ impl From<gateway_getter_facet::ParentFinality> for IPCParentFinality {
             block_hash: value.block_hash.to_vec(),
         }
     }
-}
-
-/// Converts a Rust type FVM address into its underlying payload
-/// so it can be represented internally in a Solidity contract.
-fn addr_payload_to_bytes(payload: Payload) -> anyhow::Result<Bytes> {
-    let r = match payload {
-        Payload::Secp256k1(v) => ethers::types::Bytes::from(v),
-        Payload::Delegated(d) => {
-            let addr = d.subaddress();
-            let b = ethers::abi::encode(&[Token::Tuple(vec![
-                Token::Uint(U256::from(d.namespace())),
-                Token::Uint(U256::from(addr.len())),
-                Token::Bytes(addr.to_vec()),
-            ])]);
-            ethers::types::Bytes::from(b)
-        }
-        _ => return Err(anyhow!("unexpected payload type")),
-    };
-    Ok(r)
-}
-
-fn convert_addr(addr: Address) -> anyhow::Result<gateway_router_facet::FvmAddress> {
-    Ok(gateway_router_facet::FvmAddress {
-        addr_type: addr.protocol() as u8,
-        payload: addr_payload_to_bytes(addr.into_payload())?,
-    })
-}
-
-pub fn encode_commit_parent_finality_call(
-    finality: IPCParentFinality,
-    validator_set: ValidatorSet,
-) -> anyhow::Result<Vec<u8>> {
-    let commit_function = get_evm_function(COMMIT_PARENT_FINALITY_FUNC_NAME)?;
-
-    let validators = validator_set.validators.unwrap_or_default();
-
-    let mut addresses = vec![];
-    let mut weights = vec![];
-    for validator in validators {
-        let raw_address = validator.worker_addr.unwrap_or(validator.addr);
-        let addr = Address::from_str(&raw_address)?;
-        addresses.push(convert_addr(addr)?);
-        weights.push(U256::from_dec_str(&validator.weight)?);
-    }
-
-    let data = ethers::contract::encode_function_data(
-        commit_function,
-        gateway_router_facet::CommitParentFinalityCall {
-            finality: gateway_router_facet::ParentFinality::try_from(finality)?,
-            validators: addresses,
-            weights,
-        },
-    )?;
-
-    Ok(data.to_vec())
 }
 
 pub fn encode_get_latest_parent_finality() -> anyhow::Result<Vec<u8>> {

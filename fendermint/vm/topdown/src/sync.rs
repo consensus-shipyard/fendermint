@@ -3,18 +3,15 @@
 //! A constant running process that fetch or listener to parent state
 
 use crate::error::Error;
+use crate::proxy::{IPCProviderProxy, ParentQueryProxy};
 use crate::{
     BlockHash, BlockHeight, CachedFinalityProvider, Config, IPCParentFinality,
     ParentFinalityProvider, Toggle,
 };
 use anyhow::{anyhow, Context};
 use async_stm::{atomically, atomically_or_err};
-use fvm_shared::clock::ChainEpoch;
-use ipc_agent_sdk::apis::IpcAgentClient;
-use ipc_agent_sdk::jsonrpc::JsonRpcClientImpl;
-use ipc_agent_sdk::message::ipc::ValidatorSet;
 use ipc_sdk::cross::CrossMsg;
-use ipc_sdk::subnet_id::SubnetID;
+use ipc_sdk::staking::StakingChangeRequest;
 use std::cmp::min;
 use std::sync::Arc;
 use std::time::Duration;
@@ -35,8 +32,8 @@ pub trait ParentFinalityStateQuery {
 /// Constantly syncing with parent through polling
 pub struct PollingParentSyncer<T> {
     config: Config,
-    parent_view_provider: Arc<Toggle<CachedFinalityProvider>>,
-    agent: Arc<IPCAgentProxy>,
+    parent_view_provider: Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
+    agent: Arc<IPCProviderProxy>,
     committed_state_query: Arc<T>,
 }
 
@@ -44,7 +41,7 @@ pub struct PollingParentSyncer<T> {
 /// means the chain has just started, then query from the parent to get the genesis epoch.
 async fn query_starting_finality<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     query: &Arc<T>,
-    agent: &Arc<IPCAgentProxy>,
+    agent: &Arc<IPCProviderProxy>,
 ) -> anyhow::Result<IPCParentFinality> {
     loop {
         let mut finality = match query.get_latest_committed_finality() {
@@ -84,8 +81,8 @@ async fn query_starting_finality<T: ParentFinalityStateQuery + Send + Sync + 'st
 pub async fn launch_polling_syncer<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     query: T,
     config: Config,
-    view_provider: Arc<Toggle<CachedFinalityProvider>>,
-    agent: Arc<IPCAgentProxy>,
+    view_provider: Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
+    agent: Arc<IPCProviderProxy>,
 ) -> anyhow::Result<()> {
     if !view_provider.is_enabled() {
         return Err(anyhow!("provider not enabled, enable to run syncer"));
@@ -106,8 +103,8 @@ pub async fn launch_polling_syncer<T: ParentFinalityStateQuery + Send + Sync + '
 impl<T> PollingParentSyncer<T> {
     pub fn new(
         config: Config,
-        parent_view_provider: Arc<Toggle<CachedFinalityProvider>>,
-        agent: Arc<IPCAgentProxy>,
+        parent_view_provider: Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
+        agent: Arc<IPCProviderProxy>,
         query: Arc<T>,
     ) -> Self {
         Self {
@@ -149,8 +146,8 @@ impl<T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T>
 /// 4. Update the data into cache
 async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     config: &Config,
-    agent_proxy: &Arc<IPCAgentProxy>,
-    provider: &Arc<Toggle<CachedFinalityProvider>>,
+    agent_proxy: &Arc<IPCProviderProxy>,
+    provider: &Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
     query: &Arc<T>,
 ) -> anyhow::Result<()> {
     let last_recorded_height = if let Some(h) = last_recorded_height(provider).await? {
@@ -220,7 +217,7 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
 
 /// Obtains the last recorded height from provider cache or from last committed finality height.
 async fn last_recorded_height(
-    provider: &Arc<Toggle<CachedFinalityProvider>>,
+    provider: &Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
 ) -> anyhow::Result<Option<BlockHeight>> {
     let height = atomically(|| {
         let h = if let Some(h) = provider.latest_height()? {
@@ -239,10 +236,17 @@ async fn last_recorded_height(
 
 /// Obtain the new parent views for the input block height range
 async fn get_new_parent_views(
-    agent_proxy: &Arc<IPCAgentProxy>,
+    agent_proxy: &Arc<IPCProviderProxy>,
     start_height: BlockHeight,
     end_height: BlockHeight,
-) -> anyhow::Result<Vec<(BlockHeight, BlockHash, ValidatorSet, Vec<CrossMsg>)>> {
+) -> anyhow::Result<
+    Vec<(
+        BlockHeight,
+        BlockHash,
+        Vec<StakingChangeRequest>,
+        Vec<CrossMsg>,
+    )>,
+> {
     let mut block_height_to_update = vec![];
     let mut total_top_down_msgs = 0;
     for h in start_height..=end_height {
@@ -250,8 +254,8 @@ async fn get_new_parent_views(
             .get_block_hash(h)
             .await
             .context("cannot fetch block hash")?;
-        let validator_set = agent_proxy
-            .get_validator_set(h)
+        let validator_changes = agent_proxy
+            .get_validator_changes(h)
             .await
             .context("cannot fetch validator set")?;
         let top_down_msgs = agent_proxy
@@ -260,86 +264,10 @@ async fn get_new_parent_views(
             .context("cannot fetch top down messages")?;
         total_top_down_msgs += top_down_msgs.len();
 
-        block_height_to_update.push((h, block_hash, validator_set, top_down_msgs));
+        block_height_to_update.push((h, block_hash, validator_changes, top_down_msgs));
         if total_top_down_msgs >= TOPDOWN_MSG_LEN_THRESHOLD {
             break;
         }
     }
     Ok(block_height_to_update)
-}
-
-/// The proxy to ipc agent
-pub struct IPCAgentProxy {
-    agent_client: IpcAgentClient<JsonRpcClientImpl>,
-    /// The parent subnet for the child subnet we are target. We can derive from child subnet,
-    /// but storing it separately so that we dont have to derive every time.
-    parent_subnet: SubnetID,
-    /// The child subnet that this node belongs to.
-    child_subnet: SubnetID,
-}
-
-impl IPCAgentProxy {
-    pub fn new(
-        client: IpcAgentClient<JsonRpcClientImpl>,
-        target_subnet: SubnetID,
-    ) -> anyhow::Result<Self> {
-        let parent = target_subnet
-            .parent()
-            .ok_or_else(|| anyhow!("subnet does not have parent"))?;
-        Ok(Self {
-            agent_client: client,
-            parent_subnet: parent,
-            child_subnet: target_subnet,
-        })
-    }
-
-    pub async fn get_chain_head_height(&self) -> anyhow::Result<BlockHeight> {
-        let height = self
-            .agent_client
-            .get_chain_head_height(&self.parent_subnet)
-            .await?;
-        Ok(height as BlockHeight)
-    }
-
-    /// Get the genesis epoch of the child subnet, i.e. the epoch that the subnet was created in
-    /// the parent subnet.
-    pub async fn get_genesis_epoch(&self) -> anyhow::Result<ChainEpoch> {
-        let r = self
-            .agent_client
-            // passing None to height as we are fetching the latest data
-            .get_validator_set(&self.child_subnet, None)
-            .await?;
-        Ok(r.genesis_epoch)
-    }
-
-    /// Getting the block hash at the target height.
-    pub async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<BlockHash> {
-        self.agent_client
-            .get_block_hash(&self.parent_subnet, height as ChainEpoch)
-            .await
-    }
-
-    /// Get the top down messages from the starting to the ending height.
-    pub async fn get_top_down_msgs(
-        &self,
-        start_height: BlockHeight,
-        end_height: u64,
-    ) -> anyhow::Result<Vec<CrossMsg>> {
-        self.agent_client
-            .get_top_down_msgs(
-                &self.child_subnet,
-                start_height as ChainEpoch,
-                end_height as ChainEpoch,
-            )
-            .await
-    }
-
-    /// Get the validator set at the specified height.
-    pub async fn get_validator_set(&self, height: BlockHeight) -> anyhow::Result<ValidatorSet> {
-        let r = self
-            .agent_client
-            .get_validator_set(&self.child_subnet, Some(height as ChainEpoch))
-            .await?;
-        Ok(r.validator_set)
-    }
 }

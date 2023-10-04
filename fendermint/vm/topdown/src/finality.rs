@@ -3,21 +3,21 @@
 
 use crate::cache::SequentialKeyCache;
 use crate::error::Error;
-use crate::sync::IPCAgentProxy;
+use crate::proxy::ParentQueryProxy;
 use crate::{
     BlockHash, BlockHeight, Config, IPCParentFinality, ParentFinalityProvider, ParentViewProvider,
 };
 use async_stm::{abort, atomically, Stm, StmResult, TVar};
-use ipc_agent_sdk::message::ipc::ValidatorSet;
 use ipc_sdk::cross::CrossMsg;
+use ipc_sdk::staking::StakingChangeRequest;
 use std::sync::Arc;
 use std::time::Duration;
 
-type ParentViewPayload = (BlockHash, ValidatorSet, Vec<CrossMsg>);
+type ParentViewPayload = (BlockHash, Vec<StakingChangeRequest>, Vec<CrossMsg>);
 
 /// The default parent finality provider
 #[derive(Clone)]
-pub struct CachedFinalityProvider {
+pub struct CachedFinalityProvider<T> {
     config: Config,
     /// Cached data that always syncs with the latest parent chain proactively
     cached_data: CachedData,
@@ -25,7 +25,7 @@ pub struct CachedFinalityProvider {
     /// for populating the cache
     last_committed_finality: TVar<Option<IPCParentFinality>>,
     /// The ipc agent proxy that works as a back up if cache miss
-    agent: Arc<IPCAgentProxy>,
+    agent: Arc<T>,
 }
 
 /// Tracks the data from the parent
@@ -63,11 +63,14 @@ macro_rules! retry {
 }
 
 #[async_trait::async_trait]
-impl ParentViewProvider for CachedFinalityProvider {
+impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedFinalityProvider<T> {
     /// Should always return the validator set, only when ipc agent is down after exponeitial
     /// retries
-    async fn validator_set(&self, height: BlockHeight) -> anyhow::Result<ValidatorSet> {
-        let r = atomically(|| self.cached_data.validator_set(height)).await;
+    async fn validator_changes(
+        &self,
+        height: BlockHeight,
+    ) -> anyhow::Result<Vec<StakingChangeRequest>> {
+        let r = atomically(|| self.cached_data.validator_changes(height)).await;
         if let Some(v) = r {
             return Ok(v);
         }
@@ -75,7 +78,7 @@ impl ParentViewProvider for CachedFinalityProvider {
         retry!(
             self.config.exponential_back_off_secs,
             self.config.exponential_retry_limit,
-            self.agent.get_validator_set(height).await
+            self.agent.get_validator_changes(height).await
         )
     }
 
@@ -95,7 +98,9 @@ impl ParentViewProvider for CachedFinalityProvider {
     }
 }
 
-impl ParentFinalityProvider for CachedFinalityProvider {
+impl<T: ParentQueryProxy + Send + Sync + 'static> ParentFinalityProvider
+    for CachedFinalityProvider<T>
+{
     fn next_proposal(&self) -> Stm<Option<IPCParentFinality>> {
         let height = if let Some(h) = self.cached_data.latest_height()? {
             h
@@ -129,20 +134,16 @@ impl ParentFinalityProvider for CachedFinalityProvider {
     }
 }
 
-impl CachedFinalityProvider {
+impl<T> CachedFinalityProvider<T> {
     /// Creates an uninitialized provider
     /// We need this because `fendermint` has yet to be initialized and might
     /// not be able to provide an existing finality from the storage. This provider requires an
     /// existing committed finality. Providing the finality will enable other functionalities.
-    pub fn uninitialized(config: Config, agent: Arc<IPCAgentProxy>) -> Self {
+    pub fn uninitialized(config: Config, agent: Arc<T>) -> Self {
         Self::new(config, None, agent)
     }
 
-    fn new(
-        config: Config,
-        committed_finality: Option<IPCParentFinality>,
-        agent: Arc<IPCAgentProxy>,
-    ) -> Self {
+    fn new(config: Config, committed_finality: Option<IPCParentFinality>, agent: Arc<T>) -> Self {
         let height_data = SequentialKeyCache::sequential();
         Self {
             config,
@@ -174,17 +175,20 @@ impl CachedFinalityProvider {
         &self,
         height: BlockHeight,
         block_hash: BlockHash,
-        validator_set: ValidatorSet,
+        validator_changes: Vec<StakingChangeRequest>,
         top_down_msgs: Vec<CrossMsg>,
     ) -> StmResult<(), Error> {
         if !top_down_msgs.is_empty() {
             // make sure incoming top down messages are ordered by nonce sequentially
-            ensure_sequential_by_nonce(&top_down_msgs)?;
+            ensure_sequential(&top_down_msgs, |msg| msg.msg.nonce)?;
         };
+        if !validator_changes.is_empty() {
+            ensure_sequential(&validator_changes, |change| change.0)?;
+        }
 
         let r = self.cached_data.height_data.modify(|mut cache| {
             let r = cache
-                .append(height, (block_hash, validator_set, top_down_msgs))
+                .append(height, (block_hash, validator_changes, top_down_msgs))
                 .map_err(Error::NonSequentialParentViewInsert);
             (cache, r)
         })?;
@@ -242,7 +246,7 @@ impl CachedData {
         Ok(cache.get_value(height).map(|i| i.0.clone()))
     }
 
-    fn validator_set(&self, height: BlockHeight) -> Stm<Option<ValidatorSet>> {
+    fn validator_changes(&self, height: BlockHeight) -> Stm<Option<Vec<StakingChangeRequest>>> {
         let cache = self.height_data.read()?;
         Ok(cache.get_value(height).map(|i| i.1.clone()))
     }
@@ -253,14 +257,15 @@ impl CachedData {
     }
 }
 
-fn ensure_sequential_by_nonce(msgs: &[CrossMsg]) -> StmResult<(), Error> {
+fn ensure_sequential<T, F: Fn(&T) -> u64>(msgs: &[T], f: F) -> StmResult<(), Error> {
     if msgs.is_empty() {
         return Ok(());
     }
 
-    let mut nonce = msgs.first().unwrap().msg.nonce;
+    let first = msgs.first().unwrap();
+    let mut nonce = f(first);
     for msg in msgs.iter().skip(1) {
-        if nonce + 1 != msg.msg.nonce {
+        if nonce + 1 != f(msg) {
             return abort(Error::NonceNotSequential);
         }
         nonce += 1;
@@ -271,35 +276,61 @@ fn ensure_sequential_by_nonce(msgs: &[CrossMsg]) -> StmResult<(), Error> {
 
 #[cfg(test)]
 mod tests {
-    use crate::sync::IPCAgentProxy;
-    use crate::{CachedFinalityProvider, Config, IPCParentFinality, ParentFinalityProvider};
+    use crate::proxy::{IPCProviderProxy, ParentQueryProxy};
+    use crate::{
+        BlockHash, BlockHeight, CachedFinalityProvider, Config, IPCParentFinality,
+        ParentFinalityProvider,
+    };
     use async_stm::atomically_or_err;
+    use async_trait::async_trait;
     use fvm_shared::address::Address;
+    use fvm_shared::clock::ChainEpoch;
     use fvm_shared::econ::TokenAmount;
-    use ipc_agent_sdk::apis::IpcAgentClient;
-    use ipc_agent_sdk::jsonrpc::JsonRpcClientImpl;
-    use ipc_agent_sdk::message::ipc::ValidatorSet;
+    use ipc_provider::IpcProvider;
     use ipc_sdk::cross::{CrossMsg, StorableMsg};
+    use ipc_sdk::staking::StakingChangeRequest;
     use ipc_sdk::subnet_id::SubnetID;
     use std::str::FromStr;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use tokio::time::Duration;
 
-    fn mocked_agent_proxy() -> Arc<IPCAgentProxy> {
-        Arc::new(
-            IPCAgentProxy::new(
-                IpcAgentClient::new(JsonRpcClientImpl::new(
-                    "http://localhost:3030/json_rpc".parse().unwrap(),
-                    None,
-                )),
-                SubnetID::from_str("/r123/f410fgbphbzatgylhgw7u4w5idbc7pwka2upfienikky").unwrap(),
-            )
-            .unwrap(),
-        )
+    struct MockedParentQuery;
+
+    impl ParentQueryProxy for MockedParentQuery {
+        async fn get_chain_head_height(&self) -> anyhow::Result<BlockHeight> {
+            Ok(1)
+        }
+
+        async fn get_genesis_epoch(&self) -> anyhow::Result<ChainEpoch> {
+            Ok(10)
+        }
+
+        async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<BlockHash> {
+            Ok(BlockHash::default())
+        }
+
+        async fn get_top_down_msgs(
+            &self,
+            start_height: BlockHeight,
+            end_height: u64,
+        ) -> anyhow::Result<Vec<CrossMsg>> {
+            Ok(vec![])
+        }
+
+        async fn get_validator_changes(
+            &self,
+            height: BlockHeight,
+        ) -> anyhow::Result<Vec<StakingChangeRequest>> {
+            Ok(vec![])
+        }
     }
 
-    fn new_provider() -> CachedFinalityProvider {
+    fn mocked_agent_proxy() -> Arc<MockedParentQuery> {
+        Arc::new(MockedParentQuery)
+    }
+
+    fn new_provider() -> CachedFinalityProvider<MockedParentQuery> {
         let config = Config {
             chain_head_delay: 20,
             polling_interval_secs: 10,
@@ -341,30 +372,14 @@ mod tests {
             let r = provider.next_proposal()?;
             assert!(r.is_none());
 
-            provider.new_parent_view(
-                10,
-                vec![1u8; 32],
-                ValidatorSet {
-                    validators: None,
-                    configuration_number: 0,
-                },
-                vec![],
-            )?;
+            provider.new_parent_view(10, vec![1u8; 32], vec![], vec![])?;
 
             let r = provider.next_proposal()?;
             assert!(r.is_some());
 
             // inject data
             for i in 11..=100 {
-                provider.new_parent_view(
-                    i,
-                    vec![1u8; 32],
-                    ValidatorSet {
-                        validators: None,
-                        configuration_number: i,
-                    },
-                    vec![],
-                )?;
+                provider.new_parent_view(i, vec![1u8; 32], vec![], vec![])?;
             }
 
             let proposal = provider.next_proposal()?.unwrap();
@@ -392,15 +407,7 @@ mod tests {
         atomically_or_err(|| {
             // inject data
             for i in 10..=100 {
-                provider.new_parent_view(
-                    i,
-                    vec![1u8; 32],
-                    ValidatorSet {
-                        validators: None,
-                        configuration_number: 0,
-                    },
-                    vec![],
-                )?;
+                provider.new_parent_view(i, vec![1u8; 32], vec![], vec![])?;
             }
 
             let target_block = 120;
@@ -431,15 +438,7 @@ mod tests {
             let target_block = 100;
 
             // inject data
-            provider.new_parent_view(
-                target_block,
-                vec![1u8; 32],
-                ValidatorSet {
-                    validators: None,
-                    configuration_number: 0,
-                },
-                vec![],
-            )?;
+            provider.new_parent_view(target_block, vec![1u8; 32], vec![], vec![])?;
             provider.set_new_finality(IPCParentFinality {
                 height: target_block - 1,
                 block_hash: vec![1u8; 32],
@@ -482,44 +481,12 @@ mod tests {
         let cross_msgs_batch4 = vec![new_cross_msg(9), new_cross_msg(10), new_cross_msg(11)];
 
         atomically_or_err(|| {
-            provider.new_parent_view(
-                100,
-                vec![1u8; 32],
-                ValidatorSet {
-                    validators: None,
-                    configuration_number: 0,
-                },
-                cross_msgs_batch1.clone(),
-            )?;
+            provider.new_parent_view(100, vec![1u8; 32], vec![], cross_msgs_batch1.clone())?;
 
-            provider.new_parent_view(
-                101,
-                vec![1u8; 32],
-                ValidatorSet {
-                    validators: None,
-                    configuration_number: 0,
-                },
-                cross_msgs_batch2.clone(),
-            )?;
+            provider.new_parent_view(101, vec![1u8; 32], vec![], cross_msgs_batch2.clone())?;
 
-            provider.new_parent_view(
-                102,
-                vec![1u8; 32],
-                ValidatorSet {
-                    validators: None,
-                    configuration_number: 0,
-                },
-                cross_msgs_batch3.clone(),
-            )?;
-            provider.new_parent_view(
-                103,
-                vec![1u8; 32],
-                ValidatorSet {
-                    validators: None,
-                    configuration_number: 0,
-                },
-                cross_msgs_batch4.clone(),
-            )?;
+            provider.new_parent_view(102, vec![1u8; 32], vec![], cross_msgs_batch3.clone())?;
+            provider.new_parent_view(103, vec![1u8; 32], vec![], cross_msgs_batch4.clone())?;
 
             let mut v1 = cross_msgs_batch1.clone();
             let v2 = cross_msgs_batch2.clone();

@@ -7,8 +7,8 @@ use crate::{
 };
 use anyhow::anyhow;
 use async_stm::{Stm, StmResult};
-use ipc_agent_sdk::message::ipc::ValidatorSet;
 use ipc_sdk::cross::CrossMsg;
+use ipc_sdk::staking::StakingChangeRequest;
 
 /// The parent finality provider could have all functionalities disabled.
 #[derive(Clone)]
@@ -42,9 +42,12 @@ impl<P> Toggle<P> {
 
 #[async_trait::async_trait]
 impl<P: ParentViewProvider + Send + Sync + 'static> ParentViewProvider for Toggle<P> {
-    async fn validator_set(&self, height: BlockHeight) -> anyhow::Result<ValidatorSet> {
+    async fn validator_changes(
+        &self,
+        height: BlockHeight,
+    ) -> anyhow::Result<Vec<StakingChangeRequest>> {
         match self.inner.as_ref() {
-            Some(p) => p.validator_set(height).await,
+            Some(p) => p.validator_changes(height).await,
             None => Err(anyhow!("provider is toggled off")),
         }
     }
@@ -71,7 +74,7 @@ impl<P: ParentFinalityProvider + Send + Sync + 'static> ParentFinalityProvider f
     }
 }
 
-impl Toggle<CachedFinalityProvider> {
+impl<P> Toggle<CachedFinalityProvider<P>> {
     pub fn latest_height(&self) -> Stm<Option<BlockHeight>> {
         self.perform_or_else(|p| p.latest_height(), None)
     }
@@ -84,11 +87,11 @@ impl Toggle<CachedFinalityProvider> {
         &self,
         height: BlockHeight,
         block_hash: BlockHash,
-        validator_set: ValidatorSet,
+        validator_changes: Vec<StakingChangeRequest>,
         top_down_msgs: Vec<CrossMsg>,
     ) -> StmResult<(), Error> {
         self.perform_or_else(
-            |p| p.new_parent_view(height, block_hash, validator_set, top_down_msgs),
+            |p| p.new_parent_view(height, block_hash, validator_changes, top_down_msgs),
             (),
         )
     }

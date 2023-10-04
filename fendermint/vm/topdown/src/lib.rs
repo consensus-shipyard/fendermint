@@ -7,12 +7,13 @@ mod finality;
 pub mod sync;
 
 pub mod convert;
+mod proxy;
 mod toggle;
 
 use async_stm::Stm;
 use async_trait::async_trait;
-use ipc_agent_sdk::message::ipc::ValidatorSet;
 use ipc_sdk::cross::CrossMsg;
+use ipc_sdk::staking::StakingChangeRequest;
 use serde::{Deserialize, Serialize};
 
 pub use crate::cache::{SequentialAppendError, SequentialKeyCache, ValueIter};
@@ -53,8 +54,11 @@ pub struct IPCParentFinality {
 
 #[async_trait]
 pub trait ParentViewProvider {
-    /// Get the validator set at height.
-    async fn validator_set(&self, height: BlockHeight) -> anyhow::Result<ValidatorSet>;
+    /// Get the validator changes at height.
+    async fn validator_changes(
+        &self,
+        height: BlockHeight,
+    ) -> anyhow::Result<Vec<StakingChangeRequest>>;
     /// Get the top down messages at height
     async fn top_down_msgs(&self, height: BlockHeight) -> anyhow::Result<Vec<CrossMsg>>;
 }
