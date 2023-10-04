@@ -15,7 +15,7 @@ fvm_shared = { workspace = true }
 rand = { workspace = true }
 tendermint-rpc = { workspace = true }
 
-fendermint_testing = { path = "..", features = ["smt"] }
+fendermint_testing = { path = "..", features = ["smt", "arb"] }
 fendermint_crypto = { path = "../../crypto" }
 fendermint_vm_core = { path = "../../vm/core" }
 fendermint_vm_genesis = { path = "../../vm/genesis" }

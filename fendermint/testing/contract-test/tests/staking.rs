@@ -1,5 +1,6 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
+#![allow(unused)]
 //! State Machine Test for the Staking contracts.
 //!
 //! The test simulates random actions validators can take, such as depositing and withdrawing
@@ -11,7 +12,6 @@
 //! ```text
 //! cargo test --release -p contract-test --test staking
 //! ```
-
 use std::collections::HashMap;
 
 use arbitrary::{Arbitrary, Unstructured};
@@ -148,14 +148,16 @@ impl arbitrary::Arbitrary<'_> for StakingState {
                 top_down_check_period: 1 + u.choose_index(100)? as u64,
                 msg_fee: ArbTokenAmount::arbitrary(u)?.0,
                 majority_percentage: 51 + u8::arbitrary(u)? % 50,
-                min_collateral: ArbTokenAmount::arbitrary(u)?.0,
+                min_collateral: ArbTokenAmount::arbitrary(u)?
+                    .0
+                    .max(TokenAmount::from_atto(1)),
             },
         };
 
         let g = Genesis {
             chain_name: String::arbitrary(u)?,
             timestamp: Timestamp(u64::arbitrary(u)?),
-            network_version: NetworkVersion::MAX,
+            network_version: NetworkVersion::V20,
             base_fee: ArbTokenAmount::arbitrary(u)?.0,
             validators: parent_validators,
             accounts: parent_actors,
