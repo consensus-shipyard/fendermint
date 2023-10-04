@@ -117,6 +117,77 @@ impl StakingState {
             pending_updates: VecDeque::new(),
         }
     }
+
+    pub fn checkpoint(mut self, next_configuration_number: u64) -> Self {
+        loop {
+            if self.pending_updates.is_empty() {
+                break;
+            }
+            if self.pending_updates[0].configuration_number > next_configuration_number {
+                break;
+            }
+            let update = self.pending_updates.pop_front().expect("checked non-empty");
+            match update.op {
+                StakingOp::Deposit(v) => {
+                    let v: u64 = v.atto().try_into().expect("balances are u64");
+                    let mut power = self.child_validators.entry(update.addr).or_insert(Power(0));
+                    power.0 += v;
+                }
+                StakingOp::Withdraw(v) => {
+                    let v: u64 = v.atto().try_into().expect("balances are u64");
+                    match self.child_validators.entry(update.addr) {
+                        std::collections::hash_map::Entry::Occupied(mut e) => {
+                            let power = e.get().0;
+                            let v = v.min(power);
+
+                            if v == power {
+                                e.remove();
+                            } else {
+                                e.insert(Power(power - v));
+                            }
+
+                            let mut a = self
+                                .accounts
+                                .get_mut(&update.addr)
+                                .expect("validators have accounts");
+
+                            a.current_balance += TokenAmount::from_atto(v)
+                        }
+                        std::collections::hash_map::Entry::Vacant(_) => {
+                            // Tried to withdraw more than put in.
+                        }
+                    }
+                }
+            }
+        }
+        self.configuration_number = next_configuration_number;
+        return self;
+    }
+
+    pub fn stake(mut self, addr: Address, value: TokenAmount) -> Self {
+        self.configuration_number += 1;
+        let mut a = self.accounts.get_mut(&addr).expect("accounts exist");
+        debug_assert!(a.current_balance >= value);
+        a.current_balance -= value.clone();
+        let update = StakingUpdate {
+            configuration_number: self.configuration_number,
+            addr,
+            op: StakingOp::Deposit(value),
+        };
+        self.pending_updates.push_back(update);
+        self
+    }
+
+    pub fn unstake(mut self, addr: Address, value: TokenAmount) -> Self {
+        self.configuration_number += 1;
+        let update = StakingUpdate {
+            configuration_number: self.configuration_number,
+            addr,
+            op: StakingOp::Withdraw(value),
+        };
+        self.pending_updates.push_back(update);
+        self
+    }
 }
 
 impl arbitrary::Arbitrary<'_> for StakingState {
@@ -331,7 +402,13 @@ impl StateMachine for StakingMachine {
     }
 
     fn next_state(&self, cmd: &Self::Command, state: Self::State) -> Self::State {
-        todo!()
+        match cmd {
+            StakingCommand::Checkpoint {
+                next_configuration_number,
+            } => state.checkpoint(*next_configuration_number),
+            StakingCommand::Stake(addr, value) => state.stake(*addr, value.clone()),
+            StakingCommand::Unstake(addr, value) => state.unstake(*addr, value.clone()),
+        }
     }
 
     fn check_system(
