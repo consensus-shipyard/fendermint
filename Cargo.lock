@@ -1331,6 +1331,7 @@ dependencies = [
  "fendermint_vm_interpreter",
  "fvm",
  "fvm_shared",
+ "ipc-sdk",
  "rand 0.8.5",
  "tendermint-rpc",
  "tokio",
