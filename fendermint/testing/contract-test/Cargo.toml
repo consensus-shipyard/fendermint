@@ -12,11 +12,15 @@ license.workspace = true
 anyhow = { workspace = true }
 fvm = { workspace = true }
 fvm_shared = { workspace = true }
+rand = { workspace = true }
 tendermint-rpc = { workspace = true }
 
-fendermint_vm_genesis = { path = "../../vm/genesis" }
 fendermint_testing = { path = "..", features = ["smt"] }
+fendermint_crypto = { path = "../../crypto" }
+fendermint_vm_core = { path = "../../vm/core" }
+fendermint_vm_genesis = { path = "../../vm/genesis" }
 fendermint_vm_interpreter = { path = "../../vm/interpreter", features = ["bundle"] }
+
 
 [dev-dependencies]
 arbitrary = { workspace = true }

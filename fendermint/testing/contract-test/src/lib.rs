@@ -33,7 +33,7 @@ pub async fn init_exec_state(
     let interpreter = FvmMessageInterpreter::new(client, None, contracts_path(), 1.05, 1.05, false);
 
     let (state, out) = interpreter
-        .init(state, genesis.clone())
+        .init(state, genesis)
         .await
         .context("failed to create actors")?;
 

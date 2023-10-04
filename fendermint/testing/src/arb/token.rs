@@ -26,11 +26,19 @@ lazy_static! {
 /// The max below is taken from https://github.com/filecoin-project/ref-fvm/blob/fvm%40v3.0.0-alpha.24/shared/src/bigint/bigint_ser.rs#L80-L81
 pub struct ArbTokenAmount(pub TokenAmount);
 
-impl Arbitrary for ArbTokenAmount {
+impl quickcheck::Arbitrary for ArbTokenAmount {
     fn arbitrary(g: &mut Gen) -> Self {
         let tokens = TokenAmount::arbitrary(g);
         let atto = tokens.atto();
         let atto = atto.mod_floor(&MAX_ATTO);
         Self(TokenAmount::from_atto(atto))
+    }
+}
+
+impl arbitrary::Arbitrary<'_> for ArbTokenAmount {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let atto = u.arbitrary::<BigInt>()?;
+        let atto = atto.mod_floor(&MAX_ATTO);
+        Ok(Self(TokenAmount::from_atto(atto)))
     }
 }
