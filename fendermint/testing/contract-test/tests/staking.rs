@@ -13,10 +13,13 @@
 //! cargo test --release -p contract-test --test staking
 //! ```
 use std::collections::{HashMap, VecDeque};
+use std::sync::Arc;
+use std::time::Instant;
 
 use arbitrary::{Arbitrary, Unstructured};
 use fendermint_crypto::{PublicKey, SecretKey};
 use fendermint_testing::arb::{ArbSubnetAddress, ArbSubnetID, ArbTokenAmount};
+use fendermint_testing::state_machine_seed;
 use fendermint_testing::{smt::StateMachine, state_machine_test};
 use fendermint_vm_core::Timestamp;
 use fendermint_vm_genesis::ipc::{GatewayParams, IpcParams};
@@ -27,8 +30,10 @@ use fendermint_vm_interpreter::fvm::{
     state::{ipc::GatewayCaller, FvmExecState},
     store::memory::MemoryBlockstore,
 };
+use fvm::engine::MultiEngine;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
+use fvm_shared::bigint::Integer;
 use fvm_shared::{econ::TokenAmount, version::NetworkVersion};
 use ipc_sdk::subnet_id::SubnetID;
 use rand::rngs::StdRng;
@@ -129,12 +134,12 @@ impl StakingState {
             let update = self.pending_updates.pop_front().expect("checked non-empty");
             match update.op {
                 StakingOp::Deposit(v) => {
-                    let v: u64 = v.atto().try_into().expect("balances are u64");
+                    let v: u64 = v.atto().try_into().expect("deposits are u64");
                     let mut power = self.child_validators.entry(update.addr).or_insert(Power(0));
                     power.0 += v;
                 }
                 StakingOp::Withdraw(v) => {
-                    let v: u64 = v.atto().try_into().expect("balances are u64");
+                    let v: u64 = v.atto().try_into().expect("withdrawals are u64");
                     match self.child_validators.entry(update.addr) {
                         std::collections::hash_map::Entry::Occupied(mut e) => {
                             let power = e.get().0;
@@ -166,14 +171,23 @@ impl StakingState {
 
     pub fn stake(mut self, addr: Address, value: TokenAmount) -> Self {
         self.configuration_number += 1;
+
         let mut a = self.accounts.get_mut(&addr).expect("accounts exist");
-        debug_assert!(a.current_balance >= value);
+
+        // Sanity check that we are generating the expected kind of values.
+        // Using `debug_assert!` on the reference state to differentiate from assertions on the SUT.
+        debug_assert!(
+            a.current_balance >= value,
+            "stakes are generated within the balance"
+        );
         a.current_balance -= value.clone();
+
         let update = StakingUpdate {
             configuration_number: self.configuration_number,
             addr,
             op: StakingOp::Deposit(value),
         };
+
         self.pending_updates.push_back(update);
         self
     }
@@ -211,7 +225,7 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             let b = ArbTokenAmount::arbitrary(u)?.0;
             let b = b.max(TokenAmount::from_atto(1));
             // Limit the balance to the u64 range, so we don't have to worry about power conversions.
-            let b = TokenAmount::from_atto(b.atto() % BigInt::from(u64::MAX));
+            let b = TokenAmount::from_atto(b.atto().mod_floor(&BigInt::from(u64::MAX)));
 
             let a = StakingAccount {
                 public_key: pk,
@@ -275,7 +289,7 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             .take(num_validators)
             .map(|a| {
                 // Power has to be a u64.
-                let p = BigInt::arbitrary(u)? % a.initial_balance.atto();
+                let p = BigInt::arbitrary(u)?.mod_floor(a.initial_balance.atto());
                 let p = Power(p.try_into().expect("balances are u64"));
                 let v = Validator {
                     public_key: ValidatorKey(a.public_key),
@@ -321,7 +335,10 @@ enum StakingCommand {
     Unstake(Address, TokenAmount),
 }
 
-struct StakingMachine;
+#[derive(Default)]
+struct StakingMachine {
+    multi_engine: Arc<MultiEngine>,
+}
 
 impl StateMachine for StakingMachine {
     type System = StakingSystem;
@@ -340,7 +357,10 @@ impl StateMachine for StakingMachine {
         let rt = tokio::runtime::Runtime::new().expect("create tokio runtime for init");
 
         let (parent_state, _) = rt
-            .block_on(contract_test::init_exec_state(state.parent_genesis.clone()))
+            .block_on(contract_test::init_exec_state(
+                self.multi_engine.clone(),
+                state.parent_genesis.clone(),
+            ))
             .expect("failed to init parent");
 
         let gateway = GatewayCaller::default();
@@ -377,7 +397,7 @@ impl StateMachine for StakingMachine {
                 let a = u.choose(&state.addrs).expect("accounts not empty");
                 let a = state.accounts.get(a).expect("account exists");
                 // Limit ourselves to the outstanding balance - the user would not be able to send more value to the contract.
-                let b = BigInt::arbitrary(u)? % a.current_balance.atto();
+                let b = BigInt::arbitrary(u)?.mod_floor(&a.current_balance.atto());
                 let b = TokenAmount::from_atto(b);
                 StakingCommand::Stake(a.addr, b)
             }
@@ -385,8 +405,10 @@ impl StateMachine for StakingMachine {
                 let a = u.choose(&state.addrs).expect("accounts not empty");
                 let a = state.accounts.get(a).expect("account exists");
                 // We can try sending requests to unbond arbitrarily large amounts of collateral - the system should catch any attempt to steal.
-                let b = ArbTokenAmount::arbitrary(u)?.0;
-                StakingCommand::Stake(a.addr, b)
+                // Only limiting it to be under the initial balance so that it's comparable to what the deposits could have been.
+                let b = BigInt::arbitrary(u)?.mod_floor(&a.initial_balance.atto());
+                let b = TokenAmount::from_atto(b);
+                StakingCommand::Unstake(a.addr, b)
             }
             other => unimplemented!("unknown command: {other}"),
         };
@@ -394,11 +416,11 @@ impl StateMachine for StakingMachine {
     }
 
     fn run_command(&self, system: &mut Self::System, cmd: &Self::Command) -> Self::Result {
-        todo!()
+        // TODO: Execute the command against the contract.
     }
 
     fn check_result(&self, cmd: &Self::Command, pre_state: &Self::State, result: &Self::Result) {
-        todo!()
+        // TODO: Check that events emitted by the system are as expected.
     }
 
     fn next_state(&self, cmd: &Self::Command, state: Self::State) -> Self::State {
@@ -417,8 +439,26 @@ impl StateMachine for StakingMachine {
         post_state: &Self::State,
         post_system: &Self::System,
     ) {
-        todo!()
+        match cmd {
+            StakingCommand::Checkpoint { .. } => {
+                // Sanity check the reference state while we have no contract to compare with.
+                debug_assert!(post_state
+                    .accounts
+                    .iter()
+                    .all(|(_, a)| a.current_balance <= a.initial_balance));
+
+                debug_assert!(post_state.child_validators.iter().all(|(_, p)| p.0 > 0));
+            }
+            StakingCommand::Stake(addr, _) | StakingCommand::Unstake(addr, _) => {
+                let a = post_state.accounts.get(addr).unwrap();
+                debug_assert!(a.current_balance <= a.initial_balance);
+            }
+        }
+
+        // TODO: Compare the system with the state:
+        // * check that balances match
+        // * check that active powers match
     }
 }
 
-state_machine_test!(staking, 20000 ms, 100 steps, StakingMachine);
+state_machine_test!(staking, 20000 ms, 100 steps, StakingMachine::default());

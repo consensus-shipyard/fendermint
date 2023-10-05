@@ -17,11 +17,11 @@ use fendermint_vm_interpreter::{
 use fvm::engine::MultiEngine;
 
 pub async fn init_exec_state(
+    multi_engine: Arc<MultiEngine>,
     genesis: Genesis,
 ) -> anyhow::Result<(FvmExecState<MemoryBlockstore>, FvmGenesisOutput)> {
     let bundle = std::fs::read(bundle_path()).context("failed to read bundle")?;
     let store = MemoryBlockstore::new();
-    let multi_engine = Arc::new(MultiEngine::default());
 
     let state = FvmGenesisState::new(store, multi_engine, &bundle)
         .await
