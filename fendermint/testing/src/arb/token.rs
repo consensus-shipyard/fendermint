@@ -6,7 +6,7 @@ use fvm_shared::{
     econ::TokenAmount,
 };
 use lazy_static::lazy_static;
-use quickcheck::{Arbitrary, Gen};
+use quickcheck::Gen;
 use std::str::FromStr;
 
 lazy_static! {
@@ -22,8 +22,6 @@ lazy_static! {
 
 #[derive(Clone, Debug)]
 /// Unfortunately an arbitrary `TokenAmount` is not serializable if it has more than 128 bytes, we get "BigInt too large" error.
-///
-/// The max below is taken from https://github.com/filecoin-project/ref-fvm/blob/fvm%40v3.0.0-alpha.24/shared/src/bigint/bigint_ser.rs#L80-L81
 pub struct ArbTokenAmount(pub TokenAmount);
 
 impl quickcheck::Arbitrary for ArbTokenAmount {
