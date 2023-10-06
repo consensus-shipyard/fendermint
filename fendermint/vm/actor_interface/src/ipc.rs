@@ -234,8 +234,8 @@ pub mod gateway {
     mod tests {
         use ethers::core::types::{Selector, U256};
         use ethers_core::{
-            abi::{Bytes, Tokenize},
-            types::H160,
+            abi::Tokenize,
+            types::{Bytes, H160},
         };
         use fvm_shared::{bigint::BigInt, econ::TokenAmount};
         use ipc_actors_abis::subnet_actor_getter_facet::GenesisValidator;
@@ -260,7 +260,7 @@ pub mod gateway {
                 validators: vec![GenesisValidator {
                     addr: H160::zero(),
                     genesis_collaterall: U256::zero(),
-                    metadata: Bytes::zero(),
+                    metadata: Bytes::new(),
                 }],
             };
 
