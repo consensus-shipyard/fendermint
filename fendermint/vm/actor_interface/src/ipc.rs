@@ -145,10 +145,14 @@ impl ValidatorMerkleTree {
 pub mod gateway {
     use super::SubnetID;
     use ethers::contract::{EthAbiCodec, EthAbiType};
-    use ethers::core::types::{H160, U256};
+    use ethers::core::types::{Bytes, H160, U256};
     use fendermint_vm_genesis::ipc::GatewayParams;
+    use fendermint_vm_genesis::Validator;
+    use fvm_shared::address::Error as AddressError;
     use fvm_shared::address::Payload;
     use fvm_shared::econ::TokenAmount;
+    // TODO: This is what the contract _should_ take in the constructor.
+    use ipc_actors_abis::subnet_actor_getter_facet::GenesisValidator;
 
     use crate::eam::{self, EthAddress};
 
@@ -167,14 +171,17 @@ pub mod gateway {
         pub min_collateral: U256,
         pub msg_fee: U256,
         pub majority_percentage: u8,
+        pub validators: Vec<GenesisValidator>,
     }
 
-    impl TryFrom<GatewayParams> for ConstructorParameters {
-        type Error = fvm_shared::address::Error;
-
-        fn try_from(value: GatewayParams) -> Result<Self, Self::Error> {
+    impl ConstructorParameters {
+        pub fn new(
+            params: GatewayParams,
+            validators: Vec<Validator>,
+        ) -> Result<Self, AddressError> {
+            // Every step along the way in the subnet ID we have an Ethereum address.
             let mut route = Vec::new();
-            for addr in value.subnet_id.children() {
+            for addr in params.subnet_id.children() {
                 let addr = match addr.payload() {
                     Payload::ID(id) => EthAddress::from_id(*id),
                     Payload::Delegated(da)
@@ -182,20 +189,38 @@ pub mod gateway {
                     {
                         EthAddress(da.subaddress().try_into().expect("checked length"))
                     }
-                    _ => return Err(fvm_shared::address::Error::InvalidPayload),
+                    _ => return Err(AddressError::InvalidPayload),
                 };
                 route.push(H160::from(addr.0))
             }
+
+            // Every validator has an Ethereum address.
+            let validators = validators
+                .into_iter()
+                .map(|v| {
+                    let pk = v.public_key.0.serialize();
+                    let addr = EthAddress::new_secp256k1(&pk)?;
+                    // NOTE: Here's assuming that a u64 power can be transformed into a U256 collateral field.
+                    let collateral = U256::from(v.power.0);
+                    Ok(GenesisValidator {
+                        addr: H160::from(addr.0),
+                        genesis_collaterall: collateral,
+                        metadata: Bytes::from(pk),
+                    })
+                })
+                .collect::<Result<Vec<_>, AddressError>>()?;
+
             Ok(Self {
                 network_name: SubnetID {
-                    root: value.subnet_id.root_id(),
+                    root: params.subnet_id.root_id(),
                     route,
                 },
-                bottom_up_check_period: value.bottom_up_check_period,
-                top_down_check_period: value.top_down_check_period,
-                min_collateral: tokens_to_u256(value.min_collateral),
-                msg_fee: tokens_to_u256(value.msg_fee),
-                majority_percentage: value.majority_percentage,
+                bottom_up_check_period: params.bottom_up_check_period,
+                top_down_check_period: params.top_down_check_period,
+                min_collateral: tokens_to_u256(params.min_collateral),
+                msg_fee: tokens_to_u256(params.msg_fee),
+                majority_percentage: params.majority_percentage,
+                validators,
             })
         }
     }
@@ -208,8 +233,12 @@ pub mod gateway {
     #[cfg(test)]
     mod tests {
         use ethers::core::types::{Selector, U256};
-        use ethers_core::abi::Tokenize;
+        use ethers_core::{
+            abi::{Bytes, Tokenize},
+            types::H160,
+        };
         use fvm_shared::{bigint::BigInt, econ::TokenAmount};
+        use ipc_actors_abis::subnet_actor_getter_facet::GenesisValidator;
         use std::str::FromStr;
 
         use crate::ipc::tests::{check_param_types, constructor_param_types};
@@ -228,6 +257,11 @@ pub mod gateway {
                 min_collateral: U256::from(1),
                 msg_fee: U256::from(0),
                 majority_percentage: 67,
+                validators: vec![GenesisValidator {
+                    addr: H160::zero(),
+                    genesis_collaterall: U256::zero(),
+                    metadata: Bytes::zero(),
+                }],
             };
 
             // It looks like if we pass just the record then it will be passed as 5 tokens,

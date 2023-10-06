@@ -91,7 +91,7 @@ where
             network_version: genesis.network_version,
             circ_supply: circ_supply(&genesis),
             base_fee: genesis.base_fee,
-            validators: genesis.validators,
+            validators: genesis.validators.clone(),
         };
 
         // STAGE 0: Declare the built-in EVM contracts we'll have to deploy.
@@ -261,7 +261,7 @@ where
             let gateway_addr = {
                 use ipc::gateway::ConstructorParameters;
 
-                let params = ConstructorParameters::try_from(ipc_params.gateway)
+                let params = ConstructorParameters::new(ipc_params.gateway, genesis.validators)
                     .context("failed to create gateway constructor")?;
 
                 let facets = deployer
