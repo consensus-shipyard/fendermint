@@ -4,6 +4,7 @@
 //! in Lotus, which is used to [initialize](https://github.com/filecoin-project/lotus/blob/v1.20.4/chain/gen/genesis/genesis.go) the state tree.
 
 use anyhow::anyhow;
+use fvm_shared::bigint::{BigInt, Integer};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -77,6 +78,28 @@ pub struct Actor {
 /// Total stake delegated to this validator.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Copy)]
 pub struct Power(pub u64);
+
+/// [Power] is limited to the `u64` range because that's what CometBFT supports.
+///
+/// When converting from collateral value, we cannot use a 1-to-1 ratio with `atto`
+/// because with 1 FIL == 10**18 atto, the maximum power would be limited to ~18 FIL.
+///
+/// For that reason, power is turned into whole FIL.
+impl From<Power> for TokenAmount {
+    fn from(value: Power) -> Self {
+        TokenAmount::from_whole(value.0)
+    }
+}
+
+/// Converting from [TokenAmount] to [Power] is lossy: we discard the `atto` and only use the whole FIL.
+impl From<TokenAmount> for Power {
+    fn from(value: TokenAmount) -> Self {
+        let atto = value.atto();
+        let whole = atto.div_floor(&BigInt::from(TokenAmount::PRECISION));
+        let power = whole.min(BigInt::from(u64::MAX));
+        Self(power.try_into().expect("power truncated to u64"))
+    }
+}
 
 /// Secp256k1 public key of the validators.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -170,9 +193,11 @@ pub mod ipc {
 
 #[cfg(test)]
 mod tests {
+    use fvm_shared::{bigint::BigInt, econ::TokenAmount};
+    use num_traits::Num;
     use quickcheck_macros::quickcheck;
 
-    use crate::Genesis;
+    use crate::{Genesis, Power};
 
     #[quickcheck]
     fn genesis_json(value0: Genesis) {
@@ -190,5 +215,30 @@ mod tests {
         let value1: Genesis = fvm_ipld_encoding::from_slice(&repr).expect("failed to decode");
 
         assert_eq!(value1, value0)
+    }
+
+    #[quickcheck]
+    fn power_to_tokens(power: u64) {
+        let power0 = Power(power);
+        let tokens = TokenAmount::from(power0);
+        let power1 = Power::from(tokens);
+        assert_eq!(power0, power1);
+    }
+
+    #[test]
+    fn tokens_to_power() {
+        let examples: Vec<(&str, u64)> = vec![
+            ("1000000000000000000", 1),
+            ("999999999999999999", 0),
+            ("1999999999999999999", 1),
+            ("2999999999999999999", 2),
+        ];
+
+        for (atto, expected) in examples {
+            let atto = BigInt::from_str_radix(atto, 10).unwrap();
+            let tokens = TokenAmount::from_atto(atto.clone());
+            let power = Power::from(tokens).0;
+            assert_eq!(power, expected, "{atto:?} => {power}");
+        }
     }
 }

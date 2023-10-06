@@ -200,8 +200,8 @@ pub mod gateway {
                 .map(|v| {
                     let pk = v.public_key.0.serialize();
                     let addr = EthAddress::new_secp256k1(&pk)?;
-                    // NOTE: Here's assuming that a u64 power can be transformed into a U256 collateral field.
-                    let collateral = U256::from(v.power.0);
+                    let collateral = TokenAmount::from(v.power);
+                    let collateral = tokens_to_u256(collateral);
                     Ok(GenesisValidator {
                         addr: H160::from(addr.0),
                         genesis_collaterall: collateral,
