@@ -7,7 +7,7 @@ mod finality;
 pub mod sync;
 
 pub mod convert;
-mod proxy;
+pub mod proxy;
 mod toggle;
 
 use async_stm::Stm;
