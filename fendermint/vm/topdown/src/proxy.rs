@@ -63,20 +63,14 @@ impl IPCProviderProxy {
 #[async_trait]
 impl ParentQueryProxy for IPCProviderProxy {
     async fn get_chain_head_height(&self) -> anyhow::Result<BlockHeight> {
-        let height = self
-            .ipc_provider
-            .chain_head(&self.parent_subnet)
-            .await?;
+        let height = self.ipc_provider.chain_head(&self.parent_subnet).await?;
         Ok(height as BlockHeight)
     }
 
     /// Get the genesis epoch of the child subnet, i.e. the epoch that the subnet was created in
     /// the parent subnet.
     async fn get_genesis_epoch(&self) -> anyhow::Result<BlockHeight> {
-        let height = self
-            .ipc_provider
-            .genesis_epoch(&self.parent_subnet)
-            .await?;
+        let height = self.ipc_provider.genesis_epoch(&self.parent_subnet).await?;
         Ok(height as BlockHeight)
     }
 

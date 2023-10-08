@@ -276,7 +276,7 @@ fn ensure_sequential<T, F: Fn(&T) -> u64>(msgs: &[T], f: F) -> StmResult<(), Err
 
 #[cfg(test)]
 mod tests {
-    use crate::proxy::{IPCProviderProxy, ParentQueryProxy};
+    use crate::proxy::ParentQueryProxy;
     use crate::{
         BlockHash, BlockHeight, CachedFinalityProvider, Config, IPCParentFinality,
         ParentFinalityProvider,
@@ -284,43 +284,41 @@ mod tests {
     use async_stm::atomically_or_err;
     use async_trait::async_trait;
     use fvm_shared::address::Address;
-    use fvm_shared::clock::ChainEpoch;
     use fvm_shared::econ::TokenAmount;
-    use ipc_provider::IpcProvider;
     use ipc_sdk::cross::{CrossMsg, StorableMsg};
     use ipc_sdk::staking::StakingChangeRequest;
     use ipc_sdk::subnet_id::SubnetID;
-    use std::str::FromStr;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use tokio::time::Duration;
 
     struct MockedParentQuery;
 
+    #[async_trait]
     impl ParentQueryProxy for MockedParentQuery {
         async fn get_chain_head_height(&self) -> anyhow::Result<BlockHeight> {
             Ok(1)
         }
 
-        async fn get_genesis_epoch(&self) -> anyhow::Result<ChainEpoch> {
+        async fn get_genesis_epoch(&self) -> anyhow::Result<BlockHeight> {
             Ok(10)
         }
 
-        async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<BlockHash> {
+        async fn get_block_hash(&self, _height: BlockHeight) -> anyhow::Result<BlockHash> {
             Ok(BlockHash::default())
         }
 
         async fn get_top_down_msgs(
             &self,
-            start_height: BlockHeight,
-            end_height: u64,
+            _start_height: BlockHeight,
+            _end_height: u64,
         ) -> anyhow::Result<Vec<CrossMsg>> {
             Ok(vec![])
         }
 
         async fn get_validator_changes(
             &self,
-            height: BlockHeight,
+            _height: BlockHeight,
         ) -> anyhow::Result<Vec<StakingChangeRequest>> {
             Ok(vec![])
         }
