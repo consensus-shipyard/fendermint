@@ -63,7 +63,7 @@ async fn query_starting_finality<T: ParentFinalityStateQuery + Send + Sync + 'st
         // the genesis epoch of the current subnet and its corresponding block hash.
         if finality.height == 0 {
             let genesis_epoch = agent.get_genesis_epoch().await?;
-            let block_hash = agent.get_block_hash(genesis_epoch as u64).await?;
+            let block_hash = agent.get_block_hash(genesis_epoch).await?;
             finality = IPCParentFinality {
                 height: genesis_epoch as u64,
                 block_hash,

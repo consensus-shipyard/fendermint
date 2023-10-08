@@ -18,7 +18,7 @@ pub trait ParentQueryProxy {
 
     /// Get the genesis epoch of the child subnet, i.e. the epoch that the subnet was created in
     /// the parent subnet.
-    async fn get_genesis_epoch(&self) -> anyhow::Result<ChainEpoch>;
+    async fn get_genesis_epoch(&self) -> anyhow::Result<BlockHeight>;
 
     /// Getting the block hash at the target height.
     async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<BlockHash>;
@@ -63,18 +63,21 @@ impl IPCProviderProxy {
 #[async_trait]
 impl ParentQueryProxy for IPCProviderProxy {
     async fn get_chain_head_height(&self) -> anyhow::Result<BlockHeight> {
-        // let height = self
-        //     .ipc_provider
-        //     .get_chain_head_height(&self.parent_subnet)
-        //     .await?;
-        // Ok(height as BlockHeight)
-        todo!()
+        let height = self
+            .ipc_provider
+            .chain_head(&self.parent_subnet)
+            .await?;
+        Ok(height as BlockHeight)
     }
 
     /// Get the genesis epoch of the child subnet, i.e. the epoch that the subnet was created in
     /// the parent subnet.
-    async fn get_genesis_epoch(&self) -> anyhow::Result<ChainEpoch> {
-        todo!()
+    async fn get_genesis_epoch(&self) -> anyhow::Result<BlockHeight> {
+        let height = self
+            .ipc_provider
+            .genesis_epoch(&self.parent_subnet)
+            .await?;
+        Ok(height as BlockHeight)
     }
 
     /// Getting the block hash at the target height.
@@ -102,8 +105,14 @@ impl ParentQueryProxy for IPCProviderProxy {
     /// Get the validator set at the specified height.
     async fn get_validator_changes(
         &self,
-        _height: BlockHeight,
+        height: BlockHeight,
     ) -> anyhow::Result<Vec<StakingChangeRequest>> {
-        todo!()
+        self.ipc_provider
+            .get_validator_changeset(
+                &self.child_subnet,
+                height as ChainEpoch,
+                height as ChainEpoch,
+            )
+            .await
     }
 }
