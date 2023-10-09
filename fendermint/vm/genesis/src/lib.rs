@@ -31,7 +31,10 @@ pub struct Genesis {
     pub network_version: NetworkVersion,
     #[serde_as(as = "IsHumanReadable")]
     pub base_fee: TokenAmount,
-    pub validators: Vec<Validator>,
+    /// Validators in genesis are given with their FIL collateral to maintain the
+    /// highest possible fidelity when we are deriving a genesis file in IPC,
+    /// where the parent subnet tracks collateral.
+    pub validators: Vec<Validator<Collateral>>,
     pub accounts: Vec<Actor>,
     /// IPC related configuration, if enabled.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -75,29 +78,38 @@ pub struct Actor {
     pub balance: TokenAmount,
 }
 
-/// Total stake delegated to this validator.
+/// Total amount of tokens delegated to a validator.
+#[serde_as]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Collateral(#[serde_as(as = "IsHumanReadable")] pub TokenAmount);
+
+/// Total voting power of a validator.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Copy)]
 pub struct Power(pub u64);
 
-/// [Power] is limited to the `u64` range because that's what CometBFT supports.
-///
-/// When converting from collateral value, we cannot use a 1-to-1 ratio with `atto`
-/// because with 1 FIL == 10**18 atto, the maximum power would be limited to ~18 FIL.
-///
-/// For that reason, power is turned into whole FIL.
-impl From<Power> for TokenAmount {
-    fn from(value: Power) -> Self {
-        TokenAmount::from_whole(value.0)
+impl Collateral {
+    /// Convert from [Collateral] to [Power] by specifying the number of significant
+    /// decimal places per FIL that grant 1 power.
+    ///
+    /// For example:
+    /// * with 3 decimal places, we get 1 power per milli FIL: 0.001 FIL => 1 power
+    /// * with 0 decimal places, we get 1 power per whole FIL: 1 FIL => 1 power
+    pub fn into_power(self: Collateral, scale: i32) -> Power {
+        let atto_per_power = Self::atto_per_power(scale);
+        let atto = self.0.atto();
+        let power = atto.div_floor(&atto_per_power);
+        let power = power.min(BigInt::from(u64::MAX));
+        Power(power.try_into().expect("clipped to u64::MAX"))
     }
-}
 
-/// Converting from [TokenAmount] to [Power] is lossy: we discard the `atto` and only use the whole FIL.
-impl From<TokenAmount> for Power {
-    fn from(value: TokenAmount) -> Self {
-        let atto = value.atto();
-        let whole = atto.div_floor(&BigInt::from(TokenAmount::PRECISION));
-        let power = whole.min(BigInt::from(u64::MAX));
-        Self(power.try_into().expect("power truncated to u64"))
+    /// Helper function to convert atto to [Power].
+    fn atto_per_power(scale: i32) -> BigInt {
+        // Figure out how many decimals we need to shift to the right.
+        let decimals = match scale {
+            d if d >= 0 => TokenAmount::DECIMALS.saturating_sub(d as usize) as u32,
+            d => (TokenAmount::DECIMALS as i32 + d.abs()) as u32,
+        };
+        BigInt::from(10).pow(decimals)
     }
 }
 
@@ -158,9 +170,9 @@ impl TryFrom<tendermint::PublicKey> for ValidatorKey {
 /// less room for error, and we can pass all the data to the FVM
 /// in one go.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Validator {
+pub struct Validator<P> {
     pub public_key: ValidatorKey,
-    pub power: Power,
+    pub power: P,
 }
 
 /// IPC related data structures.
@@ -197,7 +209,7 @@ mod tests {
     use num_traits::Num;
     use quickcheck_macros::quickcheck;
 
-    use crate::{Genesis, Power};
+    use crate::{Collateral, Genesis};
 
     #[quickcheck]
     fn genesis_json(value0: Genesis) {
@@ -217,28 +229,38 @@ mod tests {
         assert_eq!(value1, value0)
     }
 
-    #[quickcheck]
-    fn power_to_tokens(power: u64) {
-        let power0 = Power(power);
-        let tokens = TokenAmount::from(power0);
-        let power1 = Power::from(tokens);
-        assert_eq!(power0, power1);
-    }
-
     #[test]
     fn tokens_to_power() {
+        // Collateral given in atto (18 digits after the decimal)
         let examples: Vec<(&str, u64)> = vec![
-            ("1000000000000000000", 1),
-            ("999999999999999999", 0),
-            ("1999999999999999999", 1),
-            ("2999999999999999999", 2),
+            ("0.000999999999999999", 0),
+            ("0.001000000000000000", 1),
+            ("0.001999999999999999", 1),
+            ("1.000000000000000000", 1000),
+            ("0.999999999999999999", 999),
+            ("1.999999999999999999", 1999),
+            ("2.999999999999999999", 2999),
         ];
 
         for (atto, expected) in examples {
-            let atto = BigInt::from_str_radix(atto, 10).unwrap();
-            let tokens = TokenAmount::from_atto(atto.clone());
-            let power = Power::from(tokens).0;
-            assert_eq!(power, expected, "{atto:?} => {power}");
+            let atto = BigInt::from_str_radix(atto.replace(".", "").as_str(), 10).unwrap();
+            let collateral = Collateral(TokenAmount::from_atto(atto.clone()));
+            let power = collateral.into_power(3).0;
+            assert_eq!(power, expected, "{atto:?} atto => {power} power");
+        }
+    }
+
+    #[test]
+    fn atto_per_power() {
+        // Collateral given in atto (18 digits after the decimal)
+        let examples = vec![
+            (0, TokenAmount::PRECISION),
+            (3, 1000_000_000_000_000),
+            (-1, 10_000_000_000_000_000_000),
+        ];
+
+        for (scale, atto) in examples {
+            assert_eq!(Collateral::atto_per_power(scale), BigInt::from(atto))
         }
     }
 }

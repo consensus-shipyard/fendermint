@@ -1,7 +1,8 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 use crate::{
-    ipc, Account, Actor, ActorMeta, Genesis, Multisig, Power, SignerAddr, Validator, ValidatorKey,
+    ipc, Account, Actor, ActorMeta, Collateral, Genesis, Multisig, Power, SignerAddr, Validator,
+    ValidatorKey,
 };
 use cid::multihash::MultihashDigest;
 use fendermint_crypto::SecretKey;
@@ -72,11 +73,23 @@ impl Arbitrary for ValidatorKey {
     }
 }
 
-impl Arbitrary for Validator {
+impl Arbitrary for Collateral {
+    fn arbitrary(g: &mut Gen) -> Self {
+        Self(ArbTokenAmount::arbitrary(g).0)
+    }
+}
+
+impl Arbitrary for Power {
+    fn arbitrary(g: &mut Gen) -> Self {
+        Self(u64::arbitrary(g))
+    }
+}
+
+impl<P: Arbitrary> Arbitrary for Validator<P> {
     fn arbitrary(g: &mut Gen) -> Self {
         Self {
             public_key: ValidatorKey::arbitrary(g),
-            power: Power(u64::arbitrary(g)),
+            power: P::arbitrary(g),
         }
     }
 }
