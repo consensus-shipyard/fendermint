@@ -3,7 +3,7 @@
 
 use anyhow::{anyhow, bail, Context};
 use fendermint_abci::ApplicationService;
-use fendermint_app::{App, AppConfig, AppStore, BitswapBlockstore};
+use fendermint_app::{App, AppConfig, AppParentFinalityQuery, AppStore, BitswapBlockstore};
 use fendermint_app_settings::AccountKind;
 use fendermint_crypto::SecretKey;
 use fendermint_rocksdb::{blockstore::NamespaceBlockstore, namespaces, RocksDb, RocksDbConfig};
@@ -15,13 +15,44 @@ use fendermint_vm_interpreter::{
     signed::SignedMessageInterpreter,
 };
 use fendermint_vm_resolver::ipld::IpldResolver;
+use fendermint_vm_topdown::proxy::IPCProviderProxy;
+use fendermint_vm_topdown::sync::launch_polling_syncer;
+use fendermint_vm_topdown::{CachedFinalityProvider, Toggle};
 use fvm_shared::address::Address;
+use ipc_provider::config::subnet::{EVMSubnet, SubnetConfig};
+use ipc_provider::IpcProvider;
 use libp2p::identity::secp256k1;
 use libp2p::identity::Keypair;
+use std::sync::Arc;
 use tracing::info;
 
 use crate::cmd::key::read_secret_key;
 use crate::{cmd, options::run::RunArgs, settings::Settings};
+
+fn create_ipc_provider_proxy(settings: &Settings) -> anyhow::Result<IPCProviderProxy> {
+    let topdown_config = settings.ipc.topdown_config()?;
+
+    let url = topdown_config
+        .ipc_provider_url
+        .parse()
+        .context("invalid agent URL")?;
+
+    let ipc_provider = IpcProvider::new_with_subnet(
+        None,
+        ipc_provider::config::Subnet {
+            id: settings.ipc.subnet_id.clone(),
+            network_name: settings.ipc.network_name.clone(),
+            config: SubnetConfig::Fevm(EVMSubnet {
+                provider_http: url,
+                auth_token: None,
+                registry_addr: topdown_config.registry_address,
+                gateway_addr: topdown_config.gateway_address,
+                accounts: vec![],
+            }),
+        },
+    )?;
+    IPCProviderProxy::new(ipc_provider, settings.ipc.subnet_id.clone())
+}
 
 cmd! {
   RunArgs(self, settings) {
@@ -123,6 +154,26 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         tracing::info!("IPLD Resolver disabled.")
     }
 
+    let (parent_finality_provider, ipc_tuple) = if settings.ipc.is_topdown_enabled() {
+        info!("topdown finality enabled");
+        let topdown_config = settings.ipc.topdown_config()?;
+        let config = fendermint_vm_topdown::Config {
+            chain_head_delay: topdown_config.chain_head_delay,
+            polling_interval_secs: topdown_config.polling_interval_secs,
+            exponential_back_off_secs: topdown_config.exponential_back_off_secs,
+            exponential_retry_limit: topdown_config.exponential_retry_limit,
+        };
+        let agent_proxy = Arc::new(create_ipc_provider_proxy(&settings)?);
+        let p = Arc::new(Toggle::enabled(CachedFinalityProvider::uninitialized(
+            config.clone(),
+            agent_proxy.clone(),
+        )));
+        (p, Some((agent_proxy, config)))
+    } else {
+        info!("topdown finality disabled");
+        (Arc::new(Toggle::disabled()), None)
+    };
+
     let app: App<_, _, AppStore, _> = App::new(
         AppConfig {
             app_namespace: ns.app,
@@ -134,7 +185,25 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         state_store,
         interpreter,
         resolve_pool,
+        parent_finality_provider.clone(),
     )?;
+
+    if let Some((agent_proxy, config)) = ipc_tuple {
+        let app_parent_finality_query = AppParentFinalityQuery::new(app.clone());
+        tokio::spawn(async move {
+            match launch_polling_syncer(
+                app_parent_finality_query,
+                config,
+                parent_finality_provider,
+                agent_proxy,
+            )
+            .await
+            {
+                Ok(_) => {}
+                Err(e) => tracing::error!("cannot launch polling syncer: {e}"),
+            }
+        });
+    }
 
     let service = ApplicationService(app);
 

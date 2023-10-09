@@ -2804,13 +2804,15 @@ dependencies = [
  "fendermint_vm_interpreter",
  "fendermint_vm_message",
  "fendermint_vm_resolver",
+ "fendermint_vm_topdown",
  "fvm",
  "fvm_ipld_blockstore",
  "fvm_ipld_car",
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change)",
+ "ipc-provider",
+ "ipc-sdk",
  "ipc_ipld_resolver",
  "k256 0.11.6",
  "libipld",
@@ -2846,7 +2848,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change)",
+ "ipc-sdk",
  "num-traits",
  "tendermint-rpc",
  "tracing",
@@ -2860,9 +2862,11 @@ dependencies = [
  "config 0.13.3",
  "dirs",
  "fendermint_vm_encoding",
+ "fendermint_vm_topdown",
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
- "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change)",
+ "ipc-provider",
+ "ipc-sdk",
  "multiaddr 0.16.0",
  "serde",
  "serde_with",
@@ -2995,7 +2999,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change)",
+ "ipc-sdk",
  "quickcheck 1.0.3",
  "rand 0.8.5",
  "serde",
@@ -3051,7 +3055,7 @@ version = "0.1.0"
 dependencies = [
  "cid",
  "fvm_shared",
- "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change)",
+ "ipc-sdk",
  "num-traits",
  "serde",
  "serde_with",
@@ -3072,7 +3076,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change)",
+ "ipc-sdk",
  "num-traits",
  "quickcheck 1.0.3",
  "quickcheck_macros",
@@ -3100,6 +3104,7 @@ dependencies = [
  "fendermint_vm_genesis",
  "fendermint_vm_message",
  "fendermint_vm_resolver",
+ "fendermint_vm_topdown",
  "futures-core",
  "futures-util",
  "fvm",
@@ -3143,7 +3148,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change)",
+ "ipc-sdk",
  "lazy_static",
  "num-traits",
  "quickcheck 1.0.3",
@@ -3162,7 +3167,7 @@ dependencies = [
  "async-stm",
  "cid",
  "im",
- "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change)",
+ "ipc-sdk",
  "ipc_ipld_resolver",
  "tokio",
  "tracing",
@@ -3181,7 +3186,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "ipc-provider",
- "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change)",
+ "ipc-sdk",
  "ipc_actors_abis",
  "num-traits",
  "serde",
@@ -4593,15 +4598,6 @@ dependencies = [
 [[package]]
 name = "ipc-identity"
 version = "0.1.0"
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change#e4f6ce57cd3a8e4c978f92e0859bccb84b8a1909"
-=======
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change#2f37798d584d3c6b7d1389a15386e5ee170a2daf"
->>>>>>> Stashed changes
-=======
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change#2f37798d584d3c6b7d1389a15386e5ee170a2daf"
->>>>>>> Stashed changes
 dependencies = [
  "ahash 0.8.3",
  "anyhow",
@@ -4628,7 +4624,6 @@ dependencies = [
 [[package]]
 name = "ipc-provider"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change#e4f6ce57cd3a8e4c978f92e0859bccb84b8a1909"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -4644,7 +4639,7 @@ dependencies = [
  "fvm_shared",
  "hex",
  "ipc-identity",
- "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change)",
+ "ipc-sdk",
  "ipc_actors_abis",
  "log",
  "num-derive",
@@ -4667,38 +4662,6 @@ dependencies = [
 [[package]]
 name = "ipc-sdk"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#dc011ffe76a56aad94a78cdf5d59215533e77e46"
-dependencies = [
- "anyhow",
- "cid",
- "ethers",
- "fnv",
- "fvm_ipld_blockstore",
- "fvm_ipld_encoding 0.3.3",
- "fvm_ipld_hamt 0.6.1",
- "fvm_shared",
- "integer-encoding",
- "lazy_static",
- "log",
- "num-traits",
- "primitives",
- "serde",
- "serde_tuple",
- "thiserror",
-]
-
-[[package]]
-name = "ipc-sdk"
-version = "0.1.0"
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change#e4f6ce57cd3a8e4c978f92e0859bccb84b8a1909"
-=======
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change#2f37798d584d3c6b7d1389a15386e5ee170a2daf"
->>>>>>> Stashed changes
-=======
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change#2f37798d584d3c6b7d1389a15386e5ee170a2daf"
->>>>>>> Stashed changes
 dependencies = [
  "anyhow",
  "cid",
@@ -4722,7 +4685,6 @@ dependencies = [
 [[package]]
 name = "ipc_actors_abis"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=validator-metadata-change#021a179c32cfee446ad257768177ceeda02291d6"
 dependencies = [
  "anyhow",
  "ethers",
@@ -4732,7 +4694,6 @@ dependencies = [
 [[package]]
 name = "ipc_ipld_resolver"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-ipld-resolver.git?branch=main#36e11ec8b4f656623c3e940800fbca22a684aa59"
 dependencies = [
  "anyhow",
  "base64 0.21.4",
@@ -4742,7 +4703,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "gcra",
- "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev)",
+ "ipc-sdk",
  "lazy_static",
  "libipld",
  "libp2p",

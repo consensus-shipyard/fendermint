@@ -10,7 +10,7 @@ license.workspace = true
 tokio = { workspace = true }
 anyhow = { workspace = true }
 ipc-provider = { workspace = true }
-ipc-sdk = { workspace = true, features = ["evm_type_convert"] }
+ipc-sdk = { workspace = true }
 async-trait = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }

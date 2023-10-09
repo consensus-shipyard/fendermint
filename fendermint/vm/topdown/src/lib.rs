@@ -34,8 +34,6 @@ pub struct Config {
     pub chain_head_delay: BlockHeight,
     /// Parent syncing cron period, in seconds
     pub polling_interval_secs: u64,
-    /// The ipc agent url
-    pub ipc_agent_url: String,
     /// Top down exponential back off retry base
     pub exponential_back_off_secs: u64,
     /// The max number of retries for exponential backoff before giving up
