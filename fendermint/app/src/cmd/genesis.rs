@@ -9,7 +9,8 @@ use std::path::PathBuf;
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_core::Timestamp;
 use fendermint_vm_genesis::{
-    ipc, Account, Actor, ActorMeta, Genesis, Multisig, Power, SignerAddr, Validator, ValidatorKey,
+    ipc, Account, Actor, ActorMeta, Collateral, Genesis, Multisig, SignerAddr, Validator,
+    ValidatorKey,
 };
 
 use crate::cmd;
@@ -38,6 +39,7 @@ cmd! {
       chain_name: self.chain_name.clone(),
       network_version: self.network_version,
       base_fee: self.base_fee.clone(),
+      power_scale: self.power_scale,
       validators: Vec::new(),
       accounts: Vec::new(),
       ipc: None
@@ -155,7 +157,7 @@ fn add_validator(genesis_file: &PathBuf, args: &GenesisAddValidatorArgs) -> anyh
         }
         let validator = Validator {
             public_key: vk,
-            power: Power(args.power),
+            power: Collateral(args.power.clone()),
         };
         genesis.validators.push(validator);
         Ok(genesis)
