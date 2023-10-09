@@ -183,7 +183,7 @@ impl<T> CachedFinalityProvider<T> {
             ensure_sequential(&top_down_msgs, |msg| msg.msg.nonce)?;
         };
         if !validator_changes.is_empty() {
-            ensure_sequential(&validator_changes, |change| change.0)?;
+            ensure_sequential(&validator_changes, |change| change.configuration_number)?;
         }
 
         let r = self.cached_data.height_data.modify(|mut cache| {
