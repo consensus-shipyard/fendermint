@@ -103,6 +103,7 @@ impl Arbitrary for Genesis {
             chain_name: String::arbitrary(g),
             network_version: NetworkVersion::new(*g.choose(&[18u32]).unwrap()),
             base_fee: ArbTokenAmount::arbitrary(g).0,
+            power_scale: *g.choose(&[-1, 0, 3]).unwrap(),
             validators: (0..nv).map(|_| Arbitrary::arbitrary(g)).collect(),
             accounts: (0..na).map(|_| Arbitrary::arbitrary(g)).collect(),
             ipc: if bool::arbitrary(g) {

@@ -31,6 +31,8 @@ pub struct Genesis {
     pub network_version: NetworkVersion,
     #[serde_as(as = "IsHumanReadable")]
     pub base_fee: TokenAmount,
+    /// Power conversion decimal points, e.g. 3 decimals means 1 power per milliFIL.
+    pub power_scale: i32,
     /// Validators in genesis are given with their FIL collateral to maintain the
     /// highest possible fidelity when we are deriving a genesis file in IPC,
     /// where the parent subnet tracks collateral.
@@ -173,6 +175,16 @@ impl TryFrom<tendermint::PublicKey> for ValidatorKey {
 pub struct Validator<P> {
     pub public_key: ValidatorKey,
     pub power: P,
+}
+
+impl<A> Validator<A> {
+    /// Convert the power.
+    pub fn map_power<F: FnOnce(A) -> B, B>(self, f: F) -> Validator<B> {
+        Validator {
+            public_key: self.public_key,
+            power: f(self.power),
+        }
+    }
 }
 
 /// IPC related data structures.

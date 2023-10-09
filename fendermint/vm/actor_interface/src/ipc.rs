@@ -7,7 +7,7 @@
 
 use anyhow::Context;
 use ethers::core::types as et;
-use fendermint_vm_genesis::Validator;
+use fendermint_vm_genesis::{Power, Validator};
 use ipc_actors_abis as ia;
 pub use ipc_actors_abis::gateway_manager_facet::SubnetID;
 pub use ipc_actors_abis::gateway_router_facet::BottomUpCheckpoint;
@@ -94,7 +94,7 @@ pub struct ValidatorMerkleTree {
 }
 
 impl ValidatorMerkleTree {
-    pub fn new(validators: &[Validator]) -> anyhow::Result<Self> {
+    pub fn new(validators: &[Validator<Power>]) -> anyhow::Result<Self> {
         // Using the 20 byte address for keys because that's what the Solidity library returns
         // when recovering a public key from a signature.
         let values = validators
@@ -113,7 +113,7 @@ impl ValidatorMerkleTree {
     }
 
     /// Create a Merkle proof for a validator.
-    pub fn prove(&self, validator: &Validator) -> anyhow::Result<Vec<Hash>> {
+    pub fn prove(&self, validator: &Validator<Power>) -> anyhow::Result<Vec<Hash>> {
         let v = Self::validator_to_vec(validator)?;
         let proof = self
             .tree
@@ -123,7 +123,11 @@ impl ValidatorMerkleTree {
     }
 
     /// Validate a proof against a known root hash.
-    pub fn validate(validator: &Validator, root: &Hash, proof: &[Hash]) -> anyhow::Result<bool> {
+    pub fn validate(
+        validator: &Validator<Power>,
+        root: &Hash,
+        proof: &[Hash],
+    ) -> anyhow::Result<bool> {
         let v = Self::validator_to_vec(validator)?;
         let h = standard_leaf_hash(v, &VALIDATOR_TREE_FIELDS)?;
         let r = process_proof(&h, proof).context("failed to process Merkle proof")?;
@@ -131,7 +135,7 @@ impl ValidatorMerkleTree {
     }
 
     /// Convert a validator to what we can pass to the tree.
-    fn validator_to_vec(validator: &Validator) -> anyhow::Result<Vec<String>> {
+    fn validator_to_vec(validator: &Validator<Power>) -> anyhow::Result<Vec<String>> {
         let addr = EthAddress::new_secp256k1(&validator.public_key.0.serialize())?;
         let addr = et::Address::from_slice(&addr.0);
         let addr = format!("{addr:?}");
@@ -147,7 +151,7 @@ pub mod gateway {
     use ethers::contract::{EthAbiCodec, EthAbiType};
     use ethers::core::types::{Bytes, H160, U256};
     use fendermint_vm_genesis::ipc::GatewayParams;
-    use fendermint_vm_genesis::Validator;
+    use fendermint_vm_genesis::{Collateral, Validator};
     use fvm_shared::address::Error as AddressError;
     use fvm_shared::address::Payload;
     use fvm_shared::econ::TokenAmount;
@@ -177,7 +181,7 @@ pub mod gateway {
     impl ConstructorParameters {
         pub fn new(
             params: GatewayParams,
-            validators: Vec<Validator>,
+            validators: Vec<Validator<Collateral>>,
         ) -> Result<Self, AddressError> {
             // Every step along the way in the subnet ID we have an Ethereum address.
             let mut route = Vec::new();
@@ -200,8 +204,7 @@ pub mod gateway {
                 .map(|v| {
                     let pk = v.public_key.0.serialize();
                     let addr = EthAddress::new_secp256k1(&pk)?;
-                    let collateral = TokenAmount::from(v.power);
-                    let collateral = tokens_to_u256(collateral);
+                    let collateral = tokens_to_u256(v.power.0);
                     Ok(GenesisValidator {
                         addr: H160::from(addr.0),
                         genesis_collaterall: collateral,
@@ -297,7 +300,7 @@ pub mod gateway {
 mod tests {
     use anyhow::bail;
     use ethers_core::abi::{Constructor, ParamType, Token};
-    use fendermint_vm_genesis::Validator;
+    use fendermint_vm_genesis::{Power, Validator};
     use quickcheck_macros::quickcheck;
 
     use super::ValidatorMerkleTree;
@@ -331,7 +334,7 @@ mod tests {
     }
 
     #[quickcheck]
-    fn merkleize_validators(validators: Vec<Validator>) {
+    fn merkleize_validators(validators: Vec<Validator<Power>>) {
         if validators.is_empty() {
             return;
         }
