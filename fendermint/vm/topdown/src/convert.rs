@@ -7,8 +7,7 @@ use anyhow::anyhow;
 use ethers::abi::Function;
 use ethers::types::U256;
 use ipc_actors_abis::{gateway_getter_facet, gateway_router_facet};
-
-use ipc_sdk::staking::StakingChangeRequest;
+use ipc_sdk::staking::{StakingChange, StakingChangeRequest};
 
 const COMMIT_PARENT_FINALITY_FUNC_NAME: &str = "commitParentFinality";
 const STORE_VALIDATOR_CHANGES_FUNC_NAME: &str = "storeValidatorChanges";
@@ -70,6 +69,7 @@ pub fn encode_store_validator_changes_call(
     for c in changes {
         change_requests.push(gateway_router_facet::StakingChangeRequest::try_from(c)?);
     }
+
 
     let data = ethers::contract::encode_function_data(
         function,
