@@ -4593,7 +4593,11 @@ dependencies = [
 [[package]]
 name = "ipc-identity"
 version = "0.1.0"
+<<<<<<< Updated upstream
 source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change#e4f6ce57cd3a8e4c978f92e0859bccb84b8a1909"
+=======
+source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change#2f37798d584d3c6b7d1389a15386e5ee170a2daf"
+>>>>>>> Stashed changes
 dependencies = [
  "ahash 0.8.3",
  "anyhow",
@@ -4620,6 +4624,7 @@ dependencies = [
 [[package]]
 name = "ipc-provider"
 version = "0.1.0"
+
 source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change#e4f6ce57cd3a8e4c978f92e0859bccb84b8a1909"
 dependencies = [
  "anyhow",
@@ -4682,7 +4687,11 @@ dependencies = [
 [[package]]
 name = "ipc-sdk"
 version = "0.1.0"
+<<<<<<< Updated upstream
 source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change#e4f6ce57cd3a8e4c978f92e0859bccb84b8a1909"
+=======
+source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=validator-metadata-change#2f37798d584d3c6b7d1389a15386e5ee170a2daf"
+>>>>>>> Stashed changes
 dependencies = [
  "anyhow",
  "cid",
