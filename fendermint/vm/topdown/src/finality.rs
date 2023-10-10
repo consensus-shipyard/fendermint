@@ -332,7 +332,6 @@ mod tests {
         let config = Config {
             chain_head_delay: 20,
             polling_interval_secs: 10,
-            ipc_agent_url: "".to_string(),
             exponential_back_off_secs: 10,
             exponential_retry_limit: 10,
         };
@@ -460,7 +459,6 @@ mod tests {
         let config = Config {
             chain_head_delay: 2,
             polling_interval_secs: 10,
-            ipc_agent_url: "".to_string(),
             exponential_back_off_secs: 10,
             exponential_retry_limit: 10,
         };
