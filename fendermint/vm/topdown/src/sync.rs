@@ -65,7 +65,7 @@ async fn query_starting_finality<T: ParentFinalityStateQuery + Send + Sync + 'st
             let genesis_epoch = agent.get_genesis_epoch().await?;
             let block_hash = agent.get_block_hash(genesis_epoch).await?;
             finality = IPCParentFinality {
-                height: genesis_epoch as u64,
+                height: genesis_epoch,
                 block_hash,
             };
             tracing::info!(
