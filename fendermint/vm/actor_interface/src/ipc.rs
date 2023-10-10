@@ -155,18 +155,19 @@ pub mod gateway {
     use fvm_shared::address::Error as AddressError;
     use fvm_shared::address::Payload;
     use fvm_shared::econ::TokenAmount;
-    // TODO: This is what the contract _should_ take in the constructor.
-    use ipc_actors_abis::subnet_actor_getter_facet::GenesisValidator;
+
+    pub use ipc_actors_abis::gateway_getter_facet::Validator as GatewayValidator;
 
     use crate::eam::{self, EthAddress};
 
     pub const METHOD_INVOKE_CONTRACT: u64 = crate::evm::Method::InvokeContract as u64;
 
     // Constructor parameters aren't generated as part of the Rust bindings.
+    // TODO: Remove these once https://github.com/gakonst/ethers-rs/pull/2631 is merged.
 
     /// Container type `ConstructorParameters`.
     ///
-    /// See [GatewayDiamond.sol](https://github.com/consensus-shipyard/ipc-solidity-actors/blob/932c1c2b42c13fd734f6778a6f0ef9c99040c84f/src/GatewayDiamond.sol#L20)
+    /// See [GatewayDiamond.sol](https://github.com/consensus-shipyard/ipc-solidity-actors/blob/255da67fd6ad885f0ab633311be276a4fa936d45/src/GatewayDiamond.sol#L21)
     #[derive(Clone, EthAbiType, EthAbiCodec, Default, Debug, PartialEq, Eq, Hash)]
     pub struct ConstructorParameters {
         pub network_name: SubnetID,
@@ -175,7 +176,7 @@ pub mod gateway {
         pub min_collateral: U256,
         pub msg_fee: U256,
         pub majority_percentage: u8,
-        pub validators: Vec<GenesisValidator>,
+        pub validators: Vec<GatewayValidator>,
     }
 
     impl ConstructorParameters {
@@ -205,9 +206,9 @@ pub mod gateway {
                     let pk = v.public_key.0.serialize();
                     let addr = EthAddress::new_secp256k1(&pk)?;
                     let collateral = tokens_to_u256(v.power.0);
-                    Ok(GenesisValidator {
+                    Ok(GatewayValidator {
                         addr: H160::from(addr.0),
-                        genesis_collaterall: collateral,
+                        weight: collateral,
                         metadata: Bytes::from(pk),
                     })
                 })
@@ -241,7 +242,7 @@ pub mod gateway {
             types::{Bytes, H160},
         };
         use fvm_shared::{bigint::BigInt, econ::TokenAmount};
-        use ipc_actors_abis::subnet_actor_getter_facet::GenesisValidator;
+        use ipc_actors_abis::gateway_getter_facet::Validator as GatewayValidator;
         use std::str::FromStr;
 
         use crate::ipc::tests::{check_param_types, constructor_param_types};
@@ -260,9 +261,9 @@ pub mod gateway {
                 min_collateral: U256::from(1),
                 msg_fee: U256::from(0),
                 majority_percentage: 67,
-                validators: vec![GenesisValidator {
+                validators: vec![GatewayValidator {
                     addr: H160::zero(),
-                    genesis_collaterall: U256::zero(),
+                    weight: U256::zero(),
                     metadata: Bytes::new(),
                 }],
             };

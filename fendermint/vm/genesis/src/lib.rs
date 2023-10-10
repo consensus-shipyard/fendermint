@@ -255,7 +255,7 @@ mod tests {
         ];
 
         for (atto, expected) in examples {
-            let atto = BigInt::from_str_radix(atto.replace(".", "").as_str(), 10).unwrap();
+            let atto = BigInt::from_str_radix(atto.replace('.', "").as_str(), 10).unwrap();
             let collateral = Collateral(TokenAmount::from_atto(atto.clone()));
             let power = collateral.into_power(3).0;
             assert_eq!(power, expected, "{atto:?} atto => {power} power");
@@ -267,7 +267,7 @@ mod tests {
         // Collateral given in atto (18 digits after the decimal)
         let examples = vec![
             (0, TokenAmount::PRECISION),
-            (3, 1000_000_000_000_000),
+            (3, 1_000_000_000_000_000),
             (-1, 10_000_000_000_000_000_000),
         ];
 
