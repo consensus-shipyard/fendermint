@@ -172,7 +172,6 @@ pub mod gateway {
     pub struct ConstructorParameters {
         pub network_name: SubnetID,
         pub bottom_up_check_period: u64,
-        pub top_down_check_period: u64,
         pub min_collateral: U256,
         pub msg_fee: U256,
         pub majority_percentage: u8,
@@ -220,7 +219,6 @@ pub mod gateway {
                     route,
                 },
                 bottom_up_check_period: params.bottom_up_check_period,
-                top_down_check_period: params.top_down_check_period,
                 min_collateral: tokens_to_u256(params.min_collateral),
                 msg_fee: tokens_to_u256(params.msg_fee),
                 majority_percentage: params.majority_percentage,
@@ -257,7 +255,6 @@ pub mod gateway {
                     route: Vec::new(),
                 },
                 bottom_up_check_period: 100,
-                top_down_check_period: 100,
                 min_collateral: U256::from(1),
                 msg_fee: U256::from(0),
                 majority_percentage: 67,
