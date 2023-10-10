@@ -16,7 +16,10 @@ use fendermint_vm_message::{
     ipc::{BottomUpCheckpoint, CertifiedMessage, IpcMessage, SignedRelayedMessage},
 };
 use fendermint_vm_resolver::pool::{ResolveKey, ResolvePool};
-use fendermint_vm_topdown::convert::{encode_apply_cross_messages_call, encode_commit_parent_finality_call, encode_store_validator_changes_call};
+use fendermint_vm_topdown::convert::{
+    encode_apply_cross_messages_call, encode_commit_parent_finality_call,
+    encode_store_validator_changes_call,
+};
 use fendermint_vm_topdown::proxy::IPCProviderProxy;
 use fendermint_vm_topdown::{
     CachedFinalityProvider, IPCParentFinality, ParentFinalityProvider, ParentViewProvider, Toggle,
@@ -263,9 +266,7 @@ where
 
                     // error happens if we cannot get the validator set from ipc agent after retries
                     let messages = provider.top_down_msgs(p.height as u64).await?;
-                    let msg = encode_to_fvm_implicit(&encode_apply_cross_messages_call(
-                        messages,
-                    )?)?;
+                    let msg = encode_to_fvm_implicit(&encode_apply_cross_messages_call(messages)?)?;
                     let (state, ret) = self
                         .inner
                         .deliver(state, VerifiableMessage::NotVerify(msg))
