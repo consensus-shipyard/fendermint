@@ -18,6 +18,9 @@ use fendermint_vm_encoding::IsHumanReadable;
 #[cfg(feature = "arb")]
 mod arb;
 
+/// Power conversion decimal points, e.g. 3 decimals means 1 power per milliFIL.
+pub type PowerScale = i32;
+
 /// The genesis data structure we serialize to JSON and start the chain with.
 #[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -31,8 +34,8 @@ pub struct Genesis {
     pub network_version: NetworkVersion,
     #[serde_as(as = "IsHumanReadable")]
     pub base_fee: TokenAmount,
-    /// Power conversion decimal points, e.g. 3 decimals means 1 power per milliFIL.
-    pub power_scale: i32,
+    /// Collateral to power conversion.
+    pub power_scale: PowerScale,
     /// Validators in genesis are given with their FIL collateral to maintain the
     /// highest possible fidelity when we are deriving a genesis file in IPC,
     /// where the parent subnet tracks collateral.

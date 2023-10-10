@@ -17,7 +17,7 @@ use fendermint_vm_actor_interface::{
     account, burntfunds, cron, eam, init, ipc, reward, system, EMPTY_ARR,
 };
 use fendermint_vm_core::{chainid, Timestamp};
-use fendermint_vm_genesis::{ActorMeta, Genesis, Power, Validator};
+use fendermint_vm_genesis::{ActorMeta, Genesis, Power, PowerScale, Validator};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::econ::TokenAmount;
@@ -35,6 +35,7 @@ pub struct FvmGenesisOutput {
     pub timestamp: Timestamp,
     pub network_version: NetworkVersion,
     pub base_fee: TokenAmount,
+    pub power_scale: PowerScale,
     pub circ_supply: TokenAmount,
     pub validators: Vec<Validator<Power>>,
 }
@@ -99,6 +100,7 @@ where
             network_version: genesis.network_version,
             circ_supply: circ_supply(&genesis),
             base_fee: genesis.base_fee,
+            power_scale: genesis.power_scale,
             validators,
         };
 
@@ -254,6 +256,7 @@ where
                 out.base_fee.clone(),
                 out.circ_supply.clone(),
                 out.chain_id.into(),
+                out.power_scale,
             )
             .context("failed to init exec state")?;
 

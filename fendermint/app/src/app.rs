@@ -213,6 +213,7 @@ where
                     base_fee: TokenAmount::zero(),
                     circ_supply: TokenAmount::zero(),
                     chain_id: 0,
+                    power_scale: 0,
                 },
             };
             self.set_committed_state(state)?;
@@ -406,6 +407,7 @@ where
                 base_fee: out.base_fee,
                 circ_supply: out.circ_supply,
                 chain_id: out.chain_id.into(),
+                power_scale: out.power_scale,
             },
         };
 
