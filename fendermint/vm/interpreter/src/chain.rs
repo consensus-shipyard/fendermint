@@ -16,6 +16,7 @@ use fendermint_vm_message::{
     ipc::{BottomUpCheckpoint, CertifiedMessage, IpcMessage, SignedRelayedMessage},
 };
 use fendermint_vm_resolver::pool::{ResolveKey, ResolvePool};
+use fendermint_vm_topdown::convert::{encode_apply_cross_messages_call, encode_commit_parent_finality_call, encode_store_validator_changes_call};
 use fendermint_vm_topdown::proxy::IPCProviderProxy;
 use fendermint_vm_topdown::{
     CachedFinalityProvider, IPCParentFinality, ParentFinalityProvider, ParentViewProvider, Toggle,
@@ -24,7 +25,6 @@ use fvm_ipld_encoding::{BytesSer, RawBytes};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
-use fendermint_vm_topdown::convert::{encode_commit_parent_finality_call, encode_store_validator_changes_call};
 
 /// A resolution pool for bottom-up and top-down checkpoints.
 pub type CheckpointPool = ResolvePool<CheckpointPoolItem>;
@@ -231,7 +231,9 @@ where
                         height: p.height as u64,
                         block_hash: p.block_hash,
                     };
-                    let msg = encode_to_fvm_implicit(&encode_commit_parent_finality_call(finality.clone())?)?;
+                    let msg = encode_to_fvm_implicit(&encode_commit_parent_finality_call(
+                        finality.clone(),
+                    )?)?;
                     let (state, ret) = self
                         .inner
                         .deliver(state, VerifiableMessage::NotVerify(msg))
@@ -245,7 +247,9 @@ where
 
                     // error happens if we cannot get the validator set from ipc agent after retries
                     let validator_changes = provider.validator_changes(p.height as u64).await?;
-                    let msg = encode_to_fvm_implicit(&encode_store_validator_changes_call(validator_changes)?)?;
+                    let msg = encode_to_fvm_implicit(&encode_store_validator_changes_call(
+                        validator_changes,
+                    )?)?;
                     let (state, ret) = self
                         .inner
                         .deliver(state, VerifiableMessage::NotVerify(msg))
@@ -255,8 +259,21 @@ where
                         todo!()
                     }
 
-                    // TODO: execute top down messages,
-                    // TODO: see https://github.com/consensus-shipyard/fendermint/issues/241
+                    // Execute top down messages
+
+                    // error happens if we cannot get the validator set from ipc agent after retries
+                    let messages = provider.top_down_msgs(p.height as u64).await?;
+                    let msg = encode_to_fvm_implicit(&encode_apply_cross_messages_call(
+                        messages,
+                    )?)?;
+                    let (state, ret) = self
+                        .inner
+                        .deliver(state, VerifiableMessage::NotVerify(msg))
+                        .await?;
+                    if ret.is_err() {
+                        // TODO: how to handle error here? Do we return Err or stash them into one ret?
+                        todo!()
+                    }
 
                     atomically(|| provider.set_new_finality(finality.clone())).await;
 
@@ -397,9 +414,7 @@ fn relayed_bottom_up_ckpt_to_fvm(
 }
 
 /// Encode to fvm implicit message
-pub fn encode_to_fvm_implicit(
-    bytes: &[u8]
-) -> anyhow::Result<FvmMessage> {
+pub fn encode_to_fvm_implicit(bytes: &[u8]) -> anyhow::Result<FvmMessage> {
     let params = RawBytes::serialize(BytesSer(bytes))?;
     let msg = FvmMessage {
         version: 0,

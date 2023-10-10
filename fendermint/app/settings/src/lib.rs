@@ -3,12 +3,12 @@
 
 use anyhow::{anyhow, Context};
 use config::{Config, ConfigError, Environment, File};
+use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use ipc_sdk::subnet_id::SubnetID;
 use serde::Deserialize;
 use serde_with::serde_as;
 use std::path::{Path, PathBuf};
-use fvm_shared::address::Address;
 use tendermint_rpc::Url;
 
 use fendermint_vm_encoding::{human_readable_delegate, human_readable_str};
