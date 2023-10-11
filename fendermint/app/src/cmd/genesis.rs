@@ -228,6 +228,7 @@ fn set_ipc_gateway(genesis_file: &PathBuf, args: &GenesisIpcGatewayArgs) -> anyh
             min_collateral: args.min_collateral.clone(),
             msg_fee: args.msg_fee.clone(),
             majority_percentage: args.majority_percentage,
+            active_validators_limit: args.active_validators_limit,
         };
 
         let ipc_params = match genesis.ipc {

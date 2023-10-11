@@ -141,6 +141,11 @@ pub struct GenesisIpcGatewayArgs {
     #[arg(long, short = 'f', value_parser = parse_token_amount)]
     pub msg_fee: TokenAmount,
 
+    /// Quorum majority percentage [51 - 100]
     #[arg(long, short, value_parser = parse_percentage::<u8>)]
     pub majority_percentage: u8,
+
+    /// Maximum number of active validators.
+    #[arg(long, short = 'v', default_value = "100")]
+    pub active_validators_limit: u16,
 }

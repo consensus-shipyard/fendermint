@@ -215,6 +215,7 @@ pub mod ipc {
         pub majority_percentage: u8,
         #[serde_as(as = "IsHumanReadable")]
         pub min_collateral: TokenAmount,
+        pub active_validators_limit: u16,
     }
 }
 

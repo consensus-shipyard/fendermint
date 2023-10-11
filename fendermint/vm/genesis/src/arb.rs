@@ -138,6 +138,7 @@ impl Arbitrary for ipc::GatewayParams {
             min_collateral: ArbFee::arbitrary(g).0.max(TokenAmount::from_atto(1)),
             msg_fee: ArbFee::arbitrary(g).0,
             majority_percentage: u8::arbitrary(g) % 50 + 51,
+            active_validators_limit: u16::arbitrary(g) % 100 + 1,
         }
     }
 }

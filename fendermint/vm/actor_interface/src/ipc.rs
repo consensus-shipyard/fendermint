@@ -176,6 +176,7 @@ pub mod gateway {
         pub msg_fee: U256,
         pub majority_percentage: u8,
         pub validators: Vec<GatewayValidator>,
+        pub active_validators_limit: u16,
     }
 
     impl ConstructorParameters {
@@ -223,6 +224,7 @@ pub mod gateway {
                 msg_fee: tokens_to_u256(params.msg_fee),
                 majority_percentage: params.majority_percentage,
                 validators,
+                active_validators_limit: params.active_validators_limit,
             })
         }
     }
@@ -263,6 +265,7 @@ pub mod gateway {
                     weight: U256::zero(),
                     metadata: Bytes::new(),
                 }],
+                active_validators_limit: 100,
             };
 
             // It looks like if we pass just the record then it will be passed as 5 tokens,
