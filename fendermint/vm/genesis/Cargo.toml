@@ -16,6 +16,7 @@ num-traits = { workspace = true }
 arbitrary = { workspace = true, optional = true }
 quickcheck = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
+rand_chacha = { workspace = true, optional = true }
 tendermint = { workspace = true }
 
 cid = { workspace = true, optional = true }
@@ -46,5 +47,6 @@ arb = [
   "fvm_shared/arb",
   "fendermint_testing/arb",
   "rand",
+  "rand_chacha",
   "cid",
 ]

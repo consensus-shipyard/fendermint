@@ -3041,6 +3041,7 @@ dependencies = [
  "quickcheck 1.0.3",
  "quickcheck_macros",
  "rand 0.8.5",
+ "rand_chacha 0.3.1",
  "serde",
  "serde_json",
  "serde_with",
@@ -3077,6 +3078,7 @@ dependencies = [
  "num-traits",
  "pin-project",
  "quickcheck 1.0.3",
+ "quickcheck_macros",
  "serde",
  "serde_json",
  "tempfile",
@@ -4529,7 +4531,7 @@ dependencies = [
 [[package]]
 name = "ipc_actors_abis"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev#081fea80569ff11c080de7281340c8faa167d3b0"
+source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev#1ab4113ea235e1d5b055dce732fb5d4bdb8e025e"
 dependencies = [
  "anyhow",
  "ethers",

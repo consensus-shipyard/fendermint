@@ -15,7 +15,8 @@ use fvm_shared::{
     version::NetworkVersion,
 };
 use quickcheck::{Arbitrary, Gen};
-use rand::{rngs::StdRng, SeedableRng};
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 
 impl Arbitrary for ActorMeta {
     fn arbitrary(g: &mut Gen) -> Self {
@@ -66,7 +67,9 @@ impl Arbitrary for Actor {
 
 impl Arbitrary for ValidatorKey {
     fn arbitrary(g: &mut Gen) -> Self {
-        let mut rng = StdRng::seed_from_u64(u64::arbitrary(g));
+        // Using a proper random generator instead of StdRng to reduce the annoying collisions.
+        let seed: [u8; 32] = std::array::from_fn(|_| u8::arbitrary(g));
+        let mut rng = ChaCha20Rng::from_seed(seed);
         let sk = SecretKey::random(&mut rng);
         let pk = sk.public_key();
         Self::new(pk)
@@ -81,7 +84,9 @@ impl Arbitrary for Collateral {
 
 impl Arbitrary for Power {
     fn arbitrary(g: &mut Gen) -> Self {
-        Self(u64::arbitrary(g))
+        // Giving at least 1 power. 0 is a valid value to signal deletion,
+        // but not that useful in the more common power table setting.
+        Self(u64::arbitrary(g).saturating_add(1))
     }
 }
 
