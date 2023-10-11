@@ -19,7 +19,7 @@ use fendermint_vm_encoding::IsHumanReadable;
 mod arb;
 
 /// Power conversion decimal points, e.g. 3 decimals means 1 power per milliFIL.
-pub type PowerScale = i32;
+pub type PowerScale = i8;
 
 /// The genesis data structure we serialize to JSON and start the chain with.
 #[serde_as]
@@ -99,7 +99,7 @@ impl Collateral {
     /// For example:
     /// * with 3 decimal places, we get 1 power per milli FIL: 0.001 FIL => 1 power
     /// * with 0 decimal places, we get 1 power per whole FIL: 1 FIL => 1 power
-    pub fn into_power(self: Collateral, scale: i32) -> Power {
+    pub fn into_power(self: Collateral, scale: PowerScale) -> Power {
         let atto_per_power = Self::atto_per_power(scale);
         let atto = self.0.atto();
         let power = atto.div_floor(&atto_per_power);
@@ -108,11 +108,11 @@ impl Collateral {
     }
 
     /// Helper function to convert atto to [Power].
-    fn atto_per_power(scale: i32) -> BigInt {
+    fn atto_per_power(scale: PowerScale) -> BigInt {
         // Figure out how many decimals we need to shift to the right.
         let decimals = match scale {
             d if d >= 0 => TokenAmount::DECIMALS.saturating_sub(d as usize) as u32,
-            d => (TokenAmount::DECIMALS as i32 + d.abs()) as u32,
+            d => (TokenAmount::DECIMALS as i8 + d.abs()) as u32,
         };
         BigInt::from(10).pow(decimals)
     }

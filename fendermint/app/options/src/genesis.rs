@@ -60,7 +60,7 @@ pub struct GenesisNewArgs {
     pub base_fee: TokenAmount,
     /// Number of decimals to use during converting FIL to Power.
     #[arg(long, short)]
-    pub power_scale: i32,
+    pub power_scale: i8,
 }
 
 #[derive(Args, Debug)]
