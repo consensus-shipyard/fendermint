@@ -24,7 +24,7 @@ use fendermint_testing::{smt::StateMachine, state_machine_test};
 use fendermint_vm_core::Timestamp;
 use fendermint_vm_genesis::ipc::{GatewayParams, IpcParams};
 use fendermint_vm_genesis::{
-    Account, Actor, ActorMeta, Genesis, Power, SignerAddr, Validator, ValidatorKey,
+    Account, Actor, ActorMeta, Collateral, Genesis, Power, SignerAddr, Validator, ValidatorKey,
 };
 use fendermint_vm_interpreter::fvm::{
     state::{ipc::GatewayCaller, FvmExecState},
@@ -68,6 +68,8 @@ struct StakingAccount {
     addr: Address,
     /// In this test the accounts should never gain more than their initial balance.
     initial_balance: TokenAmount,
+    /// Initial stake this account is going to put into the subnet.
+    initial_stake: TokenAmount,
     /// Balance after the effects of deposits/withdrawals.
     current_balance: TokenAmount,
 }
@@ -84,7 +86,7 @@ struct StakingState {
     /// The child genesis describes the initial validator set to join the subnet
     child_genesis: Genesis,
     /// Currently active child validator set.
-    child_validators: HashMap<Address, Power>,
+    child_validators: HashMap<Address, Collateral>,
     /// The configuration number to be incremented before each staking operation; 0 belongs to the genesis.
     configuration_number: u64,
     /// Unconfirmed staking operations.
@@ -102,7 +104,7 @@ impl StakingState {
             .iter()
             .map(|v| {
                 let addr = Address::new_secp256k1(&v.public_key.0.serialize()).unwrap();
-                (addr, v.power)
+                (addr, v.power.clone())
             })
             .collect();
 
@@ -110,6 +112,7 @@ impl StakingState {
             .into_iter()
             .map(|a| (a.addr, a))
             .collect::<HashMap<_, _>>();
+
         let addrs = accounts.keys().cloned().collect();
 
         Self {
@@ -123,6 +126,7 @@ impl StakingState {
         }
     }
 
+    /// Apply the changes up to `the next_configuration_number`.
     pub fn checkpoint(mut self, next_configuration_number: u64) -> Self {
         loop {
             if self.pending_updates.is_empty() {
@@ -134,21 +138,19 @@ impl StakingState {
             let update = self.pending_updates.pop_front().expect("checked non-empty");
             match update.op {
                 StakingOp::Deposit(v) => {
-                    let v: u64 = v.atto().try_into().expect("deposits are u64");
-                    let mut power = self.child_validators.entry(update.addr).or_insert(Power(0));
+                    let mut power = self.child_validators.entry(update.addr).or_default();
                     power.0 += v;
                 }
                 StakingOp::Withdraw(v) => {
-                    let v: u64 = v.atto().try_into().expect("withdrawals are u64");
                     match self.child_validators.entry(update.addr) {
                         std::collections::hash_map::Entry::Occupied(mut e) => {
-                            let power = e.get().0;
-                            let v = v.min(power);
+                            let c = e.get().0.clone();
+                            let v = v.min(c.clone());
 
-                            if v == power {
+                            if v == c {
                                 e.remove();
                             } else {
-                                e.insert(Power(power - v));
+                                e.insert(Collateral(c - v.clone()));
                             }
 
                             let mut a = self
@@ -156,7 +158,7 @@ impl StakingState {
                                 .get_mut(&update.addr)
                                 .expect("validators have accounts");
 
-                            a.current_balance += TokenAmount::from_atto(v)
+                            a.current_balance += v;
                         }
                         std::collections::hash_map::Entry::Vacant(_) => {
                             // Tried to withdraw more than put in.
@@ -166,9 +168,10 @@ impl StakingState {
             }
         }
         self.configuration_number = next_configuration_number;
-        return self;
+        self
     }
 
+    /// Enqueue a deposit.
     pub fn stake(mut self, addr: Address, value: TokenAmount) -> Self {
         self.configuration_number += 1;
 
@@ -192,6 +195,7 @@ impl StakingState {
         self
     }
 
+    /// Enqueue a withdrawal.
     pub fn unstake(mut self, addr: Address, value: TokenAmount) -> Self {
         self.configuration_number += 1;
         let update = StakingUpdate {
@@ -216,34 +220,45 @@ impl arbitrary::Arbitrary<'_> for StakingState {
         // Create the desired number of accounts.
         let mut rng = StdRng::seed_from_u64(u64::arbitrary(u)?);
         let mut accounts = Vec::new();
-        for _ in 0..num_accounts {
+        for i in 0..num_accounts {
             let sk = SecretKey::random(&mut rng);
             let pk = sk.public_key();
             let addr = Address::new_secp256k1(&pk.serialize()).unwrap();
 
             // Create with a non-zero balance so we can pick anyone to be a validator and deposit some collateral.
-            let b = ArbTokenAmount::arbitrary(u)?.0;
-            let b = b.max(TokenAmount::from_atto(1));
-            // Limit the balance to the u64 range, so we don't have to worry about power conversions.
-            let b = TokenAmount::from_atto(b.atto().mod_floor(&BigInt::from(u64::MAX)));
+            let initial_balance = ArbTokenAmount::arbitrary(u)?
+                .0
+                .max(TokenAmount::from_whole(1));
+
+            // Choose an initial stake committed to the child subnet.
+            let initial_stake = if i < num_validators {
+                let c = BigInt::arbitrary(u)?.mod_floor(initial_balance.atto());
+                TokenAmount::from_atto(c)
+            } else {
+                TokenAmount::from_atto(0)
+            };
+
+            let current_balance = initial_balance.clone() - initial_stake.clone();
 
             let a = StakingAccount {
                 public_key: pk,
                 secret_key: sk,
                 addr,
-                initial_balance: b.clone(),
-                current_balance: b,
+                initial_balance,
+                initial_stake,
+                current_balance,
             };
             accounts.push(a);
         }
 
+        // Accounts on the parent subnet.
         let parent_actors = accounts
             .iter()
             .map(|s| Actor {
                 meta: ActorMeta::Account(Account {
                     owner: SignerAddr(s.addr),
                 }),
-                balance: s.initial_balance.clone(),
+                balance: s.current_balance.clone(),
             })
             .collect();
 
@@ -252,9 +267,23 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             public_key: ValidatorKey(accounts[0].public_key),
             // All the power in the parent subnet belongs to this single validator.
             // We are only interested in the staking of the *child subnet*.
-            power: Power(1),
+            power: Collateral(TokenAmount::from_whole(1)),
         }];
 
+        // Select some of the accounts to be the initial *child subnet* validators.
+        let child_validators = accounts
+            .iter()
+            .take(num_validators)
+            .map(|a| {
+                let v = Validator {
+                    public_key: ValidatorKey(a.public_key),
+                    power: Collateral(a.initial_stake.clone()),
+                };
+                Ok(v)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // IPC of the parent subnet itself - most are not going to be used.
         let parent_ipc = IpcParams {
             gateway: GatewayParams {
                 subnet_id: ArbSubnetID::arbitrary(u)?.0,
@@ -265,6 +294,7 @@ impl arbitrary::Arbitrary<'_> for StakingState {
                 min_collateral: ArbTokenAmount::arbitrary(u)?
                     .0
                     .max(TokenAmount::from_atto(1)),
+                active_validators_limit: 1 + u.choose_index(100)? as u16,
             },
         };
 
@@ -278,26 +308,11 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             timestamp: Timestamp(u64::arbitrary(u)?),
             network_version: NetworkVersion::V20,
             base_fee: ArbTokenAmount::arbitrary(u)?.0,
+            power_scale: *u.choose(&[0, 3]).expect("non empty"),
             validators: parent_validators,
             accounts: parent_actors,
             ipc: Some(parent_ipc),
         };
-
-        // Select some of the accounts to be the initial *child subnet* validators.
-        let child_validators = accounts
-            .iter()
-            .take(num_validators)
-            .map(|a| {
-                // Power has to be a u64.
-                let p = BigInt::arbitrary(u)?.mod_floor(a.initial_balance.atto());
-                let p = Power(p.try_into().expect("balances are u64"));
-                let v = Validator {
-                    public_key: ValidatorKey(a.public_key),
-                    power: p,
-                };
-                Ok(v)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
 
         let child_ipc = IpcParams {
             gateway: GatewayParams {
@@ -309,6 +324,7 @@ impl arbitrary::Arbitrary<'_> for StakingState {
                 min_collateral: ArbTokenAmount::arbitrary(u)?
                     .0
                     .max(TokenAmount::from_atto(1)),
+                active_validators_limit: num_max_validators as u16,
             },
         };
 
@@ -317,6 +333,7 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             timestamp: Timestamp(u64::arbitrary(u)?),
             network_version: NetworkVersion::V20,
             base_fee: ArbTokenAmount::arbitrary(u)?.0,
+            power_scale: *u.choose(&[0, 3]).expect("non empty"),
             validators: child_validators,
             accounts: Vec::new(),
             ipc: Some(child_ipc),
@@ -397,7 +414,7 @@ impl StateMachine for StakingMachine {
                 let a = u.choose(&state.addrs).expect("accounts not empty");
                 let a = state.accounts.get(a).expect("account exists");
                 // Limit ourselves to the outstanding balance - the user would not be able to send more value to the contract.
-                let b = BigInt::arbitrary(u)?.mod_floor(&a.current_balance.atto());
+                let b = BigInt::arbitrary(u)?.mod_floor(a.current_balance.atto());
                 let b = TokenAmount::from_atto(b);
                 StakingCommand::Stake(a.addr, b)
             }
@@ -406,7 +423,7 @@ impl StateMachine for StakingMachine {
                 let a = state.accounts.get(a).expect("account exists");
                 // We can try sending requests to unbond arbitrarily large amounts of collateral - the system should catch any attempt to steal.
                 // Only limiting it to be under the initial balance so that it's comparable to what the deposits could have been.
-                let b = BigInt::arbitrary(u)?.mod_floor(&a.initial_balance.atto());
+                let b = BigInt::arbitrary(u)?.mod_floor(a.initial_balance.atto());
                 let b = TokenAmount::from_atto(b);
                 StakingCommand::Unstake(a.addr, b)
             }
@@ -442,12 +459,21 @@ impl StateMachine for StakingMachine {
         match cmd {
             StakingCommand::Checkpoint { .. } => {
                 // Sanity check the reference state while we have no contract to compare with.
-                debug_assert!(post_state
-                    .accounts
-                    .iter()
-                    .all(|(_, a)| a.current_balance <= a.initial_balance));
+                debug_assert!(
+                    post_state
+                        .accounts
+                        .iter()
+                        .all(|(_, a)| a.current_balance <= a.initial_balance),
+                    "no account goes over initial balance"
+                );
 
-                debug_assert!(post_state.child_validators.iter().all(|(_, p)| p.0 > 0));
+                debug_assert!(
+                    post_state
+                        .child_validators
+                        .iter()
+                        .all(|(_, p)| !p.0.is_zero()),
+                    "all child validators have non-zero collateral"
+                );
             }
             StakingCommand::Stake(addr, _) | StakingCommand::Unstake(addr, _) => {
                 let a = post_state.accounts.get(addr).unwrap();
