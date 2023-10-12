@@ -2955,11 +2955,14 @@ dependencies = [
  "arbitrary",
  "arbtest",
  "cid",
+ "ethers",
  "fendermint_testing",
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
  "ipc-sdk",
+ "lazy_static",
+ "num-bigint",
  "quickcheck 1.0.3",
  "rand 0.8.5",
  "serde",
@@ -5904,6 +5907,7 @@ version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "608e7659b5c3d7cba262d894801b9ec9d00de989e8a82bd4bef91d08da45cdc0"
 dependencies = [
+ "arbitrary",
  "autocfg",
  "num-integer",
  "num-traits",

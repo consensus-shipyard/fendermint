@@ -8,12 +8,7 @@ use cid::multihash::MultihashDigest;
 use fendermint_crypto::SecretKey;
 use fendermint_testing::arb::{ArbSubnetID, ArbTokenAmount};
 use fendermint_vm_core::Timestamp;
-use fvm_shared::{
-    address::Address,
-    bigint::{BigInt, Integer},
-    econ::TokenAmount,
-    version::NetworkVersion,
-};
+use fvm_shared::{address::Address, econ::TokenAmount, version::NetworkVersion};
 use quickcheck::{Arbitrary, Gen};
 use rand::{rngs::StdRng, SeedableRng};
 
@@ -122,18 +117,6 @@ impl Arbitrary for Genesis {
     }
 }
 
-/// `TokenAmount` well within the limits of U256
-#[derive(Debug, Clone)]
-struct ArbFee(TokenAmount);
-
-impl Arbitrary for ArbFee {
-    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        let t = ArbTokenAmount::arbitrary(g).0;
-        let (_, t) = t.atto().div_mod_floor(&BigInt::from(u64::MAX));
-        Self(TokenAmount::from_atto(t))
-    }
-}
-
 impl Arbitrary for ipc::GatewayParams {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
         Self {
@@ -142,8 +125,10 @@ impl Arbitrary for ipc::GatewayParams {
             bottom_up_check_period: u64::arbitrary(g).max(1),
             top_down_check_period: u64::arbitrary(g),
             // Gateway constructor would reject 0.
-            min_collateral: ArbFee::arbitrary(g).0.max(TokenAmount::from_atto(1)),
-            msg_fee: ArbFee::arbitrary(g).0,
+            min_collateral: ArbTokenAmount::arbitrary(g)
+                .0
+                .max(TokenAmount::from_atto(1)),
+            msg_fee: ArbTokenAmount::arbitrary(g).0,
             majority_percentage: u8::arbitrary(g) % 50 + 51,
             active_validators_limit: u16::arbitrary(g) % 100 + 1,
         }
