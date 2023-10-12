@@ -27,6 +27,7 @@ define_id!(GATEWAY { id: 64 });
 define_id!(SUBNETREGISTRY { id: 65 });
 
 lazy_static! {
+    /// Contracts deployed at genesis with well-known IDs.
     pub static ref IPC_CONTRACTS: EthContractMap = {
         [
             (
@@ -78,9 +79,35 @@ lazy_static! {
         .into_iter()
         .collect()
     };
-}
 
-lazy_static! {
+    /// Contracts that need to be deployed afresh for each subnet.
+    ///
+    /// See [deploy-sa-diamond.ts](https://github.com/consensus-shipyard/ipc-solidity-actors/blob/dev/scripts/deploy-sa-diamond.ts)
+    pub static ref SUBNET_CONTRACTS: EthContractMap = {
+        [
+            (
+                "SubnetActorDiamond",
+                EthContract {
+                    actor_id: 0,
+                    abi: ia::subnet_actor_diamond::SUBNETACTORDIAMOND_ABI.to_owned(),
+                    facets: vec![
+                        EthFacet {
+                            name: "SubnetActorGetterFacet",
+                            abi: ia::subnet_actor_getter_facet::SUBNETACTORGETTERFACET_ABI.to_owned(),
+                        },
+                        EthFacet {
+                            name: "SubnetActorManagerFacet",
+                            abi: ia::subnet_actor_manager_facet::SUBNETACTORMANAGERFACET_ABI.to_owned(),
+                        },
+                    ],
+                },
+            ),
+        ]
+        .into_iter()
+        .collect()
+    };
+
+    /// ABI types of the Merkle tree which contains validator addresses and their voting power.
     pub static ref VALIDATOR_TREE_FIELDS: Vec<String> =
         vec!["address".to_owned(), "uint256".to_owned()];
 }

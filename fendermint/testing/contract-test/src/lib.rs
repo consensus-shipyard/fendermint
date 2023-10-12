@@ -37,7 +37,6 @@ pub async fn init_exec_state(
         .await
         .context("failed to create actors")?;
 
-    // Try calling a method on the IPC Gateway.
     let state = state
         .into_exec_state()
         .map_err(|_| anyhow!("should be in exec stage"))?;
