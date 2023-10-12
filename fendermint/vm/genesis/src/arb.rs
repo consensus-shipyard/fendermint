@@ -15,8 +15,7 @@ use fvm_shared::{
     version::NetworkVersion,
 };
 use quickcheck::{Arbitrary, Gen};
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
+use rand::{rngs::StdRng, SeedableRng};
 
 impl Arbitrary for ActorMeta {
     fn arbitrary(g: &mut Gen) -> Self {
@@ -67,9 +66,12 @@ impl Arbitrary for Actor {
 
 impl Arbitrary for ValidatorKey {
     fn arbitrary(g: &mut Gen) -> Self {
-        // Using a proper random generator instead of StdRng to reduce the annoying collisions.
+        // Using a full 32 byte seed instead of `StdRng::seed_from_u64` to reduce the annoying collisions
+        // when trying to generate multiple validators. Probably 0 is generated more often than other u64
+        // for example, but there is a high probability of matching keys, which is possible but usually
+        // not what we are trying to test, and using a common `Rng` to generate all validators is cumbersome.
         let seed: [u8; 32] = std::array::from_fn(|_| u8::arbitrary(g));
-        let mut rng = ChaCha20Rng::from_seed(seed);
+        let mut rng = StdRng::from_seed(seed);
         let sk = SecretKey::random(&mut rng);
         let pk = sk.public_key();
         Self::new(pk)
