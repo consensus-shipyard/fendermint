@@ -24,8 +24,8 @@ pub struct CachedFinalityProvider<T> {
     /// This is a in memory view of the committed parent finality. We need this as a starting point
     /// for populating the cache
     last_committed_finality: TVar<Option<IPCParentFinality>>,
-    /// The ipc agent proxy that works as a back up if cache miss
-    agent: Arc<T>,
+    /// The ipc client proxy that works as a back up if cache miss
+    parent_client: Arc<T>,
 }
 
 /// Tracks the data from the parent
@@ -44,7 +44,7 @@ macro_rules! retry {
             let res = $f;
             if let Err(e) = &res {
                 tracing::warn!(
-                    "cannot query ipc agent due to: {e}, retires: {retries}, wait: {wait}"
+                    "cannot query ipc parent_client due to: {e}, retires: {retries}, wait: {wait}"
                 );
                 if retries > 0 {
                     retries -= 1;
@@ -64,7 +64,7 @@ macro_rules! retry {
 
 #[async_trait::async_trait]
 impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedFinalityProvider<T> {
-    /// Should always return the validator set, only when ipc agent is down after exponeitial
+    /// Should always return the validator set, only when ipc parent_client is down after exponeitial
     /// retries
     async fn validator_changes(
         &self,
@@ -78,11 +78,11 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
         retry!(
             self.config.exponential_back_off_secs,
             self.config.exponential_retry_limit,
-            self.agent.get_validator_changes(height).await
+            self.parent_client.get_validator_changes(height).await
         )
     }
 
-    /// Should always return the top down messages, only when ipc agent is down after exponential
+    /// Should always return the top down messages, only when ipc parent_client is down after exponential
     /// retries
     async fn top_down_msgs(&self, height: BlockHeight) -> anyhow::Result<Vec<CrossMsg>> {
         let r = atomically(|| self.cached_data.top_down_msgs_at_height(height)).await;
@@ -93,7 +93,7 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
         retry!(
             self.config.exponential_back_off_secs,
             self.config.exponential_retry_limit,
-            self.agent.get_top_down_msgs(height, height).await
+            self.parent_client.get_top_down_msgs(height, height).await
         )
     }
 }
@@ -139,11 +139,15 @@ impl<T> CachedFinalityProvider<T> {
     /// We need this because `fendermint` has yet to be initialized and might
     /// not be able to provide an existing finality from the storage. This provider requires an
     /// existing committed finality. Providing the finality will enable other functionalities.
-    pub fn uninitialized(config: Config, agent: Arc<T>) -> Self {
-        Self::new(config, None, agent)
+    pub fn uninitialized(config: Config, parent_client: Arc<T>) -> Self {
+        Self::new(config, None, parent_client)
     }
 
-    fn new(config: Config, committed_finality: Option<IPCParentFinality>, agent: Arc<T>) -> Self {
+    fn new(
+        config: Config,
+        committed_finality: Option<IPCParentFinality>,
+        parent_client: Arc<T>,
+    ) -> Self {
         let height_data = SequentialKeyCache::sequential();
         Self {
             config,
@@ -151,7 +155,7 @@ impl<T> CachedFinalityProvider<T> {
                 height_data: TVar::new(height_data),
             },
             last_committed_finality: TVar::new(committed_finality),
-            agent,
+            parent_client,
         }
     }
 
@@ -332,7 +336,7 @@ mod tests {
         let config = Config {
             chain_head_delay: 20,
             polling_interval_secs: 10,
-            ipc_agent_url: "".to_string(),
+            ipc_parent_endpoint: "".to_string(),
             exponential_back_off_secs: 10,
             exponential_retry_limit: 10,
         };
@@ -460,7 +464,7 @@ mod tests {
         let config = Config {
             chain_head_delay: 2,
             polling_interval_secs: 10,
-            ipc_agent_url: "".to_string(),
+            ipc_parent_endpoint: "".to_string(),
             exponential_back_off_secs: 10,
             exponential_retry_limit: 10,
         };

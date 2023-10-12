@@ -30,10 +30,10 @@ pub trait ParentFinalityStateQuery {
 }
 
 /// Constantly syncing with parent through polling
-pub struct PollingParentSyncer<T> {
+struct PollingParentSyncer<T> {
     config: Config,
     parent_view_provider: Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
-    agent: Arc<IPCProviderProxy>,
+    parent_client: Arc<IPCProviderProxy>,
     committed_state_query: Arc<T>,
 }
 
@@ -41,7 +41,7 @@ pub struct PollingParentSyncer<T> {
 /// means the chain has just started, then query from the parent to get the genesis epoch.
 async fn query_starting_finality<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     query: &Arc<T>,
-    agent: &Arc<IPCProviderProxy>,
+    parent_client: &Arc<IPCProviderProxy>,
 ) -> anyhow::Result<IPCParentFinality> {
     loop {
         let mut finality = match query.get_latest_committed_finality() {
@@ -62,8 +62,8 @@ async fn query_starting_finality<T: ParentFinalityStateQuery + Send + Sync + 'st
         // this means there are no previous committed finality yet, we fetch from parent to get
         // the genesis epoch of the current subnet and its corresponding block hash.
         if finality.height == 0 {
-            let genesis_epoch = agent.get_genesis_epoch().await?;
-            let block_hash = agent.get_block_hash(genesis_epoch).await?;
+            let genesis_epoch = parent_client.get_genesis_epoch().await?;
+            let block_hash = parent_client.get_block_hash(genesis_epoch).await?;
             finality = IPCParentFinality {
                 height: genesis_epoch,
                 block_hash,
@@ -82,7 +82,7 @@ pub async fn launch_polling_syncer<T: ParentFinalityStateQuery + Send + Sync + '
     query: T,
     config: Config,
     view_provider: Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
-    agent: Arc<IPCProviderProxy>,
+    parent_client: Arc<IPCProviderProxy>,
 ) -> anyhow::Result<()> {
     if !view_provider.is_enabled() {
         return Err(anyhow!("provider not enabled, enable to run syncer"));
@@ -90,11 +90,11 @@ pub async fn launch_polling_syncer<T: ParentFinalityStateQuery + Send + Sync + '
 
     let query = Arc::new(query);
 
-    let finality = query_starting_finality(&query, &agent).await?;
+    let finality = query_starting_finality(&query, &parent_client).await?;
 
     atomically(|| view_provider.set_new_finality(finality.clone())).await;
 
-    let poll = PollingParentSyncer::new(config, view_provider, agent, query);
+    let poll = PollingParentSyncer::new(config, view_provider, parent_client, query);
     poll.start();
 
     Ok(())
@@ -104,13 +104,13 @@ impl<T> PollingParentSyncer<T> {
     pub fn new(
         config: Config,
         parent_view_provider: Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
-        agent: Arc<IPCProviderProxy>,
+        parent_client: Arc<IPCProviderProxy>,
         query: Arc<T>,
     ) -> Self {
         Self {
             config,
             parent_view_provider,
-            agent,
+            parent_client,
             committed_state_query: query,
         }
     }
@@ -121,7 +121,7 @@ impl<T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T>
     pub fn start(self) {
         let config = self.config;
         let provider = self.parent_view_provider;
-        let agent = self.agent;
+        let parent_client = self.parent_client;
         let query = self.committed_state_query;
 
         let mut interval = tokio::time::interval(Duration::from_secs(config.polling_interval_secs));
@@ -130,7 +130,7 @@ impl<T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T>
             loop {
                 interval.tick().await;
 
-                if let Err(e) = sync_with_parent(&config, &agent, &provider, &query).await {
+                if let Err(e) = sync_with_parent(&config, &parent_client, &provider, &query).await {
                     tracing::error!("sync with parent encountered error: {e}");
                 }
             }
@@ -146,7 +146,7 @@ impl<T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T>
 /// 4. Update the data into cache
 async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     config: &Config,
-    agent_proxy: &Arc<IPCProviderProxy>,
+    parent_proxy: &Arc<IPCProviderProxy>,
     provider: &Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
     query: &Arc<T>,
 ) -> anyhow::Result<()> {
@@ -157,7 +157,7 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
         return Ok(());
     };
 
-    let parent_chain_head_height = agent_proxy
+    let parent_chain_head_height = parent_proxy
         .get_chain_head_height()
         .await
         .context("cannot fetch parent chain head")?;
@@ -187,7 +187,7 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     // than our previously fetched head. It could be a chain reorg. We clear all the cache
     // in `provider` and start from scratch
     if last_recorded_height > ending_height {
-        let finality = query_starting_finality(query, agent_proxy).await?;
+        let finality = query_starting_finality(query, parent_proxy).await?;
         atomically(|| provider.reset(finality.clone())).await;
         return Ok(());
     }
@@ -199,7 +199,7 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     tracing::debug!("parent view range: {starting_height}-{ending_height}");
 
     let new_parent_views =
-        get_new_parent_views(agent_proxy, starting_height, ending_height).await?;
+        get_new_parent_views(parent_proxy, starting_height, ending_height).await?;
     tracing::debug!("new parent views: {new_parent_views:?}");
 
     atomically_or_err::<_, Error, _>(move || {
@@ -236,7 +236,7 @@ async fn last_recorded_height(
 
 /// Obtain the new parent views for the input block height range
 async fn get_new_parent_views(
-    agent_proxy: &Arc<IPCProviderProxy>,
+    parent_proxy: &Arc<IPCProviderProxy>,
     start_height: BlockHeight,
     end_height: BlockHeight,
 ) -> anyhow::Result<
@@ -250,15 +250,15 @@ async fn get_new_parent_views(
     let mut block_height_to_update = vec![];
     let mut total_top_down_msgs = 0;
     for h in start_height..=end_height {
-        let block_hash = agent_proxy
+        let block_hash = parent_proxy
             .get_block_hash(h)
             .await
             .context("cannot fetch block hash")?;
-        let validator_changes = agent_proxy
+        let validator_changes = parent_proxy
             .get_validator_changes(h)
             .await
             .context("cannot fetch validator set")?;
-        let top_down_msgs = agent_proxy
+        let top_down_msgs = parent_proxy
             .get_top_down_msgs(h, h)
             .await
             .context("cannot fetch top down messages")?;

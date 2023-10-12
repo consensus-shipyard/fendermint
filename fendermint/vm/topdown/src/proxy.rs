@@ -37,7 +37,7 @@ pub trait ParentQueryProxy {
     ) -> anyhow::Result<Vec<StakingChangeRequest>>;
 }
 
-/// The proxy to ipc agent
+/// The proxy to the subnet's parent
 pub struct IPCProviderProxy {
     ipc_provider: IpcProvider,
     /// The parent subnet for the child subnet we are target. We can derive from child subnet,
