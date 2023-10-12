@@ -159,6 +159,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ahash"
+version = "0.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c99f64d1e06488f620f932677e24bc6e2897582980441ae90a671415bd7ec2f"
+dependencies = [
+ "cfg-if",
+ "getrandom 0.2.10",
+ "once_cell",
+ "version_check",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2514,7 +2526,7 @@ dependencies = [
  "rlp",
  "serde",
  "serde_json",
- "strum",
+ "strum 0.25.0",
  "syn 2.0.38",
  "tempfile",
  "thiserror",
@@ -4581,7 +4593,7 @@ dependencies = [
 [[package]]
 name = "ipc-identity"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#16d99eda5c66a3c27a353c0116567d14a536c63f"
+source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#afb04448716ab65092e01a1c8efeb2b4da2570fe"
 dependencies = [
  "ahash 0.8.3",
  "anyhow",
@@ -4608,7 +4620,7 @@ dependencies = [
 [[package]]
 name = "ipc-provider"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#16d99eda5c66a3c27a353c0116567d14a536c63f"
+source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#afb04448716ab65092e01a1c8efeb2b4da2570fe"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -4647,7 +4659,7 @@ dependencies = [
 [[package]]
 name = "ipc-sdk"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#16d99eda5c66a3c27a353c0116567d14a536c63f"
+source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#afb04448716ab65092e01a1c8efeb2b4da2570fe"
 dependencies = [
  "anyhow",
  "cid",
@@ -4671,7 +4683,7 @@ dependencies = [
 [[package]]
 name = "ipc_actors_abis"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev#081fea80569ff11c080de7281340c8faa167d3b0"
+source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev#f492531ae7d441b4bb00ca930f5d066956fadf4f"
 dependencies = [
  "anyhow",
  "ethers",
@@ -6466,7 +6478,7 @@ checksum = "83a0692ec44e4cf1ef28ca317f14f8f07da2d95ec3fa01f86e4467b725e60917"
 dependencies = [
  "digest 0.10.7",
  "hmac 0.12.1",
- "password-hash",
+ "password-hash 0.4.2",
  "sha2 0.10.8",
 ]
 
@@ -9018,6 +9030,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-native-tls"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbae76ab933c85776efabc971569dd6119c580d8f5d448769dec1764bf796ef2"
+dependencies = [
+ "native-tls",
+ "tokio",
+]
+
+[[package]]
 name = "tokio-rustls"
 version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9058,6 +9080,20 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+]
+
+[[package]]
+name = "tokio-tungstenite"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54319c93411147bced34cb5609a80e0a8e44c5999c93903a81cd866630ec0bfd"
+dependencies = [
+ "futures-util",
+ "log",
+ "native-tls",
+ "tokio",
+ "tokio-native-tls",
+ "tungstenite 0.18.0",
 ]
 
 [[package]]
