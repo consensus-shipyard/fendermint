@@ -187,9 +187,29 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     // than our previously fetched head. It could be a chain reorg. We clear all the cache
     // in `provider` and start from scratch
     if last_recorded_height > ending_height {
-        let finality = query_starting_finality(query, parent_proxy).await?;
-        atomically(|| provider.reset(finality.clone())).await;
-        return Ok(());
+        return reset_cache(parent_proxy, provider, query).await;
+    }
+
+    // we also check if the starting height is the one we keep in the provider, if not
+    // this also means that there's been a reorg.
+    let last_committed_block = atomically(|| {
+        let b = if let Some(f) = provider.last_committed_finality()? {
+            Some(f.block_hash)
+        } else {
+            None
+        };
+        Ok(b)
+    })
+    .await;
+    if let Some(blk) = last_committed_block {
+        if blk
+            != parent_proxy
+                .get_block_hash(last_recorded_height)
+                .await
+                .context("cannot fetch block hash")?
+        {
+            return reset_cache(parent_proxy, provider, query).await;
+        }
     }
 
     // we are adding 1 to the height because we are fetching block by block, we also configured
@@ -212,6 +232,17 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
 
     tracing::debug!("updated new parent views till height: {ending_height}");
 
+    Ok(())
+}
+
+/// Reset the cache in the face of a reorg
+async fn reset_cache<T: ParentFinalityStateQuery + Send + Sync + 'static>(
+    parent_proxy: &Arc<IPCProviderProxy>,
+    provider: &Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
+    query: &Arc<T>,
+) -> anyhow::Result<()> {
+    let finality = query_starting_finality(query, parent_proxy).await?;
+    atomically(|| provider.reset(finality.clone())).await;
     Ok(())
 }
 
