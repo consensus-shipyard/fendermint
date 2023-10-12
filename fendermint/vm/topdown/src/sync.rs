@@ -186,30 +186,12 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     // we are going backwards in terms of block height, the latest block height is lower
     // than our previously fetched head. It could be a chain reorg. We clear all the cache
     // in `provider` and start from scratch
+    //
+    // This doesn't cover all the cases where a reorg may happen, and with this simple check
+    // we can still end up in consensus breaking scenarios where validators are not in sync.
+    // TODO: https://github.com/consensus-shipyard/fendermint/issues/314 for the right solution.
     if last_recorded_height > ending_height {
         return reset_cache(parent_proxy, provider, query).await;
-    }
-
-    // we also check if the starting height is the one we keep in the provider, if not
-    // this also means that there's been a reorg.
-    let last_committed_block = atomically(|| {
-        let b = if let Some(f) = provider.last_committed_finality()? {
-            Some(f.block_hash)
-        } else {
-            None
-        };
-        Ok(b)
-    })
-    .await;
-    if let Some(blk) = last_committed_block {
-        if blk
-            != parent_proxy
-                .get_block_hash(last_recorded_height)
-                .await
-                .context("cannot fetch block hash")?
-        {
-            return reset_cache(parent_proxy, provider, query).await;
-        }
     }
 
     // we are adding 1 to the height because we are fetching block by block, we also configured
