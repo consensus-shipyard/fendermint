@@ -47,7 +47,7 @@ pub async fn maybe_create_checkpoint<C, DB>(
     client: &C,
     gateway: &GatewayCaller<DB>,
     state: &mut FvmExecState<DB>,
-) -> anyhow::Result<Option<(router::BottomUpCheckpoint, PowerTable, PowerUpdates)>>
+) -> anyhow::Result<Option<(router::BottomUpCheckpoint, PowerUpdates)>>
 where
     C: Client + Sync + Send + 'static,
     DB: Blockstore + Sync + Send + 'static,
@@ -76,25 +76,6 @@ where
                 .apply_validator_changes(state)
                 .context("failed to apply validator changes")?;
 
-            // Figure out the power updates if there was some change in the configuration.
-            let power_updates = if next_configuration_number == 0 {
-                PowerUpdates(Vec::new())
-            } else {
-                let next_membership = gateway
-                    .current_validator_set(state)
-                    .context("failed to get current validator set")?;
-
-                debug_assert_eq!(
-                    next_membership.configuration_number,
-                    next_configuration_number
-                );
-
-                let next_power_table =
-                    membership_to_power_table(&next_membership, state.power_scale());
-
-                power_diff(&power_table, next_power_table)
-            };
-
             // Retrieve the bottom-up messages so we can put their hash into the checkpoint.
             let cross_messages_hash = gateway
                 .bottom_up_msgs_hash(state, height.value())
@@ -115,7 +96,26 @@ where
                 .create_bottom_up_checkpoint(state, checkpoint.clone(), &power_table.0)
                 .context("failed to store checkpoint")?;
 
-            Ok(Some((checkpoint, power_table, power_updates)))
+            // Figure out the power updates if there was some change in the configuration.
+            let power_updates = if next_configuration_number == 0 {
+                PowerUpdates(Vec::new())
+            } else {
+                let next_membership = gateway
+                    .current_validator_set(state)
+                    .context("failed to get current validator set")?;
+
+                debug_assert_eq!(
+                    next_membership.configuration_number,
+                    next_configuration_number
+                );
+
+                let next_power_table =
+                    membership_to_power_table(&next_membership, state.power_scale());
+
+                power_diff(power_table, next_power_table)
+            };
+
+            Ok(Some((checkpoint, power_updates)))
         }
     }
 }
@@ -267,23 +267,16 @@ fn u256_to_tokens(value: U256) -> TokenAmount {
     TokenAmount::from_atto(atto)
 }
 
-/// Calculate the difference between the current and the next power table, to return to CometBFT only what changed.
-fn power_diff(current: &PowerTable, next: PowerTable) -> PowerUpdates {
-    let current = current
-        .0
-        .iter()
-        .map(|v| {
-            // Unfortunately the keys don't implement `Hash`.
-            let k = v.public_key.0.serialize();
-            (k, v)
-        })
-        .collect::<HashMap<_, _>>();
-
+/// Calculate the difference between the current and the next power table, to return to CometBFT only what changed:
+/// * include any new validator, or validators whose power has been updated
+/// * include validators to be removed with a power of 0, as [expected](https://github.com/informalsystems/tendermint-rs/blob/bcc0b377812b8e53a02dff156988569c5b3c81a2/rpc/src/dialect/end_block.rs#L12-L14) by CometBFT
+fn power_diff(current: PowerTable, next: PowerTable) -> PowerUpdates {
+    let current = into_power_map(current);
     let next = into_power_map(next);
 
     let mut diff = Vec::new();
 
-    // Validators in current but not in next should be removed.
+    // Validators in `current` but not in `next` should be removed.
     for (k, v) in current.iter() {
         if !next.contains_key(k) {
             let delete = Validator {
@@ -294,10 +287,10 @@ fn power_diff(current: &PowerTable, next: PowerTable) -> PowerUpdates {
         }
     }
 
-    // Validators in next that differ from current should be updated.
+    // Validators in `next` that differ from `current` should be updated.
     for (k, v) in next.into_iter() {
         let insert = match current.get(&k) {
-            Some(w) if **w == v => None,
+            Some(w) if *w == v => None,
             _ => Some(v),
         };
         if let Some(insert) = insert {
@@ -308,12 +301,15 @@ fn power_diff(current: &PowerTable, next: PowerTable) -> PowerUpdates {
     PowerUpdates(diff)
 }
 
+/// Convert the power list to a `HashMap` to support lookups by the public key.
+///
+/// Unfortunately in their raw format the [`PublicKey`] does not implement `Hash`,
+/// so we have to use the serialized format.
 fn into_power_map(value: PowerTable) -> HashMap<[u8; 65], Validator<Power>> {
     value
         .0
         .into_iter()
         .map(|v| {
-            // Unfortunately the keys don't implement `Hash`.
             let k = v.public_key.0.serialize();
             (k, v)
         })
@@ -385,7 +381,7 @@ mod tests {
 
     #[quickcheck]
     fn prop_power_diff_update(powers: TestPowerTables) {
-        let diff = power_diff(&powers.current, powers.next.clone());
+        let diff = power_diff(powers.current.clone(), powers.next.clone());
         let next = power_update(powers.current, diff);
 
         // Order shouldn't matter.
@@ -399,6 +395,6 @@ mod tests {
     fn prop_power_diff_nochange(v1: Validator<Power>, v2: Validator<Power>) {
         let current = PowerTable(vec![v1.clone(), v2.clone()]);
         let next = PowerTable(vec![v2, v1]);
-        assert!(power_diff(&current, next).0.is_empty());
+        assert!(power_diff(current, next).0.is_empty());
     }
 }
