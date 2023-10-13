@@ -30,6 +30,13 @@ docker run \
 """
 dependencies = ["cometbft-pull", "docker-network-create"]
 
+[tasks.cometbft-node-id]
+script = """
+docker exec \
+  ${CMT_CONTAINER_NAME} \
+  cometbft show-node-id
+"""
+
 [tasks.cometbft-rm]
 extend = "docker-rm"
 env = { "CONTAINER_NAME" = "${CMT_CONTAINER_NAME}" }
