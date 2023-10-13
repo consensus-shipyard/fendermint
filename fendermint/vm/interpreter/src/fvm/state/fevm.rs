@@ -84,12 +84,13 @@ where
     {
         match self.try_call(state, f)? {
             Ok(value) => Ok(value),
-            Err((exit_code, failure_info)) => {
+            Err((exit_code, failure_info, data)) => {
                 bail!(
-                    "failed to execute contract call to {}: {} - {}",
+                    "failed to execute contract call to {}:\ncode: {}\ndata: 0x{}\ninfo: {}",
                     self.addr,
                     exit_code.value(),
-                    failure_info.map(|i| i.to_string()).unwrap_or_default()
+                    hex::encode(data.as_slice()),
+                    failure_info.map(|i| i.to_string()).unwrap_or_default(),
                 );
             }
         }
@@ -103,7 +104,7 @@ where
         &self,
         state: &mut FvmExecState<DB>,
         f: F,
-    ) -> anyhow::Result<Result<T, (ExitCode, Option<ApplyFailure>)>>
+    ) -> anyhow::Result<Result<T, (ExitCode, Option<ApplyFailure>, RawBytes)>>
     where
         F: FnOnce(&C) -> MockContractCall<T>,
         T: Detokenize,
@@ -129,7 +130,11 @@ where
         let (ret, _) = state.execute_implicit(msg).context("failed to call FEVM")?;
 
         if !ret.msg_receipt.exit_code.is_success() {
-            Ok(Err((ret.msg_receipt.exit_code, ret.failure_info)))
+            Ok(Err((
+                ret.msg_receipt.exit_code,
+                ret.failure_info,
+                ret.msg_receipt.return_data,
+            )))
         } else {
             let data = ret
                 .msg_receipt

@@ -85,9 +85,9 @@ impl StateMachine for StakingMachine {
             majority_percentage: child_ipc.gateway.majority_percentage,
             active_validators_limit: child_ipc.gateway.active_validators_limit,
             power_scale: state.child_genesis.power_scale,
-            // Not testing actvation.
-            min_activation_collateral: et::U256::zero(),
-            min_validators: 0,
+            // Not testing actvation, it cannot be zero.
+            min_activation_collateral: et::U256::from(1),
+            min_validators: 1,
             // Not testing rewards
             relayer_reward: et::U256::zero(),
         };
