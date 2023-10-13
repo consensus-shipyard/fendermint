@@ -16,6 +16,8 @@ use fendermint_vm_interpreter::{
 };
 use fvm::engine::MultiEngine;
 
+pub mod ipc;
+
 pub async fn init_exec_state(
     multi_engine: Arc<MultiEngine>,
     genesis: Genesis,
