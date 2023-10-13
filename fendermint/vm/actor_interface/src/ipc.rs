@@ -83,6 +83,9 @@ lazy_static! {
     /// Contracts that need to be deployed afresh for each subnet.
     ///
     /// See [deploy-sa-diamond.ts](https://github.com/consensus-shipyard/ipc-solidity-actors/blob/dev/scripts/deploy-sa-diamond.ts)
+    ///
+    /// But it turns out that the [SubnetRegistry](https://github.com/consensus-shipyard/ipc-solidity-actors/blob/3b0f3528b79e53e3c90f15016a40892122938ef0/src/SubnetRegistry.sol#L67)
+    /// actor has this `SubnetActorDiamond` and its facets baked into it, and able to deploy without further ado.
     pub static ref SUBNET_CONTRACTS: EthContractMap = {
         [
             (
