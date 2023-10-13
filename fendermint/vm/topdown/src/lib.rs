@@ -60,7 +60,11 @@ pub trait ParentViewProvider {
         height: BlockHeight,
     ) -> anyhow::Result<Vec<StakingChangeRequest>>;
     /// Get the top down messages at height
-    async fn top_down_msgs(&self, height: BlockHeight) -> anyhow::Result<Vec<CrossMsg>>;
+    async fn top_down_msgs(
+        &self,
+        height: BlockHeight,
+        block_hash: &BlockHash,
+    ) -> anyhow::Result<Vec<CrossMsg>>;
 }
 
 pub trait ParentFinalityProvider: ParentViewProvider {

@@ -87,7 +87,11 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
 
     /// Should always return the top down messages, only when ipc parent_client is down after exponential
     /// retries
-    async fn top_down_msgs(&self, height: BlockHeight) -> anyhow::Result<Vec<CrossMsg>> {
+    async fn top_down_msgs(
+        &self,
+        height: BlockHeight,
+        block_hash: &BlockHash,
+    ) -> anyhow::Result<Vec<CrossMsg>> {
         let r = atomically(|| self.cached_data.top_down_msgs_at_height(height)).await;
         if let Some(v) = r {
             return Ok(v);
@@ -97,9 +101,8 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
             self.config.exponential_back_off_secs,
             self.config.exponential_retry_limit,
             self.parent_client
-                .get_top_down_msgs(height)
+                .get_top_down_msgs_with_hash(height, block_hash)
                 .await
-                .map(|r| r.value)
         )
     }
 }
@@ -324,14 +327,12 @@ mod tests {
             Ok(GetBlockHashResult::default())
         }
 
-        async fn get_top_down_msgs(
+        async fn get_top_down_msgs_with_hash(
             &self,
             height: BlockHeight,
-        ) -> anyhow::Result<TopDownQueryPayload<Vec<CrossMsg>>> {
-            Ok(TopDownQueryPayload {
-                value: vec![],
-                block_hash: vec![],
-            })
+            block_hash: &BlockHash,
+        ) -> anyhow::Result<Vec<CrossMsg>> {
+            Ok(vec![])
         }
 
         async fn get_validator_changes(

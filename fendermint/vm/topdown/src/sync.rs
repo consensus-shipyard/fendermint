@@ -260,7 +260,7 @@ async fn last_recorded_height(
 /// Obtain the new parent views for the input block height range
 async fn get_new_parent_views(
     parent_proxy: &Arc<IPCProviderProxy>,
-    previous_hash: BlockHash,
+    mut previous_hash: BlockHash,
     start_height: BlockHeight,
     end_height: BlockHeight,
 ) -> Result<
@@ -275,7 +275,6 @@ async fn get_new_parent_views(
     let mut block_height_to_update = vec![];
     let mut total_top_down_msgs = 0;
 
-    let mut previous_hash = previous_hash;
     for h in start_height..=end_height {
         let block_hash_res = parent_proxy
             .get_block_hash(h)
@@ -296,15 +295,12 @@ async fn get_new_parent_views(
         }
 
         let top_down_msgs_res = parent_proxy
-            .get_top_down_msgs(h)
+            .get_top_down_msgs_with_hash(h, &block_hash_res.block_hash)
             .await
             .context("cannot fetch top down messages")
             .map_err(|e| Error::CannotQueryParent(e.to_string()))?;
-        if top_down_msgs_res.block_hash != block_hash_res.block_hash {
-            return Err(Error::ParentChainReorgDetected);
-        }
 
-        total_top_down_msgs += top_down_msgs_res.value.len();
+        total_top_down_msgs += top_down_msgs_res.len();
 
         previous_hash = block_hash_res.parent_block_hash;
 
@@ -312,7 +308,7 @@ async fn get_new_parent_views(
             h,
             block_hash_res.block_hash,
             changes_res.value,
-            top_down_msgs_res.value,
+            top_down_msgs_res,
         ));
         if total_top_down_msgs >= TOPDOWN_MSG_LEN_THRESHOLD {
             break;
