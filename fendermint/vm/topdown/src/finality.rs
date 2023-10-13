@@ -78,7 +78,7 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
         retry!(
             self.config.exponential_back_off_secs,
             self.config.exponential_retry_limit,
-            self.parent_client.get_validator_changes(height).await
+            self.parent_client.get_validator_changes(height).await.map(|r| r.value)
         )
     }
 
@@ -93,7 +93,7 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
         retry!(
             self.config.exponential_back_off_secs,
             self.config.exponential_retry_limit,
-            self.parent_client.get_top_down_msgs(height, height).await
+            self.parent_client.get_top_down_msgs(height).await.map(|r| r.value)
         )
     }
 }
@@ -159,8 +159,12 @@ impl<T> CachedFinalityProvider<T> {
         }
     }
 
-    pub fn latest_height(&self) -> Stm<Option<BlockHeight>> {
-        self.cached_data.latest_height()
+    pub fn latest_height_hash(&self) -> Stm<Option<(BlockHeight, BlockHash)>> {
+        if let Some(height) = self.cached_data.latest_height()? {
+            let maybe_hash = self.cached_data.block_hash(height)?;
+            maybe_hash.map(|hash| (height, hash))
+        }
+        Ok(None)
     }
 
     pub fn last_committed_finality(&self) -> Stm<Option<IPCParentFinality>> {
@@ -289,6 +293,7 @@ mod tests {
     use async_trait::async_trait;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
+    use ipc_provider::manager::{GetBlockHashResult, TopDownQueryPayload};
     use ipc_sdk::cross::{CrossMsg, StorableMsg};
     use ipc_sdk::staking::StakingChangeRequest;
     use ipc_sdk::subnet_id::SubnetID;
@@ -308,23 +313,28 @@ mod tests {
             Ok(10)
         }
 
-        async fn get_block_hash(&self, _height: BlockHeight) -> anyhow::Result<BlockHash> {
-            Ok(BlockHash::default())
+        async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<GetBlockHashResult> {
+            Ok(GetBlockHashResult::default())
         }
 
         async fn get_top_down_msgs(
             &self,
-            _start_height: BlockHeight,
-            _end_height: u64,
-        ) -> anyhow::Result<Vec<CrossMsg>> {
-            Ok(vec![])
+            height: BlockHeight,
+        ) -> anyhow::Result<TopDownQueryPayload<Vec<CrossMsg>>> {
+            Ok(TopDownQueryPayload {
+                value: vec![],
+                block_hash: vec![],
+            })
         }
 
         async fn get_validator_changes(
             &self,
-            _height: BlockHeight,
-        ) -> anyhow::Result<Vec<StakingChangeRequest>> {
-            Ok(vec![])
+            height: BlockHeight,
+        ) -> anyhow::Result<TopDownQueryPayload<Vec<StakingChangeRequest>>> {
+            Ok(TopDownQueryPayload {
+                value: vec![],
+                block_hash: vec![],
+            })
         }
     }
 

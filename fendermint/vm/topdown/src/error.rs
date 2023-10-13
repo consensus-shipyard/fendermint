@@ -11,4 +11,8 @@ pub enum Error {
     NonceNotSequential,
     #[error("The parent view update with block height is not sequential")]
     NonSequentialParentViewInsert(SequentialAppendError),
+    #[error("Parent chain reorg detected")]
+    ParentChainReorgDetected,
+    #[error("Cannot query parent")]
+    CannotQueryParent(String),
 }

@@ -5,6 +5,7 @@ use crate::{BlockHash, BlockHeight};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use fvm_shared::clock::ChainEpoch;
+use ipc_provider::manager::{GetBlockHashResult, TopDownQueryPayload};
 use ipc_provider::IpcProvider;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::staking::StakingChangeRequest;
@@ -21,20 +22,19 @@ pub trait ParentQueryProxy {
     async fn get_genesis_epoch(&self) -> anyhow::Result<BlockHeight>;
 
     /// Getting the block hash at the target height.
-    async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<BlockHash>;
+    async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<GetBlockHashResult>;
 
     /// Get the top down messages from the starting to the ending height.
     async fn get_top_down_msgs(
         &self,
-        start_height: BlockHeight,
-        end_height: u64,
-    ) -> anyhow::Result<Vec<CrossMsg>>;
+        height: BlockHeight,
+    ) -> anyhow::Result<TopDownQueryPayload<Vec<CrossMsg>>>;
 
     /// Get the validator set at the specified height
     async fn get_validator_changes(
         &self,
         height: BlockHeight,
-    ) -> anyhow::Result<Vec<StakingChangeRequest>>;
+    ) -> anyhow::Result<TopDownQueryPayload<Vec<StakingChangeRequest>>>;
 }
 
 /// The proxy to the subnet's parent
@@ -75,7 +75,7 @@ impl ParentQueryProxy for IPCProviderProxy {
     }
 
     /// Getting the block hash at the target height.
-    async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<BlockHash> {
+    async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<GetBlockHashResult> {
         self.ipc_provider
             .get_block_hash(&self.parent_subnet, height as ChainEpoch)
             .await
@@ -84,15 +84,10 @@ impl ParentQueryProxy for IPCProviderProxy {
     /// Get the top down messages from the starting to the ending height.
     async fn get_top_down_msgs(
         &self,
-        start_height: BlockHeight,
-        end_height: u64,
-    ) -> anyhow::Result<Vec<CrossMsg>> {
+        height: BlockHeight,
+    ) -> anyhow::Result<TopDownQueryPayload<Vec<CrossMsg>>> {
         self.ipc_provider
-            .get_top_down_msgs(
-                &self.child_subnet,
-                start_height as ChainEpoch,
-                end_height as ChainEpoch,
-            )
+            .get_top_down_msgs(&self.child_subnet, height as ChainEpoch)
             .await
     }
 
@@ -100,13 +95,9 @@ impl ParentQueryProxy for IPCProviderProxy {
     async fn get_validator_changes(
         &self,
         height: BlockHeight,
-    ) -> anyhow::Result<Vec<StakingChangeRequest>> {
+    ) -> anyhow::Result<TopDownQueryPayload<Vec<StakingChangeRequest>>> {
         self.ipc_provider
-            .get_validator_changeset(
-                &self.child_subnet,
-                height as ChainEpoch,
-                height as ChainEpoch,
-            )
+            .get_validator_changeset(&self.child_subnet, height as ChainEpoch)
             .await
     }
 }

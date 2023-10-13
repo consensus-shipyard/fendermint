@@ -10,6 +10,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use async_stm::{atomically, atomically_or_err};
+use ipc_provider::manager::{GetBlockHashResult, TopDownQueryPayload};
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::staking::StakingChangeRequest;
 use std::cmp::min;
@@ -63,10 +64,10 @@ async fn query_starting_finality<T: ParentFinalityStateQuery + Send + Sync + 'st
         // the genesis epoch of the current subnet and its corresponding block hash.
         if finality.height == 0 {
             let genesis_epoch = parent_client.get_genesis_epoch().await?;
-            let block_hash = parent_client.get_block_hash(genesis_epoch).await?;
+            let r = parent_client.get_block_hash(genesis_epoch).await?;
             finality = IPCParentFinality {
                 height: genesis_epoch,
-                block_hash,
+                block_hash: r.block_hash,
             };
             tracing::info!(
                 "no previous finality committed, fetched from genesis epoch: {finality:?}"
@@ -150,12 +151,13 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     provider: &Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
     query: &Arc<T>,
 ) -> anyhow::Result<()> {
-    let last_recorded_height = if let Some(h) = last_recorded_height(provider).await? {
-        h
-    } else {
-        // cannot get starting recorded height, we just wait for the next loop execution
-        return Ok(());
-    };
+    let (last_recorded_height, last_height_hash) =
+        if let Some(h) = last_recorded_height(provider).await? {
+            h
+        } else {
+            // cannot get starting recorded height, we just wait for the next loop execution
+            return Ok(());
+        };
 
     let parent_chain_head_height = parent_proxy
         .get_chain_head_height()
@@ -186,10 +188,6 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     // we are going backwards in terms of block height, the latest block height is lower
     // than our previously fetched head. It could be a chain reorg. We clear all the cache
     // in `provider` and start from scratch
-    //
-    // This doesn't cover all the cases where a reorg may happen, and with this simple check
-    // we can still end up in consensus breaking scenarios where validators are not in sync.
-    // TODO: https://github.com/consensus-shipyard/fendermint/issues/314 for the right solution.
     if last_recorded_height > ending_height {
         return reset_cache(parent_proxy, provider, query).await;
     }
@@ -200,8 +198,20 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     let ending_height = min(ending_height, MAX_PARENT_VIEW_BLOCK_GAP + starting_height);
     tracing::debug!("parent view range: {starting_height}-{ending_height}");
 
-    let new_parent_views =
-        get_new_parent_views(parent_proxy, starting_height, ending_height).await?;
+    let new_parent_views = match get_new_parent_views(
+        parent_proxy,
+        last_height_hash,
+        starting_height,
+        ending_height,
+    )
+    .await {
+        Ok(views) => views,
+        Err(Error::ParentChainReorgDetected) => {
+            return reset_cache(parent_proxy, provider, query).await;
+        },
+        Err(Error::CannotQueryParent(e)) => return Err(anyhow!(e)),
+        _ => unreachable!()
+    };
     tracing::debug!("new parent views: {new_parent_views:?}");
 
     atomically_or_err::<_, Error, _>(move || {
@@ -231,12 +241,12 @@ async fn reset_cache<T: ParentFinalityStateQuery + Send + Sync + 'static>(
 /// Obtains the last recorded height from provider cache or from last committed finality height.
 async fn last_recorded_height(
     provider: &Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
-) -> anyhow::Result<Option<BlockHeight>> {
-    let height = atomically(|| {
-        let h = if let Some(h) = provider.latest_height()? {
+) -> anyhow::Result<Option<(BlockHeight, BlockHash)>> {
+    let result = atomically(|| {
+        let h = if let Some(h) = provider.latest_height_hash()? {
             Some(h)
         } else if let Some(f) = provider.last_committed_finality()? {
-            Some(f.height)
+            ome((f.height, f.block_hash))
         } else {
             None
         };
@@ -244,40 +254,64 @@ async fn last_recorded_height(
     })
     .await;
 
-    Ok(height)
+    Ok(result)
 }
 
 /// Obtain the new parent views for the input block height range
 async fn get_new_parent_views(
     parent_proxy: &Arc<IPCProviderProxy>,
+    previous_hash: BlockHash,
     start_height: BlockHeight,
     end_height: BlockHeight,
-) -> anyhow::Result<
+) -> Result<
     Vec<(
         BlockHeight,
         BlockHash,
         Vec<StakingChangeRequest>,
         Vec<CrossMsg>,
     )>,
+    Error,
 > {
     let mut block_height_to_update = vec![];
     let mut total_top_down_msgs = 0;
+
+    let mut previous_hash = previous_hash;
     for h in start_height..=end_height {
-        let block_hash = parent_proxy
+        let block_hash_res = parent_proxy
             .get_block_hash(h)
             .await
-            .context("cannot fetch block hash")?;
-        let validator_changes = parent_proxy
+            .context("cannot fetch block hash")
+            .map_err(|e| Error::CannotQueryParent(e.to_string()))?;
+        if block_hash_res.parent_block_hash != previous_hash {
+            return Err(Error::ParentChainReorgDetected);
+        }
+
+        let changes_res = parent_proxy
             .get_validator_changes(h)
             .await
-            .context("cannot fetch validator set")?;
-        let top_down_msgs = parent_proxy
+            .context("cannot fetch validator set")
+            .map_err(|e| Error::CannotQueryParent(e.to_string()))?;
+        if changes_res.block_hash != block_hash_res.block_hash {
+            return Err(Error::ParentChainReorgDetected);
+        }
+
+        let top_down_msgs_res = parent_proxy
             .get_top_down_msgs(h, h)
             .await
-            .context("cannot fetch top down messages")?;
-        total_top_down_msgs += top_down_msgs.len();
+            .context("cannot fetch top down messages")
+            .map_err(|e| Error::CannotQueryParent(e.to_string()))?;
+        if top_down_msgs_res.block_hash != block_hash_res.block_hash {
+            return Err(Error::ParentChainReorgDetected);
+        }
 
-        block_height_to_update.push((h, block_hash, validator_changes, top_down_msgs));
+        total_top_down_msgs += top_down_msgs_res.value.len();
+
+        block_height_to_update.push((
+            h,
+            block_hash_res.block_hash,
+            changes_res.value,
+            top_down_msgs_res.value,
+        ));
         if total_top_down_msgs >= TOPDOWN_MSG_LEN_THRESHOLD {
             break;
         }

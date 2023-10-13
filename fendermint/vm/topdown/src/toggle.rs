@@ -75,8 +75,8 @@ impl<P: ParentFinalityProvider + Send + Sync + 'static> ParentFinalityProvider f
 }
 
 impl<P> Toggle<CachedFinalityProvider<P>> {
-    pub fn latest_height(&self) -> Stm<Option<BlockHeight>> {
-        self.perform_or_else(|p| p.latest_height(), None)
+    pub fn latest_height_hash(&self) -> Stm<Option<(BlockHeight, BlockHash)>> {
+        self.perform_or_else(|p| p.latest_height_hash(), None)
     }
 
     pub fn last_committed_finality(&self) -> Stm<Option<IPCParentFinality>> {
