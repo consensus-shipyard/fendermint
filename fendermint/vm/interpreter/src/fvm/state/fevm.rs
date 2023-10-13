@@ -104,7 +104,7 @@ where
         &self,
         state: &mut FvmExecState<DB>,
         f: F,
-    ) -> anyhow::Result<Result<T, (ExitCode, Option<ApplyFailure>, RawBytes)>>
+    ) -> anyhow::Result<Result<T, (ExitCode, Option<ApplyFailure>, Vec<u8>)>>
     where
         F: FnOnce(&C) -> MockContractCall<T>,
         T: Detokenize,
@@ -130,11 +130,15 @@ where
         let (ret, _) = state.execute_implicit(msg).context("failed to call FEVM")?;
 
         if !ret.msg_receipt.exit_code.is_success() {
-            Ok(Err((
-                ret.msg_receipt.exit_code,
-                ret.failure_info,
-                ret.msg_receipt.return_data,
-            )))
+            // The EVM actor might return some data in the output.
+            let output = ret
+                .msg_receipt
+                .return_data
+                .deserialize::<BytesDe>()
+                .map(|bz| bz.0)
+                .context("failed to deserialize error data")?;
+
+            Ok(Err((ret.msg_receipt.exit_code, ret.failure_info, output)))
         } else {
             let data = ret
                 .msg_receipt
