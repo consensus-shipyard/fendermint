@@ -78,7 +78,6 @@ impl StateMachine for StakingMachine {
 
         let params = SubnetConstructorParams {
             parent_id: ipc_actors_abis::subnet_registry::SubnetID { root, route },
-            name: [0u8; 32], // Not sure what this is used for
             ipc_gateway_addr: gateway.addr().into(),
             consensus: 0, // TODO: What are the options?
             bottom_up_check_period: child_ipc.gateway.bottom_up_check_period,
@@ -88,9 +87,9 @@ impl StateMachine for StakingMachine {
             // Not testing actvation, it cannot be zero.
             min_activation_collateral: et::U256::from(1),
             min_validators: 1,
-            // Not testing rewards
-            relayer_reward: et::U256::zero(),
         };
+
+        eprintln!("> CREATING SUBNET: {params:?}");
 
         let subnet_addr = registry
             .new_subnet(&mut exec_state, params)

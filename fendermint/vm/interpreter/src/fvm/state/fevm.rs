@@ -89,6 +89,9 @@ where
                     "failed to execute contract call to {}:\ncode: {}\ndata: 0x{}\ninfo: {}",
                     self.addr,
                     exit_code.value(),
+                    // If this is empty, there is a fair chance the reason is the ABI bindings
+                    // being out of sync with the deployed contracts, and that's why there is
+                    // no context such as a custom error.
                     hex::encode(data.as_slice()),
                     failure_info.map(|i| i.to_string()).unwrap_or_default(),
                 );
