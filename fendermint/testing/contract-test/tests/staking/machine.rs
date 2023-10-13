@@ -3,8 +3,10 @@
 use std::sync::Arc;
 
 use arbitrary::{Arbitrary, Unstructured};
-use contract_test::ipc::registry::RegistryCaller;
+use contract_test::ipc::{registry::RegistryCaller, subnet::SubnetCaller};
+use ethers::types as et;
 use fendermint_testing::smt::StateMachine;
+use fendermint_vm_actor_interface::ipc::subnet_id_to_eth;
 use fendermint_vm_interpreter::fvm::{
     state::{ipc::GatewayCaller, FvmExecState},
     store::memory::MemoryBlockstore,
@@ -16,11 +18,15 @@ use fvm_shared::bigint::Integer;
 use fvm_shared::econ::TokenAmount;
 
 use super::state::StakingState;
+use contract_test::ipc::registry::SubnetConstructorParams;
 
 /// System Under Test for staking.
 pub struct StakingSystem {
     /// FVM state initialized with the parent genesis, and a subnet created for the child.
     _exec_state: FvmExecState<MemoryBlockstore>,
+    _gateway: GatewayCaller<MemoryBlockstore>,
+    _registry: RegistryCaller<MemoryBlockstore>,
+    _subnet: SubnetCaller<MemoryBlockstore>,
 }
 
 pub enum StakingCommand {
@@ -35,8 +41,6 @@ pub enum StakingCommand {
 #[derive(Default)]
 pub struct StakingMachine {
     multi_engine: Arc<MultiEngine>,
-    _gateway: GatewayCaller<MemoryBlockstore>,
-    _registry: RegistryCaller<MemoryBlockstore>,
 }
 
 impl StateMachine for StakingMachine {
@@ -55,19 +59,52 @@ impl StateMachine for StakingMachine {
     fn new_system(&self, state: &Self::State) -> Self::System {
         let rt = tokio::runtime::Runtime::new().expect("create tokio runtime for init");
 
-        let (exec_state, _) = rt
+        let (mut exec_state, _) = rt
             .block_on(contract_test::init_exec_state(
                 self.multi_engine.clone(),
                 state.parent_genesis.clone(),
             ))
             .expect("failed to init parent");
 
+        let gateway = GatewayCaller::default();
+        let registry = RegistryCaller::default();
+
         // Deploy a new subnet based on `state.child_genesis`
+        let parent_ipc = state.parent_genesis.ipc.as_ref().unwrap();
+        let child_ipc = state.child_genesis.ipc.as_ref().unwrap();
+
+        let (root, route) =
+            subnet_id_to_eth(&parent_ipc.gateway.subnet_id).expect("subnet ID is valid");
+
+        let params = SubnetConstructorParams {
+            parent_id: ipc_actors_abis::subnet_registry::SubnetID { root, route },
+            name: [0u8; 32], // Not sure what this is used for
+            ipc_gateway_addr: gateway.addr().into(),
+            consensus: 0, // TODO: What are the options?
+            bottom_up_check_period: child_ipc.gateway.bottom_up_check_period,
+            majority_percentage: child_ipc.gateway.majority_percentage,
+            active_validators_limit: child_ipc.gateway.active_validators_limit,
+            power_scale: state.child_genesis.power_scale,
+            // Not testing actvation.
+            min_activation_collateral: et::U256::zero(),
+            min_validators: 0,
+            // Not testing rewards
+            relayer_reward: et::U256::zero(),
+        };
+
+        let subnet_addr = registry
+            .new_subnet(&mut exec_state, params)
+            .expect("failed to create subnet");
+
+        let subnet = SubnetCaller::new(subnet_addr);
 
         // TODO: Make all the validators join the subnet by putting down collateral according to their power
 
         StakingSystem {
             _exec_state: exec_state,
+            _gateway: gateway,
+            _registry: registry,
+            _subnet: subnet,
         }
     }
 

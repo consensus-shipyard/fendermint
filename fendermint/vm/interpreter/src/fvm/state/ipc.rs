@@ -39,8 +39,8 @@ impl<DB> Default for GatewayCaller<DB> {
 }
 
 impl<DB> GatewayCaller<DB> {
-    pub fn new(gateway_actor_id: ActorID) -> Self {
-        let addr = EthAddress::from_id(gateway_actor_id);
+    pub fn new(actor_id: ActorID) -> Self {
+        let addr = EthAddress::from_id(actor_id);
         Self {
             addr,
             getter: ContractCaller::new(addr, GatewayGetterFacet::new),

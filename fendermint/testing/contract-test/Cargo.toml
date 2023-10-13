@@ -10,6 +10,7 @@ license.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+ethers = { workspace = true }
 fvm = { workspace = true }
 fvm_shared = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }

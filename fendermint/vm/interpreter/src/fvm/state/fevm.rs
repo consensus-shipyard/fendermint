@@ -55,10 +55,7 @@ impl<C, DB> ContractCaller<C, DB> {
         F: FnOnce(et::Address, Arc<MockProvider>) -> C,
     {
         let (client, _mock) = ep::Provider::mocked();
-        let contract = contract(
-            et::Address::from_slice(&addr.0),
-            std::sync::Arc::new(client),
-        );
+        let contract = contract(addr.into(), std::sync::Arc::new(client));
         Self {
             addr: Address::from(addr),
             contract,

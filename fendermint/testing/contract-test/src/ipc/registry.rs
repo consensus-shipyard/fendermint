@@ -10,9 +10,9 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::ActorID;
 use ipc_actors_abis::subnet_actor_getter_facet::SubnetActorGetterFacet as SubnetGetterFacet;
 use ipc_actors_abis::subnet_actor_manager_facet::SubnetActorManagerFacet as SubnetManagerFacet;
-use ipc_actors_abis::subnet_registry::{
-    ConstructorParams as SubnetConstructorParams, SubnetRegistry,
-};
+use ipc_actors_abis::subnet_registry::SubnetRegistry;
+
+pub use ipc_actors_abis::subnet_registry::ConstructorParams as SubnetConstructorParams;
 
 #[derive(Clone)]
 pub struct RegistryCaller<DB> {
@@ -29,8 +29,8 @@ impl<DB> Default for RegistryCaller<DB> {
 }
 
 impl<DB> RegistryCaller<DB> {
-    pub fn new(registry_actor_id: ActorID) -> Self {
-        let addr = EthAddress::from_id(registry_actor_id);
+    pub fn new(actor_id: ActorID) -> Self {
+        let addr = EthAddress::from_id(actor_id);
         Self {
             addr,
             registry: ContractCaller::new(addr, SubnetRegistry::new),
