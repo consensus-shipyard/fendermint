@@ -9,6 +9,7 @@ use ethers::core::types as et;
 use ethers::prelude::decode_function_data;
 use ethers::providers as ep;
 use fendermint_vm_actor_interface::{eam::EthAddress, evm, system};
+use fendermint_vm_message::conv::from_eth;
 use fvm::executor::ApplyFailure;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{BytesDe, BytesSer, RawBytes};
@@ -116,13 +117,25 @@ where
         let calldata = call.calldata().ok_or_else(|| anyhow!("missing calldata"))?;
         let calldata = RawBytes::serialize(BytesSer(&calldata))?;
 
+        let from = call
+            .tx
+            .from()
+            .map(|addr| Address::from(EthAddress::from(*addr)))
+            .unwrap_or(system::SYSTEM_ACTOR_ADDR);
+
+        let value = call
+            .tx
+            .value()
+            .map(from_eth::to_fvm_tokens)
+            .unwrap_or_else(|| TokenAmount::from_atto(0));
+
         // We send off a read-only query to an EVM actor at the given address.
         let msg = Message {
             version: Default::default(),
-            from: system::SYSTEM_ACTOR_ADDR,
+            from,
             to: self.addr,
             sequence: 0,
-            value: TokenAmount::from_atto(0),
+            value,
             method_num: evm::Method::InvokeContract as u64,
             params: calldata,
             gas_limit: fvm_shared::BLOCK_GAS_LIMIT,

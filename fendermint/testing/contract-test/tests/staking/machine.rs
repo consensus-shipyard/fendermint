@@ -97,7 +97,12 @@ impl StateMachine for StakingMachine {
 
         let subnet = SubnetCaller::new(subnet_addr);
 
-        // TODO: Make all the validators join the subnet by putting down collateral according to their power
+        // Make all the validators join the subnet by putting down collateral according to their power.
+        for v in state.child_genesis.validators.iter() {
+            subnet
+                .join(&mut exec_state, v)
+                .expect("failed to join subnet");
+        }
 
         StakingSystem {
             _exec_state: exec_state,

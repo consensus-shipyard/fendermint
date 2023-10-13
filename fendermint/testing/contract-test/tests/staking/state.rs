@@ -6,6 +6,7 @@ use std::collections::{HashMap, VecDeque};
 use arbitrary::Unstructured;
 use fendermint_crypto::{PublicKey, SecretKey};
 use fendermint_testing::arb::{ArbSubnetAddress, ArbSubnetID, ArbTokenAmount};
+use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_core::Timestamp;
 use fendermint_vm_genesis::ipc::{GatewayParams, IpcParams};
 use fendermint_vm_genesis::{
@@ -195,7 +196,9 @@ impl arbitrary::Arbitrary<'_> for StakingState {
         for i in 0..num_accounts {
             let sk = SecretKey::random(&mut rng);
             let pk = sk.public_key();
-            let addr = Address::new_secp256k1(&pk.serialize()).unwrap();
+            // All of them need to be ethereum accounts to interact with IPC.
+            let addr = EthAddress::new_secp256k1(&pk.serialize()).unwrap();
+            let addr = Address::from(addr);
 
             // Create with a non-zero balance so we can pick anyone to be a validator and deposit some collateral.
             let initial_balance = ArbTokenAmount::arbitrary(u)?

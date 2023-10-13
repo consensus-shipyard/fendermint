@@ -1331,6 +1331,7 @@ dependencies = [
  "fendermint_vm_core",
  "fendermint_vm_genesis",
  "fendermint_vm_interpreter",
+ "fendermint_vm_message",
  "fvm",
  "fvm_ipld_blockstore",
  "fvm_shared",
