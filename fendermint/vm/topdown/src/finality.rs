@@ -78,7 +78,10 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
         retry!(
             self.config.exponential_back_off_secs,
             self.config.exponential_retry_limit,
-            self.parent_client.get_validator_changes(height).await.map(|r| r.value)
+            self.parent_client
+                .get_validator_changes(height)
+                .await
+                .map(|r| r.value)
         )
     }
 
@@ -93,7 +96,10 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
         retry!(
             self.config.exponential_back_off_secs,
             self.config.exponential_retry_limit,
-            self.parent_client.get_top_down_msgs(height).await.map(|r| r.value)
+            self.parent_client
+                .get_top_down_msgs(height)
+                .await
+                .map(|r| r.value)
         )
     }
 }
@@ -162,9 +168,10 @@ impl<T> CachedFinalityProvider<T> {
     pub fn latest_height_hash(&self) -> Stm<Option<(BlockHeight, BlockHash)>> {
         if let Some(height) = self.cached_data.latest_height()? {
             let maybe_hash = self.cached_data.block_hash(height)?;
-            maybe_hash.map(|hash| (height, hash))
+            Ok(maybe_hash.map(|hash| (height, hash)))
+        } else {
+            Ok(None)
         }
-        Ok(None)
     }
 
     pub fn last_committed_finality(&self) -> Stm<Option<IPCParentFinality>> {

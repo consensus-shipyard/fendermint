@@ -1,7 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use crate::{BlockHash, BlockHeight};
+use crate::{BlockHeight};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use fvm_shared::clock::ChainEpoch;

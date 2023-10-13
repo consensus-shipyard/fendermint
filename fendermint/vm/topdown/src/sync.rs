@@ -10,7 +10,6 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use async_stm::{atomically, atomically_or_err};
-use ipc_provider::manager::{GetBlockHashResult, TopDownQueryPayload};
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::staking::StakingChangeRequest;
 use std::cmp::min;
@@ -204,13 +203,14 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
         starting_height,
         ending_height,
     )
-    .await {
+    .await
+    {
         Ok(views) => views,
         Err(Error::ParentChainReorgDetected) => {
             return reset_cache(parent_proxy, provider, query).await;
-        },
+        }
         Err(Error::CannotQueryParent(e)) => return Err(anyhow!(e)),
-        _ => unreachable!()
+        _ => unreachable!(),
     };
     tracing::debug!("new parent views: {new_parent_views:?}");
 
@@ -246,7 +246,7 @@ async fn last_recorded_height(
         let h = if let Some(h) = provider.latest_height_hash()? {
             Some(h)
         } else if let Some(f) = provider.last_committed_finality()? {
-            ome((f.height, f.block_hash))
+            Some((f.height, f.block_hash))
         } else {
             None
         };
@@ -296,7 +296,7 @@ async fn get_new_parent_views(
         }
 
         let top_down_msgs_res = parent_proxy
-            .get_top_down_msgs(h, h)
+            .get_top_down_msgs(h)
             .await
             .context("cannot fetch top down messages")
             .map_err(|e| Error::CannotQueryParent(e.to_string()))?;
@@ -305,6 +305,8 @@ async fn get_new_parent_views(
         }
 
         total_top_down_msgs += top_down_msgs_res.value.len();
+
+        previous_hash = block_hash_res.parent_block_hash;
 
         block_height_to_update.push((
             h,

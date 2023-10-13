@@ -2810,7 +2810,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc-sdk",
+ "ipc-sdk 0.1.0",
  "ipc_ipld_resolver",
  "k256 0.11.6",
  "libipld",
@@ -2846,7 +2846,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc-sdk",
+ "ipc-sdk 0.1.0",
  "num-traits",
  "tendermint-rpc",
  "tracing",
@@ -2862,7 +2862,7 @@ dependencies = [
  "fendermint_vm_encoding",
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
- "ipc-sdk",
+ "ipc-sdk 0.1.0",
  "multiaddr 0.16.0",
  "serde",
  "serde_with",
@@ -2996,7 +2996,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc-sdk",
+ "ipc-sdk 0.1.0",
  "lazy_static",
  "num-bigint",
  "quickcheck 1.0.3",
@@ -3021,7 +3021,7 @@ dependencies = [
  "fvm_ipld_hamt 0.6.1",
  "fvm_shared",
  "hex",
- "ipc_actors_abis",
+ "ipc_actors_abis 0.1.0",
  "lazy_static",
  "merkle-tree-rs",
  "paste",
@@ -3054,7 +3054,7 @@ version = "0.1.0"
 dependencies = [
  "cid",
  "fvm_shared",
- "ipc-sdk",
+ "ipc-sdk 0.1.0",
  "num-traits",
  "serde",
  "serde_with",
@@ -3075,7 +3075,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc-sdk",
+ "ipc-sdk 0.1.0",
  "num-traits",
  "quickcheck 1.0.3",
  "quickcheck_macros",
@@ -3111,7 +3111,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc_actors_abis",
+ "ipc_actors_abis 0.1.0",
  "libipld",
  "num-traits",
  "pin-project",
@@ -3147,7 +3147,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc-sdk",
+ "ipc-sdk 0.1.0",
  "lazy_static",
  "num-traits",
  "quickcheck 1.0.3",
@@ -3166,7 +3166,7 @@ dependencies = [
  "async-stm",
  "cid",
  "im",
- "ipc-sdk",
+ "ipc-sdk 0.1.0",
  "ipc_ipld_resolver",
  "tokio",
  "tracing",
@@ -3185,8 +3185,8 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "ipc-provider",
- "ipc-sdk",
- "ipc_actors_abis",
+ "ipc-sdk 0.1.0",
+ "ipc_actors_abis 0.1.0",
  "num-traits",
  "serde",
  "serde_json",
@@ -4597,7 +4597,6 @@ dependencies = [
 [[package]]
 name = "ipc-identity"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#afb04448716ab65092e01a1c8efeb2b4da2570fe"
 dependencies = [
  "ahash 0.8.3",
  "anyhow",
@@ -4624,7 +4623,6 @@ dependencies = [
 [[package]]
 name = "ipc-provider"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#afb04448716ab65092e01a1c8efeb2b4da2570fe"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -4640,8 +4638,8 @@ dependencies = [
  "fvm_shared",
  "hex",
  "ipc-identity",
- "ipc-sdk",
- "ipc_actors_abis",
+ "ipc-sdk 0.1.0",
+ "ipc_actors_abis 0.1.0",
  "log",
  "num-derive",
  "num-traits",
@@ -4663,6 +4661,29 @@ dependencies = [
 [[package]]
 name = "ipc-sdk"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cid",
+ "ethers",
+ "fnv",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding 0.3.3",
+ "fvm_ipld_hamt 0.6.1",
+ "fvm_shared",
+ "integer-encoding",
+ "ipc_actors_abis 0.1.0",
+ "lazy_static",
+ "log",
+ "num-traits",
+ "primitives",
+ "serde",
+ "serde_tuple",
+ "thiserror",
+]
+
+[[package]]
+name = "ipc-sdk"
+version = "0.1.0"
 source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#afb04448716ab65092e01a1c8efeb2b4da2570fe"
 dependencies = [
  "anyhow",
@@ -4674,7 +4695,7 @@ dependencies = [
  "fvm_ipld_hamt 0.6.1",
  "fvm_shared",
  "integer-encoding",
- "ipc_actors_abis",
+ "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev)",
  "lazy_static",
  "log",
  "num-traits",
@@ -4682,6 +4703,15 @@ dependencies = [
  "serde",
  "serde_tuple",
  "thiserror",
+]
+
+[[package]]
+name = "ipc_actors_abis"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ethers",
+ "fvm_shared",
 ]
 
 [[package]]
@@ -4707,7 +4737,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "gcra",
- "ipc-sdk",
+ "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev)",
  "lazy_static",
  "libipld",
  "libp2p",
