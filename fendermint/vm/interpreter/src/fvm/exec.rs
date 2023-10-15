@@ -3,7 +3,7 @@
 
 use anyhow::Context;
 use async_trait::async_trait;
-use fendermint_vm_genesis::Validator;
+use fendermint_vm_genesis::{Power, Validator};
 use std::collections::HashMap;
 
 use fendermint_vm_actor_interface::{cron, system};
@@ -47,7 +47,7 @@ where
     /// Return validator power updates.
     /// Currently ignoring events as there aren't any emitted by the smart contract,
     /// but keep in mind that if there were, those would have to be propagated.
-    type EndOutput = Vec<Validator>;
+    type EndOutput = Vec<Validator<Power>>;
 
     async fn begin(
         &self,
@@ -129,7 +129,7 @@ where
     }
 
     async fn end(&self, mut state: Self::State) -> anyhow::Result<(Self::State, Self::EndOutput)> {
-        let updates = if let Some((checkpoint, _, updates)) =
+        let updates = if let Some((checkpoint, updates)) =
             checkpoint::maybe_create_checkpoint(&self.client, &self.gateway, &mut state)
                 .await
                 .context("failed to create checkpoint")?

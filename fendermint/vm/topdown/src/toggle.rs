@@ -52,9 +52,13 @@ impl<P: ParentViewProvider + Send + Sync + 'static> ParentViewProvider for Toggl
         }
     }
 
-    async fn top_down_msgs(&self, height: BlockHeight) -> anyhow::Result<Vec<CrossMsg>> {
+    async fn top_down_msgs(
+        &self,
+        height: BlockHeight,
+        block_hash: &BlockHash,
+    ) -> anyhow::Result<Vec<CrossMsg>> {
         match self.inner.as_ref() {
-            Some(p) => p.top_down_msgs(height).await,
+            Some(p) => p.top_down_msgs(height, block_hash).await,
             None => Err(anyhow!("provider is toggled off")),
         }
     }
@@ -75,8 +79,8 @@ impl<P: ParentFinalityProvider + Send + Sync + 'static> ParentFinalityProvider f
 }
 
 impl<P> Toggle<CachedFinalityProvider<P>> {
-    pub fn latest_height(&self) -> Stm<Option<BlockHeight>> {
-        self.perform_or_else(|p| p.latest_height(), None)
+    pub fn latest_height_hash(&self) -> Stm<Option<(BlockHeight, BlockHash)>> {
+        self.perform_or_else(|p| p.latest_height_hash(), None)
     }
 
     pub fn last_committed_finality(&self) -> Stm<Option<IPCParentFinality>> {

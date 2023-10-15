@@ -24,8 +24,8 @@ pub struct CachedFinalityProvider<T> {
     /// This is a in memory view of the committed parent finality. We need this as a starting point
     /// for populating the cache
     last_committed_finality: TVar<Option<IPCParentFinality>>,
-    /// The ipc agent proxy that works as a back up if cache miss
-    agent: Arc<T>,
+    /// The ipc client proxy that works as a back up if cache miss
+    parent_client: Arc<T>,
 }
 
 /// Tracks the data from the parent
@@ -44,7 +44,7 @@ macro_rules! retry {
             let res = $f;
             if let Err(e) = &res {
                 tracing::warn!(
-                    "cannot query ipc agent due to: {e}, retires: {retries}, wait: {wait}"
+                    "cannot query ipc parent_client due to: {e}, retires: {retries}, wait: {wait}"
                 );
                 if retries > 0 {
                     retries -= 1;
@@ -64,7 +64,7 @@ macro_rules! retry {
 
 #[async_trait::async_trait]
 impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedFinalityProvider<T> {
-    /// Should always return the validator set, only when ipc agent is down after exponeitial
+    /// Should always return the validator set, only when ipc parent_client is down after exponeitial
     /// retries
     async fn validator_changes(
         &self,
@@ -78,13 +78,20 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
         retry!(
             self.config.exponential_back_off_secs,
             self.config.exponential_retry_limit,
-            self.agent.get_validator_changes(height).await
+            self.parent_client
+                .get_validator_changes(height)
+                .await
+                .map(|r| r.value)
         )
     }
 
-    /// Should always return the top down messages, only when ipc agent is down after exponential
+    /// Should always return the top down messages, only when ipc parent_client is down after exponential
     /// retries
-    async fn top_down_msgs(&self, height: BlockHeight) -> anyhow::Result<Vec<CrossMsg>> {
+    async fn top_down_msgs(
+        &self,
+        height: BlockHeight,
+        block_hash: &BlockHash,
+    ) -> anyhow::Result<Vec<CrossMsg>> {
         let r = atomically(|| self.cached_data.top_down_msgs_at_height(height)).await;
         if let Some(v) = r {
             return Ok(v);
@@ -93,7 +100,9 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
         retry!(
             self.config.exponential_back_off_secs,
             self.config.exponential_retry_limit,
-            self.agent.get_top_down_msgs(height, height).await
+            self.parent_client
+                .get_top_down_msgs_with_hash(height, block_hash)
+                .await
         )
     }
 }
@@ -139,11 +148,15 @@ impl<T> CachedFinalityProvider<T> {
     /// We need this because `fendermint` has yet to be initialized and might
     /// not be able to provide an existing finality from the storage. This provider requires an
     /// existing committed finality. Providing the finality will enable other functionalities.
-    pub fn uninitialized(config: Config, agent: Arc<T>) -> Self {
-        Self::new(config, None, agent)
+    pub fn uninitialized(config: Config, parent_client: Arc<T>) -> Self {
+        Self::new(config, None, parent_client)
     }
 
-    fn new(config: Config, committed_finality: Option<IPCParentFinality>, agent: Arc<T>) -> Self {
+    fn new(
+        config: Config,
+        committed_finality: Option<IPCParentFinality>,
+        parent_client: Arc<T>,
+    ) -> Self {
         let height_data = SequentialKeyCache::sequential();
         Self {
             config,
@@ -151,12 +164,17 @@ impl<T> CachedFinalityProvider<T> {
                 height_data: TVar::new(height_data),
             },
             last_committed_finality: TVar::new(committed_finality),
-            agent,
+            parent_client,
         }
     }
 
-    pub fn latest_height(&self) -> Stm<Option<BlockHeight>> {
-        self.cached_data.latest_height()
+    pub fn latest_height_hash(&self) -> Stm<Option<(BlockHeight, BlockHash)>> {
+        if let Some(height) = self.cached_data.latest_height()? {
+            let maybe_hash = self.cached_data.block_hash(height)?;
+            Ok(maybe_hash.map(|hash| (height, hash)))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn last_committed_finality(&self) -> Stm<Option<IPCParentFinality>> {
@@ -285,6 +303,7 @@ mod tests {
     use async_trait::async_trait;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
+    use ipc_provider::manager::{GetBlockHashResult, TopDownQueryPayload};
     use ipc_sdk::cross::{CrossMsg, StorableMsg};
     use ipc_sdk::staking::StakingChangeRequest;
     use ipc_sdk::subnet_id::SubnetID;
@@ -304,14 +323,14 @@ mod tests {
             Ok(10)
         }
 
-        async fn get_block_hash(&self, _height: BlockHeight) -> anyhow::Result<BlockHash> {
-            Ok(BlockHash::default())
+        async fn get_block_hash(&self, _height: BlockHeight) -> anyhow::Result<GetBlockHashResult> {
+            Ok(GetBlockHashResult::default())
         }
 
-        async fn get_top_down_msgs(
+        async fn get_top_down_msgs_with_hash(
             &self,
-            _start_height: BlockHeight,
-            _end_height: u64,
+            _height: BlockHeight,
+            _block_hash: &BlockHash,
         ) -> anyhow::Result<Vec<CrossMsg>> {
             Ok(vec![])
         }
@@ -319,8 +338,11 @@ mod tests {
         async fn get_validator_changes(
             &self,
             _height: BlockHeight,
-        ) -> anyhow::Result<Vec<StakingChangeRequest>> {
-            Ok(vec![])
+        ) -> anyhow::Result<TopDownQueryPayload<Vec<StakingChangeRequest>>> {
+            Ok(TopDownQueryPayload {
+                value: vec![],
+                block_hash: vec![],
+            })
         }
     }
 
@@ -389,7 +411,7 @@ mod tests {
                 }
             );
 
-            assert_eq!(provider.latest_height()?, Some(100));
+            assert_eq!(provider.latest_height_hash()?.unwrap().0, 100);
 
             Ok(())
         })

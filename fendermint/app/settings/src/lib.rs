@@ -110,14 +110,14 @@ pub struct TopDownConfig {
     pub exponential_back_off_secs: u64,
     /// The max number of retries for exponential backoff before giving up
     pub exponential_retry_limit: usize,
-    /// The ipc provider url
-    pub ipc_provider_url: String,
+    /// The parent rpc http endpoint
+    pub parent_http_endpoint: Url,
     /// The parent registry address
     #[serde(deserialize_with = "deserialize_eth_address_from_str")]
-    pub registry_address: Address,
+    pub parent_registry: Address,
     /// The parent gateway address
     #[serde(deserialize_with = "deserialize_eth_address_from_str")]
-    pub gateway_address: Address,
+    pub parent_gateway: Address,
 }
 
 #[serde_as]

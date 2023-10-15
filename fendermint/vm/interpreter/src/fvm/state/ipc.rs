@@ -13,7 +13,7 @@ use fendermint_vm_actor_interface::{
     eam::EthAddress,
     ipc::{ValidatorMerkleTree, GATEWAY_ACTOR_ID},
 };
-use fendermint_vm_genesis::Validator;
+use fendermint_vm_genesis::{Power, Validator};
 use fendermint_vm_message::signed::sign_secp256k1;
 use ipc_actors_abis::gateway_getter_facet as getter;
 use ipc_actors_abis::gateway_getter_facet::GatewayGetterFacet;
@@ -101,7 +101,7 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         &self,
         state: &mut FvmExecState<DB>,
         checkpoint: router::BottomUpCheckpoint,
-        power_table: &[Validator],
+        power_table: &[Validator<Power>],
     ) -> anyhow::Result<()> {
         // Construct a Merkle tree from the power table, which we can use to validate validator set membership
         // when the signatures are submitted in transactions for accumulation.
@@ -125,14 +125,27 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         self.getter.call(state, |c| c.get_incomplete_checkpoints())
     }
 
+    /// Apply all pending validator changes, returning the newly adopted configuration number, or 0 if there were no changes.
+    pub fn apply_validator_changes(&self, state: &mut FvmExecState<DB>) -> anyhow::Result<u64> {
+        self.router.call(state, |c| c.apply_finality_changes())
+    }
+
+    /// Get the currently active validator set.
+    pub fn current_validator_set(
+        &self,
+        state: &mut FvmExecState<DB>,
+    ) -> anyhow::Result<getter::Membership> {
+        self.getter.call(state, |c| c.get_current_membership())
+    }
+
     /// Construct the input parameters for adding a signature to the checkpoint.
     ///
     /// This will need to be broadcasted as a transaction.
     pub fn add_checkpoint_signature_calldata(
         &self,
         checkpoint: router::BottomUpCheckpoint,
-        power_table: &[Validator],
-        validator: &Validator,
+        power_table: &[Validator<Power>],
+        validator: &Validator<Power>,
         secret_key: &SecretKey,
     ) -> anyhow::Result<et::Bytes> {
         debug_assert_eq!(validator.public_key.0, secret_key.public_key());

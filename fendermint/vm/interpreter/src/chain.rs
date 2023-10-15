@@ -242,8 +242,7 @@ where
                         .deliver(state, VerifiableMessage::NotVerify(msg))
                         .await?;
                     if ret.is_err() {
-                        // TODO: how to handle error here? Do we return Err or stash them into one ret?
-                        todo!()
+                        return Err(anyhow!("failed to apply commit finality: {ret:?}"));
                     }
 
                     // stash validator changes
@@ -258,8 +257,7 @@ where
                         .deliver(state, VerifiableMessage::NotVerify(msg))
                         .await?;
                     if ret.is_err() {
-                        // TODO: how to handle error here? Do we return Err or stash them into one ret?
-                        todo!()
+                        return Err(anyhow!("failed to store validator changes: {ret:?}"));
                     }
 
                     // Execute top down messages
@@ -272,8 +270,7 @@ where
                         .deliver(state, VerifiableMessage::NotVerify(msg))
                         .await?;
                     if ret.is_err() {
-                        // TODO: how to handle error here? Do we return Err or stash them into one ret?
-                        todo!()
+                        return Err(anyhow!("failed to apply cross messages: {ret:?}"));
                     }
 
                     atomically(|| provider.set_new_finality(finality.clone())).await;

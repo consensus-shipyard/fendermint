@@ -32,21 +32,16 @@ use crate::{cmd, options::run::RunArgs, settings::Settings};
 fn create_ipc_provider_proxy(settings: &Settings) -> anyhow::Result<IPCProviderProxy> {
     let topdown_config = settings.ipc.topdown_config()?;
 
-    let url = topdown_config
-        .ipc_provider_url
-        .parse()
-        .context("invalid agent URL")?;
-
     let ipc_provider = IpcProvider::new_with_subnet(
         None,
         ipc_provider::config::Subnet {
             id: settings.ipc.subnet_id.clone(),
             network_name: settings.ipc.network_name.clone(),
             config: SubnetConfig::Fevm(EVMSubnet {
-                provider_http: url,
+                provider_http: topdown_config.parent_http_endpoint.clone(),
                 auth_token: None,
-                registry_addr: topdown_config.registry_address,
-                gateway_addr: topdown_config.gateway_address,
+                registry_addr: topdown_config.parent_registry,
+                gateway_addr: topdown_config.parent_gateway,
                 accounts: vec![],
             }),
         },
@@ -163,12 +158,12 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
             exponential_back_off_secs: topdown_config.exponential_back_off_secs,
             exponential_retry_limit: topdown_config.exponential_retry_limit,
         };
-        let agent_proxy = Arc::new(create_ipc_provider_proxy(&settings)?);
+        let ipc_provider = Arc::new(create_ipc_provider_proxy(&settings)?);
         let p = Arc::new(Toggle::enabled(CachedFinalityProvider::uninitialized(
             config.clone(),
-            agent_proxy.clone(),
+            ipc_provider.clone(),
         )));
-        (p, Some((agent_proxy, config)))
+        (p, Some((ipc_provider, config)))
     } else {
         info!("topdown finality disabled");
         (Arc::new(Toggle::disabled()), None)
