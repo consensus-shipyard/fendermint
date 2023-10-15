@@ -323,21 +323,21 @@ mod tests {
             Ok(10)
         }
 
-        async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<GetBlockHashResult> {
+        async fn get_block_hash(&self, _height: BlockHeight) -> anyhow::Result<GetBlockHashResult> {
             Ok(GetBlockHashResult::default())
         }
 
         async fn get_top_down_msgs_with_hash(
             &self,
-            height: BlockHeight,
-            block_hash: &BlockHash,
+            _height: BlockHeight,
+            _block_hash: &BlockHash,
         ) -> anyhow::Result<Vec<CrossMsg>> {
             Ok(vec![])
         }
 
         async fn get_validator_changes(
             &self,
-            height: BlockHeight,
+            _height: BlockHeight,
         ) -> anyhow::Result<TopDownQueryPayload<Vec<StakingChangeRequest>>> {
             Ok(TopDownQueryPayload {
                 value: vec![],
@@ -412,7 +412,7 @@ mod tests {
                 }
             );
 
-            assert_eq!(provider.latest_height()?, Some(100));
+            assert_eq!(provider.latest_height_hash()?.unwrap().0, 100);
 
             Ok(())
         })
