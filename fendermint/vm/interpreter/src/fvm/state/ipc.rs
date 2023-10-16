@@ -21,15 +21,15 @@ use ipc_actors_abis::gateway_router_facet as router;
 use ipc_actors_abis::gateway_router_facet::GatewayRouterFacet;
 
 use super::{
-    fevm::{ContractCaller, MockProvider},
+    fevm::{ContractCaller, MockProvider, NoRevert},
     FvmExecState,
 };
 
 #[derive(Clone)]
 pub struct GatewayCaller<DB> {
     addr: EthAddress,
-    getter: ContractCaller<GatewayGetterFacet<MockProvider>, DB>,
-    router: ContractCaller<GatewayRouterFacet<MockProvider>, DB>,
+    getter: ContractCaller<DB, GatewayGetterFacet<MockProvider>, NoRevert>,
+    router: ContractCaller<DB, GatewayRouterFacet<MockProvider>, router::GatewayRouterFacetErrors>,
 }
 
 impl<DB> Default for GatewayCaller<DB> {

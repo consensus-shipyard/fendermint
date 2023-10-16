@@ -4,22 +4,25 @@
 use anyhow::Context;
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_actor_interface::ipc::SUBNETREGISTRY_ACTOR_ID;
-use fendermint_vm_interpreter::fvm::state::fevm::{ContractCaller, MockProvider};
+use fendermint_vm_interpreter::fvm::state::fevm::{ContractCaller, MockProvider, NoRevert};
 use fendermint_vm_interpreter::fvm::state::FvmExecState;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::ActorID;
-use ipc_actors_abis::subnet_actor_getter_facet::SubnetActorGetterFacet as SubnetGetterFacet;
-use ipc_actors_abis::subnet_actor_manager_facet::SubnetActorManagerFacet as SubnetManagerFacet;
-use ipc_actors_abis::subnet_registry::SubnetRegistry;
+use ipc_actors_abis::subnet_actor_getter_facet::SubnetActorGetterFacet;
+use ipc_actors_abis::subnet_actor_manager_facet::{
+    SubnetActorManagerFacet, SubnetActorManagerFacetErrors,
+};
+use ipc_actors_abis::subnet_registry::{SubnetRegistry, SubnetRegistryErrors};
 
 pub use ipc_actors_abis::subnet_registry::ConstructorParams as SubnetConstructorParams;
 
 #[derive(Clone)]
 pub struct RegistryCaller<DB> {
     addr: EthAddress,
-    registry: ContractCaller<SubnetRegistry<MockProvider>, DB>,
-    _getter: ContractCaller<SubnetGetterFacet<MockProvider>, DB>,
-    _manager: ContractCaller<SubnetManagerFacet<MockProvider>, DB>,
+    registry: ContractCaller<DB, SubnetRegistry<MockProvider>, SubnetRegistryErrors>,
+    _getter: ContractCaller<DB, SubnetActorGetterFacet<MockProvider>, NoRevert>,
+    _manager:
+        ContractCaller<DB, SubnetActorManagerFacet<MockProvider>, SubnetActorManagerFacetErrors>,
 }
 
 impl<DB> Default for RegistryCaller<DB> {
@@ -34,8 +37,8 @@ impl<DB> RegistryCaller<DB> {
         Self {
             addr,
             registry: ContractCaller::new(addr, SubnetRegistry::new),
-            _getter: ContractCaller::new(addr, SubnetGetterFacet::new),
-            _manager: ContractCaller::new(addr, SubnetManagerFacet::new),
+            _getter: ContractCaller::new(addr, SubnetActorGetterFacet::new),
+            _manager: ContractCaller::new(addr, SubnetActorManagerFacet::new),
         }
     }
 

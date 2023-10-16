@@ -1,12 +1,14 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::any::type_name;
+use std::fmt::Debug;
 use std::{marker::PhantomData, sync::Arc};
 
 use anyhow::{anyhow, bail, Context};
-use ethers::abi::Detokenize;
+use ethers::abi::{AbiDecode, AbiEncode, Detokenize};
 use ethers::core::types as et;
-use ethers::prelude::decode_function_data;
+use ethers::prelude::{decode_function_data, ContractRevert};
 use ethers::providers as ep;
 use fendermint_vm_actor_interface::{eam::EthAddress, evm, system};
 use fendermint_vm_message::conv::from_eth;
@@ -19,6 +21,55 @@ use super::FvmExecState;
 
 pub type MockProvider = ep::Provider<ep::MockProvider>;
 pub type MockContractCall<T> = ethers::prelude::ContractCall<MockProvider, T>;
+
+/// Result of trying to decode the data returned in failures as reverts.
+///
+/// The `E` type is supposed to be the enum unifying all errors that the contract can emit.
+pub enum CallError<E> {
+    /// The contract reverted with one of the expected custom errors.
+    Revert(E),
+    /// Some other error occurred that we could not decode.
+    Raw(Vec<u8>),
+}
+
+impl<E> std::fmt::Debug for CallError<E>
+where
+    E: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CallError::Revert(e) => write!(f, "{}:{:?}", type_name::<E>(), e),
+            CallError::Raw(bz) if bz.is_empty() => write!(f, "<no data; potential ABI mismatch>"),
+            CallError::Raw(bz) => write!(f, "0x{}", hex::encode(bz)),
+        }
+    }
+}
+
+/// Type we can use if a contract does not return revert errors, e.g. because it's all read-only views.
+#[derive(Clone)]
+pub struct NoRevert;
+
+impl ContractRevert for NoRevert {
+    fn valid_selector(_selector: et::Selector) -> bool {
+        false
+    }
+}
+impl AbiDecode for NoRevert {
+    fn decode(_bytes: impl AsRef<[u8]>) -> Result<Self, ethers::contract::AbiError> {
+        unimplemented!("selector doesn't match anything")
+    }
+}
+impl AbiEncode for NoRevert {
+    fn encode(self) -> Vec<u8> {
+        unimplemented!("selector doesn't match anything")
+    }
+}
+
+impl std::fmt::Debug for NoRevert {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "contract not expected to revert")
+    }
+}
 
 /// Facilitate calling FEVM contracts through their Ethers ABI bindings by
 /// 1. serializing parameters,
@@ -43,13 +94,14 @@ pub type MockContractCall<T> = ethers::prelude::ContractCall<MockProvider, T>;
 /// let _period: u64 = caller.call(&mut state, |c| c.bottom_up_check_period()).unwrap();
 /// ```
 #[derive(Clone)]
-pub struct ContractCaller<C, DB> {
+pub struct ContractCaller<DB, C, E> {
     addr: Address,
     contract: C,
     store: PhantomData<DB>,
+    error: PhantomData<E>,
 }
 
-impl<C, DB> ContractCaller<C, DB> {
+impl<DB, C, E> ContractCaller<DB, C, E> {
     /// Create a new contract caller with the contract's Ethereum address and ABI bindings:
     pub fn new<F>(addr: EthAddress, contract: F) -> Self
     where
@@ -61,6 +113,7 @@ impl<C, DB> ContractCaller<C, DB> {
             addr: Address::from(addr),
             contract,
             store: PhantomData,
+            error: PhantomData,
         }
     }
 
@@ -70,9 +123,10 @@ impl<C, DB> ContractCaller<C, DB> {
     }
 }
 
-impl<C, DB> ContractCaller<C, DB>
+impl<DB, C, E> ContractCaller<DB, C, E>
 where
     DB: Blockstore,
+    E: ContractRevert + Debug,
 {
     /// Call an EVM method implicitly to read its return value.
     ///
@@ -85,15 +139,12 @@ where
     {
         match self.try_call(state, f)? {
             Ok(value) => Ok(value),
-            Err((exit_code, failure_info, data)) => {
+            Err((exit_code, failure_info, error)) => {
                 bail!(
-                    "failed to execute contract call to {}:\ncode: {}\ndata: 0x{}\ninfo: {}",
+                    "failed to execute contract call to {}:\ncode: {}\nerror: {:?}\ninfo: {}",
                     self.addr,
                     exit_code.value(),
-                    // If this is empty, there is a fair chance the reason is the ABI bindings
-                    // being out of sync with the deployed contracts, and that's why there is
-                    // no context such as a custom error.
-                    hex::encode(data.as_slice()),
+                    error,
                     failure_info.map(|i| i.to_string()).unwrap_or_default(),
                 );
             }
@@ -108,7 +159,7 @@ where
         &self,
         state: &mut FvmExecState<DB>,
         f: F,
-    ) -> anyhow::Result<Result<T, (ExitCode, Option<ApplyFailure>, Vec<u8>)>>
+    ) -> anyhow::Result<Result<T, (ExitCode, Option<ApplyFailure>, CallError<E>)>>
     where
         F: FnOnce(&C) -> MockContractCall<T>,
         T: Detokenize,
@@ -154,7 +205,12 @@ where
                 .map(|bz| bz.0)
                 .context("failed to deserialize error data")?;
 
-            Ok(Err((ret.msg_receipt.exit_code, ret.failure_info, output)))
+            let error = match decode_revert::<E>(&output) {
+                Some(e) => CallError::Revert(e),
+                None => CallError::Raw(output),
+            };
+
+            Ok(Err((ret.msg_receipt.exit_code, ret.failure_info, error)))
         } else {
             let data = ret
                 .msg_receipt
@@ -167,5 +223,47 @@ where
 
             Ok(Ok(value))
         }
+    }
+}
+
+/// Fixed decoding until https://github.com/gakonst/ethers-rs/pull/2637 is released.
+fn decode_revert<E: ContractRevert>(data: &[u8]) -> Option<E> {
+    E::decode_with_selector(data).or_else(|| {
+        if data.len() < 4 {
+            return None;
+        }
+        // There is a bug fixed by the above PR that chops the selector off.
+        // By doubling it up, after chopping off it should still be present.
+        let double_prefix = [&data[..4], data].concat();
+        E::decode_with_selector(&double_prefix)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use ethers::{contract::ContractRevert, types::Bytes};
+    use ipc_actors_abis::gateway_manager_facet::{GatewayManagerFacetErrors, InsufficientFunds};
+
+    use crate::fvm::state::fevm::decode_revert;
+
+    #[test]
+    fn decode_custom_error() {
+        // An example of binary data corresponding to `InsufficientFunds`
+        let bz: Bytes = "0x356680b7".parse().unwrap();
+
+        let selector = bz[..4].try_into().expect("it's 4 bytes");
+
+        assert!(
+            GatewayManagerFacetErrors::valid_selector(selector),
+            "it should be a valid selector"
+        );
+
+        let err =
+            decode_revert::<GatewayManagerFacetErrors>(&bz).expect("could not decode as revert");
+
+        assert_eq!(
+            err,
+            GatewayManagerFacetErrors::InsufficientFunds(InsufficientFunds)
+        )
     }
 }
