@@ -17,6 +17,7 @@ use fendermint_vm_actor_interface::{
 };
 use fendermint_vm_genesis::{Power, Validator};
 use fendermint_vm_message::signed::sign_secp256k1;
+use fendermint_vm_topdown::IPCParentFinality;
 use ipc_actors_abis::gateway_getter_facet as getter;
 use ipc_actors_abis::gateway_getter_facet::GatewayGetterFacet;
 use ipc_actors_abis::gateway_router_facet as router;
@@ -236,6 +237,16 @@ impl<DB: Blockstore> GatewayCaller<DB> {
             .ok_or_else(|| anyhow!("no calldata for apply cross messages"))?;
 
         encode_to_fvm_implicit(calldata.as_ref())
+    }
+
+    pub fn get_latest_parent_finality(
+        &self,
+        state: &mut FvmExecState<DB>,
+    ) -> anyhow::Result<IPCParentFinality> {
+        let r = self
+            .getter
+            .call(state, |c| c.get_latest_parent_finality())?;
+        Ok(IPCParentFinality::try_from(r)?)
     }
 }
 
