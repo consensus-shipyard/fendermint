@@ -194,18 +194,20 @@ where
             gas_premium: TokenAmount::from_atto(0),
         };
 
-        eprintln!("CALLING FVM <- {msg:?}");
-
         let (ret, _) = state.execute_implicit(msg).context("failed to call FEVM")?;
 
         if !ret.msg_receipt.exit_code.is_success() {
-            // The EVM actor might return some data in the output.
-            let output = ret
-                .msg_receipt
-                .return_data
-                .deserialize::<BytesDe>()
-                .map(|bz| bz.0)
-                .context("failed to deserialize error data")?;
+            let output = ret.msg_receipt.return_data;
+
+            let output = if output.is_empty() {
+                Vec::new()
+            } else {
+                // The EVM actor might return some revert in the output.
+                output
+                    .deserialize::<BytesDe>()
+                    .map(|bz| bz.0)
+                    .context("failed to deserialize error data")?
+            };
 
             let error = match decode_revert::<E>(&output) {
                 Some(e) => CallError::Revert(e),
