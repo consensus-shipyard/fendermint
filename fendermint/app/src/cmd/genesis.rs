@@ -9,7 +9,6 @@ use fvm_shared::address::Address;
 use ipc_provider::config::subnet::{EVMSubnet, SubnetConfig};
 use ipc_provider::IpcProvider;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_core::Timestamp;
@@ -263,7 +262,7 @@ async fn new_child_genesis(
         ipc_provider::config::Subnet {
             id: args.subnet_id.clone(),
             config: SubnetConfig::Fevm(EVMSubnet {
-                provider_http: args.parent_endpoint,
+                provider_http: args.parent_endpoint.clone(),
                 auth_token: None,
                 registry_addr: args.parent_registry,
                 gateway_addr: args.parent_gateway,
@@ -284,7 +283,7 @@ async fn new_child_genesis(
             active_validators_limit: genesis_info.active_validators_limit,
         },
     };
-    let genesis = Genesis {
+    let mut genesis = Genesis {
         // We set the genesis epoch as the genesis timestamp so it can be
         // generated deterministically by all participants
         // genesis_epoch should be a positive number, we can afford panicking
@@ -304,7 +303,7 @@ async fn new_child_genesis(
         let c = to_fvm_tokens(&v.weight);
         genesis.validators.push(Validator {
             public_key: ValidatorKey(pk),
-            power: Collateral(c).into_power(genesis.power_scale),
+            power: Collateral(c),
         })
     }
 
