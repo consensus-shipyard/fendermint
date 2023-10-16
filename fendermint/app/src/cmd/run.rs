@@ -38,7 +38,11 @@ fn create_ipc_provider_proxy(settings: &Settings) -> anyhow::Result<IPCProviderP
             id: settings.ipc.subnet_id.clone(),
             network_name: settings.ipc.network_name.clone(),
             config: SubnetConfig::Fevm(EVMSubnet {
-                provider_http: topdown_config.parent_http_endpoint.to_string().parse().unwrap(),
+                provider_http: topdown_config
+                    .parent_http_endpoint
+                    .to_string()
+                    .parse()
+                    .unwrap(),
                 auth_token: None,
                 registry_addr: topdown_config.parent_registry,
                 gateway_addr: topdown_config.parent_gateway,

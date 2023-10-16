@@ -10,12 +10,12 @@ pub mod convert;
 pub mod proxy;
 mod toggle;
 
-use std::time::Duration;
 use async_stm::Stm;
 use async_trait::async_trait;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::staking::StakingChangeRequest;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 pub use crate::cache::{SequentialAppendError, SequentialKeyCache, ValueIter};
 pub use crate::error::Error;

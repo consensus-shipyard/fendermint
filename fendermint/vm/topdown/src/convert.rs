@@ -7,12 +7,7 @@ use anyhow::anyhow;
 use ethers::abi::Function;
 use ethers::types::U256;
 use ipc_actors_abis::{gateway_getter_facet, gateway_router_facet};
-use ipc_sdk::cross::CrossMsg;
-use ipc_sdk::staking::StakingChangeRequest;
 
-const COMMIT_PARENT_FINALITY_FUNC_NAME: &str = "commitParentFinality";
-const STORE_VALIDATOR_CHANGES_FUNC_NAME: &str = "storeValidatorChanges";
-const APPLY_CROSS_MESSAGES_FUNC_NAME: &str = "applyCrossMessages";
 const GET_LATEST_PARENT_FINALITY_FUNC_NAME: &str = "getLatestParentFinality";
 
 impl TryFrom<IPCParentFinality> for gateway_router_facet::ParentFinality {
@@ -45,55 +40,6 @@ impl From<gateway_getter_facet::ParentFinality> for IPCParentFinality {
 pub fn encode_get_latest_parent_finality() -> anyhow::Result<Vec<u8>> {
     let function = get_evm_function(GET_LATEST_PARENT_FINALITY_FUNC_NAME)?;
     let data = ethers::contract::encode_function_data(function, ())?;
-
-    Ok(data.to_vec())
-}
-
-pub fn encode_commit_parent_finality_call(finality: IPCParentFinality) -> anyhow::Result<Vec<u8>> {
-    let commit_function = get_evm_function(COMMIT_PARENT_FINALITY_FUNC_NAME)?;
-
-    let data = ethers::contract::encode_function_data(
-        commit_function,
-        gateway_router_facet::CommitParentFinalityCall {
-            finality: gateway_router_facet::ParentFinality::try_from(finality)?,
-        },
-    )?;
-
-    Ok(data.to_vec())
-}
-
-pub fn encode_store_validator_changes_call(
-    changes: Vec<StakingChangeRequest>,
-) -> anyhow::Result<Vec<u8>> {
-    let function = get_evm_function(STORE_VALIDATOR_CHANGES_FUNC_NAME)?;
-
-    let mut change_requests = vec![];
-    for c in changes {
-        change_requests.push(gateway_router_facet::StakingChangeRequest::try_from(c)?);
-    }
-
-    let data = ethers::contract::encode_function_data(
-        function,
-        gateway_router_facet::StoreValidatorChangesCall { change_requests },
-    )?;
-
-    Ok(data.to_vec())
-}
-
-pub fn encode_apply_cross_messages_call(cross_messages: Vec<CrossMsg>) -> anyhow::Result<Vec<u8>> {
-    let function = get_evm_function(APPLY_CROSS_MESSAGES_FUNC_NAME)?;
-
-    let mut messages = vec![];
-    for c in cross_messages {
-        messages.push(gateway_router_facet::CrossMsg::try_from(c)?);
-    }
-
-    let data = ethers::contract::encode_function_data(
-        function,
-        gateway_router_facet::ApplyCrossMessagesCall {
-            cross_msgs: messages,
-        },
-    )?;
 
     Ok(data.to_vec())
 }
