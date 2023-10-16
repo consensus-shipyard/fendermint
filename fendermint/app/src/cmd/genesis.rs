@@ -3,8 +3,13 @@
 
 use anyhow::{anyhow, Context};
 use fendermint_app::APP_VERSION;
+use fendermint_crypto::PublicKey;
+use fendermint_vm_message::conv::from_eth::to_fvm_tokens;
 use fvm_shared::address::Address;
+use ipc_provider::config::subnet::{EVMSubnet, SubnetConfig};
+use ipc_provider::IpcProvider;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_core::Timestamp;
@@ -81,6 +86,8 @@ cmd! {
     match self {
         GenesisIpcCommands::Gateway(args) =>
             set_ipc_gateway(&genesis_file, args),
+        GenesisIpcCommands::ChildGenesis(args) =>
+            new_child_genesis(&genesis_file, args).await
     }
   }
 }
@@ -224,7 +231,6 @@ fn set_ipc_gateway(genesis_file: &PathBuf, args: &GenesisIpcGatewayArgs) -> anyh
         let gateway_params = ipc::GatewayParams {
             subnet_id: args.subnet_id.clone(),
             bottom_up_check_period: args.bottom_up_check_period,
-            top_down_check_period: args.top_down_check_period,
             min_collateral: args.min_collateral.clone(),
             msg_fee: args.msg_fee.clone(),
             majority_percentage: args.majority_percentage,
@@ -245,4 +251,65 @@ fn set_ipc_gateway(genesis_file: &PathBuf, args: &GenesisIpcGatewayArgs) -> anyh
 
         Ok(genesis)
     })
+}
+
+async fn new_child_genesis(
+    genesis_file: &PathBuf,
+    args: &GenesisIpcChildGenesisArgs,
+) -> anyhow::Result<()> {
+    // provider with the parent.
+    let parent_provider = IpcProvider::new_with_subnet(
+        None,
+        ipc_provider::config::Subnet {
+            id: args.subnet_id.clone(),
+            config: SubnetConfig::Fevm(EVMSubnet {
+                provider_http: args.parent_endpoint,
+                auth_token: None,
+                registry_addr: args.parent_registry,
+                gateway_addr: args.parent_gateway,
+            }),
+        },
+    )?;
+
+    let genesis_info = parent_provider.get_genesis_info(&args.subnet_id).await?;
+
+    // get gateway genesis
+    let ipc_params = ipc::IpcParams {
+        gateway: ipc::GatewayParams {
+            subnet_id: args.subnet_id.clone(),
+            bottom_up_check_period: genesis_info.bottom_up_checkpoint_period,
+            min_collateral: genesis_info.min_collateral,
+            msg_fee: genesis_info.msg_fee,
+            majority_percentage: genesis_info.majority_percentage,
+            active_validators_limit: genesis_info.active_validators_limit,
+        },
+    };
+    let genesis = Genesis {
+        // We set the genesis epoch as the genesis timestamp so it can be
+        // generated deterministically by all participants
+        // genesis_epoch should be a positive number, we can afford panicking
+        // here if this is not the case.
+        timestamp: Timestamp(genesis_info.genesis_epoch.try_into().unwrap()),
+        chain_name: args.subnet_id.to_string(),
+        network_version: args.network_version,
+        base_fee: args.base_fee.clone(),
+        power_scale: args.power_scale,
+        validators: Vec::new(),
+        accounts: Vec::new(),
+        ipc: Some(ipc_params),
+    };
+
+    for v in genesis_info.validators {
+        let pk = PublicKey::parse_slice(&v.metadata, None)?;
+        let c = to_fvm_tokens(&v.weight);
+        genesis.validators.push(Validator {
+            public_key: ValidatorKey(pk),
+            power: Collateral(c).into_power(genesis.power_scale),
+        })
+    }
+
+    let json = serde_json::to_string_pretty(&genesis)?;
+    std::fs::write(genesis_file, json)?;
+
+    Ok(())
 }
