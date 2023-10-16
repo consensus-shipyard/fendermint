@@ -124,7 +124,7 @@ impl<T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T>
         let parent_client = self.parent_client;
         let query = self.committed_state_query;
 
-        let mut interval = tokio::time::interval(Duration::from_secs(config.polling_interval_secs));
+        let mut interval = tokio::time::interval(config.polling_interval_secs);
 
         tokio::spawn(async move {
             loop {

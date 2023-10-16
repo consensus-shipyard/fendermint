@@ -3116,6 +3116,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
+ "ipc-sdk",
  "ipc_actors_abis",
  "libipld",
  "num-traits",

@@ -20,6 +20,8 @@ fendermint_eth_hardhat = { path = "../../eth/hardhat" }
 fendermint_rpc = { path = "../../rpc" }
 ipc_actors_abis = { workspace = true }
 
+ipc-sdk = { workspace = true }
+
 async-trait = { workspace = true }
 async-stm = { workspace = true }
 anyhow = { workspace = true }

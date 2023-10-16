@@ -38,7 +38,7 @@ fn create_ipc_provider_proxy(settings: &Settings) -> anyhow::Result<IPCProviderP
             id: settings.ipc.subnet_id.clone(),
             network_name: settings.ipc.network_name.clone(),
             config: SubnetConfig::Fevm(EVMSubnet {
-                provider_http: topdown_config.parent_http_endpoint.clone(),
+                provider_http: topdown_config.parent_http_endpoint.to_string().parse().unwrap(),
                 auth_token: None,
                 registry_addr: topdown_config.parent_registry,
                 gateway_addr: topdown_config.parent_gateway,
@@ -104,7 +104,7 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         settings.fvm.exec_in_check,
     );
     let interpreter = SignedMessageInterpreter::new(interpreter);
-    let interpreter = ChainMessageInterpreter::new(interpreter);
+    let interpreter = ChainMessageInterpreter::<_, NamespaceBlockstore>::new(interpreter);
     let interpreter =
         BytesMessageInterpreter::new(interpreter, ProposalPrepareMode::AppendOnly, false);
 

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
+use crate::fvm::state::ipc::GatewayCaller;
 use crate::{
     fvm::FvmMessage,
     signed::{SignedMessageApplyRes, SignedMessageCheckRes, SyntheticMessage, VerifiableMessage},
@@ -16,14 +17,11 @@ use fendermint_vm_message::{
     ipc::{BottomUpCheckpoint, CertifiedMessage, IpcMessage, SignedRelayedMessage},
 };
 use fendermint_vm_resolver::pool::{ResolveKey, ResolvePool};
-use fendermint_vm_topdown::convert::{
-    encode_apply_cross_messages_call, encode_commit_parent_finality_call,
-    encode_store_validator_changes_call,
-};
 use fendermint_vm_topdown::proxy::IPCProviderProxy;
 use fendermint_vm_topdown::{
     CachedFinalityProvider, IPCParentFinality, ParentFinalityProvider, ParentViewProvider, Toggle,
 };
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{BytesSer, RawBytes};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -66,19 +64,24 @@ pub type ChainMessageCheckRes = Result<SignedMessageCheckRes, IllegalMessage>;
 /// Interpreter working on chain messages; in the future it will schedule
 /// CID lookups to turn references into self-contained user or cross messages.
 #[derive(Clone)]
-pub struct ChainMessageInterpreter<I> {
+pub struct ChainMessageInterpreter<I, DB> {
     inner: I,
+    gateway_caller: GatewayCaller<DB>,
 }
 
-impl<I> ChainMessageInterpreter<I> {
+impl<I, DB> ChainMessageInterpreter<I, DB> {
     pub fn new(inner: I) -> Self {
-        Self { inner }
+        Self {
+            inner,
+            gateway_caller: GatewayCaller::default(),
+        }
     }
 }
 
 #[async_trait]
-impl<I> ProposalInterpreter for ChainMessageInterpreter<I>
+impl<I, DB> ProposalInterpreter for ChainMessageInterpreter<I, DB>
 where
+    DB: Blockstore + Clone + 'static + Send + Sync,
     I: Sync + Send,
 {
     type State = (CheckpointPool, TopDownFinalityProvider);
@@ -161,8 +164,9 @@ where
 }
 
 #[async_trait]
-impl<I> ExecInterpreter for ChainMessageInterpreter<I>
+impl<I, DB> ExecInterpreter for ChainMessageInterpreter<I, DB>
 where
+    DB: Blockstore + Clone + 'static + Send + Sync,
     I: ExecInterpreter<Message = VerifiableMessage, DeliverOutput = SignedMessageApplyRes>,
 {
     // The state consists of the resolver pool, which this interpreter needs, and the rest of the
@@ -234,43 +238,45 @@ where
                         height: p.height as u64,
                         block_hash: p.block_hash,
                     };
-                    let msg = encode_to_fvm_implicit(&encode_commit_parent_finality_call(
-                        finality.clone(),
-                    )?)?;
+                    let msg = self
+                        .gateway_caller
+                        .commit_parent_finality_msg(finality.clone())?;
                     let (state, ret) = self
                         .inner
                         .deliver(state, VerifiableMessage::NotVerify(msg))
                         .await?;
                     if ret.is_err() {
-                        return Err(anyhow!("failed to apply commit finality: {ret:?}"));
+                        return Err(anyhow!("cannot commit parent finality"));
                     }
 
                     // stash validator changes
 
                     // error happens if we cannot get the validator set from ipc agent after retries
                     let validator_changes = provider.validator_changes(p.height as u64).await?;
-                    let msg = encode_to_fvm_implicit(&encode_store_validator_changes_call(
-                        validator_changes,
-                    )?)?;
+                    let msg = self
+                        .gateway_caller
+                        .store_validator_changes_msg(validator_changes)?;
                     let (state, ret) = self
                         .inner
                         .deliver(state, VerifiableMessage::NotVerify(msg))
                         .await?;
                     if ret.is_err() {
-                        return Err(anyhow!("failed to store validator changes: {ret:?}"));
+                        return Err(anyhow!("failed to store validator changes"));
                     }
 
                     // Execute top down messages
 
                     // error happens if we cannot get the validator set from ipc agent after retries
-                    let messages = provider.top_down_msgs(p.height as u64).await?;
-                    let msg = encode_to_fvm_implicit(&encode_apply_cross_messages_call(messages)?)?;
+                    let messages = provider
+                        .top_down_msgs(p.height as u64, &finality.block_hash)
+                        .await?;
+                    let msg = self.gateway_caller.apply_cross_messages_msg(messages)?;
                     let (state, ret) = self
                         .inner
                         .deliver(state, VerifiableMessage::NotVerify(msg))
                         .await?;
                     if ret.is_err() {
-                        return Err(anyhow!("failed to apply cross messages: {ret:?}"));
+                        return Err(anyhow!("failed to apply cross messages"));
                     }
 
                     atomically(|| provider.set_new_finality(finality.clone())).await;
@@ -299,8 +305,9 @@ where
 }
 
 #[async_trait]
-impl<I> CheckInterpreter for ChainMessageInterpreter<I>
+impl<I, DB> CheckInterpreter for ChainMessageInterpreter<I, DB>
 where
+    DB: Blockstore + Clone + 'static + Send + Sync,
     I: CheckInterpreter<Message = VerifiableMessage, Output = SignedMessageCheckRes>,
 {
     type State = I::State;
@@ -346,8 +353,9 @@ where
 }
 
 #[async_trait]
-impl<I> QueryInterpreter for ChainMessageInterpreter<I>
+impl<I, DB> QueryInterpreter for ChainMessageInterpreter<I, DB>
 where
+    DB: Blockstore + Clone + 'static + Send + Sync,
     I: QueryInterpreter,
 {
     type State = I::State;
@@ -364,8 +372,9 @@ where
 }
 
 #[async_trait]
-impl<I> GenesisInterpreter for ChainMessageInterpreter<I>
+impl<I, DB> GenesisInterpreter for ChainMessageInterpreter<I, DB>
 where
+    DB: Blockstore + Clone + 'static + Send + Sync,
     I: GenesisInterpreter,
 {
     type State = I::State;

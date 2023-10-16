@@ -11,7 +11,6 @@ use async_stm::{abort, atomically, Stm, StmResult, TVar};
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::staking::StakingChangeRequest;
 use std::sync::Arc;
-use std::time::Duration;
 
 type ParentViewPayload = (BlockHash, Vec<StakingChangeRequest>, Vec<CrossMsg>);
 
@@ -44,13 +43,12 @@ macro_rules! retry {
             let res = $f;
             if let Err(e) = &res {
                 tracing::warn!(
-                    "cannot query ipc parent_client due to: {e}, retires: {retries}, wait: {wait}"
+                    "cannot query ipc parent_client due to: {e}, retires: {retries}, wait: {wait:?}"
                 );
                 if retries > 0 {
                     retries -= 1;
 
-                    let to_sleep = Duration::from_secs(wait);
-                    tokio::time::sleep(to_sleep).await;
+                    tokio::time::sleep(wait).await;
 
                     wait *= 2;
                     continue;
@@ -353,8 +351,8 @@ mod tests {
     fn new_provider() -> CachedFinalityProvider<MockedParentQuery> {
         let config = Config {
             chain_head_delay: 20,
-            polling_interval_secs: 10,
-            exponential_back_off_secs: 10,
+            polling_interval_secs: Duration::from_secs(10),
+            exponential_back_off_secs: Duration::from_secs(10),
             exponential_retry_limit: 10,
         };
 
@@ -480,8 +478,8 @@ mod tests {
     async fn test_top_down_msgs_works() {
         let config = Config {
             chain_head_delay: 2,
-            polling_interval_secs: 10,
-            exponential_back_off_secs: 10,
+            polling_interval_secs: Duration::from_secs(10),
+            exponential_back_off_secs: Duration::from_secs(10),
             exponential_retry_limit: 10,
         };
 
@@ -539,7 +537,7 @@ mod tests {
             nums_run: AtomicUsize::new(0),
         };
 
-        let res = retry!(1, 2, t.run().await);
+        let res = retry!(Duration::from_secs(1), 2, t.run().await);
         assert!(res.is_err());
         // execute the first time, retries twice
         assert_eq!(t.nums_run.load(Ordering::SeqCst), 3);

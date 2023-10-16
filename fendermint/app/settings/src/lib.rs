@@ -7,8 +7,9 @@ use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use ipc_sdk::subnet_id::SubnetID;
 use serde::Deserialize;
-use serde_with::serde_as;
+use serde_with::{serde_as, DurationSeconds};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use tendermint_rpc::Url;
 
 use fendermint_vm_encoding::{human_readable_delegate, human_readable_str};
@@ -97,6 +98,7 @@ pub struct BroadcastSettings {
     pub max_retries: u8,
 }
 
+#[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct TopDownConfig {
     /// The number of blocks to delay before reporting a height as final on the parent chain.
@@ -105,9 +107,11 @@ pub struct TopDownConfig {
     /// height as final yet.
     pub chain_head_delay: BlockHeight,
     /// Parent syncing cron period, in seconds
-    pub polling_interval_secs: u64,
+    #[serde_as(as = "DurationSeconds<u64>")]
+    pub polling_interval_secs: Duration,
     /// Top down exponential back off retry base
-    pub exponential_back_off_secs: u64,
+    #[serde_as(as = "DurationSeconds<u64>")]
+    pub exponential_back_off_secs: Duration,
     /// The max number of retries for exponential backoff before giving up
     pub exponential_retry_limit: usize,
     /// The parent rpc http endpoint
@@ -122,7 +126,7 @@ pub struct TopDownConfig {
 
 #[serde_as]
 #[derive(Debug, Deserialize, Clone)]
-pub struct IPCSettings {
+pub struct IpcSettings {
     #[serde_as(as = "IsHumanReadable")]
     pub subnet_id: SubnetID,
     pub network_name: String,
@@ -131,7 +135,7 @@ pub struct IPCSettings {
     pub topdown: Option<TopDownConfig>,
 }
 
-impl IPCSettings {
+impl IpcSettings {
     pub fn is_topdown_enabled(&self) -> bool {
         !self.subnet_id.is_root() && self.topdown.is_some()
     }
@@ -165,7 +169,7 @@ pub struct Settings {
     pub fvm: FvmSettings,
     pub resolver: ResolverSettings,
     pub broadcast: BroadcastSettings,
-    pub ipc: IPCSettings,
+    pub ipc: IpcSettings,
 }
 
 #[macro_export]

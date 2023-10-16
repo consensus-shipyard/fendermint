@@ -5,6 +5,8 @@ use anyhow::{anyhow, Context};
 use ethers::types as et;
 use ethers::{abi::Tokenize, utils::keccak256};
 
+use num_traits::Zero;
+
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::ActorID;
 
@@ -19,11 +21,17 @@ use ipc_actors_abis::gateway_getter_facet as getter;
 use ipc_actors_abis::gateway_getter_facet::GatewayGetterFacet;
 use ipc_actors_abis::gateway_router_facet as router;
 use ipc_actors_abis::gateway_router_facet::GatewayRouterFacet;
+use ipc_sdk::cross::CrossMsg;
+use ipc_sdk::staking::StakingChangeRequest;
 
 use super::{
     fevm::{ContractCaller, MockProvider},
     FvmExecState,
 };
+use crate::fvm::FvmMessage;
+use fendermint_vm_actor_interface::{ipc, system};
+use fvm_ipld_encoding::{BytesSer, RawBytes};
+use fvm_shared::econ::TokenAmount;
 
 #[derive(Clone)]
 pub struct GatewayCaller<DB> {
@@ -179,9 +187,79 @@ impl<DB: Blockstore> GatewayCaller<DB> {
 
         Ok(calldata)
     }
+
+    pub fn commit_parent_finality_msg(
+        &self,
+        finality: fendermint_vm_topdown::IPCParentFinality,
+    ) -> anyhow::Result<FvmMessage> {
+        let evm_finality = router::ParentFinality::try_from(finality)?;
+        let call = self.router.contract().commit_parent_finality(evm_finality);
+        let calldata = call
+            .calldata()
+            .ok_or_else(|| anyhow!("no calldata for commit parent finality"))?;
+
+        encode_to_fvm_implicit(calldata.as_ref())
+    }
+
+    pub fn store_validator_changes_msg(
+        &self,
+        changes: Vec<StakingChangeRequest>,
+    ) -> anyhow::Result<FvmMessage> {
+        let mut change_requests = vec![];
+        for c in changes {
+            change_requests.push(router::StakingChangeRequest::try_from(c)?);
+        }
+
+        let call = self
+            .router
+            .contract()
+            .store_validator_changes(change_requests);
+        let calldata = call
+            .calldata()
+            .ok_or_else(|| anyhow!("no calldata for store validator changes"))?;
+
+        encode_to_fvm_implicit(calldata.as_ref())
+    }
+
+    pub fn apply_cross_messages_msg(
+        &self,
+        cross_messages: Vec<CrossMsg>,
+    ) -> anyhow::Result<FvmMessage> {
+        let mut messages = vec![];
+        for c in cross_messages {
+            messages.push(router::CrossMsg::try_from(c)?);
+        }
+
+        let call = self.router.contract().apply_cross_messages(messages);
+        let calldata = call
+            .calldata()
+            .ok_or_else(|| anyhow!("no calldata for apply cross messages"))?;
+
+        encode_to_fvm_implicit(calldata.as_ref())
+    }
 }
 
 /// Hash some value in the same way we'd hash it in Solidity.
 fn abi_hash<T: Tokenize>(value: T) -> [u8; 32] {
     keccak256(ethers::abi::encode(&value.into_tokens()))
+}
+
+/// Encode to fvm implicit message
+fn encode_to_fvm_implicit(bytes: &[u8]) -> anyhow::Result<FvmMessage> {
+    let params = RawBytes::serialize(BytesSer(bytes))?;
+    let msg = FvmMessage {
+        version: 0,
+        from: system::SYSTEM_ACTOR_ADDR,
+        to: ipc::GATEWAY_ACTOR_ADDR,
+        value: TokenAmount::zero(),
+        method_num: ipc::gateway::METHOD_INVOKE_CONTRACT,
+        params,
+        // we are sending a implicit message, no need to set sequence
+        sequence: 0,
+        gas_limit: fvm_shared::BLOCK_GAS_LIMIT,
+        gas_fee_cap: TokenAmount::zero(),
+        gas_premium: TokenAmount::zero(),
+    };
+
+    Ok(msg)
 }

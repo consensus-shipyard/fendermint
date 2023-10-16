@@ -10,6 +10,7 @@ pub mod convert;
 pub mod proxy;
 mod toggle;
 
+use std::time::Duration;
 use async_stm::Stm;
 use async_trait::async_trait;
 use ipc_sdk::cross::CrossMsg;
@@ -33,9 +34,9 @@ pub struct Config {
     /// height as final yet.
     pub chain_head_delay: BlockHeight,
     /// Parent syncing cron period, in seconds
-    pub polling_interval_secs: u64,
+    pub polling_interval_secs: Duration,
     /// Top down exponential back off retry base
-    pub exponential_back_off_secs: u64,
+    pub exponential_back_off_secs: Duration,
     /// The max number of retries for exponential backoff before giving up
     pub exponential_retry_limit: usize,
 }
