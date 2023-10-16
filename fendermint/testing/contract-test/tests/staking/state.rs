@@ -200,15 +200,16 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             let addr = EthAddress::new_secp256k1(&pk.serialize()).unwrap();
             let addr = Address::from(addr);
 
+            // Make sure every validator has non-zero collateral.
+            let min_stake = TokenAmount::from_whole(1);
+
             // Create with a non-zero balance so we can pick anyone to be a validator and deposit some collateral.
-            let initial_balance = ArbTokenAmount::arbitrary(u)?
-                .0
-                .max(TokenAmount::from_whole(1));
+            let initial_balance = ArbTokenAmount::arbitrary(u)?.0.max(min_stake.clone());
 
             // Choose an initial stake committed to the child subnet.
             let initial_stake = if i < num_validators {
-                let c = BigInt::arbitrary(u)?.mod_floor(initial_balance.atto());
-                TokenAmount::from_atto(c)
+                TokenAmount::from_atto(BigInt::arbitrary(u)?.mod_floor(initial_balance.atto()))
+                    .max(min_stake)
             } else {
                 TokenAmount::from_atto(0)
             };
