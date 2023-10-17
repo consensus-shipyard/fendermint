@@ -2,15 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fendermint_vm_actor_interface::eam::EthAddress;
+use fendermint_vm_actor_interface::ipc::subnet::SubnetActorErrors;
 use fendermint_vm_genesis::{Collateral, Validator};
 use fendermint_vm_interpreter::fvm::state::fevm::{ContractCaller, MockProvider, NoRevert};
 use fendermint_vm_interpreter::fvm::state::FvmExecState;
 use fendermint_vm_message::conv::from_fvm;
 use fvm_ipld_blockstore::Blockstore;
 use ipc_actors_abis::subnet_actor_getter_facet::SubnetActorGetterFacet;
-use ipc_actors_abis::subnet_actor_manager_facet::{
-    SubnetActorManagerFacet, SubnetActorManagerFacetErrors,
-};
+use ipc_actors_abis::subnet_actor_manager_facet::SubnetActorManagerFacet;
 
 pub use ipc_actors_abis::subnet_registry::ConstructorParams as SubnetConstructorParams;
 
@@ -18,8 +17,7 @@ pub use ipc_actors_abis::subnet_registry::ConstructorParams as SubnetConstructor
 pub struct SubnetCaller<DB> {
     addr: EthAddress,
     _getter: ContractCaller<DB, SubnetActorGetterFacet<MockProvider>, NoRevert>,
-    manager:
-        ContractCaller<DB, SubnetActorManagerFacet<MockProvider>, SubnetActorManagerFacetErrors>,
+    manager: ContractCaller<DB, SubnetActorManagerFacet<MockProvider>, SubnetActorErrors>,
 }
 
 impl<DB> SubnetCaller<DB> {
