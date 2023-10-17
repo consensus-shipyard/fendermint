@@ -11,6 +11,7 @@ use fendermint_vm_interpreter::fvm::{
     state::{ipc::GatewayCaller, FvmExecState},
     store::memory::MemoryBlockstore,
 };
+use fendermint_vm_message::conv::from_fvm;
 use fvm::engine::MultiEngine;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -84,13 +85,15 @@ impl StateMachine for StakingMachine {
             majority_percentage: child_ipc.gateway.majority_percentage,
             active_validators_limit: child_ipc.gateway.active_validators_limit,
             power_scale: state.child_genesis.power_scale,
-            // Not testing actvation, it cannot be zero.
-            min_activation_collateral: et::U256::from(1),
+            // The `min_activation_collateral` has to be at least as high as the parent gateway's `min_collateral`,
+            // otherwise it will refuse the subnet trying to register itself.
+            min_activation_collateral: from_fvm::to_eth_tokens(&parent_ipc.gateway.min_collateral)
+                .unwrap(),
             min_validators: 1,
             min_cross_msg_fee: et::U256::zero(),
         };
 
-        eprintln!("> CREATING SUBNET: {params:?}");
+        // eprintln!("> CREATING SUBNET: {params:?}");
 
         let subnet_addr = registry
             .new_subnet(&mut exec_state, params)
