@@ -1336,7 +1336,7 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_shared",
  "ipc-sdk",
- "ipc_actors_abis",
+ "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing)",
  "rand 0.8.5",
  "tendermint-rpc",
  "tokio",
@@ -3012,7 +3012,7 @@ dependencies = [
  "fvm_shared",
  "hex",
  "ipc-sdk",
- "ipc_actors_abis",
+ "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing)",
  "lazy_static",
  "merkle-tree-rs",
  "paste",
@@ -3102,7 +3102,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc_actors_abis",
+ "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing)",
  "libipld",
  "num-traits",
  "pin-project",
@@ -4547,7 +4547,7 @@ dependencies = [
  "fvm_ipld_hamt 0.6.1",
  "fvm_shared",
  "integer-encoding",
- "ipc_actors_abis",
+ "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev)",
  "lazy_static",
  "log",
  "num-traits",
@@ -4561,6 +4561,16 @@ dependencies = [
 name = "ipc_actors_abis"
 version = "0.1.0"
 source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev#65667d42144727763a794a7f5297e0296af38c1f"
+dependencies = [
+ "anyhow",
+ "ethers",
+ "fvm_shared",
+]
+
+[[package]]
+name = "ipc_actors_abis"
+version = "0.1.0"
+source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing#6f9fd75e2e0a8027640f6625b17226dee3c3f79e"
 dependencies = [
  "anyhow",
  "ethers",

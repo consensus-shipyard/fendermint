@@ -87,6 +87,7 @@ impl StateMachine for StakingMachine {
             // Not testing actvation, it cannot be zero.
             min_activation_collateral: et::U256::from(1),
             min_validators: 1,
+            min_cross_msg_fee: et::U256::zero(),
         };
 
         eprintln!("> CREATING SUBNET: {params:?}");
