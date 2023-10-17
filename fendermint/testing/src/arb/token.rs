@@ -16,8 +16,11 @@ lazy_static! {
 
     static ref MAX_U256: BigInt = BigInt::from_str(&U256::MAX.to_string()).unwrap();
 
+    /// `fvm_shared::sys::TokenAmount` is limited to `u128` range.
+    static ref MAX_U128: BigInt = BigInt::from(u128::MAX);
+
     // Restrict maximum token value to what we can actually pass to Ethereum.
-    static ref MAX_ATTO: BigInt = MAX_BIGINT.clone().min(MAX_U256.clone());
+    static ref MAX_ATTO: BigInt = MAX_BIGINT.clone().min(MAX_U128.clone());
 }
 
 #[derive(Clone, Debug)]
