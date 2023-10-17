@@ -41,8 +41,6 @@ pub struct StakingAccount {
     pub addr: Address,
     /// In this test the accounts should never gain more than their initial balance.
     pub initial_balance: TokenAmount,
-    /// Initial stake this account is going to put into the subnet.
-    pub initial_stake: TokenAmount,
     /// Balance after the effects of deposits/withdrawals.
     pub current_balance: TokenAmount,
 }
@@ -193,38 +191,30 @@ impl arbitrary::Arbitrary<'_> for StakingState {
         // Create the desired number of accounts.
         let mut rng = StdRng::seed_from_u64(u64::arbitrary(u)?);
         let mut accounts = Vec::new();
-        for i in 0..num_accounts {
+        for _ in 0..num_accounts {
             let sk = SecretKey::random(&mut rng);
             let pk = sk.public_key();
             // All of them need to be ethereum accounts to interact with IPC.
             let addr = EthAddress::new_secp256k1(&pk.serialize()).unwrap();
             let addr = Address::from(addr);
 
-            // Make sure every validator has non-zero collateral.
-            let min_stake = TokenAmount::from_whole(1);
-
             // Create with a non-zero balance so we can pick anyone to be a validator and deposit some collateral.
-            let initial_balance = ArbTokenAmount::arbitrary(u)?.0.max(min_stake.clone());
+            let initial_balance = ArbTokenAmount::arbitrary(u)?
+                .0
+                .max(TokenAmount::from_whole(1).clone());
 
-            // Choose an initial stake committed to the child subnet.
-            let initial_stake = if i < num_validators {
-                TokenAmount::from_atto(BigInt::arbitrary(u)?.mod_floor(initial_balance.atto()))
-                    .max(min_stake)
-            } else {
-                TokenAmount::from_atto(0)
-            };
+            // The current balance is the same as the initial balance even if the account becomes
+            // one of the validators on the child subnet, because for that they have to join the
+            // subnet and that's when their funds are going to be locked up.
+            let current_balance = initial_balance.clone();
 
-            let current_balance = initial_balance.clone() - initial_stake.clone();
-
-            let a = StakingAccount {
+            accounts.push(StakingAccount {
                 public_key: pk,
                 secret_key: sk,
                 addr,
                 initial_balance,
-                initial_stake,
                 current_balance,
-            };
-            accounts.push(a);
+            });
         }
 
         // Accounts on the parent subnet.
@@ -234,7 +224,7 @@ impl arbitrary::Arbitrary<'_> for StakingState {
                 meta: ActorMeta::Account(Account {
                     owner: SignerAddr(s.addr),
                 }),
-                balance: s.current_balance.clone(),
+                balance: s.initial_balance.clone(),
             })
             .collect();
 
@@ -251,11 +241,17 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             .iter()
             .take(num_validators)
             .map(|a| {
-                let v = Validator {
+                // Choose an initial stake committed to the child subnet.
+                let initial_balance = a.initial_balance.atto();
+                let initial_stake =
+                    TokenAmount::from_atto(BigInt::arbitrary(u)?.mod_floor(initial_balance));
+                // Make sure it's not zero.
+                let initial_stake = initial_stake.max(TokenAmount::from_whole(1));
+
+                Ok(Validator {
                     public_key: ValidatorKey(a.public_key),
-                    power: Collateral(a.initial_stake.clone()),
-                };
-                Ok(v)
+                    power: Collateral(initial_stake),
+                })
             })
             .collect::<Result<Vec<_>, _>>()?;
 
