@@ -6,7 +6,7 @@ BUILTIN_ACTORS_CODE   := $(shell find $(BUILTIN_ACTORS_DIR) -type f -name "*.rs"
 BUILTIN_ACTORS_BUNDLE := $(shell pwd)/$(BUILTIN_ACTORS_DIR)/output/bundle.car
 
 # Tag used to disambiguate if there are multiple options.
-IPC_ACTORS_TAG				?= integration-testing
+IPC_ACTORS_TAG				?= dev
 IPC_ACTORS_FIND       := scripts/find-ipc-actors.sh $(IPC_ACTORS_TAG)
 IPC_ACTORS_CODE       := $(shell find $(shell $(IPC_ACTORS_FIND)) -type f -name "*.sol")
 IPC_ACTORS_ABI        := .make/.ipc-actors-abi

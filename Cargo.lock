@@ -1336,7 +1336,7 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_shared",
  "ipc-sdk",
- "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing)",
+ "ipc_actors_abis",
  "rand 0.8.5",
  "tendermint-rpc",
  "tokio",
@@ -3012,7 +3012,7 @@ dependencies = [
  "fvm_shared",
  "hex",
  "ipc-sdk",
- "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing)",
+ "ipc_actors_abis",
  "lazy_static",
  "merkle-tree-rs",
  "paste",
@@ -3102,7 +3102,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing)",
+ "ipc_actors_abis",
  "libipld",
  "num-traits",
  "pin-project",
@@ -4547,7 +4547,7 @@ dependencies = [
  "fvm_ipld_hamt 0.6.1",
  "fvm_shared",
  "integer-encoding",
- "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev)",
+ "ipc_actors_abis",
  "lazy_static",
  "log",
  "num-traits",
@@ -4560,17 +4560,7 @@ dependencies = [
 [[package]]
 name = "ipc_actors_abis"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev#65667d42144727763a794a7f5297e0296af38c1f"
-dependencies = [
- "anyhow",
- "ethers",
- "fvm_shared",
-]
-
-[[package]]
-name = "ipc_actors_abis"
-version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing#6f9fd75e2e0a8027640f6625b17226dee3c3f79e"
+source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev#d0620b852c331cb12b84fda33963bf08c5634ca6"
 dependencies = [
  "anyhow",
  "ethers",
@@ -7119,9 +7109,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.10.1"
+version = "1.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aaac441002f822bc9705a681810a4dd2963094b9ca0ddc41cb963a4c189189ea"
+checksum = "380b951a9c5e80ddfd6136919eef32310721aa4aacd4889a8d39124b026ab343"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -7131,9 +7121,9 @@ dependencies = [
 
 [[package]]
 name = "regex-automata"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5011c7e263a695dc8ca064cddb722af1be54e517a280b12a5356f98366899e5d"
+checksum = "5f804c7828047e88b2d32e2d7fe5a105da8ee3264f01902f796c8e067dc2483f"
 dependencies = [
  "aho-corasick",
  "memchr",
