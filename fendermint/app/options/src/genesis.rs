@@ -161,11 +161,11 @@ pub struct GenesisIpcChildGenesisArgs {
     pub parent_endpoint: url::Url,
 
     /// IPC gateway of the parent
-    #[arg(long, short, value_parser = parse_eth_address)]
+    #[arg(long, value_parser = parse_eth_address)]
     pub parent_gateway: Address,
 
     /// IPC registry of the parent
-    #[arg(long, short, value_parser = parse_eth_address)]
+    #[arg(long, value_parser = parse_eth_address)]
     pub parent_registry: Address,
 
     /// Network version, governs which set of built-in actors to use.
@@ -177,6 +177,6 @@ pub struct GenesisIpcChildGenesisArgs {
     pub base_fee: TokenAmount,
 
     /// Number of decimals to use during converting FIL to Power.
-    #[arg(long, short, default_value = "3")]
+    #[arg(long, default_value = "3")]
     pub power_scale: i8,
 }

@@ -260,7 +260,10 @@ async fn new_child_genesis(
     let parent_provider = IpcProvider::new_with_subnet(
         None,
         ipc_provider::config::Subnet {
-            id: args.subnet_id.clone(),
+            id: args
+                .subnet_id
+                .parent()
+                .ok_or_else(|| anyhow!("subnet is not a child"))?,
             config: SubnetConfig::Fevm(EVMSubnet {
                 provider_http: args.parent_endpoint.clone(),
                 auth_token: None,
