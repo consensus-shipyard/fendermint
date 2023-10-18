@@ -192,6 +192,9 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     // than our previously fetched head. It could be a chain reorg. We clear all the cache
     // in `provider` and start from scratch
     if last_recorded_height > ending_height {
+        tracing::warn!(
+            "last recorded height: {last_recorded_height} more than ending height: {ending_height}"
+        );
         return reset_cache(parent_proxy, provider, query).await;
     }
 
@@ -286,6 +289,10 @@ async fn get_new_parent_views(
             .context("cannot fetch block hash")
             .map_err(|e| Error::CannotQueryParent(e.to_string()))?;
         if block_hash_res.parent_block_hash != previous_hash {
+            tracing::warn!(
+                "parent block hash at {h} is {:02x?} diff than previous hash: {previous_hash:02x?}",
+                block_hash_res.parent_block_hash
+            );
             return Err(Error::ParentChainReorgDetected);
         }
 
@@ -294,6 +301,11 @@ async fn get_new_parent_views(
             .await
             .map_err(|e| Error::CannotQueryParent(e.to_string()))?;
         if changes_res.block_hash != block_hash_res.block_hash {
+            tracing::warn!(
+                "change set block hash at {h} is {:02x?} diff than hash: {:02x?}",
+                block_hash_res.parent_block_hash,
+                block_hash_res.block_hash
+            );
             return Err(Error::ParentChainReorgDetected);
         }
 
