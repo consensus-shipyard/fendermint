@@ -37,7 +37,6 @@ fn create_ipc_provider_proxy(settings: &Settings) -> anyhow::Result<IPCProviderP
             .subnet_id
             .parent()
             .ok_or_else(|| anyhow!("subnet has no parent"))?,
-        network_name: settings.ipc.network_name.clone(),
         config: SubnetConfig::Fevm(EVMSubnet {
             provider_http: topdown_config
                 .parent_http_endpoint
@@ -47,7 +46,6 @@ fn create_ipc_provider_proxy(settings: &Settings) -> anyhow::Result<IPCProviderP
             auth_token: None,
             registry_addr: topdown_config.parent_registry,
             gateway_addr: topdown_config.parent_gateway,
-            accounts: vec![],
         }),
     };
     tracing::info!("init ipc provider with subnet: {subnet:?}");
