@@ -89,11 +89,11 @@ impl std::fmt::Debug for NoRevert {
 /// ```no_run
 /// use fendermint_vm_actor_interface::{eam::EthAddress, ipc::GATEWAY_ACTOR_ID};
 /// use ipc_actors_abis::gateway_getter_facet::GatewayGetterFacet;
-/// # use fendermint_vm_interpreter::fvm::state::fevm::ContractCaller;
+/// # use fendermint_vm_interpreter::fvm::state::fevm::{ContractCaller, NoRevert};
 /// # use fendermint_vm_interpreter::fvm::state::FvmExecState;
 /// # use fendermint_vm_interpreter::fvm::store::memory::MemoryBlockstore as DB;
 ///
-/// let caller = ContractCaller::new(
+/// let caller: ContractCaller<_, _, NoRevert> = ContractCaller::new(
 ///     EthAddress::from_id(GATEWAY_ACTOR_ID),
 ///     GatewayGetterFacet::new
 /// );
