@@ -118,7 +118,9 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentFinalityProvider
         // safe to unwrap as latest height exists
         let block_hash = self.cached_data.block_hash(height)?.unwrap();
 
-        Ok(Some(IPCParentFinality { height, block_hash }))
+        let proposal = IPCParentFinality { height, block_hash };
+        tracing::debug!("new proposal: {proposal:?}");
+        Ok(Some(proposal))
     }
 
     fn check_proposal(&self, proposal: &IPCParentFinality) -> Stm<bool> {
