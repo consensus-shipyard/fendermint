@@ -93,7 +93,7 @@ impl StateMachine for StakingMachine {
             min_cross_msg_fee: et::U256::zero(),
         };
 
-        eprintln!("\n> CREATING SUBNET: {params:?}");
+        //eprintln!("\n> CREATING SUBNET: {params:?}");
 
         let subnet_addr = registry
             .new_subnet(&mut exec_state, params)
@@ -103,7 +103,7 @@ impl StateMachine for StakingMachine {
 
         // Make all the validators join the subnet by putting down collateral according to their power.
         for v in state.child_genesis.validators.iter() {
-            eprintln!("\n> JOINING SUBNET: {v:?}");
+            //eprintln!("\n> JOINING SUBNET: {v:?}");
             subnet
                 .join(&mut exec_state, v)
                 .expect("failed to join subnet");

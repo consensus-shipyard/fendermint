@@ -207,9 +207,9 @@ where
             gas_premium: TokenAmount::from_atto(0),
         };
 
-        eprintln!("\nCALLING FVM: {msg:?}");
+        //eprintln!("\nCALLING FVM: {msg:?}");
         let (ret, _) = state.execute_implicit(msg).context("failed to call FEVM")?;
-        eprintln!("\nRESULT FROM FVM: {ret:?}");
+        //eprintln!("\nRESULT FROM FVM: {ret:?}");
 
         if !ret.msg_receipt.exit_code.is_success() {
             let output = ret.msg_receipt.return_data;

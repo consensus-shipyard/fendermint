@@ -188,6 +188,10 @@ impl arbitrary::Arbitrary<'_> for StakingState {
         // Choose the size for the initial *child subnet* validator set.
         let num_validators = 1 + usize::arbitrary(u)? % num_accounts.min(num_max_validators);
 
+        // Limit the amount of balance anyone can have so that the sum total of all of them
+        // will still be lower than what we can send within Solidity as a value, which is U128.
+        let max_balance = BigInt::from(u128::MAX) / num_accounts;
+
         // Create the desired number of accounts.
         let mut rng = StdRng::seed_from_u64(u64::arbitrary(u)?);
         let mut accounts = Vec::new();
@@ -201,7 +205,11 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             // Create with a non-zero balance so we can pick anyone to be a validator and deposit some collateral.
             let initial_balance = ArbTokenAmount::arbitrary(u)?
                 .0
-                .max(TokenAmount::from_whole(1).clone());
+                .atto()
+                .mod_floor(&max_balance);
+
+            let initial_balance =
+                TokenAmount::from_atto(initial_balance).max(TokenAmount::from_whole(1).clone());
 
             // The current balance is the same as the initial balance even if the account becomes
             // one of the validators on the child subnet, because for that they have to join the
@@ -255,6 +263,12 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
+        // Choose an attainable activation limit.
+        let initial_stake: BigInt = child_validators.iter().map(|v| v.power.0.atto()).sum();
+        let min_collateral =
+            TokenAmount::from_atto(BigInt::arbitrary(u)?.mod_floor(&initial_stake))
+                .max(TokenAmount::from_atto(1));
+
         // IPC of the parent subnet itself - most are not going to be used.
         let parent_ipc = IpcParams {
             gateway: GatewayParams {
@@ -263,9 +277,7 @@ impl arbitrary::Arbitrary<'_> for StakingState {
                 top_down_check_period: 1 + u.choose_index(100)? as u64,
                 msg_fee: ArbTokenAmount::arbitrary(u)?.0,
                 majority_percentage: 51 + u8::arbitrary(u)? % 50,
-                min_collateral: ArbTokenAmount::arbitrary(u)?
-                    .0
-                    .max(TokenAmount::from_atto(1)),
+                min_collateral,
                 active_validators_limit: 1 + u.choose_index(100)? as u16,
             },
         };
