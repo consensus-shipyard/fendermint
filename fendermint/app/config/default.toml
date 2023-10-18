@@ -172,4 +172,3 @@ rate_limit_period = 0
 # IPC related configuration parameters
 [ipc]
 subnet_id = "/r0"
-network_name = "dev"
