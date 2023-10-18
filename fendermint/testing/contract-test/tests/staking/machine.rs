@@ -5,6 +5,7 @@ use std::sync::Arc;
 use arbitrary::{Arbitrary, Unstructured};
 use contract_test::ipc::{registry::RegistryCaller, subnet::SubnetCaller};
 use ethers::types as et;
+use fendermint_crypto::PublicKey;
 use fendermint_testing::smt::StateMachine;
 use fendermint_vm_actor_interface::{eam::EthAddress, ipc::subnet_id_to_eth};
 use fendermint_vm_interpreter::fvm::{
@@ -17,7 +18,7 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::bigint::Integer;
 use fvm_shared::econ::TokenAmount;
 
-use super::state::StakingState;
+use super::state::{StakingAccount, StakingState};
 use contract_test::ipc::registry::SubnetConstructorParams;
 
 /// System Under Test for staking.
@@ -32,14 +33,14 @@ pub struct StakingSystem {
 pub enum StakingCommand {
     /// Bottom-up checkpoint; confirms all staking operations up to the configuration number.
     Checkpoint { next_configuration_number: u64 },
-    // /// Join by as a new validator.
-    // Join(EthAddress, TokenAmount, PublicKey),
+    /// Join by as a new validator.
+    Join(EthAddress, TokenAmount, PublicKey),
     /// Increase the collateral of an already existing validator.
     Stake(EthAddress, TokenAmount),
     /// Decrease the collateral of a validator.
     Unstake(EthAddress, TokenAmount),
-    // /// Remove all collateral at once.
-    // Leave(EthAddress),
+    /// Remove all collateral at once.
+    Leave(EthAddress),
 }
 
 #[derive(Default)]
@@ -125,7 +126,10 @@ impl StateMachine for StakingMachine {
         u: &mut Unstructured,
         state: &Self::State,
     ) -> arbitrary::Result<Self::Command> {
-        let cmd = match u.choose(&["checkpoint", "stake", "unstake"]).unwrap() {
+        let cmd = match u
+            .choose(&["checkpoint", "join", "stake", "unstake", "leave"])
+            .unwrap()
+        {
             &"checkpoint" => {
                 let cn = match state.pending_updates.len() {
                     0 => state.configuration_number,
@@ -138,17 +142,27 @@ impl StateMachine for StakingMachine {
                     next_configuration_number: cn,
                 }
             }
+            &"join" => {
+                // Pick any account, doesn't have to be new; the system should handle repeated joins.
+                let a = choose_account(&state, u)?;
+                let b = BigInt::arbitrary(u)?.mod_floor(a.current_balance.atto());
+                let b = TokenAmount::from_atto(b);
+                StakingCommand::Join(a.addr, b, a.public_key)
+            }
+            &"leave" => {
+                // Pick any account, doesn't have to be bonded; the system should ignore non-validators and not pay out twice.
+                let a = choose_account(&state, u)?;
+                StakingCommand::Leave(a.addr)
+            }
             &"stake" => {
-                let a = u.choose(&state.addrs).expect("accounts not empty");
-                let a = state.accounts.get(a).expect("account exists");
+                let a = choose_account(&state, u)?;
                 // Limit ourselves to the outstanding balance - the user would not be able to send more value to the contract.
                 let b = BigInt::arbitrary(u)?.mod_floor(a.current_balance.atto());
                 let b = TokenAmount::from_atto(b);
                 StakingCommand::Stake(a.addr, b)
             }
             &"unstake" => {
-                let a = u.choose(&state.addrs).expect("accounts not empty");
-                let a = state.accounts.get(a).expect("account exists");
+                let a = choose_account(&state, u)?;
                 // We can try sending requests to unbond arbitrarily large amounts of collateral - the system should catch any attempt to steal.
                 // Only limiting it to be under the initial balance so that it's comparable to what the deposits could have been.
                 let b = BigInt::arbitrary(u)?.mod_floor(a.initial_balance.atto());
@@ -173,8 +187,20 @@ impl StateMachine for StakingMachine {
             StakingCommand::Checkpoint {
                 next_configuration_number,
             } => state.checkpoint(*next_configuration_number),
+            StakingCommand::Join(addr, value, _) => {
+                // TODO: Differentiate `join` and `stake`.
+                // If never joined when staking, reject because key is unknown.
+                state.stake(*addr, value.clone())
+            }
             StakingCommand::Stake(addr, value) => state.stake(*addr, value.clone()),
             StakingCommand::Unstake(addr, value) => state.unstake(*addr, value.clone()),
+            StakingCommand::Leave(addr) => {
+                if let Some(c) = state.child_validators.get(&addr).cloned() {
+                    state.unstake(*addr, c.0)
+                } else {
+                    state
+                }
+            }
         }
     }
 
@@ -203,7 +229,10 @@ impl StateMachine for StakingMachine {
                     "all child validators have non-zero collateral"
                 );
             }
-            StakingCommand::Stake(addr, _) | StakingCommand::Unstake(addr, _) => {
+            StakingCommand::Stake(addr, _)
+            | StakingCommand::Unstake(addr, _)
+            | StakingCommand::Join(addr, _, _)
+            | StakingCommand::Leave(addr) => {
                 let a = post_state.accounts.get(addr).unwrap();
                 debug_assert!(a.current_balance <= a.initial_balance);
             }
@@ -213,4 +242,13 @@ impl StateMachine for StakingMachine {
         // * check that balances match
         // * check that active powers match
     }
+}
+
+fn choose_account<'a>(
+    state: &'a StakingState,
+    u: &mut Unstructured<'_>,
+) -> arbitrary::Result<&'a StakingAccount> {
+    let a = u.choose(&state.addrs).expect("accounts not empty");
+    let a = state.accounts.get(a).expect("account exists");
+    Ok(a)
 }
