@@ -166,6 +166,32 @@ The public key was spliced in as it was, in base64 format, which is how it would
 own genesis file format. Note that here we don't have the option to use `Address`, because we have to return
 these as actual `PublicKey` types to Tendermint through ABCI, not as a hash of a key.
 
+### (Optional) Add ipc to the Genesis file
+
+If you need ipc related function, let's add the subnet info to the Genesis with deployed subnet id: /r31415926
+
+```shell
+cargo run -p fendermint_app --release -- \
+      genesis --genesis-file test-network/genesis.json \
+      ipc \
+      gateway --subnet-id /r31415926 \
+      --bottom-up-check-period 10 --top-down-check-period 10 \
+      --msg-fee 1 --majority-percentage 65 --min-collateral 1
+```
+Check the result:
+```console
+$ cat test-network/genesis.json | jq .ipc
+{
+  "gateway": {
+    "subnet_id": "/r31415926",
+    "bottom_up_check_period": 10,
+    "top_down_check_period": 10,
+    "msg_fee": "1",
+    "majority_percentage": 65
+  }
+}
+```
+
 ### Configure CometBFT
 
 First, follow the instructions in [getting started with CometBFT](./tendermint.md) to install the binary,
@@ -191,7 +217,7 @@ file we created earlier to the format CometBFT accepts. Start with the genesis f
 
 ```shell
 mv ~/.cometbft/config/genesis.json ~/.cometbft/config/genesis.json.orig
-cargo run -p fendermint_app -- \
+cargo run -p fendermint_app --release -- \
   genesis --genesis-file test-network/genesis.json \
   into-tendermint --out ~/.cometbft/config/genesis.json
 ```
@@ -281,7 +307,7 @@ one of the validators we created.
 
 ```shell
 mv ~/.cometbft/config/priv_validator_key.json ~/.cometbft/config/priv_validator_key.json.orig
-cargo run -p fendermint_app -- \
+cargo run -p fendermint_app --release -- \
   key into-tendermint --secret-key test-network/keys/bob.sk --out ~/.cometbft/config/priv_validator_key.json
 ```
 

@@ -88,11 +88,12 @@ pub async fn launch_polling_syncer<T: ParentFinalityStateQuery + Send + Sync + '
         return Err(anyhow!("provider not enabled, enable to run syncer"));
     }
 
+    tracing::info!("launching polling syncer");
+
     let query = Arc::new(query);
-
     let finality = query_starting_finality(&query, &parent_client).await?;
-
     atomically(|| view_provider.set_new_finality(finality.clone())).await;
+    tracing::info!("obtained last committed finality: {finality:?}");
 
     let poll = PollingParentSyncer::new(config, view_provider, parent_client, query);
     poll.start();
