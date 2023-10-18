@@ -4,7 +4,6 @@
 use anyhow::{anyhow, Context};
 use fendermint_app::APP_VERSION;
 use fendermint_crypto::PublicKey;
-use fendermint_vm_message::conv::from_eth::to_fvm_tokens;
 use fvm_shared::address::Address;
 use ipc_provider::config::subnet::{EVMSubnet, SubnetConfig};
 use ipc_provider::IpcProvider;
@@ -303,10 +302,9 @@ async fn new_child_genesis(
 
     for v in genesis_info.validators {
         let pk = PublicKey::parse_slice(&v.metadata, None)?;
-        let c = to_fvm_tokens(&v.weight);
         genesis.validators.push(Validator {
             public_key: ValidatorKey(pk),
-            power: Collateral(c),
+            power: Collateral(v.weight),
         })
     }
 

@@ -139,7 +139,7 @@ gcra = { git = "https://github.com/consensus-shipyard/gcra-rs.git", branch = "ma
 merkle-tree-rs = { git = "https://github.com/consensus-shipyard/merkle-tree-rs.git", branch = "dev" }
 
 
-# Uncomment to point to you local versions
-[patch."https://github.com/consensus-shipyard/ipc-agent"]
-ipc-sdk = { path = "../ipc-agent/ipc/sdk" }
-ipc-provider = { path = "../ipc-agent/ipc/provider" }
+# Uncomment to point to your local versions
+# [patch."https://github.com/consensus-shipyard/ipc-agent"]
+# ipc-sdk = { path = "../ipc-agent/ipc/sdk" }
+# ipc-provider = { path = "../ipc-agent/ipc/provider" }

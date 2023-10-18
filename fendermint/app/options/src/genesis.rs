@@ -173,7 +173,7 @@ pub struct GenesisIpcChildGenesisArgs {
     pub network_version: NetworkVersion,
 
     /// Base fee for running transactions in atto.
-    #[arg(long, short = 'f', value_parser = parse_token_amount)]
+    #[arg(long, short = 'f', value_parser = parse_token_amount, default_value = "1000")]
     pub base_fee: TokenAmount,
 
     /// Number of decimals to use during converting FIL to Power.
