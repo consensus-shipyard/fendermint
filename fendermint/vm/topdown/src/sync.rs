@@ -300,7 +300,6 @@ async fn get_new_parent_views(
         let top_down_msgs_res = parent_proxy
             .get_top_down_msgs_with_hash(h, &block_hash_res.block_hash)
             .await
-            .context("cannot fetch top down messages")
             .map_err(|e| Error::CannotQueryParent(e.to_string()))?;
 
         total_top_down_msgs += top_down_msgs_res.len();
