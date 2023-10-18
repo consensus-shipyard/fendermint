@@ -54,7 +54,7 @@ pub struct StakingState {
     pub addrs: Vec<EthAddress>,
     /// The parent genesis should include a bunch of accounts we can use to join a subnet.
     pub parent_genesis: Genesis,
-    /// The child genesis describes the initial validator set to join the subnet
+    /// The child genesis describes the initial validator set to join the subnet.
     pub child_genesis: Genesis,
     /// Currently active child validator set.
     pub child_validators: HashMap<EthAddress, Collateral>,
@@ -62,6 +62,8 @@ pub struct StakingState {
     pub configuration_number: u64,
     /// Unconfirmed staking operations.
     pub pending_updates: VecDeque<StakingUpdate>,
+    /// Flag indicating whether the minimum collateral has been met.
+    pub activated: bool,
 }
 
 impl StakingState {
@@ -77,7 +79,11 @@ impl StakingState {
                 let addr = EthAddress::new_secp256k1(&v.public_key.0.serialize()).unwrap();
                 (addr, v.power.clone())
             })
-            .collect();
+            .collect::<HashMap<_, _>>();
+
+        let total_collateral: TokenAmount = child_validators.values().cloned().map(|c| c.0).sum();
+        let min_collateral = parent_genesis.ipc.clone().unwrap().gateway.min_collateral;
+        let activated = total_collateral >= min_collateral;
 
         let accounts = accounts
             .into_iter()
@@ -94,7 +100,38 @@ impl StakingState {
             child_validators,
             configuration_number: 0,
             pending_updates: VecDeque::new(),
+            activated,
         }
+    }
+
+    /// Until the minimum collateral is reached, apply the changes immediately.
+    fn update<F: FnOnce(&mut Self) -> StakingUpdate>(mut self, f: F) -> Self {
+        if self.activated {
+            self.configuration_number += 1;
+        }
+
+        let update = f(&mut self);
+        self.pending_updates.push_back(update);
+
+        if !self.activated {
+            debug_assert_eq!(self.configuration_number, 0);
+            self = self.checkpoint(0);
+
+            let total_collateral: TokenAmount =
+                self.child_validators.values().cloned().map(|c| c.0).sum();
+
+            let min_collateral = self
+                .parent_genesis
+                .ipc
+                .clone()
+                .unwrap()
+                .gateway
+                .min_collateral;
+
+            self.activated = total_collateral >= min_collateral;
+        }
+
+        self
     }
 
     /// Apply the changes up to `the next_configuration_number`.
@@ -143,39 +180,33 @@ impl StakingState {
     }
 
     /// Enqueue a deposit.
-    pub fn stake(mut self, addr: EthAddress, value: TokenAmount) -> Self {
-        self.configuration_number += 1;
+    pub fn stake(self, addr: EthAddress, value: TokenAmount) -> Self {
+        self.update(|this| {
+            let a = this.accounts.get_mut(&addr).expect("accounts exist");
 
-        let a = self.accounts.get_mut(&addr).expect("accounts exist");
+            // Sanity check that we are generating the expected kind of values.
+            // Using `debug_assert!` on the reference state to differentiate from assertions on the SUT.
+            debug_assert!(
+                a.current_balance >= value,
+                "stakes are generated within the balance"
+            );
+            a.current_balance -= value.clone();
 
-        // Sanity check that we are generating the expected kind of values.
-        // Using `debug_assert!` on the reference state to differentiate from assertions on the SUT.
-        debug_assert!(
-            a.current_balance >= value,
-            "stakes are generated within the balance"
-        );
-        a.current_balance -= value.clone();
-
-        let update = StakingUpdate {
-            configuration_number: self.configuration_number,
-            addr,
-            op: StakingOp::Deposit(value),
-        };
-
-        self.pending_updates.push_back(update);
-        self
+            StakingUpdate {
+                configuration_number: this.configuration_number,
+                addr,
+                op: StakingOp::Deposit(value),
+            }
+        })
     }
 
     /// Enqueue a withdrawal.
-    pub fn unstake(mut self, addr: EthAddress, value: TokenAmount) -> Self {
-        self.configuration_number += 1;
-        let update = StakingUpdate {
-            configuration_number: self.configuration_number,
+    pub fn unstake(self, addr: EthAddress, value: TokenAmount) -> Self {
+        self.update(|this| StakingUpdate {
+            configuration_number: this.configuration_number,
             addr,
             op: StakingOp::Withdraw(value),
-        };
-        self.pending_updates.push_back(update);
-        self
+        })
     }
 }
 
