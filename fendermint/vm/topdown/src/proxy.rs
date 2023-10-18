@@ -71,7 +71,7 @@ impl ParentQueryProxy for IPCProviderProxy {
     /// Get the genesis epoch of the child subnet, i.e. the epoch that the subnet was created in
     /// the parent subnet.
     async fn get_genesis_epoch(&self) -> anyhow::Result<BlockHeight> {
-        let height = self.ipc_provider.genesis_epoch(&self.parent_subnet).await?;
+        let height = self.ipc_provider.genesis_epoch(&self.child_subnet).await?;
         Ok(height as BlockHeight)
     }
 
