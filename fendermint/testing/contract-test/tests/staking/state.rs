@@ -274,7 +274,6 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             gateway: GatewayParams {
                 subnet_id: ArbSubnetID::arbitrary(u)?.0,
                 bottom_up_check_period: 1 + u.choose_index(100)? as u64,
-                top_down_check_period: 1 + u.choose_index(100)? as u64,
                 msg_fee: ArbTokenAmount::arbitrary(u)?.0,
                 majority_percentage: 51 + u8::arbitrary(u)? % 50,
                 min_collateral,
@@ -302,7 +301,6 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             gateway: GatewayParams {
                 subnet_id: child_subnet_id,
                 bottom_up_check_period: 1 + u.choose_index(100)? as u64,
-                top_down_check_period: 1 + u.choose_index(100)? as u64,
                 msg_fee: ArbTokenAmount::arbitrary(u)?.0,
                 majority_percentage: 51 + u8::arbitrary(u)? % 50,
                 min_collateral: ArbTokenAmount::arbitrary(u)?
