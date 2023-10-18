@@ -316,7 +316,7 @@ async fn get_new_parent_views(
 
         total_top_down_msgs += top_down_msgs_res.len();
 
-        previous_hash = block_hash_res.parent_block_hash;
+        previous_hash = block_hash_res.block_hash.clone();
 
         block_height_to_update.push((
             h,
