@@ -121,7 +121,7 @@ pub struct GenesisIntoTendermintArgs {
 pub enum GenesisIpcCommands {
     /// Set all gateway parameters.
     Gateway(GenesisIpcGatewayArgs),
-    ChildGenesis(GenesisIpcChildGenesisArgs),
+    FromParent(GenesisFromParentArgs),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -151,7 +151,7 @@ pub struct GenesisIpcGatewayArgs {
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct GenesisIpcChildGenesisArgs {
+pub struct GenesisFromParentArgs {
     /// Child subnet for with the genesis file is being created
     #[arg(long, short)]
     pub subnet_id: SubnetID,

@@ -84,8 +84,8 @@ cmd! {
     match self {
         GenesisIpcCommands::Gateway(args) =>
             set_ipc_gateway(&genesis_file, args),
-        GenesisIpcCommands::ChildGenesis(args) =>
-            new_child_genesis(&genesis_file, args).await
+        GenesisIpcCommands::FromParent(args) =>
+            new_genesis_from_parent(&genesis_file, args).await
     }
   }
 }
@@ -251,9 +251,9 @@ fn set_ipc_gateway(genesis_file: &PathBuf, args: &GenesisIpcGatewayArgs) -> anyh
     })
 }
 
-async fn new_child_genesis(
+async fn new_genesis_from_parent(
     genesis_file: &PathBuf,
-    args: &GenesisIpcChildGenesisArgs,
+    args: &GenesisFromParentArgs,
 ) -> anyhow::Result<()> {
     // provider with the parent.
     let parent_provider = IpcProvider::new_with_subnet(
