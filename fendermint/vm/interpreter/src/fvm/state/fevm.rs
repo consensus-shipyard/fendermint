@@ -25,22 +25,31 @@ pub type MockContractCall<T> = ethers::prelude::ContractCall<MockProvider, T>;
 /// Result of trying to decode the data returned in failures as reverts.
 ///
 /// The `E` type is supposed to be the enum unifying all errors that the contract can emit.
-pub enum CallError<E> {
+pub enum ContractError<E> {
     /// The contract reverted with one of the expected custom errors.
     Revert(E),
     /// Some other error occurred that we could not decode.
     Raw(Vec<u8>),
 }
 
-impl<E> std::fmt::Debug for CallError<E>
+/// Error returned by calling a contract.
+pub struct CallError<E> {
+    exit_code: ExitCode,
+    failure_info: Option<ApplyFailure>,
+    error: ContractError<E>,
+}
+
+impl<E> std::fmt::Debug for ContractError<E>
 where
     E: std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CallError::Revert(e) => write!(f, "{}:{:?}", type_name::<E>(), e),
-            CallError::Raw(bz) if bz.is_empty() => write!(f, "<no data; potential ABI mismatch>"),
-            CallError::Raw(bz) => write!(f, "0x{}", hex::encode(bz)),
+            ContractError::Revert(e) => write!(f, "{}:{:?}", type_name::<E>(), e),
+            ContractError::Raw(bz) if bz.is_empty() => {
+                write!(f, "<no data; potential ABI mismatch>")
+            }
+            ContractError::Raw(bz) => write!(f, "0x{}", hex::encode(bz)),
         }
     }
 }
@@ -139,7 +148,11 @@ where
     {
         match self.try_call(state, f)? {
             Ok(value) => Ok(value),
-            Err((exit_code, failure_info, error)) => {
+            Err(CallError {
+                exit_code,
+                failure_info,
+                error,
+            }) => {
                 bail!(
                     "failed to execute contract call to {}:\ncode: {}\nerror: {:?}\ninfo: {}",
                     self.addr,
@@ -159,7 +172,7 @@ where
         &self,
         state: &mut FvmExecState<DB>,
         f: F,
-    ) -> anyhow::Result<Result<T, (ExitCode, Option<ApplyFailure>, CallError<E>)>>
+    ) -> anyhow::Result<Result<T, CallError<E>>>
     where
         F: FnOnce(&C) -> MockContractCall<T>,
         T: Detokenize,
@@ -210,11 +223,15 @@ where
             };
 
             let error = match decode_revert::<E>(&output) {
-                Some(e) => CallError::Revert(e),
-                None => CallError::Raw(output),
+                Some(e) => ContractError::Revert(e),
+                None => ContractError::Raw(output),
             };
 
-            Ok(Err((ret.msg_receipt.exit_code, ret.failure_info, error)))
+            Ok(Err(CallError {
+                exit_code: ret.msg_receipt.exit_code,
+                failure_info: ret.failure_info,
+                error,
+            }))
         } else {
             let data = ret
                 .msg_receipt
