@@ -318,5 +318,8 @@ async fn get_new_parent_views(
             break;
         }
     }
+
+    tracing::debug!("obtained updates: {block_height_to_update:?}");
+
     Ok(block_height_to_update)
 }
