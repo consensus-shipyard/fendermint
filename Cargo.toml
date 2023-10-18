@@ -36,6 +36,7 @@ bytes = "1.4"
 clap = { version = "4.1", features = ["derive", "env"] }
 config = "0.13"
 dirs = "5.0"
+erased-serde = "0.3"
 ethers = { version = "2.0", features = ["abigen", "ws"] }
 ethers-core = { version = "2.0" }
 fnv = "1.0"
@@ -141,5 +142,5 @@ merkle-tree-rs = { git = "https://github.com/consensus-shipyard/merkle-tree-rs.g
 
 # Uncomment to point to your local versions
 # [patch."https://github.com/consensus-shipyard/ipc"]
-# ipc-sdk = { path = "../ipc-agent/ipc/sdk" }
-# ipc-provider = { path = "../ipc-agent/ipc/provider" }
+# ipc-sdk = { path = "../ipc/ipc/sdk" }
+# ipc-provider = { path = "../ipc/ipc/provider" }
