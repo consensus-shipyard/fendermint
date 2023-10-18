@@ -112,6 +112,7 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentFinalityProvider
         let height = if let Some(h) = self.cached_data.latest_height()? {
             h
         } else {
+            tracing::debug!("no proposal yet as height not available");
             return Ok(None);
         };
 
