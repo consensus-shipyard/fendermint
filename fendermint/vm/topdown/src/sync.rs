@@ -292,7 +292,6 @@ async fn get_new_parent_views(
         let changes_res = parent_proxy
             .get_validator_changes(h)
             .await
-            .context("cannot fetch validator set")
             .map_err(|e| Error::CannotQueryParent(e.to_string()))?;
         if changes_res.block_hash != block_hash_res.block_hash {
             return Err(Error::ParentChainReorgDetected);
