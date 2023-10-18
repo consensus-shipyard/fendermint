@@ -161,11 +161,11 @@ pub struct GenesisFromParentArgs {
     pub parent_endpoint: url::Url,
 
     /// IPC gateway of the parent; 20 byte Ethereum address in 0x prefixed hex format
-    #[arg(long, value_parser = parse_eth_address)]
+    #[arg(long, value_parser = parse_eth_address, default_value = "0xff00000000000000000000000000000000000064")]
     pub parent_gateway: Address,
 
     /// IPC registry of the parent;  20 byte Ethereum address in 0x prefixed hex format
-    #[arg(long, value_parser = parse_eth_address)]
+    #[arg(long, value_parser = parse_eth_address, default_value = "0xff00000000000000000000000000000000000065")]
     pub parent_registry: Address,
 
     /// Network version, governs which set of built-in actors to use.
