@@ -6,14 +6,13 @@ use arbitrary::{Arbitrary, Unstructured};
 use contract_test::ipc::{registry::RegistryCaller, subnet::SubnetCaller};
 use ethers::types as et;
 use fendermint_testing::smt::StateMachine;
-use fendermint_vm_actor_interface::ipc::subnet_id_to_eth;
+use fendermint_vm_actor_interface::{eam::EthAddress, ipc::subnet_id_to_eth};
 use fendermint_vm_interpreter::fvm::{
     state::{ipc::GatewayCaller, FvmExecState},
     store::memory::MemoryBlockstore,
 };
 use fendermint_vm_message::conv::from_fvm;
 use fvm::engine::MultiEngine;
-use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::bigint::Integer;
 use fvm_shared::econ::TokenAmount;
@@ -33,10 +32,14 @@ pub struct StakingSystem {
 pub enum StakingCommand {
     /// Bottom-up checkpoint; confirms all staking operations up to the configuration number.
     Checkpoint { next_configuration_number: u64 },
-    /// Increase the collateral of a validator; when it goes from 0 this means joining the subnet.
-    Stake(Address, TokenAmount),
-    /// Decrease the collateral of a validator; if it goes to 0 it means leaving the subnet.
-    Unstake(Address, TokenAmount),
+    // /// Join by as a new validator.
+    // Join(EthAddress, TokenAmount, PublicKey),
+    /// Increase the collateral of an already existing validator.
+    Stake(EthAddress, TokenAmount),
+    /// Decrease the collateral of a validator.
+    Unstake(EthAddress, TokenAmount),
+    // /// Remove all collateral at once.
+    // Leave(EthAddress),
 }
 
 #[derive(Default)]
@@ -158,7 +161,7 @@ impl StateMachine for StakingMachine {
     }
 
     fn run_command(&self, _system: &mut Self::System, _cmd: &Self::Command) -> Self::Result {
-        // TODO: Execute the command against the contract.
+        // TODO: Run the command agains the contract.
     }
 
     fn check_result(&self, _cmd: &Self::Command, _pre_state: &Self::State, _result: &Self::Result) {

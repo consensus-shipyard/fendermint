@@ -30,7 +30,7 @@ pub enum StakingOp {
 #[derive(Debug, Clone)]
 pub struct StakingUpdate {
     pub configuration_number: u64,
-    pub addr: Address,
+    pub addr: EthAddress,
     pub op: StakingOp,
 }
 
@@ -38,7 +38,7 @@ pub struct StakingUpdate {
 pub struct StakingAccount {
     pub public_key: PublicKey,
     pub secret_key: SecretKey,
-    pub addr: Address,
+    pub addr: EthAddress,
     /// In this test the accounts should never gain more than their initial balance.
     pub initial_balance: TokenAmount,
     /// Balance after the effects of deposits/withdrawals.
@@ -49,15 +49,15 @@ pub struct StakingAccount {
 #[derive(Debug, Clone)]
 pub struct StakingState {
     /// Accounts with secret key of accounts in case the contract wants to validate signatures.
-    pub accounts: HashMap<Address, StakingAccount>,
+    pub accounts: HashMap<EthAddress, StakingAccount>,
     /// List of account addresses to help pick a random one.
-    pub addrs: Vec<Address>,
+    pub addrs: Vec<EthAddress>,
     /// The parent genesis should include a bunch of accounts we can use to join a subnet.
     pub parent_genesis: Genesis,
     /// The child genesis describes the initial validator set to join the subnet
     pub child_genesis: Genesis,
     /// Currently active child validator set.
-    pub child_validators: HashMap<Address, Collateral>,
+    pub child_validators: HashMap<EthAddress, Collateral>,
     /// The configuration number to be incremented before each staking operation; 0 belongs to the genesis.
     pub configuration_number: u64,
     /// Unconfirmed staking operations.
@@ -74,7 +74,7 @@ impl StakingState {
             .validators
             .iter()
             .map(|v| {
-                let addr = Address::new_secp256k1(&v.public_key.0.serialize()).unwrap();
+                let addr = EthAddress::new_secp256k1(&v.public_key.0.serialize()).unwrap();
                 (addr, v.power.clone())
             })
             .collect();
@@ -143,7 +143,7 @@ impl StakingState {
     }
 
     /// Enqueue a deposit.
-    pub fn stake(mut self, addr: Address, value: TokenAmount) -> Self {
+    pub fn stake(mut self, addr: EthAddress, value: TokenAmount) -> Self {
         self.configuration_number += 1;
 
         let a = self.accounts.get_mut(&addr).expect("accounts exist");
@@ -167,7 +167,7 @@ impl StakingState {
     }
 
     /// Enqueue a withdrawal.
-    pub fn unstake(mut self, addr: Address, value: TokenAmount) -> Self {
+    pub fn unstake(mut self, addr: EthAddress, value: TokenAmount) -> Self {
         self.configuration_number += 1;
         let update = StakingUpdate {
             configuration_number: self.configuration_number,
@@ -200,7 +200,6 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             let pk = sk.public_key();
             // All of them need to be ethereum accounts to interact with IPC.
             let addr = EthAddress::new_secp256k1(&pk.serialize()).unwrap();
-            let addr = Address::from(addr);
 
             // Create with a non-zero balance so we can pick anyone to be a validator and deposit some collateral.
             let initial_balance = ArbTokenAmount::arbitrary(u)?
@@ -230,7 +229,7 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             .iter()
             .map(|s| Actor {
                 meta: ActorMeta::Account(Account {
-                    owner: SignerAddr(s.addr),
+                    owner: SignerAddr(Address::from(s.addr)),
                 }),
                 balance: s.initial_balance.clone(),
             })
