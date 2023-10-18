@@ -35,7 +35,7 @@ fn create_ipc_provider_proxy(settings: &Settings) -> anyhow::Result<IPCProviderP
     let ipc_provider = IpcProvider::new_with_subnet(
         None,
         ipc_provider::config::Subnet {
-            id: settings.ipc.subnet_id.clone(),
+            id: settings.ipc.subnet_id.parent().ok_or_else(|| anyhow!("subnet has no parent"))?,
             network_name: settings.ipc.network_name.clone(),
             config: SubnetConfig::Fevm(EVMSubnet {
                 provider_http: topdown_config
