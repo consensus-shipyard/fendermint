@@ -2811,7 +2811,7 @@ dependencies = [
  "fvm_shared",
  "hex",
  "ipc-provider",
- "ipc-sdk",
+ "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc.git?branch=dev)",
  "ipc_ipld_resolver",
  "k256 0.11.6",
  "libipld",
@@ -2848,7 +2848,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc-sdk",
+ "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc.git?branch=dev)",
  "num-traits",
  "primitives",
  "tendermint-rpc",
@@ -2866,7 +2866,7 @@ dependencies = [
  "fendermint_vm_encoding",
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
- "ipc-sdk",
+ "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc.git?branch=dev)",
  "multiaddr 0.16.0",
  "serde",
  "serde_with",
@@ -3000,7 +3000,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc-sdk",
+ "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc.git?branch=dev)",
  "lazy_static",
  "num-bigint",
  "quickcheck 1.0.3",
@@ -3058,7 +3058,7 @@ version = "0.1.0"
 dependencies = [
  "cid",
  "fvm_shared",
- "ipc-sdk",
+ "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc.git?branch=dev)",
  "num-traits",
  "serde",
  "serde_with",
@@ -3079,7 +3079,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc-sdk",
+ "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc.git?branch=dev)",
  "num-traits",
  "quickcheck 1.0.3",
  "quickcheck_macros",
@@ -3151,7 +3151,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc-sdk",
+ "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc.git?branch=dev)",
  "lazy_static",
  "num-traits",
  "quickcheck 1.0.3",
@@ -3170,7 +3170,7 @@ dependencies = [
  "async-stm",
  "cid",
  "im",
- "ipc-sdk",
+ "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc.git?branch=dev)",
  "ipc_ipld_resolver",
  "tokio",
  "tracing",
@@ -3189,7 +3189,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "ipc-provider",
- "ipc-sdk",
+ "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc.git?branch=dev)",
  "ipc_actors_abis",
  "num-traits",
  "serde",
@@ -4601,7 +4601,7 @@ dependencies = [
 [[package]]
 name = "ipc-identity"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#cdf0e7b9113615c8dd978d9b2936494efc31e0dc"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=dev#cdf0e7b9113615c8dd978d9b2936494efc31e0dc"
 dependencies = [
  "ahash 0.8.3",
  "anyhow",
@@ -4628,7 +4628,7 @@ dependencies = [
 [[package]]
 name = "ipc-provider"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#cdf0e7b9113615c8dd978d9b2936494efc31e0dc"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=dev#cdf0e7b9113615c8dd978d9b2936494efc31e0dc"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -4644,7 +4644,7 @@ dependencies = [
  "fvm_shared",
  "hex",
  "ipc-identity",
- "ipc-sdk",
+ "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc.git?branch=dev)",
  "ipc_actors_abis",
  "log",
  "num-derive",
@@ -4667,7 +4667,31 @@ dependencies = [
 [[package]]
 name = "ipc-sdk"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#cdf0e7b9113615c8dd978d9b2936494efc31e0dc"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=dev#cdf0e7b9113615c8dd978d9b2936494efc31e0dc"
+dependencies = [
+ "anyhow",
+ "cid",
+ "ethers",
+ "fnv",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding 0.3.3",
+ "fvm_ipld_hamt 0.6.1",
+ "fvm_shared",
+ "integer-encoding",
+ "ipc_actors_abis",
+ "lazy_static",
+ "log",
+ "num-traits",
+ "primitives",
+ "serde",
+ "serde_tuple",
+ "thiserror",
+]
+
+[[package]]
+name = "ipc-sdk"
+version = "0.1.0"
+source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#25e060715fc03859ae5db4a6d1326a6e7fdf2df0"
 dependencies = [
  "anyhow",
  "cid",
@@ -4711,7 +4735,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "gcra",
- "ipc-sdk",
+ "ipc-sdk 0.1.0 (git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev)",
  "lazy_static",
  "libipld",
  "libp2p",
