@@ -164,8 +164,7 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
 
     let parent_chain_head_height = parent_proxy
         .get_chain_head_height()
-        .await
-        .context("cannot fetch parent chain head")?;
+        .await?;
     // sanity check
     if parent_chain_head_height < config.chain_head_delay {
         tracing::debug!("latest height not more than the chain head delay");
@@ -286,7 +285,6 @@ async fn get_new_parent_views(
         let block_hash_res = parent_proxy
             .get_block_hash(h)
             .await
-            .context("cannot fetch block hash")
             .map_err(|e| Error::CannotQueryParent(e.to_string()))?;
         if block_hash_res.parent_block_hash != previous_hash {
             tracing::warn!(
