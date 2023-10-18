@@ -63,7 +63,10 @@ async fn query_starting_finality<T: ParentFinalityStateQuery + Send + Sync + 'st
         // the genesis epoch of the current subnet and its corresponding block hash.
         if finality.height == 0 {
             let genesis_epoch = parent_client.get_genesis_epoch().await?;
+            tracing::debug!("obtained genesis epoch: {genesis_epoch:?}");
             let r = parent_client.get_block_hash(genesis_epoch).await?;
+            tracing::debug!("obtained genesis block hash: {:?}", r.block_hash);
+
             finality = IPCParentFinality {
                 height: genesis_epoch,
                 block_hash: r.block_hash,
