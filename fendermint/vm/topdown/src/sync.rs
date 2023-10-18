@@ -8,7 +8,7 @@ use crate::{
     BlockHash, BlockHeight, CachedFinalityProvider, Config, IPCParentFinality,
     ParentFinalityProvider, Toggle,
 };
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use async_stm::{atomically, atomically_or_err};
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::staking::StakingChangeRequest;
@@ -162,9 +162,7 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
             return Ok(());
         };
 
-    let parent_chain_head_height = parent_proxy
-        .get_chain_head_height()
-        .await?;
+    let parent_chain_head_height = parent_proxy.get_chain_head_height().await?;
     // sanity check
     if parent_chain_head_height < config.chain_head_delay {
         tracing::debug!("latest height not more than the chain head delay");

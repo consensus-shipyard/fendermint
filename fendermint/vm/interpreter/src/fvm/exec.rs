@@ -106,7 +106,7 @@ where
         let gas_limit = msg.gas_limit;
 
         let (apply_ret, emitters) = if from == system::SYSTEM_ACTOR_ADDR {
-            state.execute_implicit(msg)?;
+            state.execute_implicit(msg)?
         } else {
             state.execute_explicit(msg)?
         };
