@@ -69,7 +69,7 @@ dependencies = [
 [tasks.testnode-script-new-genesis]
 cwd = "./target/release"
 script = """
-./fendermint genesis --genesis-file ${GENESIS_FILE} new --chain-name ${CHAIN_NAME} --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP}
+./fendermint genesis --genesis-file ${GENESIS_FILE} new --chain-name ${CHAIN_NAME} --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP} --power-scale 3
 """
 
 [tasks.testnode-script-new-key]
@@ -98,10 +98,10 @@ script = """
 cwd = "./target/release"
 script = """
 ./fendermint genesis --genesis-file ${GENESIS_FILE} ipc gateway --subnet-id /r0 \
-    --top-down-check-period 10 \
     --bottom-up-check-period 10 \
     --msg-fee 10 \
-    --majority-percentage 67
+    --majority-percentage 67 \
+    --min-collateral 1
 """
 
 [tasks.testnode-script-export-keys]
