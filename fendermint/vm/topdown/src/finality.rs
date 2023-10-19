@@ -75,6 +75,7 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
         let mut v = vec![];
         for h in from..=to {
             let mut r = self.validator_changes(h).await?;
+            tracing::debug!("obtained validator change set (len {}) at height {h}", r.len());
             v.append(&mut r);
         }
         Ok(v)
