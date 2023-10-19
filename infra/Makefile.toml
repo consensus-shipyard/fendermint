@@ -4,7 +4,8 @@ extend = [
   { path = "scripts/fendermint.toml" },
   { path = "scripts/ethapi.toml" },
   { path = "scripts/node.toml" },
-  { path = "scripts/testnet.toml" }
+  { path = "scripts/testnet.toml" },
+  { path = "scripts/testnode.toml" }
 ]
 
 [config]

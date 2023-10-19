@@ -56,7 +56,7 @@ run_task = { name = [
 
 # This task create all necessary data structures to run Fendermint:
 # the genesis file with necessary entities and cryptographic keys.
-[tasks.node-config]
+[tasks.testnode-config]
 dependencies = [
     "testnode-script-new-genesis",
     "testnode-script-new-key",
