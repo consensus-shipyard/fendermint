@@ -264,17 +264,17 @@ where
                         .validator_changes_from(prev_height + 1, p.height as u64)
                         .await?;
                     tracing::debug!("validator changes to stash: {validator_changes:?}");
-                    // let msg = self
-                    //     .gateway_caller
-                    //     .store_validator_changes_msg(validator_changes)?;
-                    // let (state, ret) = self
-                    //     .inner
-                    //     .deliver(state, VerifiableMessage::NotVerify(msg))
-                    //     .await?;
-                    // if ret.is_err() {
-                    //     return Err(anyhow!("failed to store validator changes"));
-                    // }
-                    // tracing::debug!("validator changes stashed");
+                    let msg = self
+                        .gateway_caller
+                        .store_validator_changes_msg(validator_changes)?;
+                    let (state, ret) = self
+                        .inner
+                        .deliver(state, VerifiableMessage::NotVerify(msg))
+                        .await?;
+                    if ret.is_err() {
+                        return Err(anyhow!("failed to store validator changes"));
+                    }
+                    tracing::debug!("validator changes stashed");
                     //
                     // // Execute top down messages
                     //
