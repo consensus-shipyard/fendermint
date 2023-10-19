@@ -276,22 +276,22 @@ where
                     }
                     tracing::debug!("validator changes stashed");
                     //
-                    // // Execute top down messages
-                    //
-                    // // error happens if we cannot get the validator set from ipc agent after retries
-                    // let messages = provider
-                    //     .top_down_msgs_from(prev_height + 1, p.height as u64, &finality.block_hash)
-                    //     .await?;
-                    // tracing::debug!("top down messages to execute: {messages:?}");
-                    // let msg = self.gateway_caller.apply_cross_messages_msg(messages)?;
-                    // let (state, ret) = self
-                    //     .inner
-                    //     .deliver(state, VerifiableMessage::NotVerify(msg))
-                    //     .await?;
-                    // if ret.is_err() {
-                    //     return Err(anyhow!("failed to apply cross messages"));
-                    // }
-                    // tracing::debug!("top down messages executed");
+                    // Execute top down messages
+
+                    // error happens if we cannot get the validator set from ipc agent after retries
+                    let messages = provider
+                        .top_down_msgs_from(prev_height + 1, p.height as u64, &finality.block_hash)
+                        .await?;
+                    tracing::debug!("top down messages to execute: {messages:?}");
+                    let msg = self.gateway_caller.apply_cross_messages_msg(messages)?;
+                    let (state, ret) = self
+                        .inner
+                        .deliver(state, VerifiableMessage::NotVerify(msg))
+                        .await?;
+                    if ret.is_err() {
+                        return Err(anyhow!("failed to apply cross messages"));
+                    }
+                    tracing::debug!("top down messages executed");
 
                     atomically(|| {
                         provider.set_new_finality(finality.clone(), prev_finality.clone())
