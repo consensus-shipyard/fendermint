@@ -258,10 +258,10 @@ where
 
                     // stash validator changes
 
-                    // // error happens if we cannot get the validator set from ipc agent after retries
-                    // let validator_changes = provider
-                    //     .validator_changes_from(prev_height + 1, p.height as u64)
-                    //     .await?;
+                    // error happens if we cannot get the validator set from ipc agent after retries
+                    let validator_changes = provider
+                        .validator_changes_from(prev_height + 1, p.height as u64)
+                        .await?;
                     // tracing::debug!("validator changes to stash: {validator_changes:?}");
                     // let msg = self
                     //     .gateway_caller
