@@ -80,6 +80,15 @@ impl<DB: Blockstore> SubnetCaller<DB> {
             .try_call(state, |c| c.stake().from(addr).value(deposit))
     }
 
+    /// Try to remove all stake of a validator.
+    pub fn try_leave(
+        &self,
+        state: &mut FvmExecState<DB>,
+        addr: &EthAddress,
+    ) -> anyhow::Result<ContractResult<(), SubnetActorErrors>> {
+        self.manager.try_call(state, |c| c.leave().from(addr))
+    }
+
     /// Get information about the validator's current and total collateral.
     pub fn get_validator(
         &self,

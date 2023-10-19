@@ -136,15 +136,14 @@ impl StateMachine for StakingMachine {
         let cmd = match u
             .choose(&[
                 //"checkpoint",
-                "join", "stake",
+                "join", "stake", "leave",
                 //"unstake",
-                //"leave"
             ])
             .unwrap()
         {
             &"checkpoint" => {
                 let cn = match state.pending_updates.len() {
-                    0 => state.child_validators.configuration_number,
+                    0 => state.current_configuration.configuration_number,
                     n => {
                         let idx = u.choose_index(n).expect("non-zero");
                         state.pending_updates[idx].configuration_number
@@ -186,8 +185,8 @@ impl StateMachine for StakingMachine {
     fn run_command(&self, system: &mut Self::System, cmd: &Self::Command) -> Self::Result {
         let mut exec_state = system.exec_state.borrow_mut();
         let res = match cmd {
-            StakingCommand::Join(addr, value, public_key) => {
-                // eprintln!("\n> CMD: JOIN addr={addr} value{value}");
+            StakingCommand::Join(_addr, value, public_key) => {
+                // eprintln!("\n> CMD: JOIN addr={_addr} value{value}");
                 let validator = Validator {
                     public_key: ValidatorKey(public_key.clone()),
                     power: Collateral(value.clone()),
@@ -195,14 +194,21 @@ impl StateMachine for StakingMachine {
                 system
                     .subnet
                     .try_join(&mut exec_state, &validator)
-                    .expect("failed to call join")
+                    .expect("failed to call: join")
             }
             StakingCommand::Stake(addr, value) => {
                 // eprintln!("\n> CMD: STAKE addr={addr} value={value}");
                 system
                     .subnet
                     .try_stake(&mut exec_state, addr, value)
-                    .expect("failed to call stake")
+                    .expect("failed to call: stake")
+            }
+            StakingCommand::Leave(addr) => {
+                // eprintln!("\n> CMD: LEAVE addr={addr}");
+                system
+                    .subnet
+                    .try_leave(&mut exec_state, addr)
+                    .expect("failed to call: leave")
             }
             _ => {
                 // TODO: Handle other commands.
@@ -226,10 +232,17 @@ impl StateMachine for StakingMachine {
             StakingCommand::Stake(addr, value) => {
                 if value.is_zero() {
                     result.expect_err("should not stake with 0 value");
-                } else if !pre_state.has_joined(addr) {
-                    result.expect_err("must join before stake");
+                } else if !pre_state.has_staked(addr) {
+                    result.expect_err("must call join before stake");
                 } else {
                     result.expect("stake should succeed");
+                }
+            }
+            StakingCommand::Leave(addr) => {
+                if !pre_state.has_staked(addr) {
+                    result.expect_err("must call join before leave");
+                } else {
+                    result.expect("leave should succeed");
                 }
             }
             _ => {
@@ -240,20 +253,13 @@ impl StateMachine for StakingMachine {
 
     fn next_state(&self, cmd: &Self::Command, mut state: Self::State) -> Self::State {
         match cmd {
-            // StakingCommand::Checkpoint {
-            //     next_configuration_number,
-            // } => state.checkpoint(*next_configuration_number),
+            StakingCommand::Checkpoint {
+                next_configuration_number,
+            } => state.checkpoint(*next_configuration_number),
             StakingCommand::Join(addr, value, _) => state.join(*addr, value.clone()),
             StakingCommand::Stake(addr, value) => state.stake(*addr, value.clone()),
-            // StakingCommand::Unstake(addr, value) => state.unstake(*addr, value.clone()),
-            // StakingCommand::Leave(addr) => {
-            //     if let Some(c) = state.child_validators.collateral(&addr) {
-            //         state.unstake(*addr, c)
-            //     }
-            // }
-            _ => {
-                // TODO: Implement on the system before re-enabling on the state.
-            }
+            StakingCommand::Unstake(addr, value) => state.unstake(*addr, value.clone()),
+            StakingCommand::Leave(addr) => state.leave(*addr),
         }
         state
     }
@@ -280,7 +286,7 @@ impl StateMachine for StakingMachine {
 
                 debug_assert!(
                     post_state
-                        .child_validators
+                        .current_configuration
                         .collaterals
                         .iter()
                         .all(|(_, p)| !p.0.is_zero()),
@@ -294,7 +300,7 @@ impl StateMachine for StakingMachine {
                 let a = post_state.accounts.get(addr).unwrap();
                 debug_assert!(a.current_balance <= a.initial_balance);
 
-                if let Some(collateral) = post_state.child_validators.collateral(addr) {
+                if let Some(collateral) = post_state.current_configuration.collateral(addr) {
                     let cc = post_system
                         .subnet
                         .confirmed_collateral(&mut exec_state, addr)
