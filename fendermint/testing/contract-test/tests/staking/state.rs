@@ -45,6 +45,28 @@ pub struct StakingAccount {
     pub current_balance: TokenAmount,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct StakingDistribution {
+    /// The highest configuration number applied on the child_validators.
+    pub configuration_number: u64,
+    /// Stake for each account that put down some collateral.
+    pub collaterals: HashMap<EthAddress, Collateral>,
+}
+
+impl StakingDistribution {
+    pub fn total_collateral(&self) -> TokenAmount {
+        self.collaterals.values().map(|c| c.0.clone()).sum()
+    }
+
+    pub fn has_joined(&self, addr: &EthAddress) -> bool {
+        self.collaterals.contains_key(addr)
+    }
+
+    pub fn collateral(&self, addr: &EthAddress) -> Option<TokenAmount> {
+        self.collaterals.get(addr).map(|c| c.0.clone())
+    }
+}
+
 /// Reference implementation for staking.
 #[derive(Debug, Clone)]
 pub struct StakingState {
@@ -56,14 +78,14 @@ pub struct StakingState {
     pub parent_genesis: Genesis,
     /// The child genesis describes the initial validator set to join the subnet.
     pub child_genesis: Genesis,
-    /// Currently active child validator set.
-    pub child_validators: HashMap<EthAddress, Collateral>,
-    /// The configuration number to be incremented before each staking operation; 0 belongs to the genesis.
-    pub configuration_number: u64,
-    /// Unconfirmed staking operations.
-    pub pending_updates: VecDeque<StakingUpdate>,
+    /// Current staking distribution, after the application of checkpoints.
+    pub child_validators: StakingDistribution,
     /// Flag indicating whether the minimum collateral has been met.
     pub activated: bool,
+    /// Configuration number to be used in the next operation.
+    pub next_configuration_number: u64,
+    /// Unconfirmed staking operations.
+    pub pending_updates: VecDeque<StakingUpdate>,
 }
 
 impl StakingState {
@@ -79,11 +101,7 @@ impl StakingState {
                 let addr = EthAddress::new_secp256k1(&v.public_key.0.serialize()).unwrap();
                 (addr, v.power.clone())
             })
-            .collect::<HashMap<_, _>>();
-
-        let total_collateral: TokenAmount = child_validators.values().cloned().map(|c| c.0).sum();
-        let min_collateral = parent_genesis.ipc.clone().unwrap().gateway.min_collateral;
-        let activated = total_collateral >= min_collateral;
+            .collect::<Vec<_>>();
 
         let accounts = accounts
             .into_iter()
@@ -92,33 +110,41 @@ impl StakingState {
 
         let addrs = accounts.keys().cloned().collect();
 
-        Self {
+        let mut state = Self {
             accounts,
             addrs,
             parent_genesis,
             child_genesis,
-            child_validators,
-            configuration_number: 0,
+            child_validators: StakingDistribution::default(),
+            activated: false,
+            next_configuration_number: 0,
             pending_updates: VecDeque::new(),
-            activated,
+        };
+
+        // Joining one by one so the we test the activation logic
+        for (addr, c) in child_validators {
+            state = state.join(addr, c.0);
         }
+
+        debug_assert!(
+            state.activated,
+            "subnet should be activated by the child genesis"
+        );
+        debug_assert_eq!(state.next_configuration_number, 1);
+
+        state
     }
 
     /// Until the minimum collateral is reached, apply the changes immediately.
     fn update<F: FnOnce(&mut Self) -> StakingUpdate>(mut self, f: F) -> Self {
-        if self.activated {
-            self.configuration_number += 1;
-        }
-
         let update = f(&mut self);
         self.pending_updates.push_back(update);
 
         if !self.activated {
-            debug_assert_eq!(self.configuration_number, 0);
+            debug_assert_eq!(self.next_configuration_number, 0);
             self = self.checkpoint(0);
 
-            let total_collateral: TokenAmount =
-                self.child_validators.values().cloned().map(|c| c.0).sum();
+            let total_collateral = self.child_validators.total_collateral();
 
             let min_collateral = self
                 .parent_genesis
@@ -129,6 +155,10 @@ impl StakingState {
                 .min_collateral;
 
             self.activated = total_collateral >= min_collateral;
+        }
+
+        if self.activated {
+            self.next_configuration_number += 1;
         }
 
         self
@@ -146,11 +176,15 @@ impl StakingState {
             let update = self.pending_updates.pop_front().expect("checked non-empty");
             match update.op {
                 StakingOp::Deposit(v) => {
-                    let power = self.child_validators.entry(update.addr).or_default();
+                    let power = self
+                        .child_validators
+                        .collaterals
+                        .entry(update.addr)
+                        .or_default();
                     power.0 += v;
                 }
                 StakingOp::Withdraw(v) => {
-                    match self.child_validators.entry(update.addr) {
+                    match self.child_validators.collaterals.entry(update.addr) {
                         std::collections::hash_map::Entry::Occupied(mut e) => {
                             let c = e.get().0.clone();
                             let v = v.min(c.clone());
@@ -175,35 +209,38 @@ impl StakingState {
                 }
             }
         }
-        self.configuration_number = next_configuration_number;
+        self.child_validators.configuration_number = next_configuration_number;
         self
     }
 
-    /// Enqueue a deposit.
-    pub fn stake(self, addr: EthAddress, value: TokenAmount) -> Self {
+    /// Join with a validator. Repeated joins are allowed.
+    pub fn join(self, addr: EthAddress, value: TokenAmount) -> Self {
         self.update(|this| {
             let a = this.accounts.get_mut(&addr).expect("accounts exist");
-
-            // Sanity check that we are generating the expected kind of values.
-            // Using `debug_assert!` on the reference state to differentiate from assertions on the SUT.
-            debug_assert!(
-                a.current_balance >= value,
-                "stakes are generated within the balance"
-            );
+            debug_assert!(a.current_balance >= value);
             a.current_balance -= value.clone();
 
             StakingUpdate {
-                configuration_number: this.configuration_number,
+                configuration_number: this.next_configuration_number,
                 addr,
                 op: StakingOp::Deposit(value),
             }
         })
     }
 
+    /// Enqueue a deposit. Must be one of the current validators to succeed, otherwise ignored.
+    pub fn stake(self, addr: EthAddress, value: TokenAmount) -> Self {
+        // In theory we could check the pending queue, but the contracts don't do that.
+        if !self.child_validators.has_joined(&addr) {
+            return self;
+        }
+        self.join(addr, value)
+    }
+
     /// Enqueue a withdrawal.
     pub fn unstake(self, addr: EthAddress, value: TokenAmount) -> Self {
         self.update(|this| StakingUpdate {
-            configuration_number: this.configuration_number,
+            configuration_number: this.next_configuration_number,
             addr,
             op: StakingOp::Withdraw(value),
         })

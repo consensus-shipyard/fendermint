@@ -132,7 +132,7 @@ impl StateMachine for StakingMachine {
         {
             &"checkpoint" => {
                 let cn = match state.pending_updates.len() {
-                    0 => state.configuration_number,
+                    0 => state.child_validators.configuration_number,
                     n => {
                         let idx = u.choose_index(n).expect("non-zero");
                         state.pending_updates[idx].configuration_number
@@ -144,29 +144,26 @@ impl StateMachine for StakingMachine {
             }
             &"join" => {
                 // Pick any account, doesn't have to be new; the system should handle repeated joins.
-                let a = choose_account(&state, u)?;
-                let b = BigInt::arbitrary(u)?.mod_floor(a.current_balance.atto());
-                let b = TokenAmount::from_atto(b);
+                let a = choose_account(u, &state)?;
+                let b = choose_amount(u, &a.current_balance)?;
                 StakingCommand::Join(a.addr, b, a.public_key)
             }
             &"leave" => {
                 // Pick any account, doesn't have to be bonded; the system should ignore non-validators and not pay out twice.
-                let a = choose_account(&state, u)?;
+                let a = choose_account(u, &state)?;
                 StakingCommand::Leave(a.addr)
             }
             &"stake" => {
-                let a = choose_account(&state, u)?;
+                let a = choose_account(u, &state)?;
                 // Limit ourselves to the outstanding balance - the user would not be able to send more value to the contract.
-                let b = BigInt::arbitrary(u)?.mod_floor(a.current_balance.atto());
-                let b = TokenAmount::from_atto(b);
+                let b = choose_amount(u, &a.current_balance)?;
                 StakingCommand::Stake(a.addr, b)
             }
             &"unstake" => {
-                let a = choose_account(&state, u)?;
+                let a = choose_account(u, &state)?;
                 // We can try sending requests to unbond arbitrarily large amounts of collateral - the system should catch any attempt to steal.
                 // Only limiting it to be under the initial balance so that it's comparable to what the deposits could have been.
-                let b = BigInt::arbitrary(u)?.mod_floor(a.initial_balance.atto());
-                let b = TokenAmount::from_atto(b);
+                let b = choose_amount(u, &a.initial_balance)?;
                 StakingCommand::Unstake(a.addr, b)
             }
             other => unimplemented!("unknown command: {other}"),
@@ -195,8 +192,8 @@ impl StateMachine for StakingMachine {
             StakingCommand::Stake(addr, value) => state.stake(*addr, value.clone()),
             StakingCommand::Unstake(addr, value) => state.unstake(*addr, value.clone()),
             StakingCommand::Leave(addr) => {
-                if let Some(c) = state.child_validators.get(&addr).cloned() {
-                    state.unstake(*addr, c.0)
+                if let Some(c) = state.child_validators.collateral(&addr) {
+                    state.unstake(*addr, c)
                 } else {
                     state
                 }
@@ -224,6 +221,7 @@ impl StateMachine for StakingMachine {
                 debug_assert!(
                     post_state
                         .child_validators
+                        .collaterals
                         .iter()
                         .all(|(_, p)| !p.0.is_zero()),
                     "all child validators have non-zero collateral"
@@ -245,10 +243,19 @@ impl StateMachine for StakingMachine {
 }
 
 fn choose_account<'a>(
-    state: &'a StakingState,
     u: &mut Unstructured<'_>,
+    state: &'a StakingState,
 ) -> arbitrary::Result<&'a StakingAccount> {
     let a = u.choose(&state.addrs).expect("accounts not empty");
     let a = state.accounts.get(a).expect("account exists");
     Ok(a)
+}
+
+fn choose_amount(u: &mut Unstructured<'_>, max: &TokenAmount) -> arbitrary::Result<TokenAmount> {
+    let atto = if max.is_zero() {
+        BigInt::from(0)
+    } else {
+        BigInt::arbitrary(u)?.mod_floor(max.atto())
+    };
+    Ok(TokenAmount::from_atto(atto))
 }
