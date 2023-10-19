@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::{anyhow, Context};
+use ethers::abi::{Token, Tokenizable};
 use ethers::contract::decode_function_data;
 use ethers::types as et;
 use ethers::{abi::Tokenize, utils::keccak256};
@@ -218,9 +219,16 @@ impl<DB: Blockstore> GatewayCaller<DB> {
             .get(0)
             .ok_or_else(|| anyhow!("function not found, abi wrong?"))?;
 
-        let (committed, finality): (bool, router::ParentFinality) =
-            decode_function_data(function, return_data.0, false)?;
-        Ok((committed, IPCParentFinality::try_from(finality)?))
+        if let Token::Tuple(mut tuple) = decode_function_data(function, return_data.0, false)? {
+            if tuple.len() != 2 {
+                return Err(anyhow!("invalid decode data len"));
+            }
+            let committed = bool::from_token(tuple.pop().unwrap())?;
+            let finality = router::ParentFinality::from_token(tuple.pop().unwrap())?;
+            Ok((committed, IPCParentFinality::try_from(finality)?))
+        } else {
+            Err(anyhow!("invalida data"))
+        }
     }
 
     pub fn store_validator_changes_msg(
