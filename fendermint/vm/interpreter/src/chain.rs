@@ -238,6 +238,7 @@ where
                         height: p.height as u64,
                         block_hash: p.block_hash,
                     };
+
                     let msg = self
                         .gateway_caller
                         .commit_parent_finality_msg(finality.clone())?;
@@ -262,7 +263,7 @@ where
                     let validator_changes = provider
                         .validator_changes_from(prev_height + 1, p.height as u64)
                         .await?;
-                    // tracing::debug!("validator changes to stash: {validator_changes:?}");
+                    tracing::debug!("validator changes to stash: {validator_changes:?}");
                     // let msg = self
                     //     .gateway_caller
                     //     .store_validator_changes_msg(validator_changes)?;
