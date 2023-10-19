@@ -224,8 +224,8 @@ impl<DB: Blockstore> GatewayCaller<DB> {
             if tuple.len() != 2 {
                 return Err(anyhow!("invalid decode data len"));
             }
-            let committed = bool::from_token(tuple.pop().unwrap())?;
             let finality = router::ParentFinality::from_token(tuple.pop().unwrap())?;
+            let committed = bool::from_token(tuple.pop().unwrap())?;
             Ok((committed, IPCParentFinality::try_from(finality)?))
         } else {
             Err(anyhow!("invalida data"))
