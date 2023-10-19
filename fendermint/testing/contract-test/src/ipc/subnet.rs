@@ -4,7 +4,9 @@
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_actor_interface::ipc::subnet::SubnetActorErrors;
 use fendermint_vm_genesis::{Collateral, Validator};
-use fendermint_vm_interpreter::fvm::state::fevm::{ContractCaller, MockProvider, NoRevert};
+use fendermint_vm_interpreter::fvm::state::fevm::{
+    ContractCaller, ContractResult, MockProvider, NoRevert,
+};
 use fendermint_vm_interpreter::fvm::state::FvmExecState;
 use fendermint_vm_message::conv::from_fvm;
 use fvm_ipld_blockstore::Blockstore;
@@ -47,6 +49,22 @@ impl<DB: Blockstore> SubnetCaller<DB> {
 
         // We need to send in the name of the address as a sender, not the system account.
         self.manager.call(state, |c| {
+            c.join(public_key.into()).from(addr).value(deposit)
+        })
+    }
+
+    /// Try to join a subnet as a validator.
+    pub fn try_join(
+        &self,
+        state: &mut FvmExecState<DB>,
+        validator: &Validator<Collateral>,
+    ) -> anyhow::Result<ContractResult<(), SubnetActorErrors>> {
+        let public_key = validator.public_key.0.serialize();
+        let addr = EthAddress::new_secp256k1(&public_key)?;
+        let deposit = from_fvm::to_eth_tokens(&validator.power.0)?;
+
+        // We need to send in the name of the address as a sender, not the system account.
+        self.manager.try_call(state, |c| {
             c.join(public_key.into()).from(addr).value(deposit)
         })
     }

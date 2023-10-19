@@ -1,6 +1,8 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::fmt::Display;
+
 use cid::multihash::MultihashDigest;
 use fvm_ipld_encoding::{
     strict_bytes,
@@ -55,6 +57,12 @@ impl EthAddress {
     /// Indicate whether this hash is really an actor ID.
     pub fn is_masked_id(&self) -> bool {
         self.0[0] == 0xff && self.0[1..].starts_with(&[0u8; 11])
+    }
+}
+
+impl Display for EthAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        ethers::types::Address::from(self.0).fmt(f)
     }
 }
 

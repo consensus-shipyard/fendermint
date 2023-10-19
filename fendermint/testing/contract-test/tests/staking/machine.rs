@@ -7,16 +7,20 @@ use contract_test::ipc::{registry::RegistryCaller, subnet::SubnetCaller};
 use ethers::types as et;
 use fendermint_crypto::PublicKey;
 use fendermint_testing::smt::StateMachine;
-use fendermint_vm_actor_interface::{eam::EthAddress, ipc::subnet_id_to_eth};
+use fendermint_vm_actor_interface::{
+    eam::EthAddress,
+    ipc::{subnet::SubnetActorErrors, subnet_id_to_eth},
+};
+use fendermint_vm_genesis::{Collateral, Validator, ValidatorKey};
 use fendermint_vm_interpreter::fvm::{
-    state::{ipc::GatewayCaller, FvmExecState},
+    state::{fevm::ContractResult, ipc::GatewayCaller, FvmExecState},
     store::memory::MemoryBlockstore,
 };
 use fendermint_vm_message::conv::from_fvm;
 use fvm::engine::MultiEngine;
-use fvm_shared::bigint::BigInt;
 use fvm_shared::bigint::Integer;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::{address::Address, bigint::BigInt};
 
 use super::state::{StakingAccount, StakingState};
 use contract_test::ipc::registry::SubnetConstructorParams;
@@ -24,10 +28,10 @@ use contract_test::ipc::registry::SubnetConstructorParams;
 /// System Under Test for staking.
 pub struct StakingSystem {
     /// FVM state initialized with the parent genesis, and a subnet created for the child.
-    _exec_state: FvmExecState<MemoryBlockstore>,
+    exec_state: FvmExecState<MemoryBlockstore>,
     _gateway: GatewayCaller<MemoryBlockstore>,
     _registry: RegistryCaller<MemoryBlockstore>,
-    _subnet: SubnetCaller<MemoryBlockstore>,
+    subnet: SubnetCaller<MemoryBlockstore>,
 }
 
 pub enum StakingCommand {
@@ -55,7 +59,7 @@ impl StateMachine for StakingMachine {
 
     type Command = StakingCommand;
 
-    type Result = ();
+    type Result = ContractResult<(), SubnetActorErrors>;
 
     fn gen_state(&self, u: &mut Unstructured) -> arbitrary::Result<Self::State> {
         StakingState::arbitrary(u)
@@ -97,7 +101,7 @@ impl StateMachine for StakingMachine {
             min_cross_msg_fee: et::U256::zero(),
         };
 
-        //eprintln!("\n> CREATING SUBNET: {params:?}");
+        // eprintln!("\n> CREATING SUBNET: {params:?}");
 
         let subnet_addr = registry
             .new_subnet(&mut exec_state, params)
@@ -107,17 +111,18 @@ impl StateMachine for StakingMachine {
 
         // Make all the validators join the subnet by putting down collateral according to their power.
         for v in state.child_genesis.validators.iter() {
-            //eprintln!("\n> JOINING SUBNET: {v:?}");
+            // eprintln!("\n> JOINING SUBNET: {v:?});
+
             subnet
                 .join(&mut exec_state, v)
                 .expect("failed to join subnet");
         }
 
         StakingSystem {
-            _exec_state: exec_state,
+            exec_state,
             _gateway: gateway,
             _registry: registry,
-            _subnet: subnet,
+            subnet,
         }
     }
 
@@ -171,30 +176,55 @@ impl StateMachine for StakingMachine {
         Ok(cmd)
     }
 
-    fn run_command(&self, _system: &mut Self::System, _cmd: &Self::Command) -> Self::Result {
-        // TODO: Run the command agains the contract.
+    fn run_command(&self, system: &mut Self::System, cmd: &Self::Command) -> Self::Result {
+        match cmd {
+            StakingCommand::Join(_addr, value, public_key) => {
+                let validator = Validator {
+                    public_key: ValidatorKey(public_key.clone()),
+                    power: Collateral(value.clone()),
+                };
+                system
+                    .subnet
+                    .try_join(&mut system.exec_state, &validator)
+                    .expect("failed to call contract")
+            }
+            _ => {
+                // TODO: Handle other commands.
+                Ok(())
+            }
+        }
     }
 
-    fn check_result(&self, _cmd: &Self::Command, _pre_state: &Self::State, _result: &Self::Result) {
-        // TODO: Check that events emitted by the system are as expected.
+    fn check_result(&self, cmd: &Self::Command, _pre_state: &Self::State, result: Self::Result) {
+        match cmd {
+            StakingCommand::Join(_, value, _) => {
+                if value.is_zero() {
+                    result.expect_err("should not join with 0 value");
+                } else {
+                    result.expect("join should succeed");
+                }
+            }
+            _ => {
+                // TODO: Handle other commands.
+            }
+        }
     }
 
     fn next_state(&self, cmd: &Self::Command, mut state: Self::State) -> Self::State {
         match cmd {
-            StakingCommand::Checkpoint {
-                next_configuration_number,
-            } => state.checkpoint(*next_configuration_number),
-            StakingCommand::Join(addr, value, _) => {
-                // TODO: Differentiate `join` and `stake`.
-                // If never joined when staking, reject because key is unknown.
-                state.stake(*addr, value.clone())
-            }
-            StakingCommand::Stake(addr, value) => state.stake(*addr, value.clone()),
-            StakingCommand::Unstake(addr, value) => state.unstake(*addr, value.clone()),
-            StakingCommand::Leave(addr) => {
-                if let Some(c) = state.child_validators.collateral(&addr) {
-                    state.unstake(*addr, c)
-                }
+            // StakingCommand::Checkpoint {
+            //     next_configuration_number,
+            // } => state.checkpoint(*next_configuration_number),
+            StakingCommand::Join(addr, value, _) => state.join(*addr, value.clone()),
+            // StakingCommand::Stake(addr, value) => state.stake(*addr, value.clone()),
+            // StakingCommand::Unstake(addr, value) => state.unstake(*addr, value.clone()),
+            // StakingCommand::Leave(addr) => {
+            //     if let Some(c) = state.child_validators.collateral(&addr) {
+            //         state.unstake(*addr, c)
+            //     }
+            // }
+            _ => {
+                // TODO: Implement on the system before re-enabling on the state.
             }
         }
         state

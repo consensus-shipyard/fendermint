@@ -34,7 +34,7 @@ pub trait StateMachine {
 
     /// Use assertions to check that the result returned by the System Under Test
     /// was correct, given the model pre-state.
-    fn check_result(&self, cmd: &Self::Command, pre_state: &Self::State, result: &Self::Result);
+    fn check_result(&self, cmd: &Self::Command, pre_state: &Self::State, result: Self::Result);
 
     /// Apply a command on the model state.
     ///
@@ -67,7 +67,7 @@ pub fn run<T: StateMachine>(
     for _ in 0..max_steps {
         let cmd = t.gen_command(u, &state)?;
         let res = t.run_command(&mut system, &cmd);
-        t.check_result(&cmd, &state, &res);
+        t.check_result(&cmd, &state, res);
         state = t.next_state(&cmd, state);
         t.check_system(&cmd, &state, &system)
     }
@@ -218,12 +218,7 @@ mod tests {
             None
         }
 
-        fn check_result(
-            &self,
-            cmd: &Self::Command,
-            pre_state: &Self::State,
-            result: &Self::Result,
-        ) {
+        fn check_result(&self, cmd: &Self::Command, pre_state: &Self::State, result: Self::Result) {
             if let CounterCommand::Get = cmd {
                 assert_eq!(result.as_ref(), Some(pre_state))
             }
