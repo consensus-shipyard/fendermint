@@ -179,7 +179,7 @@ impl StateMachine for StakingMachine {
         // TODO: Check that events emitted by the system are as expected.
     }
 
-    fn next_state(&self, cmd: &Self::Command, state: Self::State) -> Self::State {
+    fn next_state(&self, cmd: &Self::Command, mut state: Self::State) -> Self::State {
         match cmd {
             StakingCommand::Checkpoint {
                 next_configuration_number,
@@ -194,11 +194,10 @@ impl StateMachine for StakingMachine {
             StakingCommand::Leave(addr) => {
                 if let Some(c) = state.child_validators.collateral(&addr) {
                     state.unstake(*addr, c)
-                } else {
-                    state
                 }
             }
         }
+        state
     }
 
     fn check_system(

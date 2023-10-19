@@ -123,7 +123,7 @@ impl StakingState {
 
         // Joining one by one so the we test the activation logic
         for (addr, c) in child_validators {
-            state = state.join(addr, c.0);
+            state.join(addr, c.0);
         }
 
         debug_assert!(
@@ -136,13 +136,13 @@ impl StakingState {
     }
 
     /// Until the minimum collateral is reached, apply the changes immediately.
-    fn update<F: FnOnce(&mut Self) -> StakingUpdate>(mut self, f: F) -> Self {
-        let update = f(&mut self);
+    fn update<F: FnOnce(&mut Self) -> StakingUpdate>(&mut self, f: F) {
+        let update = f(self);
         self.pending_updates.push_back(update);
 
         if !self.activated {
             debug_assert_eq!(self.next_configuration_number, 0);
-            self = self.checkpoint(0);
+            self.checkpoint(0);
 
             let total_collateral = self.child_validators.total_collateral();
 
@@ -160,12 +160,10 @@ impl StakingState {
         if self.activated {
             self.next_configuration_number += 1;
         }
-
-        self
     }
 
     /// Apply the changes up to `the next_configuration_number`.
-    pub fn checkpoint(mut self, next_configuration_number: u64) -> Self {
+    pub fn checkpoint(&mut self, next_configuration_number: u64) {
         loop {
             if self.pending_updates.is_empty() {
                 break;
@@ -210,11 +208,10 @@ impl StakingState {
             }
         }
         self.child_validators.configuration_number = next_configuration_number;
-        self
     }
 
     /// Join with a validator. Repeated joins are allowed.
-    pub fn join(self, addr: EthAddress, value: TokenAmount) -> Self {
+    pub fn join(&mut self, addr: EthAddress, value: TokenAmount) {
         self.update(|this| {
             let a = this.accounts.get_mut(&addr).expect("accounts exist");
             debug_assert!(a.current_balance >= value);
@@ -225,25 +222,25 @@ impl StakingState {
                 addr,
                 op: StakingOp::Deposit(value),
             }
-        })
+        });
     }
 
     /// Enqueue a deposit. Must be one of the current validators to succeed, otherwise ignored.
-    pub fn stake(self, addr: EthAddress, value: TokenAmount) -> Self {
+    pub fn stake(&mut self, addr: EthAddress, value: TokenAmount) {
         // In theory we could check the pending queue, but the contracts don't do that.
-        if !self.child_validators.has_joined(&addr) {
-            return self;
+        if self.child_validators.has_joined(&addr) {
+            // Delegate; you can always do the join, but in the contract `stake` needs join first.
+            self.join(addr, value);
         }
-        self.join(addr, value)
     }
 
     /// Enqueue a withdrawal.
-    pub fn unstake(self, addr: EthAddress, value: TokenAmount) -> Self {
+    pub fn unstake(&mut self, addr: EthAddress, value: TokenAmount) {
         self.update(|this| StakingUpdate {
             configuration_number: this.next_configuration_number,
             addr,
             op: StakingOp::Withdraw(value),
-        })
+        });
     }
 }
 
