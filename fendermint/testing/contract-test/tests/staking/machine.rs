@@ -34,6 +34,7 @@ pub struct StakingSystem {
     subnet: SubnetCaller<MemoryBlockstore>,
 }
 
+#[derive(Debug)]
 pub enum StakingCommand {
     /// Bottom-up checkpoint; confirms all staking operations up to the configuration number.
     Checkpoint { next_configuration_number: u64 },
@@ -111,7 +112,8 @@ impl StateMachine for StakingMachine {
 
         // Make all the validators join the subnet by putting down collateral according to their power.
         for v in state.child_genesis.validators.iter() {
-            // eprintln!("\n> JOINING SUBNET: {v:?});
+            let _addr = EthAddress::new_secp256k1(&v.public_key.0.serialize()).unwrap();
+            // eprintln!("\n> JOINING SUBNET: addr={_addr} deposit={}", v.power.0);
 
             subnet
                 .join(&mut exec_state, v)
@@ -132,7 +134,12 @@ impl StateMachine for StakingMachine {
         state: &Self::State,
     ) -> arbitrary::Result<Self::Command> {
         let cmd = match u
-            .choose(&["checkpoint", "join", "stake", "unstake", "leave"])
+            .choose(&[
+                //"checkpoint",
+                "join", "stake",
+                //"unstake",
+                //"leave"
+            ])
             .unwrap()
         {
             &"checkpoint" => {
@@ -178,8 +185,9 @@ impl StateMachine for StakingMachine {
 
     fn run_command(&self, system: &mut Self::System, cmd: &Self::Command) -> Self::Result {
         let mut exec_state = system.exec_state.borrow_mut();
-        match cmd {
-            StakingCommand::Join(_addr, value, public_key) => {
+        let res = match cmd {
+            StakingCommand::Join(addr, value, public_key) => {
+                // eprintln!("\n> CMD: JOIN addr={addr} value{value}");
                 let validator = Validator {
                     public_key: ValidatorKey(public_key.clone()),
                     power: Collateral(value.clone()),
@@ -187,22 +195,41 @@ impl StateMachine for StakingMachine {
                 system
                     .subnet
                     .try_join(&mut exec_state, &validator)
-                    .expect("failed to call contract")
+                    .expect("failed to call join")
+            }
+            StakingCommand::Stake(addr, value) => {
+                // eprintln!("\n> CMD: STAKE addr={addr} value={value}");
+                system
+                    .subnet
+                    .try_stake(&mut exec_state, addr, value)
+                    .expect("failed to call stake")
             }
             _ => {
                 // TODO: Handle other commands.
                 Ok(())
             }
-        }
+        };
+        // eprintln!(" -> {res:?}");
+
+        res
     }
 
-    fn check_result(&self, cmd: &Self::Command, _pre_state: &Self::State, result: Self::Result) {
+    fn check_result(&self, cmd: &Self::Command, pre_state: &Self::State, result: Self::Result) {
         match cmd {
             StakingCommand::Join(_, value, _) => {
                 if value.is_zero() {
                     result.expect_err("should not join with 0 value");
                 } else {
                     result.expect("join should succeed");
+                }
+            }
+            StakingCommand::Stake(addr, value) => {
+                if value.is_zero() {
+                    result.expect_err("should not stake with 0 value");
+                } else if !pre_state.has_joined(addr) {
+                    result.expect_err("must join before stake");
+                } else {
+                    result.expect("stake should succeed");
                 }
             }
             _ => {
@@ -217,7 +244,7 @@ impl StateMachine for StakingMachine {
             //     next_configuration_number,
             // } => state.checkpoint(*next_configuration_number),
             StakingCommand::Join(addr, value, _) => state.join(*addr, value.clone()),
-            // StakingCommand::Stake(addr, value) => state.stake(*addr, value.clone()),
+            StakingCommand::Stake(addr, value) => state.stake(*addr, value.clone()),
             // StakingCommand::Unstake(addr, value) => state.unstake(*addr, value.clone()),
             // StakingCommand::Leave(addr) => {
             //     if let Some(c) = state.child_validators.collateral(&addr) {
@@ -270,7 +297,7 @@ impl StateMachine for StakingMachine {
                 if let Some(collateral) = post_state.child_validators.collateral(addr) {
                     let cc = post_system
                         .subnet
-                        .confirmed_collateral(&mut exec_state, *addr)
+                        .confirmed_collateral(&mut exec_state, addr)
                         .expect("account exists");
 
                     assert_eq!(cc, collateral, "confirmed collateral mismatch");

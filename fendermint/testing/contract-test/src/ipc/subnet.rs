@@ -54,7 +54,7 @@ impl<DB: Blockstore> SubnetCaller<DB> {
         })
     }
 
-    /// Try to join a subnet as a validator.
+    /// Try to join the subnet as a validator.
     pub fn try_join(
         &self,
         state: &mut FvmExecState<DB>,
@@ -63,18 +63,28 @@ impl<DB: Blockstore> SubnetCaller<DB> {
         let public_key = validator.public_key.0.serialize();
         let addr = EthAddress::new_secp256k1(&public_key)?;
         let deposit = from_fvm::to_eth_tokens(&validator.power.0)?;
-
-        // We need to send in the name of the address as a sender, not the system account.
         self.manager.try_call(state, |c| {
             c.join(public_key.into()).from(addr).value(deposit)
         })
+    }
+
+    /// Try to increase the stake of a validator.
+    pub fn try_stake(
+        &self,
+        state: &mut FvmExecState<DB>,
+        addr: &EthAddress,
+        value: &TokenAmount,
+    ) -> anyhow::Result<ContractResult<(), SubnetActorErrors>> {
+        let deposit = from_fvm::to_eth_tokens(value)?;
+        self.manager
+            .try_call(state, |c| c.stake().from(addr).value(deposit))
     }
 
     /// Get information about the validator's current and total collateral.
     pub fn get_validator(
         &self,
         state: &mut FvmExecState<DB>,
-        addr: EthAddress,
+        addr: &EthAddress,
     ) -> anyhow::Result<getter::ValidatorInfo> {
         self.getter.call(state, |c| c.get_validator(addr.into()))
     }
@@ -82,7 +92,7 @@ impl<DB: Blockstore> SubnetCaller<DB> {
     pub fn confirmed_collateral(
         &self,
         state: &mut FvmExecState<DB>,
-        addr: EthAddress,
+        addr: &EthAddress,
     ) -> anyhow::Result<TokenAmount> {
         self.get_validator(state, addr)
             .map(|i| from_eth::to_fvm_tokens(&i.confirmed_collateral))

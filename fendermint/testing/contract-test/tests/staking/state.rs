@@ -58,10 +58,6 @@ impl StakingDistribution {
         self.collaterals.values().map(|c| c.0.clone()).sum()
     }
 
-    pub fn has_joined(&self, addr: &EthAddress) -> bool {
-        self.collaterals.contains_key(addr)
-    }
-
     pub fn collateral(&self, addr: &EthAddress) -> Option<TokenAmount> {
         self.collaterals.get(addr).map(|c| c.0.clone())
     }
@@ -210,7 +206,21 @@ impl StakingState {
         self.child_validators.configuration_number = next_configuration_number;
     }
 
+    /// Get the state of an account. Panics if it doesn't exist.
+    pub fn account(&self, addr: &EthAddress) -> &StakingAccount {
+        self.accounts.get(addr).expect("accounts exist")
+    }
+
+    /// Check whether an account has staked before. The stake does not have to be confirmed by a checkpoint.
+    pub fn has_joined(&self, addr: &EthAddress) -> bool {
+        let a = self.account(addr);
+        // In this system the only thing we spend on is staking.
+        a.current_balance < a.initial_balance
+    }
+
     /// Join with a validator. Repeated joins are allowed.
+    ///
+    /// Unlike the contract, the model doesn't require metadata here.
     pub fn join(&mut self, addr: EthAddress, value: TokenAmount) {
         self.update(|this| {
             let a = this.accounts.get_mut(&addr).expect("accounts exist");
@@ -227,8 +237,8 @@ impl StakingState {
 
     /// Enqueue a deposit. Must be one of the current validators to succeed, otherwise ignored.
     pub fn stake(&mut self, addr: EthAddress, value: TokenAmount) {
-        // In theory we could check the pending queue, but the contracts don't do that.
-        if self.child_validators.has_joined(&addr) {
+        // Simulate the check the contract does to ensure the metadata has been added before.
+        if self.has_joined(&addr) {
             // Delegate; you can always do the join, but in the contract `stake` needs join first.
             self.join(addr, value);
         }
@@ -273,7 +283,7 @@ impl arbitrary::Arbitrary<'_> for StakingState {
                 .mod_floor(&max_balance);
 
             let initial_balance =
-                TokenAmount::from_atto(initial_balance).max(TokenAmount::from_whole(1).clone());
+                TokenAmount::from_atto(initial_balance).max(TokenAmount::from_atto(1).clone());
 
             // The current balance is the same as the initial balance even if the account becomes
             // one of the validators on the child subnet, because for that they have to join the
@@ -305,7 +315,7 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             public_key: ValidatorKey(accounts[0].public_key),
             // All the power in the parent subnet belongs to this single validator.
             // We are only interested in the staking of the *child subnet*.
-            power: Collateral(TokenAmount::from_whole(1)),
+            power: Collateral(TokenAmount::from_atto(1)),
         }];
 
         // Select some of the accounts to be the initial *child subnet* validators.
@@ -318,7 +328,7 @@ impl arbitrary::Arbitrary<'_> for StakingState {
                 let initial_stake =
                     TokenAmount::from_atto(BigInt::arbitrary(u)?.mod_floor(initial_balance));
                 // Make sure it's not zero.
-                let initial_stake = initial_stake.max(TokenAmount::from_whole(1));
+                let initial_stake = initial_stake.max(TokenAmount::from_atto(1));
 
                 Ok(Validator {
                     public_key: ValidatorKey(a.public_key),
