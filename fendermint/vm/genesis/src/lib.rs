@@ -118,6 +118,12 @@ impl Collateral {
     }
 }
 
+impl Default for Collateral {
+    fn default() -> Self {
+        Self(TokenAmount::from_atto(0))
+    }
+}
+
 /// Secp256k1 public key of the validators.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ValidatorKey(pub PublicKey);
@@ -209,7 +215,6 @@ pub mod ipc {
         #[serde_as(as = "IsHumanReadable")]
         pub subnet_id: SubnetID,
         pub bottom_up_check_period: u64,
-        pub top_down_check_period: u64,
         #[serde_as(as = "IsHumanReadable")]
         pub msg_fee: TokenAmount,
         pub majority_percentage: u8,
