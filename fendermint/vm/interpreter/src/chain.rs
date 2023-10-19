@@ -262,6 +262,7 @@ where
                     let validator_changes = provider
                         .validator_changes_from(prev_height + 1, p.height as u64)
                         .await?;
+                    tracing::debug!("validator changes to stash: {validator_changes:?}");
                     let msg = self
                         .gateway_caller
                         .store_validator_changes_msg(validator_changes)?;
@@ -272,6 +273,7 @@ where
                     if ret.is_err() {
                         return Err(anyhow!("failed to store validator changes"));
                     }
+                    tracing::debug!("validator changes stashed");
 
                     // Execute top down messages
 
@@ -279,6 +281,7 @@ where
                     let messages = provider
                         .top_down_msgs_from(prev_height + 1, p.height as u64, &finality.block_hash)
                         .await?;
+                    tracing::debug!("top down messages to execute: {messages:?}");
                     let msg = self.gateway_caller.apply_cross_messages_msg(messages)?;
                     let (state, ret) = self
                         .inner
@@ -287,11 +290,13 @@ where
                     if ret.is_err() {
                         return Err(anyhow!("failed to apply cross messages"));
                     }
+                    tracing::debug!("top down messages executed");
 
                     atomically(|| {
                         provider.set_new_finality(finality.clone(), prev_finality.clone())
                     })
                     .await;
+                    tracing::debug!("new finality updated in parent provider: {finality:?}");
 
                     Ok(((pool, provider, state), ChainMessageApplyRet::Signed(ret)))
                 }
