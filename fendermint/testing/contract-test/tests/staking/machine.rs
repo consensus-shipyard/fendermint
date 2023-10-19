@@ -1,6 +1,6 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
-use std::sync::Arc;
+use std::{cell::RefCell, sync::Arc};
 
 use arbitrary::{Arbitrary, Unstructured};
 use contract_test::ipc::{registry::RegistryCaller, subnet::SubnetCaller};
@@ -28,7 +28,7 @@ use contract_test::ipc::registry::SubnetConstructorParams;
 /// System Under Test for staking.
 pub struct StakingSystem {
     /// FVM state initialized with the parent genesis, and a subnet created for the child.
-    exec_state: FvmExecState<MemoryBlockstore>,
+    exec_state: RefCell<FvmExecState<MemoryBlockstore>>,
     _gateway: GatewayCaller<MemoryBlockstore>,
     _registry: RegistryCaller<MemoryBlockstore>,
     subnet: SubnetCaller<MemoryBlockstore>,
@@ -119,7 +119,7 @@ impl StateMachine for StakingMachine {
         }
 
         StakingSystem {
-            exec_state,
+            exec_state: RefCell::new(exec_state),
             _gateway: gateway,
             _registry: registry,
             subnet,
@@ -177,6 +177,7 @@ impl StateMachine for StakingMachine {
     }
 
     fn run_command(&self, system: &mut Self::System, cmd: &Self::Command) -> Self::Result {
+        let mut exec_state = system.exec_state.borrow_mut();
         match cmd {
             StakingCommand::Join(_addr, value, public_key) => {
                 let validator = Validator {
@@ -185,7 +186,7 @@ impl StateMachine for StakingMachine {
                 };
                 system
                     .subnet
-                    .try_join(&mut system.exec_state, &validator)
+                    .try_join(&mut exec_state, &validator)
                     .expect("failed to call contract")
             }
             _ => {
@@ -234,8 +235,11 @@ impl StateMachine for StakingMachine {
         &self,
         cmd: &Self::Command,
         post_state: &Self::State,
-        _post_system: &Self::System,
+        post_system: &Self::System,
     ) {
+        // Queries need mutable reference too.
+        let mut exec_state = post_system.exec_state.borrow_mut();
+
         match cmd {
             StakingCommand::Checkpoint { .. } => {
                 // Sanity check the reference state while we have no contract to compare with.
@@ -262,6 +266,29 @@ impl StateMachine for StakingMachine {
             | StakingCommand::Leave(addr) => {
                 let a = post_state.accounts.get(addr).unwrap();
                 debug_assert!(a.current_balance <= a.initial_balance);
+
+                if let Some(collateral) = post_state.child_validators.collateral(addr) {
+                    let cc = post_system
+                        .subnet
+                        .confirmed_collateral(&mut exec_state, *addr)
+                        .expect("account exists");
+
+                    assert_eq!(cc, collateral, "confirmed collateral mismatch");
+                }
+
+                let actor_id = exec_state
+                    .state_tree_mut()
+                    .lookup_id(&Address::from(*addr))
+                    .expect("failed to get actor ID")
+                    .expect("actor exists");
+
+                let actor = exec_state
+                    .state_tree_mut()
+                    .get_actor(actor_id)
+                    .expect("failed to get actor")
+                    .expect("actor exists");
+
+                assert_eq!(actor.balance, a.current_balance, "current balance mismatch")
             }
         }
 

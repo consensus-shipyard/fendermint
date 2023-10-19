@@ -8,9 +8,10 @@ use fendermint_vm_interpreter::fvm::state::fevm::{
     ContractCaller, ContractResult, MockProvider, NoRevert,
 };
 use fendermint_vm_interpreter::fvm::state::FvmExecState;
-use fendermint_vm_message::conv::from_fvm;
+use fendermint_vm_message::conv::{from_eth, from_fvm};
 use fvm_ipld_blockstore::Blockstore;
-use ipc_actors_abis::subnet_actor_getter_facet::SubnetActorGetterFacet;
+use fvm_shared::econ::TokenAmount;
+use ipc_actors_abis::subnet_actor_getter_facet::{self as getter, SubnetActorGetterFacet};
 use ipc_actors_abis::subnet_actor_manager_facet::SubnetActorManagerFacet;
 
 pub use ipc_actors_abis::subnet_registry::ConstructorParams as SubnetConstructorParams;
@@ -18,7 +19,7 @@ pub use ipc_actors_abis::subnet_registry::ConstructorParams as SubnetConstructor
 #[derive(Clone)]
 pub struct SubnetCaller<DB> {
     addr: EthAddress,
-    _getter: ContractCaller<DB, SubnetActorGetterFacet<MockProvider>, NoRevert>,
+    getter: ContractCaller<DB, SubnetActorGetterFacet<MockProvider>, NoRevert>,
     manager: ContractCaller<DB, SubnetActorManagerFacet<MockProvider>, SubnetActorErrors>,
 }
 
@@ -26,7 +27,7 @@ impl<DB> SubnetCaller<DB> {
     pub fn new(addr: EthAddress) -> Self {
         Self {
             addr,
-            _getter: ContractCaller::new(addr, SubnetActorGetterFacet::new),
+            getter: ContractCaller::new(addr, SubnetActorGetterFacet::new),
             manager: ContractCaller::new(addr, SubnetActorManagerFacet::new),
         }
     }
@@ -67,5 +68,23 @@ impl<DB: Blockstore> SubnetCaller<DB> {
         self.manager.try_call(state, |c| {
             c.join(public_key.into()).from(addr).value(deposit)
         })
+    }
+
+    /// Get information about the validator's current and total collateral.
+    pub fn get_validator(
+        &self,
+        state: &mut FvmExecState<DB>,
+        addr: EthAddress,
+    ) -> anyhow::Result<getter::ValidatorInfo> {
+        self.getter.call(state, |c| c.get_validator(addr.into()))
+    }
+
+    pub fn confirmed_collateral(
+        &self,
+        state: &mut FvmExecState<DB>,
+        addr: EthAddress,
+    ) -> anyhow::Result<TokenAmount> {
+        self.get_validator(state, addr)
+            .map(|i| from_eth::to_fvm_tokens(&i.confirmed_collateral))
     }
 }
