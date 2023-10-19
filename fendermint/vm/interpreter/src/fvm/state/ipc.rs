@@ -5,6 +5,7 @@ use anyhow::{anyhow, Context};
 use ethers::types as et;
 use ethers::{abi::Tokenize, utils::keccak256};
 
+use fendermint_vm_message::conv::from_fvm;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::ActorID;
 
@@ -154,7 +155,9 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         let weight = et::U256::from(validator.power.0);
 
         let hash = abi_hash(checkpoint);
-        let signature = et::Bytes::from(sign_secp256k1(secret_key, &hash));
+        let signature = sign_secp256k1(secret_key, &hash);
+        let signature = from_fvm::to_eth_signature(&signature).context("invalid signature")?;
+        let signature = et::Bytes::from(signature.to_vec());
 
         let tree =
             ValidatorMerkleTree::new(power_table).context("failed to construct Merkle tree")?;
@@ -170,7 +173,7 @@ impl<DB: Blockstore> GatewayCaller<DB> {
             height,
             membership_proof,
             weight,
-            signature,
+            signature.into(),
         );
 
         let calldata = call
@@ -182,6 +185,6 @@ impl<DB: Blockstore> GatewayCaller<DB> {
 }
 
 /// Hash some value in the same way we'd hash it in Solidity.
-fn abi_hash<T: Tokenize>(value: T) -> [u8; 32] {
+pub fn abi_hash<T: Tokenize>(value: T) -> [u8; 32] {
     keccak256(ethers::abi::encode(&value.into_tokens()))
 }

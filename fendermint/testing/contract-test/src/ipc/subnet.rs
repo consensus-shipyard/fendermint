@@ -10,9 +10,10 @@ use fendermint_vm_interpreter::fvm::state::fevm::{
 use fendermint_vm_interpreter::fvm::state::FvmExecState;
 use fendermint_vm_message::conv::{from_eth, from_fvm};
 use fvm_ipld_blockstore::Blockstore;
+use fvm_shared::crypto::signature::SECP_SIG_LEN;
 use fvm_shared::econ::TokenAmount;
 use ipc_actors_abis::subnet_actor_getter_facet::{self as getter, SubnetActorGetterFacet};
-use ipc_actors_abis::subnet_actor_manager_facet::SubnetActorManagerFacet;
+use ipc_actors_abis::subnet_actor_manager_facet::{self as manager, SubnetActorManagerFacet};
 
 pub use ipc_actors_abis::subnet_registry::ConstructorParams as SubnetConstructorParams;
 
@@ -87,6 +88,25 @@ impl<DB: Blockstore> SubnetCaller<DB> {
         addr: &EthAddress,
     ) -> anyhow::Result<ContractResult<(), SubnetActorErrors>> {
         self.manager.try_call(state, |c| c.leave().from(addr))
+    }
+
+    /// Submit a bottom-up checkpoint.
+    pub fn try_submit_checkpoint(
+        &self,
+        state: &mut FvmExecState<DB>,
+        checkpoint: manager::BottomUpCheckpoint,
+        messages: Vec<manager::CrossMsg>,
+        signatures: Vec<(EthAddress, [u8; SECP_SIG_LEN])>,
+    ) -> anyhow::Result<ContractResult<(), SubnetActorErrors>> {
+        let mut addrs = Vec::new();
+        let mut sigs = Vec::new();
+        for (addr, sig) in signatures {
+            addrs.push(addr.into());
+            sigs.push(sig.into());
+        }
+        self.manager.try_call(state, |c| {
+            c.submit_checkpoint(checkpoint, messages, addrs, sigs)
+        })
     }
 
     /// Get information about the validator's current and total collateral.

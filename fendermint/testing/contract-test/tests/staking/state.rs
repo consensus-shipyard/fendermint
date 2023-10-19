@@ -116,6 +116,9 @@ pub struct StakingState {
     pub next_configuration_number: u64,
     /// Unconfirmed staking operations.
     pub pending_updates: VecDeque<StakingUpdate>,
+    /// The block height of the last checkpoint.
+    /// The first checkpoint we expect is `0 + bottom_up_checkpoint_period`.
+    pub last_checkpoint_height: u64,
 }
 
 impl StakingState {
@@ -150,6 +153,7 @@ impl StakingState {
             activated: false,
             next_configuration_number: 0,
             pending_updates: VecDeque::new(),
+            last_checkpoint_height: 0,
         };
 
         // Joining one by one so the we test the activation logic
@@ -178,7 +182,7 @@ impl StakingState {
 
         if !self.activated {
             debug_assert_eq!(self.next_configuration_number, 0);
-            self.checkpoint(0);
+            self.checkpoint(0, 0);
 
             let total_collateral = self.current_configuration.total_collateral();
 
@@ -199,7 +203,7 @@ impl StakingState {
     }
 
     /// Apply the changes up to the `next_configuration_number`.
-    pub fn checkpoint(&mut self, next_configuration_number: u64) {
+    pub fn checkpoint(&mut self, next_configuration_number: u64, height: u64) {
         loop {
             if self.pending_updates.is_empty() {
                 break;
@@ -219,6 +223,7 @@ impl StakingState {
                 a.current_balance += v;
             }
         }
+        self.last_checkpoint_height = height;
     }
 
     /// Check whether an account has staked before. The stake does not have to be confirmed by a checkpoint.

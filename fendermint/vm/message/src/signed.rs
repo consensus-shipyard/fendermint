@@ -72,13 +72,9 @@ impl SignedMessage {
         sk: &SecretKey,
         chain_id: &ChainID,
     ) -> Result<Self, SignedMessageError> {
-        let sig = match Self::signable(&message, chain_id)? {
-            Signable::Ethereum((hash, _)) => sign_eth(sk, hash).to_vec(),
-            Signable::Regular(data) => sign_regular(sk, &data).to_vec(),
-        };
-        let signature = Signature {
-            sig_type: SignatureType::Secp256k1,
-            bytes: sig,
+        let signature = match Self::signable(&message, chain_id)? {
+            Signable::Ethereum((hash, _)) => sign_eth(sk, hash),
+            Signable::Regular(data) => sign_regular(sk, &data),
         };
         Ok(Self { message, signature })
     }
@@ -209,7 +205,7 @@ impl SignedMessage {
 }
 
 /// Sign a transaction pre-image using Blake2b256, in a way that [Signature::verify] expects it.
-fn sign_regular(sk: &SecretKey, data: &[u8]) -> [u8; SECP_SIG_LEN] {
+fn sign_regular(sk: &SecretKey, data: &[u8]) -> Signature {
     let hash: [u8; 32] = blake2b_simd::Params::new()
         .hash_length(32)
         .to_state()
@@ -223,7 +219,7 @@ fn sign_regular(sk: &SecretKey, data: &[u8]) -> [u8; SECP_SIG_LEN] {
 }
 
 /// Sign a transaction pre-image in the same way Ethereum clients would sign it.
-fn sign_eth(sk: &SecretKey, hash: et::H256) -> [u8; SECP_SIG_LEN] {
+fn sign_eth(sk: &SecretKey, hash: et::H256) -> Signature {
     sign_secp256k1(sk, &hash.0)
 }
 
@@ -268,13 +264,17 @@ fn verify_eth_method(msg: &Message) -> Result<(), SignedMessageError> {
 }
 
 /// Sign a hash using the secret key.
-pub fn sign_secp256k1(sk: &SecretKey, hash: &[u8; 32]) -> [u8; SECP_SIG_LEN] {
+pub fn sign_secp256k1(sk: &SecretKey, hash: &[u8; 32]) -> Signature {
     let (sig, recovery_id) = sk.sign(hash);
 
     let mut signature = [0u8; SECP_SIG_LEN];
     signature[..64].copy_from_slice(&sig.serialize());
     signature[64] = recovery_id.serialize();
-    signature
+
+    Signature {
+        sig_type: SignatureType::Secp256k1,
+        bytes: signature.to_vec(),
+    }
 }
 
 /// Signed message with an invalid random signature.
