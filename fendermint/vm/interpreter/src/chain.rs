@@ -250,9 +250,11 @@ where
                     } else {
                         return Err(anyhow!("cannot commit parent finality"));
                     };
+                    tracing::debug!("commit finality return data: {:?}", return_data);
 
                     let (prev_height, prev_finality) =
                         derive_previous_height(&self.gateway_caller, return_data, &provider)?;
+                    tracing::debug!("commit finality parsed: prev_height {prev_height}, prev_finality: {prev_finality:?}");
 
                     // stash validator changes
 
