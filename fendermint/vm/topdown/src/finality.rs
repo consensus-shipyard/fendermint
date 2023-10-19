@@ -18,6 +18,7 @@ type ParentViewPayload = (BlockHash, Vec<StakingChangeRequest>, Vec<CrossMsg>);
 #[derive(Clone)]
 pub struct CachedFinalityProvider<T> {
     config: Config,
+    genesis_epoch: BlockHeight,
     /// Cached data that always syncs with the latest parent chain proactively
     cached_data: CachedData,
     /// This is a in memory view of the committed parent finality. We need this as a starting point
@@ -62,6 +63,23 @@ macro_rules! retry {
 
 #[async_trait::async_trait]
 impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedFinalityProvider<T> {
+    fn genesis_epoch(&self) -> anyhow::Result<BlockHeight> {
+        Ok(self.genesis_epoch)
+    }
+
+    async fn validator_changes_from(
+        &self,
+        from: BlockHeight,
+        to: BlockHeight,
+    ) -> anyhow::Result<Vec<StakingChangeRequest>> {
+        let mut v = vec![];
+        for h in from..=to {
+            let mut r = self.validator_changes(h).await?;
+            v.append(&mut r);
+        }
+        Ok(v)
+    }
+
     /// Should always return the validator set, only when ipc parent_client is down after exponeitial
     /// retries
     async fn validator_changes(
@@ -103,6 +121,20 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
                 .await
         )
     }
+
+    async fn top_down_msgs_from(
+        &self,
+        from: BlockHeight,
+        to: BlockHeight,
+        block_hash: &BlockHash,
+    ) -> anyhow::Result<Vec<CrossMsg>> {
+        let mut v = vec![];
+        for h in from..=to {
+            let mut r = self.top_down_msgs(h, block_hash).await?;
+            v.append(&mut r);
+        }
+        Ok(v)
+    }
 }
 
 impl<T: ParentQueryProxy + Send + Sync + 'static> ParentFinalityProvider
@@ -131,7 +163,13 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentFinalityProvider
         self.check_block_hash(proposal)
     }
 
-    fn set_new_finality(&self, finality: IPCParentFinality) -> Stm<()> {
+    fn set_new_finality(
+        &self,
+        finality: IPCParentFinality,
+        previous_finality: Option<IPCParentFinality>,
+    ) -> Stm<()> {
+        debug_assert!(previous_finality == self.last_committed_finality.read_clone()?);
+
         // the height to clear
         let height = finality.height;
 
@@ -144,23 +182,28 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentFinalityProvider
     }
 }
 
-impl<T> CachedFinalityProvider<T> {
+impl<T: ParentQueryProxy + Send + Sync + 'static> CachedFinalityProvider<T> {
     /// Creates an uninitialized provider
     /// We need this because `fendermint` has yet to be initialized and might
     /// not be able to provide an existing finality from the storage. This provider requires an
     /// existing committed finality. Providing the finality will enable other functionalities.
-    pub fn uninitialized(config: Config, parent_client: Arc<T>) -> Self {
-        Self::new(config, None, parent_client)
+    pub async fn uninitialized(config: Config, parent_client: Arc<T>) -> anyhow::Result<Self> {
+        let genesis = parent_client.get_genesis_epoch().await?;
+        Ok(Self::new(config, genesis, None, parent_client))
     }
+}
 
+impl<T> CachedFinalityProvider<T> {
     fn new(
         config: Config,
+        genesis_epoch: BlockHeight,
         committed_finality: Option<IPCParentFinality>,
         parent_client: Arc<T>,
     ) -> Self {
         let height_data = SequentialKeyCache::sequential();
         Self {
             config,
+            genesis_epoch,
             cached_data: CachedData {
                 height_data: TVar::new(height_data),
             },
@@ -351,6 +394,13 @@ mod tests {
         Arc::new(MockedParentQuery)
     }
 
+    fn genesis_finality() -> IPCParentFinality {
+        IPCParentFinality {
+            height: 0,
+            block_hash: vec![0; 32],
+        }
+    }
+
     fn new_provider() -> CachedFinalityProvider<MockedParentQuery> {
         let config = Config {
             chain_head_delay: 20,
@@ -359,12 +409,7 @@ mod tests {
             exponential_retry_limit: 10,
         };
 
-        let genesis_finality = IPCParentFinality {
-            height: 0,
-            block_hash: vec![0; 32],
-        };
-
-        CachedFinalityProvider::new(config, Some(genesis_finality), mocked_agent_proxy())
+        CachedFinalityProvider::new(config, 10, Some(genesis_finality()), mocked_agent_proxy())
     }
 
     fn new_cross_msg(nonce: u64) -> CrossMsg {
@@ -435,7 +480,7 @@ mod tests {
                 height: target_block,
                 block_hash: vec![1u8; 32],
             };
-            provider.set_new_finality(finality.clone())?;
+            provider.set_new_finality(finality.clone(), Some(genesis_finality()))?;
 
             // all cache should be cleared
             let r = provider.next_proposal()?;
@@ -459,10 +504,13 @@ mod tests {
 
             // inject data
             provider.new_parent_view(target_block, vec![1u8; 32], vec![], vec![])?;
-            provider.set_new_finality(IPCParentFinality {
-                height: target_block - 1,
-                block_hash: vec![1u8; 32],
-            })?;
+            provider.set_new_finality(
+                IPCParentFinality {
+                    height: target_block - 1,
+                    block_hash: vec![1u8; 32],
+                },
+                Some(genesis_finality()),
+            )?;
 
             let finality = IPCParentFinality {
                 height: target_block,
@@ -492,7 +540,7 @@ mod tests {
         };
 
         let provider =
-            CachedFinalityProvider::new(config, Some(genesis_finality), mocked_agent_proxy());
+            CachedFinalityProvider::new(config, 10, Some(genesis_finality), mocked_agent_proxy());
 
         let cross_msgs_batch1 = vec![new_cross_msg(0), new_cross_msg(1), new_cross_msg(2)];
         let cross_msgs_batch2 = vec![new_cross_msg(3), new_cross_msg(4), new_cross_msg(5)];

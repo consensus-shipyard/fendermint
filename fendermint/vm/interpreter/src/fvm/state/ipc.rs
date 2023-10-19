@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::{anyhow, Context};
+use ethers::contract::decode_function_data;
 use ethers::types as et;
 use ethers::{abi::Tokenize, utils::keccak256};
 
@@ -31,7 +32,7 @@ use super::{
 };
 use crate::fvm::FvmMessage;
 use fendermint_vm_actor_interface::{ipc, system};
-use fvm_ipld_encoding::{BytesSer, RawBytes};
+use fvm_ipld_encoding::{BytesDe, BytesSer, RawBytes};
 use fvm_shared::econ::TokenAmount;
 
 #[derive(Clone)]
@@ -200,6 +201,26 @@ impl<DB: Blockstore> GatewayCaller<DB> {
             .ok_or_else(|| anyhow!("no calldata for commit parent finality"))?;
 
         encode_to_fvm_implicit(calldata.as_ref())
+    }
+
+    pub fn decode_commit_parent_finality_return(
+        &self,
+        bytes: RawBytes,
+    ) -> anyhow::Result<(bool, IPCParentFinality)> {
+        let return_data = bytes
+            .deserialize::<BytesDe>()
+            .context("failed to deserialize return data")?;
+
+        let function = router::GATEWAYROUTERFACET_ABI
+            .functions
+            .get("commitParentFinality")
+            .ok_or_else(|| anyhow!("broken abi"))?
+            .get(0)
+            .ok_or_else(|| anyhow!("function not found, abi wrong?"))?;
+
+        let (committed, finality): (bool, router::ParentFinality) =
+            decode_function_data(function, return_data.0, false)?;
+        Ok((committed, IPCParentFinality::try_from(finality)?))
     }
 
     pub fn store_validator_changes_msg(

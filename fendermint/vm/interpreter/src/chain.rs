@@ -10,7 +10,7 @@ use crate::{
 use anyhow::{anyhow, Context};
 use async_stm::atomically;
 use async_trait::async_trait;
-use fendermint_vm_actor_interface::{ipc, system};
+use fendermint_vm_actor_interface::ipc;
 use fendermint_vm_message::ipc::ParentFinality;
 use fendermint_vm_message::{
     chain::ChainMessage,
@@ -22,7 +22,7 @@ use fendermint_vm_topdown::{
     CachedFinalityProvider, IPCParentFinality, ParentFinalityProvider, ParentViewProvider, Toggle,
 };
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{BytesSer, RawBytes};
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
@@ -245,14 +245,21 @@ where
                         .inner
                         .deliver(state, VerifiableMessage::NotVerify(msg))
                         .await?;
-                    if ret.is_err() {
+                    let return_data = if let Ok(inner) = ret {
+                        inner.fvm.apply_ret.msg_receipt.return_data
+                    } else {
                         return Err(anyhow!("cannot commit parent finality"));
-                    }
+                    };
+
+                    let (prev_height, prev_finality) =
+                        derive_previous_height(&self.gateway_caller, return_data, &provider)?;
 
                     // stash validator changes
 
                     // error happens if we cannot get the validator set from ipc agent after retries
-                    let validator_changes = provider.validator_changes(p.height as u64).await?;
+                    let validator_changes = provider
+                        .validator_changes_from(prev_height + 1, p.height as u64)
+                        .await?;
                     let msg = self
                         .gateway_caller
                         .store_validator_changes_msg(validator_changes)?;
@@ -268,7 +275,7 @@ where
 
                     // error happens if we cannot get the validator set from ipc agent after retries
                     let messages = provider
-                        .top_down_msgs(p.height as u64, &finality.block_hash)
+                        .top_down_msgs_from(prev_height + 1, p.height as u64, &finality.block_hash)
                         .await?;
                     let msg = self.gateway_caller.apply_cross_messages_msg(messages)?;
                     let (state, ret) = self
@@ -279,7 +286,10 @@ where
                         return Err(anyhow!("failed to apply cross messages"));
                     }
 
-                    atomically(|| provider.set_new_finality(finality.clone())).await;
+                    atomically(|| {
+                        provider.set_new_finality(finality.clone(), prev_finality.clone())
+                    })
+                    .await;
 
                     Ok(((pool, provider, state), ChainMessageApplyRet::Signed(ret)))
                 }
@@ -420,22 +430,16 @@ fn relayed_bottom_up_ckpt_to_fvm(
     Ok(msg)
 }
 
-/// Encode to fvm implicit message
-pub fn encode_to_fvm_implicit(bytes: &[u8]) -> anyhow::Result<FvmMessage> {
-    let params = RawBytes::serialize(BytesSer(bytes))?;
-    let msg = FvmMessage {
-        version: 0,
-        from: system::SYSTEM_ACTOR_ADDR,
-        to: ipc::GATEWAY_ACTOR_ADDR,
-        value: TokenAmount::zero(),
-        method_num: ipc::gateway::METHOD_INVOKE_CONTRACT,
-        params,
-        // we are sending a implicit message, no need to set sequence
-        sequence: 0,
-        gas_limit: fvm_shared::BLOCK_GAS_LIMIT,
-        gas_fee_cap: TokenAmount::zero(),
-        gas_premium: TokenAmount::zero(),
-    };
-
-    Ok(msg)
+/// Derive the previous committed parent finality height
+pub fn derive_previous_height<DB: Blockstore>(
+    gateway: &GatewayCaller<DB>,
+    bytes: RawBytes,
+    provider: &TopDownFinalityProvider,
+) -> anyhow::Result<(u64, Option<IPCParentFinality>)> {
+    let (has_committed, prev_finality) = gateway.decode_commit_parent_finality_return(bytes)?;
+    Ok(if !has_committed {
+        (provider.genesis_epoch()?, None)
+    } else {
+        (prev_finality.height, Some(prev_finality))
+    })
 }

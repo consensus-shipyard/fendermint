@@ -164,10 +164,9 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
             exponential_retry_limit: topdown_config.exponential_retry_limit,
         };
         let ipc_provider = Arc::new(create_ipc_provider_proxy(&settings)?);
-        let p = Arc::new(Toggle::enabled(CachedFinalityProvider::uninitialized(
-            config.clone(),
-            ipc_provider.clone(),
-        )));
+        let finality_provider =
+            CachedFinalityProvider::uninitialized(config.clone(), ipc_provider.clone()).await?;
+        let p = Arc::new(Toggle::enabled(finality_provider));
         (p, Some((ipc_provider, config)))
     } else {
         info!("topdown finality disabled");

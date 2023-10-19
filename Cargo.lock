@@ -4604,7 +4604,7 @@ dependencies = [
 [[package]]
 name = "ipc-identity"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#4f847f488151f1198828586c6faac427c5259215"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=dev#25e060715fc03859ae5db4a6d1326a6e7fdf2df0"
 dependencies = [
  "ahash 0.8.3",
  "anyhow",
@@ -4631,7 +4631,7 @@ dependencies = [
 [[package]]
 name = "ipc-provider"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#4f847f488151f1198828586c6faac427c5259215"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=dev#25e060715fc03859ae5db4a6d1326a6e7fdf2df0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -4670,7 +4670,7 @@ dependencies = [
 [[package]]
 name = "ipc-sdk"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-agent.git?branch=dev#4f847f488151f1198828586c6faac427c5259215"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=dev#25e060715fc03859ae5db4a6d1326a6e7fdf2df0"
 dependencies = [
  "anyhow",
  "cid",
@@ -4694,7 +4694,7 @@ dependencies = [
 [[package]]
 name = "ipc_actors_abis"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev#d0620b852c331cb12b84fda33963bf08c5634ca6"
+source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev#5b83810cbb563f0c8ebc89d1354e9e7f8c7db15d"
 dependencies = [
  "anyhow",
  "ethers",
@@ -4704,7 +4704,7 @@ dependencies = [
 [[package]]
 name = "ipc_ipld_resolver"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-ipld-resolver.git?branch=main#36e11ec8b4f656623c3e940800fbca22a684aa59"
+source = "git+https://github.com/consensus-shipyard/ipc-ipld-resolver.git?branch=main#4888d016b639ad6519c17cd3d8ff3ea8cda94122"
 dependencies = [
  "anyhow",
  "base64 0.21.4",
@@ -7471,9 +7471,9 @@ dependencies = [
 
 [[package]]
 name = "ring"
-version = "0.17.4"
+version = "0.17.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fce3045ffa7c981a6ee93f640b538952e155f1ae3a1a02b84547fc7a56b7059a"
+checksum = "fb0205304757e5d899b9c2e448b867ffd03ae7f988002e47cd24954391394d0b"
 dependencies = [
  "cc",
  "getrandom 0.2.10",
@@ -9265,9 +9265,9 @@ checksum = "b6bc1c9ce2b5135ac7f93c72918fc37feb872bdc6a5533a8b85eb4b86bfdae52"
 
 [[package]]
 name = "tracing"
-version = "0.1.39"
+version = "0.1.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee2ef2af84856a50c1d430afce2fdded0a4ec7eda868db86409b4543df0797f9"
+checksum = "c3523ab5a71916ccf420eebdf5521fcef02141234bbc0b8a49f2fdc4544364ef"
 dependencies = [
  "log",
  "pin-project-lite",
@@ -9598,9 +9598,9 @@ dependencies = [
 
 [[package]]
 name = "uuid"
-version = "1.4.1"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79daa5ed5740825c40b389c5e50312b9c86df53fccd33f281df655642b43869d"
+checksum = "88ad59a7560b41a70d191093a945f0b87bc1deeda46fb237479708a1d6b6cdfc"
 dependencies = [
  "getrandom 0.2.10",
 ]
@@ -9988,7 +9988,7 @@ version = "0.22.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed63aea5ce73d0ff405984102c42de94fc55a6b75765d621c65262469b3c9b53"
 dependencies = [
- "ring 0.17.4",
+ "ring 0.17.5",
  "untrusted 0.9.0",
 ]
 
@@ -10121,7 +10121,7 @@ dependencies = [
  "tokio",
  "turn",
  "url",
- "uuid 1.4.1",
+ "uuid 1.5.0",
  "waitgroup",
  "webrtc-mdns",
  "webrtc-util",

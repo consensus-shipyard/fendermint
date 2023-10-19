@@ -33,3 +33,12 @@ impl From<gateway_getter_facet::ParentFinality> for IPCParentFinality {
         }
     }
 }
+
+impl From<gateway_router_facet::ParentFinality> for IPCParentFinality {
+    fn from(value: gateway_router_facet::ParentFinality) -> Self {
+        IPCParentFinality {
+            height: value.height.as_u64(),
+            block_hash: value.block_hash.to_vec(),
+        }
+    }
+}
