@@ -220,6 +220,7 @@ impl<DB: Blockstore> GatewayCaller<DB> {
             .ok_or_else(|| anyhow!("function not found, abi wrong?"))?;
 
         if let Token::Tuple(mut tuple) = decode_function_data(function, return_data.0, false)? {
+            tracing::debug!("tuple received: {tuple:?}");
             if tuple.len() != 2 {
                 return Err(anyhow!("invalid decode data len"));
             }
