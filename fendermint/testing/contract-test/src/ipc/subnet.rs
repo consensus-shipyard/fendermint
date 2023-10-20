@@ -148,4 +148,9 @@ impl<DB: Blockstore> SubnetCaller<DB> {
     ) -> anyhow::Result<(u64, u64)> {
         self.getter.call(state, |c| c.get_configuration_numbers())
     }
+
+    /// Check if minimum collateral has been met.
+    pub fn bootstrapped(&self, state: &mut FvmExecState<DB>) -> anyhow::Result<bool> {
+        self.getter.call(state, |c| c.bootstrapped())
+    }
 }

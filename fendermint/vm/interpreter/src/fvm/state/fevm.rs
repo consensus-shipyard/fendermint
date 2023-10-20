@@ -36,9 +36,9 @@ pub enum ContractError<E> {
 /// Error returned by calling a contract.
 #[derive(Clone, Debug)]
 pub struct CallError<E> {
-    exit_code: ExitCode,
-    failure_info: Option<ApplyFailure>,
-    error: ContractError<E>,
+    pub exit_code: ExitCode,
+    pub failure_info: Option<ApplyFailure>,
+    pub error: ContractError<E>,
 }
 
 impl<E> std::fmt::Debug for ContractError<E>

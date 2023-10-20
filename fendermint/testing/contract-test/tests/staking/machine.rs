@@ -140,6 +140,24 @@ impl StateMachine for StakingMachine {
                 .expect("failed to join subnet");
         }
 
+        let bootstrapped = subnet
+            .bootstrapped(&mut exec_state)
+            .expect("failed to call bootstrapped");
+
+        assert!(
+            bootstrapped,
+            "the genesis joiners should bootstrap the subnet"
+        );
+
+        let (next_configuration_number, _) = subnet
+            .get_configuration_numbers(&mut exec_state)
+            .expect("failed to call config numbers");
+
+        assert_eq!(
+            next_configuration_number, 1,
+            "after initial joiners configuration should be 1"
+        );
+
         StakingSystem {
             exec_state: RefCell::new(exec_state),
             _gateway: gateway,
@@ -324,7 +342,12 @@ impl StateMachine for StakingMachine {
     }
 
     fn check_result(&self, cmd: &Self::Command, pre_state: &Self::State, result: Self::Result) {
-        eprintln!("> RESULT: {result:?}");
+        let info = match result {
+            Err(ref e) => format!("{:?}", e.error),
+            Ok(()) => "ok".to_owned(),
+        };
+        eprintln!("> RESULT: {info}");
+
         match cmd {
             StakingCommand::Checkpoint { .. } => {
                 result.expect("checkpoint submission should succeed");
@@ -382,6 +405,24 @@ impl StateMachine for StakingMachine {
         // Queries need mutable reference too.
         let mut exec_state = post_system.exec_state.borrow_mut();
 
+        // Check configuration numbers
+
+        let (next_cn, start_cn) = post_system
+            .subnet
+            .get_configuration_numbers(&mut exec_state)
+            .expect("failed to get config numbers");
+
+        assert_eq!(
+            next_cn, post_state.next_configuration_number,
+            "next configuration mismatch"
+        );
+
+        assert_eq!(
+            start_cn,
+            post_state.current_configuration.configuration_number + 1,
+            "start configuration mismatch"
+        );
+
         match cmd {
             StakingCommand::Checkpoint { .. } => {
                 // Sanity check the reference state while we have no contract to compare with.
@@ -408,24 +449,6 @@ impl StateMachine for StakingMachine {
             | StakingCommand::Leave(addr) => {
                 let a = post_state.accounts.get(addr).unwrap();
                 debug_assert!(a.current_balance <= a.initial_balance);
-
-                // Check configuration numbers
-
-                let (next_cn, start_cn) = post_system
-                    .subnet
-                    .get_configuration_numbers(&mut exec_state)
-                    .expect("failed to get config numbers");
-
-                assert_eq!(
-                    next_cn, post_state.next_configuration_number,
-                    "next configuration mismatch"
-                );
-
-                assert_eq!(
-                    start_cn,
-                    post_state.current_configuration.configuration_number + 1,
-                    "start configuration mismatch"
-                );
 
                 // Check collaterals
 

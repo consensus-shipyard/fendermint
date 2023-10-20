@@ -178,6 +178,7 @@ impl StakingState {
     /// Until the minimum collateral is reached, apply the changes immediately.
     fn update<F: FnOnce(&mut Self) -> StakingUpdate>(&mut self, f: F) {
         let update = f(self);
+        let configuration_number = update.configuration_number;
 
         // Apply on the next configuration immediately.
         let _ = self.next_configuration.update(update.clone());
@@ -186,8 +187,7 @@ impl StakingState {
         self.pending_updates.push_back(update);
 
         if !self.activated {
-            debug_assert_eq!(self.next_configuration_number, 0);
-            self.checkpoint(0, 0);
+            self.checkpoint(configuration_number, 0);
 
             let total_collateral = self.current_configuration.total_collateral();
 
@@ -199,11 +199,10 @@ impl StakingState {
                 .gateway
                 .min_collateral;
 
-            self.activated = total_collateral >= min_collateral;
-        }
-
-        if self.activated {
-            self.next_configuration_number += 1;
+            if total_collateral >= min_collateral {
+                self.activated = true;
+                self.next_configuration_number = 1;
+            }
         }
     }
 
@@ -241,6 +240,14 @@ impl StakingState {
         self.next_configuration.collateral(addr)
     }
 
+    fn next_configuration_number(&mut self) -> u64 {
+        let n = self.next_configuration_number;
+        if self.activated {
+            self.next_configuration_number += 1;
+        }
+        n
+    }
+
     /// Join with a validator. Repeated joins are allowed.
     ///
     /// Unlike the contract, the model doesn't require metadata here.
@@ -254,7 +261,11 @@ impl StakingState {
             a.current_balance -= value.clone();
 
             StakingUpdate {
-                configuration_number: this.next_configuration_number,
+                // Add an extra because joining in the model would cause a metadata update as well.
+                configuration_number: {
+                    this.next_configuration_number();
+                    this.next_configuration_number()
+                },
                 addr,
                 op: StakingOp::Deposit(value),
             }
@@ -267,8 +278,18 @@ impl StakingState {
         if value.is_zero() || !self.has_staked(&addr) {
             return;
         }
-        // Delegate; you can always do the join, but in the contract `stake` needs join first.
-        self.join(addr, value);
+        self.update(|this| {
+            let a = this.accounts.get_mut(&addr).expect("accounts exist");
+            debug_assert!(a.current_balance >= value);
+            a.current_balance -= value.clone();
+
+            StakingUpdate {
+                // Only increment once.
+                configuration_number: this.next_configuration_number(),
+                addr,
+                op: StakingOp::Deposit(value),
+            }
+        });
     }
 
     /// Enqueue a withdrawal.
@@ -277,7 +298,7 @@ impl StakingState {
             return;
         }
         self.update(|this| StakingUpdate {
-            configuration_number: this.next_configuration_number,
+            configuration_number: this.next_configuration_number(),
             addr,
             op: StakingOp::Withdraw(value),
         });
@@ -290,7 +311,7 @@ impl StakingState {
         }
         let value = self.total_deposit(&addr);
         self.update(|this| StakingUpdate {
-            configuration_number: this.next_configuration_number,
+            configuration_number: this.next_configuration_number(),
             addr,
             op: StakingOp::Withdraw(value),
         });
