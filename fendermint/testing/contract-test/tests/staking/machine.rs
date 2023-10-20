@@ -4,8 +4,9 @@ use std::{cell::RefCell, sync::Arc};
 
 use arbitrary::{Arbitrary, Unstructured};
 use contract_test::ipc::{registry::RegistryCaller, subnet::SubnetCaller};
+use ethers::abi::Tokenize;
 use ethers::types as et;
-use fendermint_crypto::PublicKey;
+use fendermint_crypto::{PublicKey, SecretKey};
 use fendermint_testing::smt::StateMachine;
 use fendermint_vm_actor_interface::{
     eam::EthAddress,
@@ -22,10 +23,11 @@ use fendermint_vm_interpreter::fvm::{
 };
 use fendermint_vm_message::{conv::from_fvm, signed::sign_secp256k1};
 use fvm::engine::MultiEngine;
+use fvm_shared::bigint::Integer;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::{address::Address, bigint::BigInt};
-use fvm_shared::{bigint::Integer, crypto::signature::SECP_SIG_LEN};
 use ipc_actors_abis::subnet_actor_manager_facet as subnet_manager;
+use ipc_sdk::subnet_id::SubnetID;
 
 use super::state::{StakingAccount, StakingState};
 use contract_test::ipc::registry::SubnetConstructorParams;
@@ -37,14 +39,17 @@ pub struct StakingSystem {
     _gateway: GatewayCaller<MemoryBlockstore>,
     _registry: RegistryCaller<MemoryBlockstore>,
     subnet: SubnetCaller<MemoryBlockstore>,
+    subnet_id: SubnetID,
 }
 
 #[derive(Debug)]
 pub enum StakingCommand {
     /// Bottom-up checkpoint; confirms all staking operations up to the configuration number.
     Checkpoint {
-        checkpoint: subnet_manager::BottomUpCheckpoint,
-        signatures: Vec<(EthAddress, [u8; SECP_SIG_LEN])>,
+        block_height: u64,
+        block_hash: [u8; 32],
+        next_configuration_number: u64,
+        signatories: Vec<(EthAddress, SecretKey)>,
     },
     /// Join by as a new validator.
     Join(EthAddress, TokenAmount, PublicKey),
@@ -116,6 +121,9 @@ impl StateMachine for StakingMachine {
             .new_subnet(&mut exec_state, params)
             .expect("failed to create subnet");
 
+        let subnet_id =
+            SubnetID::new_from_parent(&parent_ipc.gateway.subnet_id, subnet_addr.into());
+
         let subnet = SubnetCaller::new(subnet_addr);
 
         // Make all the validators join the subnet by putting down collateral according to their power.
@@ -133,6 +141,7 @@ impl StateMachine for StakingMachine {
             _gateway: gateway,
             _registry: registry,
             subnet,
+            subnet_id,
         }
     }
 
@@ -159,41 +168,24 @@ impl StateMachine for StakingMachine {
                         state.pending_updates[idx].configuration_number
                     }
                 };
-                // No messages.
-                let cross_messages_hash = abi_hash::<Vec<subnet_manager::CrossMsg>>(Vec::new());
 
-                let gateway = state.child_genesis.ipc.clone().unwrap().gateway;
-                let (root, route) = subnet_id_to_eth(&gateway.subnet_id).unwrap();
+                let ipc_params = state.child_genesis.ipc.clone().unwrap();
 
-                let checkpoint = subnet_manager::BottomUpCheckpoint {
-                    subnet_id: subnet_manager::SubnetID { root, route },
-                    block_height: state.last_checkpoint_height + gateway.bottom_up_check_period,
-                    block_hash: u.arbitrary()?,
-                    next_configuration_number,
-                    cross_messages_hash,
-                };
+                let majority_percentage = ipc_params.gateway.majority_percentage;
+                let block_height =
+                    state.last_checkpoint_height + ipc_params.gateway.bottom_up_check_period;
 
                 let collateral = state.current_configuration.total_collateral();
                 let collateral = collateral.atto();
                 let quorum_threshold =
-                    (collateral * gateway.majority_percentage).div_ceil(&BigInt::from(100));
+                    (collateral * majority_percentage).div_ceil(&BigInt::from(100));
 
-                let checkpoint_hash = abi_hash(checkpoint.clone());
-                let mut signatures = Vec::new();
+                let mut signatories = Vec::new();
                 let mut sign_power = BigInt::from(0);
 
                 for (addr, collateral) in state.current_configuration.collaterals.iter() {
                     let a = state.accounts.get(addr).expect("accounts exist");
-                    let signature = sign_secp256k1(&a.secret_key, &checkpoint_hash);
-                    let signature = from_fvm::to_eth_signature(&signature).unwrap();
-
-                    let recovered = signature
-                        .recover(et::RecoveryMessage::Hash(et::H256(checkpoint_hash)))
-                        .expect("failed to recover");
-
-                    debug_assert_eq!(addr.0, recovered.0, "recovered address does not match");
-
-                    signatures.push((*addr, signature.into()));
+                    signatories.push((*addr, a.secret_key.clone()));
                     sign_power += collateral.0.atto();
 
                     if sign_power >= quorum_threshold {
@@ -201,9 +193,12 @@ impl StateMachine for StakingMachine {
                     }
                 }
 
+                // Tecnically we cannot build a proper checkpoint here because we don't know the subnet address.
                 StakingCommand::Checkpoint {
-                    checkpoint,
-                    signatures,
+                    block_height,
+                    block_hash: u.arbitrary()?,
+                    next_configuration_number,
+                    signatories,
                 }
             }
             &"join" => {
@@ -239,13 +234,44 @@ impl StateMachine for StakingMachine {
         let mut exec_state = system.exec_state.borrow_mut();
         let res = match cmd {
             StakingCommand::Checkpoint {
-                checkpoint,
-                signatures,
+                block_height,
+                block_hash,
+                next_configuration_number,
+                signatories,
             } => {
+                // eprintln!("\n> CMD: CKPT cn={}", checkpoint.next_configuration_number);
+
+                // Build the checkpoint payload.
+                // No messages.
+                let cross_messages_hash = abi_hash::<Vec<subnet_manager::CrossMsg>>(Vec::new());
+
+                let (root, route) = subnet_id_to_eth(&system.subnet_id).unwrap();
+
+                let checkpoint = subnet_manager::BottomUpCheckpoint {
+                    subnet_id: subnet_manager::SubnetID { root, route },
+                    block_height: *block_height,
+                    block_hash: *block_hash,
+                    next_configuration_number: *next_configuration_number,
+                    cross_messages_hash,
+                };
+
+                let checkpoint_hash = abi_hash(checkpoint.clone());
+                // eprintln!("CHECKPOINT = {:?}", checkpoint);
+                // eprintln!("CHECKPOINT HASH = {}", hex::encode(checkpoint_hash));
                 // eprintln!(
-                //     "\n> CMD: CKPT height={} cn={}",
-                //     checkpoint.block_height, checkpoint.next_configuration_number
+                //     "CHECKPOINT ABI = {}",
+                //     hex::encode(ethers::abi::encode(&checkpoint.clone().into_tokens()))
                 // );
+                // eprintln!("CHECKPOINT TOKENS = {:?}", checkpoint.clone().into_tokens());
+
+                let mut signatures = Vec::new();
+
+                for (addr, secret_key) in signatories {
+                    let signature = sign_secp256k1(secret_key, &checkpoint_hash);
+                    let signature = from_fvm::to_eth_signature(&signature).unwrap();
+                    signatures.push((*addr, signature.into()));
+                }
+
                 system
                     .subnet
                     .try_submit_checkpoint(
@@ -326,10 +352,11 @@ impl StateMachine for StakingMachine {
 
     fn next_state(&self, cmd: &Self::Command, mut state: Self::State) -> Self::State {
         match cmd {
-            StakingCommand::Checkpoint { checkpoint, .. } => state.checkpoint(
-                checkpoint.next_configuration_number,
-                checkpoint.block_height,
-            ),
+            StakingCommand::Checkpoint {
+                next_configuration_number,
+                block_height,
+                ..
+            } => state.checkpoint(*next_configuration_number, *block_height),
             StakingCommand::Join(addr, value, _) => state.join(*addr, value.clone()),
             StakingCommand::Stake(addr, value) => state.stake(*addr, value.clone()),
             StakingCommand::Unstake(addr, value) => state.unstake(*addr, value.clone()),

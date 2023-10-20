@@ -383,6 +383,8 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             },
         };
 
+        // We cannot actually use this value because the real ID will only be
+        // apparent once the subnet is deployed.
         let child_subnet_id = SubnetID::new_from_parent(
             &parent_ipc.gateway.subnet_id,
             ArbSubnetAddress::arbitrary(u)?.0,
