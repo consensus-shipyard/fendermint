@@ -102,7 +102,7 @@ dependencies = [
 cwd = "./target/release"
 script = """
 ./fendermint genesis --genesis-file $BASE_DIR/genesis.json \
-      new --chain-name ${CHAIN_NAME} --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP} --power-scale 3
+      new --chain-name ${CHAIN_NAME} --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP} --power-scale ${POWER_SCALE}
 
 cat $BASE_DIR/genesis.json
 """
