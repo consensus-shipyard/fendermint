@@ -118,6 +118,7 @@ impl<DB: Blockstore> SubnetCaller<DB> {
         self.getter.call(state, |c| c.get_validator(addr.into()))
     }
 
+    /// Get the confirmed collateral of a validator.
     pub fn confirmed_collateral(
         &self,
         state: &mut FvmExecState<DB>,
@@ -125,5 +126,16 @@ impl<DB: Blockstore> SubnetCaller<DB> {
     ) -> anyhow::Result<TokenAmount> {
         self.get_validator(state, addr)
             .map(|i| from_eth::to_fvm_tokens(&i.confirmed_collateral))
+    }
+
+    /// Get the `(next, start)` configuration number pair.
+    ///
+    /// * `next` is the next expected one
+    /// * `start` is the first unapplied one
+    pub fn get_configuration_numbers(
+        &self,
+        state: &mut FvmExecState<DB>,
+    ) -> anyhow::Result<(u64, u64)> {
+        self.getter.call(state, |c| c.get_configuration_numbers())
     }
 }

@@ -240,6 +240,9 @@ impl StakingState {
     ///
     /// Unlike the contract, the model doesn't require metadata here.
     pub fn join(&mut self, addr: EthAddress, value: TokenAmount) {
+        if value.is_zero() {
+            return;
+        }
         self.update(|this| {
             let a = this.accounts.get_mut(&addr).expect("accounts exist");
             debug_assert!(a.current_balance >= value);
@@ -256,14 +259,18 @@ impl StakingState {
     /// Enqueue a deposit. Must be one of the current validators to succeed, otherwise ignored.
     pub fn stake(&mut self, addr: EthAddress, value: TokenAmount) {
         // Simulate the check the contract does to ensure the metadata has been added before.
-        if self.has_staked(&addr) {
-            // Delegate; you can always do the join, but in the contract `stake` needs join first.
-            self.join(addr, value);
+        if value.is_zero() || !self.has_staked(&addr) {
+            return;
         }
+        // Delegate; you can always do the join, but in the contract `stake` needs join first.
+        self.join(addr, value);
     }
 
     /// Enqueue a withdrawal.
     pub fn unstake(&mut self, addr: EthAddress, value: TokenAmount) {
+        if value.is_zero() || !self.has_staked(&addr) {
+            return;
+        }
         self.update(|this| StakingUpdate {
             configuration_number: this.next_configuration_number,
             addr,
@@ -273,6 +280,9 @@ impl StakingState {
 
     /// Enqueue a total withdrawal.
     pub fn leave(&mut self, addr: EthAddress) {
+        if !self.has_staked(&addr) {
+            return;
+        }
         let value = self.total_deposit(&addr);
         self.update(|this| StakingUpdate {
             configuration_number: this.next_configuration_number,

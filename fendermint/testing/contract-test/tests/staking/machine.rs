@@ -233,7 +233,7 @@ impl StateMachine for StakingMachine {
 
     fn run_command(&self, system: &mut Self::System, cmd: &Self::Command) -> Self::Result {
         let mut exec_state = system.exec_state.borrow_mut();
-        let res = match cmd {
+        match cmd {
             StakingCommand::Checkpoint {
                 block_height,
                 block_hash,
@@ -283,7 +283,7 @@ impl StateMachine for StakingMachine {
                     .expect("failed to call: submit_checkpoint")
             }
             StakingCommand::Join(_addr, value, public_key) => {
-                // eprintln!("\n> CMD: JOIN addr={_addr} value={value}");
+                eprintln!("\n> CMD: JOIN addr={_addr} value={value}");
                 let validator = Validator {
                     public_key: ValidatorKey(public_key.clone()),
                     power: Collateral(value.clone()),
@@ -294,14 +294,14 @@ impl StateMachine for StakingMachine {
                     .expect("failed to call: join")
             }
             StakingCommand::Stake(addr, value) => {
-                // eprintln!("\n> CMD: STAKE addr={addr} value={value}");
+                eprintln!("\n> CMD: STAKE addr={addr} value={value}");
                 system
                     .subnet
                     .try_stake(&mut exec_state, addr, value)
                     .expect("failed to call: stake")
             }
             StakingCommand::Leave(addr) => {
-                // eprintln!("\n> CMD: LEAVE addr={addr}");
+                eprintln!("\n> CMD: LEAVE addr={addr}");
                 system
                     .subnet
                     .try_leave(&mut exec_state, addr)
@@ -310,13 +310,11 @@ impl StateMachine for StakingMachine {
             StakingCommand::Unstake(_addr, _value) => {
                 todo!("implement unstake in the contract")
             }
-        };
-        // eprintln!(" -> {res:?}");
-
-        res
+        }
     }
 
     fn check_result(&self, cmd: &Self::Command, pre_state: &Self::State, result: Self::Result) {
+        eprintln!("> RESULT: {result:?}");
         match cmd {
             StakingCommand::Checkpoint { .. } => {
                 result.expect("checkpoint submission should succeed");
@@ -422,7 +420,23 @@ impl StateMachine for StakingMachine {
                     .expect("failed to get actor")
                     .expect("actor exists");
 
-                assert_eq!(actor.balance, a.current_balance, "current balance mismatch")
+                assert_eq!(actor.balance, a.current_balance, "current balance mismatch");
+
+                let (next_cn, start_cn) = post_system
+                    .subnet
+                    .get_configuration_numbers(&mut exec_state)
+                    .expect("failed to get config numbers");
+
+                assert_eq!(
+                    next_cn, post_state.next_configuration_number,
+                    "next configuration mismatch"
+                );
+
+                assert_eq!(
+                    start_cn,
+                    post_state.current_configuration.configuration_number + 1,
+                    "start configuration mismatch"
+                );
             }
         }
 
