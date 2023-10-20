@@ -75,8 +75,10 @@ pub fn to_eth_signature(sig: &FvmSignature) -> anyhow::Result<et::Signature> {
         other => return Err(anyhow!("unexpected signature type: {other:?}")),
     };
 
+    // By adding 27 to the recovery ID we make this compatible with Ethereum,
+    // so that we can verify such signatures in Solidity with e.g. openzeppelin ECDSA.sol
     let sig = et::Signature {
-        v: et::U64::from(v.serialize()).as_u64(),
+        v: et::U64::from(v.serialize() + 27).as_u64(),
         r: et::U256::from_big_endian(sig.r.b32().as_ref()),
         s: et::U256::from_big_endian(sig.s.b32().as_ref()),
     };
