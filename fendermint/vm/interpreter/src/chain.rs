@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use std::sync::Arc;
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
@@ -24,6 +25,7 @@ use fendermint_vm_topdown::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
@@ -297,14 +299,18 @@ where
 
                     tracing::debug!("top down messages to execute: {messages:?}");
                     let msg = self.gateway_caller.apply_cross_messages_msg(messages)?;
-                    let (state, ret) = self
+                    let (mut state, ret) = self
                         .inner
                         .deliver(state, VerifiableMessage::NotVerify(msg))
                         .await?;
-                    if ret.is_err() {
-                        tracing::error!("cannot apply cross messages");
+                    if let Ok(inner) = &ret {
+                        if inner.fvm.apply_ret.msg_receipt.exit_code != fvm_shared::error::ExitCode::OK {
+                            return Err(anyhow!("failed to apply cross messages exit code not 0"));
+                        }
+                    } else {
                         return Err(anyhow!("failed to apply cross messages"));
                     }
+
                     tracing::debug!("top down messages executed");
 
                     atomically(|| {
@@ -313,6 +319,16 @@ where
                     .await;
                     tracing::debug!("new finality updated in parent provider: {finality:?}");
 
+                    // === debug code
+                    let state_tree = state.state_tree_mut();
+                    let id = state_tree.lookup_id(&Address::from_str(
+                        "t410fdj4tqxvnb2dt7ygeihadiy3nh3pxafgm42mxxjy",
+                    )?)?;
+                    tracing::info!("target actor id after execution: {id:?}");
+                    if let Some(id) = id {
+                        let target = state_tree.get_actor(id)?;
+                        tracing::info!("target actor state after execution: {target:?}");
+                    }
                     Ok(((pool, provider, state), ChainMessageApplyRet::Signed(ret)))
                 }
             },

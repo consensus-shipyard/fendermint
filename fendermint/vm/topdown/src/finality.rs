@@ -349,6 +349,7 @@ mod tests {
     };
     use async_stm::atomically_or_err;
     use async_trait::async_trait;
+    use ethers::utils::hex;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
     use ipc_provider::manager::{GetBlockHashResult, TopDownQueryPayload};
@@ -531,6 +532,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_top_down_msgs_works() {
+        let v = vec![
+            26, 121, 56, 94, 173, 14, 135, 63, 224, 196, 65, 192, 52, 99, 109, 62, 223, 112, 20,
+            204, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ];
+
+        println!("{}", hex::encode(v));
         let config = Config {
             chain_head_delay: 2,
             polling_interval_secs: Duration::from_secs(10),
