@@ -28,7 +28,10 @@ use fvm_shared::{address::Address, bigint::BigInt};
 use ipc_actors_abis::subnet_actor_manager_facet as subnet_manager;
 use ipc_sdk::subnet_id::SubnetID;
 
-use super::state::{StakingAccount, StakingState};
+use super::{
+    choose_amount,
+    state::{StakingAccount, StakingState},
+};
 use contract_test::ipc::registry::SubnetConstructorParams;
 
 /// System Under Test for staking.
@@ -130,7 +133,7 @@ impl StateMachine for StakingMachine {
         // Make all the validators join the subnet by putting down collateral according to their power.
         for v in state.child_genesis.validators.iter() {
             let _addr = EthAddress::new_secp256k1(&v.public_key.0.serialize()).unwrap();
-            // eprintln!("\n> JOINING SUBNET: addr={_addr} deposit={}", v.power.0);
+            eprintln!("\n> JOINING SUBNET: addr={_addr} deposit={}", v.power.0);
 
             subnet
                 .join(&mut exec_state, v)
@@ -175,6 +178,13 @@ impl StateMachine for StakingMachine {
                 let block_height =
                     state.last_checkpoint_height + ipc_params.gateway.bottom_up_check_period;
 
+                let block_hash = <[u8; 32]>::arbitrary(u)?;
+
+                assert!(
+                    block_hash.iter().any(|b| *b != 0u8),
+                    "it looks like we ran out of randomness"
+                );
+
                 let majority_percentage = ipc_params.gateway.majority_percentage;
                 let collateral = state.current_configuration.total_collateral();
                 let collateral = collateral.atto();
@@ -197,7 +207,7 @@ impl StateMachine for StakingMachine {
                 // Tecnically we cannot build a proper checkpoint here because we don't know the subnet address.
                 StakingCommand::Checkpoint {
                     block_height,
-                    block_hash: u.arbitrary()?,
+                    block_hash,
                     next_configuration_number,
                     signatories,
                 }
@@ -399,28 +409,7 @@ impl StateMachine for StakingMachine {
                 let a = post_state.accounts.get(addr).unwrap();
                 debug_assert!(a.current_balance <= a.initial_balance);
 
-                if let Some(collateral) = post_state.current_configuration.collateral(addr) {
-                    let cc = post_system
-                        .subnet
-                        .confirmed_collateral(&mut exec_state, addr)
-                        .expect("account exists");
-
-                    assert_eq!(cc, collateral, "confirmed collateral mismatch");
-                }
-
-                let actor_id = exec_state
-                    .state_tree_mut()
-                    .lookup_id(&Address::from(*addr))
-                    .expect("failed to get actor ID")
-                    .expect("actor exists");
-
-                let actor = exec_state
-                    .state_tree_mut()
-                    .get_actor(actor_id)
-                    .expect("failed to get actor")
-                    .expect("actor exists");
-
-                assert_eq!(actor.balance, a.current_balance, "current balance mismatch");
+                // Check configuration numbers
 
                 let (next_cn, start_cn) = post_system
                     .subnet
@@ -437,6 +426,45 @@ impl StateMachine for StakingMachine {
                     post_state.current_configuration.configuration_number + 1,
                     "start configuration mismatch"
                 );
+
+                // Check collaterals
+
+                let total = post_system
+                    .subnet
+                    .total_collateral(&mut exec_state, addr)
+                    .expect("failed to get total collateral");
+
+                let confirmed = post_system
+                    .subnet
+                    .confirmed_collateral(&mut exec_state, addr)
+                    .expect("failed to get total collateral");
+
+                assert_eq!(
+                    total,
+                    post_state.next_configuration.collateral(addr),
+                    "total collateral mismatch"
+                );
+                assert_eq!(
+                    confirmed,
+                    post_state.current_configuration.collateral(addr),
+                    "confirmed collateral mismatch"
+                );
+
+                // Check balance
+
+                let actor_id = exec_state
+                    .state_tree_mut()
+                    .lookup_id(&Address::from(*addr))
+                    .expect("failed to get actor ID")
+                    .expect("actor exists");
+
+                let actor = exec_state
+                    .state_tree_mut()
+                    .get_actor(actor_id)
+                    .expect("failed to get actor")
+                    .expect("actor exists");
+
+                assert_eq!(actor.balance, a.current_balance, "current balance mismatch");
             }
         }
 
@@ -453,13 +481,4 @@ fn choose_account<'a>(
     let a = u.choose(&state.addrs).expect("accounts not empty");
     let a = state.accounts.get(a).expect("account exists");
     Ok(a)
-}
-
-fn choose_amount(u: &mut Unstructured<'_>, max: &TokenAmount) -> arbitrary::Result<TokenAmount> {
-    let atto = if max.is_zero() {
-        BigInt::from(0)
-    } else {
-        BigInt::arbitrary(u)?.mod_floor(max.atto())
-    };
-    Ok(TokenAmount::from_atto(atto))
 }

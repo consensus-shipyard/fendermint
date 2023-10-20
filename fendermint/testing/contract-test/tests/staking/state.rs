@@ -20,6 +20,8 @@ use ipc_sdk::subnet_id::SubnetID;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
+use super::choose_amount;
+
 #[derive(Debug, Clone)]
 pub enum StakingOp {
     Deposit(TokenAmount),
@@ -58,8 +60,11 @@ impl StakingDistribution {
         self.collaterals.values().map(|c| c.0.clone()).sum()
     }
 
-    pub fn collateral(&self, addr: &EthAddress) -> Option<TokenAmount> {
-        self.collaterals.get(addr).map(|c| c.0.clone())
+    pub fn collateral(&self, addr: &EthAddress) -> TokenAmount {
+        self.collaterals
+            .get(addr)
+            .map(|c| c.0.clone())
+            .unwrap_or_default()
     }
 
     /// Update the staking distribution. Return the actually applied operation, if any.
@@ -233,7 +238,7 @@ impl StakingState {
 
     /// Total amount staked by a validator.
     pub fn total_deposit(&self, addr: &EthAddress) -> TokenAmount {
-        self.next_configuration.collateral(addr).unwrap_or_default()
+        self.next_configuration.collateral(addr)
     }
 
     /// Join with a validator. Repeated joins are allowed.
@@ -315,11 +320,9 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             let addr = EthAddress::new_secp256k1(&pk.serialize()).unwrap();
 
             // Create with a non-zero balance so we can pick anyone to be a validator and deposit some collateral.
-            let initial_balance = ArbTokenAmount::arbitrary(u)?
-                .0
-                .atto()
-                .mod_floor(&max_balance);
-
+            let initial_balance = ArbTokenAmount::arbitrary(u)?.0;
+            let initial_balance = initial_balance.atto();
+            let initial_balance = initial_balance.mod_floor(&max_balance);
             let initial_balance =
                 TokenAmount::from_atto(initial_balance).max(TokenAmount::from_atto(1).clone());
 
@@ -362,9 +365,7 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             .take(num_validators)
             .map(|a| {
                 // Choose an initial stake committed to the child subnet.
-                let initial_balance = a.initial_balance.atto();
-                let initial_stake =
-                    TokenAmount::from_atto(BigInt::arbitrary(u)?.mod_floor(initial_balance));
+                let initial_stake = choose_amount(u, &a.initial_balance)?;
                 // Make sure it's not zero.
                 let initial_stake = initial_stake.max(TokenAmount::from_atto(1));
 
@@ -376,10 +377,14 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Choose an attainable activation limit.
-        let initial_stake: BigInt = current_configuration.iter().map(|v| v.power.0.atto()).sum();
-        let min_collateral =
-            TokenAmount::from_atto(BigInt::arbitrary(u)?.mod_floor(&initial_stake))
-                .max(TokenAmount::from_atto(1));
+        let initial_stake = TokenAmount::from_atto(
+            current_configuration
+                .iter()
+                .map(|v| v.power.0.atto())
+                .sum::<BigInt>(),
+        );
+
+        let min_collateral = choose_amount(u, &initial_stake)?.max(TokenAmount::from_atto(1));
 
         // IPC of the parent subnet itself - most are not going to be used.
         let parent_ipc = IpcParams {
