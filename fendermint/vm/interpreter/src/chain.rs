@@ -275,7 +275,7 @@ where
                         return Err(anyhow!("failed to store validator changes"));
                     }
                     tracing::debug!("validator changes stashed");
-                    //
+
                     // Execute top down messages
 
                     // error happens if we cannot get the validator set from ipc agent after retries
@@ -289,6 +289,7 @@ where
                         .deliver(state, VerifiableMessage::NotVerify(msg))
                         .await?;
                     if ret.is_err() {
+                        tracing::error!("cannot apply cross messages");
                         return Err(anyhow!("failed to apply cross messages"));
                     }
                     tracing::debug!("top down messages executed");
