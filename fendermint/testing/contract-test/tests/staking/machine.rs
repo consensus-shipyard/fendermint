@@ -114,7 +114,9 @@ impl StateMachine for StakingMachine {
             min_cross_msg_fee: et::U256::zero(),
         };
 
-        // eprintln!("\n> CREATING SUBNET: {params:?}");
+        eprintln!("\n> PARENT IPC: {parent_ipc:?}");
+        eprintln!("\n> CHILD IPC: {child_ipc:?}");
+        eprintln!("\n> CREATING SUBNET: {params:?}");
 
         let subnet_addr = registry
             .new_subnet(&mut exec_state, params)
@@ -170,10 +172,10 @@ impl StateMachine for StakingMachine {
 
                 let ipc_params = state.child_genesis.ipc.clone().unwrap();
 
-                let majority_percentage = ipc_params.gateway.majority_percentage;
                 let block_height =
                     state.last_checkpoint_height + ipc_params.gateway.bottom_up_check_period;
 
+                let majority_percentage = ipc_params.gateway.majority_percentage;
                 let collateral = state.current_configuration.total_collateral();
                 let collateral = collateral.atto();
                 let quorum_threshold =
@@ -238,7 +240,10 @@ impl StateMachine for StakingMachine {
                 next_configuration_number,
                 signatories,
             } => {
-                // eprintln!("\n> CMD: CKPT cn={}", checkpoint.next_configuration_number);
+                eprintln!(
+                    "\n> CMD: CHECKPOINT h={} cn={}",
+                    block_height, next_configuration_number
+                );
 
                 // Build the checkpoint payload.
 

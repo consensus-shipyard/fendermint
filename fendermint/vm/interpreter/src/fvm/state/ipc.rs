@@ -41,9 +41,12 @@ impl<DB> Default for GatewayCaller<DB> {
 
 impl<DB> GatewayCaller<DB> {
     pub fn new(actor_id: ActorID) -> Self {
+        // A masked ID works for invoking the contract, but internally the EVM uses a different
+        // ID and if we used this address for anything like validating that the sender is the gateway,
+        // we'll face bitter disappointment. For that we have to use the hashed version.
         let addr = EthAddress::from_id(actor_id);
         Self {
-            addr,
+            addr: addr.into_non_masked(),
             getter: ContractCaller::new(addr, GatewayGetterFacet::new),
             router: ContractCaller::new(addr, GatewayRouterFacet::new),
         }

@@ -10,8 +10,7 @@ use fendermint_vm_actor_interface::{
     account::{self, ACCOUNT_ACTOR_CODE_ID},
     eam::{self, EthAddress},
     ethaccount::ETHACCOUNT_ACTOR_CODE_ID,
-    evm,
-    init::{self, eth_builtin_deleg_addr},
+    evm, init,
     multisig::{self, MULTISIG_ACTOR_CODE_ID},
     system, EMPTY_ARR,
 };
@@ -295,8 +294,8 @@ where
 
         // When a contract is constructed the EVM actor verifies that it has an Ethereum delegated address.
         // This has been inserted into the Init actor state as well.
-        let f4_addr = eth_builtin_deleg_addr(id);
         let f0_addr = Address::new_id(id);
+        let f4_addr = Address::from(EthAddress::from_id(id).into_non_masked());
 
         let msg = Message {
             version: 0,

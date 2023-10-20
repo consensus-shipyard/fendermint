@@ -336,13 +336,15 @@ pub mod gateway {
 pub mod subnet {
     use crate::revert_errors;
     use ipc_actors_abis::gateway_manager_facet::GatewayManagerFacetErrors;
+    use ipc_actors_abis::gateway_router_facet::GatewayRouterFacetErrors;
     use ipc_actors_abis::subnet_actor_manager_facet::SubnetActorManagerFacetErrors;
 
     // The subnet actor has its own errors, but it also invokes the gateway, which might revert for its own reasons.
     revert_errors! {
         SubnetActorErrors {
             SubnetActorManagerFacetErrors,
-            GatewayManagerFacetErrors
+            GatewayManagerFacetErrors,
+            GatewayRouterFacetErrors
         }
     }
 
