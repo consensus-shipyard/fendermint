@@ -376,15 +376,16 @@ impl arbitrary::Arbitrary<'_> for StakingState {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        // Choose an attainable activation limit.
+        // Choose an activation limit so that the last joiner activates it,
+        // simulating the effects of genesis.
         let initial_stake = TokenAmount::from_atto(
             current_configuration
                 .iter()
                 .map(|v| v.power.0.atto())
                 .sum::<BigInt>(),
         );
-
-        let min_collateral = choose_amount(u, &initial_stake)?.max(TokenAmount::from_atto(1));
+        let last_stake = &current_configuration.last().unwrap().power.0;
+        let min_collateral = initial_stake - last_stake + choose_amount(u, &last_stake)?;
 
         // IPC of the parent subnet itself - most are not going to be used.
         let parent_ipc = IpcParams {

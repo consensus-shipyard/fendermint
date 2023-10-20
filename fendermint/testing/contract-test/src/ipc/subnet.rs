@@ -135,7 +135,7 @@ impl<DB: Blockstore> SubnetCaller<DB> {
         addr: &EthAddress,
     ) -> anyhow::Result<TokenAmount> {
         self.get_validator(state, addr)
-            .map(|i| from_eth::to_fvm_tokens(&i.confirmed_collateral))
+            .map(|i| from_eth::to_fvm_tokens(&i.total_collateral))
     }
 
     /// Get the `(next, start)` configuration number pair.
