@@ -3,6 +3,7 @@ use std::sync::Arc;
 // SPDX-License-Identifier: Apache-2.0, MIT
 use crate::fvm::state::ipc::GatewayCaller;
 use crate::{
+    fvm::state::FvmExecState,
     fvm::FvmMessage,
     signed::{SignedMessageApplyRes, SignedMessageCheckRes, SyntheticMessage, VerifiableMessage},
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
@@ -167,7 +168,11 @@ where
 impl<I, DB> ExecInterpreter for ChainMessageInterpreter<I, DB>
 where
     DB: Blockstore + Clone + 'static + Send + Sync,
-    I: ExecInterpreter<Message = VerifiableMessage, DeliverOutput = SignedMessageApplyRes>,
+    I: ExecInterpreter<
+        Message = VerifiableMessage,
+        DeliverOutput = SignedMessageApplyRes,
+        State = FvmExecState<DB>,
+    >,
 {
     // The state consists of the resolver pool, which this interpreter needs, and the rest of the
     // state which the inner interpreter uses. This is a technical solution because the pool doesn't
@@ -267,7 +272,7 @@ where
                     let msg = self
                         .gateway_caller
                         .store_validator_changes_msg(validator_changes)?;
-                    let (state, ret) = self
+                    let (mut state, ret) = self
                         .inner
                         .deliver(state, VerifiableMessage::NotVerify(msg))
                         .await?;
@@ -282,6 +287,14 @@ where
                     let messages = provider
                         .top_down_msgs_from(prev_height + 1, p.height as u64, &finality.block_hash)
                         .await?;
+                    let total_value: TokenAmount =
+                        messages.iter().map(|a| a.msg.value.clone()).sum();
+                    let state_tree = state.state_tree_mut();
+                    state_tree.mutate_actor(ipc::GATEWAY_ACTOR_ID, |actor_state| {
+                        actor_state.balance += total_value;
+                        Ok(())
+                    })?;
+
                     tracing::debug!("top down messages to execute: {messages:?}");
                     let msg = self.gateway_caller.apply_cross_messages_msg(messages)?;
                     let (state, ret) = self
