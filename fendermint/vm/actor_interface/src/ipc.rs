@@ -348,7 +348,7 @@ pub mod subnet {
 
     #[cfg(test)]
     mod tests {
-        use ethers::abi::Tokenize;
+        use ethers::abi::{AbiType, Tokenize};
         use ethers::core::types::Bytes;
         use ipc_actors_abis::subnet_actor_manager_facet::{BottomUpCheckpoint, SubnetID};
 
@@ -378,13 +378,21 @@ pub mod subnet {
                 ],
             };
 
+            let param_type = BottomUpCheckpoint::param_type();
+
             // Captured value of `abi.encode` in Solidity.
             let expected_abi: Bytes = "0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000156b736f342ab34d9afe4234a92bdb190c35b2e8d822d9601b00b9d7089b190f010000000000000000000000000000000000000000000000000000000000000001569e75fc77c1a856f6daaf9e69d8a9566ca34aa47f9133711ce065a571af0cfd000000000000000000000000000000000000000000000000abc8e314f58b4de5000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000020000000000000000000000007b11cf9ca8ccee13bb3d003c97af5c18434067a90000000000000000000000003d9019b8bf3bfd5e979ddc3b2761be54af867c47".parse().unwrap();
 
-            let observed_tokens = checkpoint.into_tokens();
+            // XXX: It doesn't work with `decode_whole`.
+            let expected_tokens =
+                ethers::abi::decode(&[param_type], &expected_abi).expect("invalid Solidity ABI");
+
+            // The data needs to be wrapped into a tuple.
+            let observed_tokens = (checkpoint,).into_tokens();
             let observed_abi: Bytes = ethers::abi::encode(&observed_tokens).into();
 
-            assert_eq!(observed_abi, expected_abi)
+            assert_eq!(observed_tokens, expected_tokens);
+            assert_eq!(observed_abi, expected_abi);
         }
     }
 }

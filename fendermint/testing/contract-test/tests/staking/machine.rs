@@ -4,7 +4,6 @@ use std::{cell::RefCell, sync::Arc};
 
 use arbitrary::{Arbitrary, Unstructured};
 use contract_test::ipc::{registry::RegistryCaller, subnet::SubnetCaller};
-use ethers::abi::Tokenize;
 use ethers::types as et;
 use fendermint_crypto::{PublicKey, SecretKey};
 use fendermint_testing::smt::StateMachine;
@@ -242,7 +241,8 @@ impl StateMachine for StakingMachine {
                 // eprintln!("\n> CMD: CKPT cn={}", checkpoint.next_configuration_number);
 
                 // Build the checkpoint payload.
-                // No messages.
+
+                // No messages in this test.
                 let cross_messages_hash = abi_hash::<Vec<subnet_manager::CrossMsg>>(Vec::new());
 
                 let (root, route) = subnet_id_to_eth(&system.subnet_id).unwrap();
@@ -255,14 +255,9 @@ impl StateMachine for StakingMachine {
                     cross_messages_hash,
                 };
 
-                let checkpoint_hash = abi_hash(checkpoint.clone());
-                // eprintln!("CHECKPOINT = {:?}", checkpoint);
-                // eprintln!("CHECKPOINT HASH = {}", hex::encode(checkpoint_hash));
-                // eprintln!(
-                //     "CHECKPOINT ABI = {}",
-                //     hex::encode(ethers::abi::encode(&checkpoint.clone().into_tokens()))
-                // );
-                // eprintln!("CHECKPOINT TOKENS = {:?}", checkpoint.clone().into_tokens());
+                // Checkpoint has to be a tuple to match Solidity.
+                let checkpoint_tuple = (checkpoint.clone(),);
+                let checkpoint_hash = abi_hash(checkpoint_tuple);
 
                 let mut signatures = Vec::new();
 

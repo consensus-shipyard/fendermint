@@ -94,6 +94,8 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         height: u64,
     ) -> anyhow::Result<[u8; 32]> {
         let msgs = self.bottom_up_msgs(state, height)?;
+
+        // TODO: Not sure this is the right way to hash a vector.
         Ok(abi_hash(msgs))
     }
 
@@ -154,7 +156,9 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         let height = checkpoint.block_height;
         let weight = et::U256::from(validator.power.0);
 
-        let hash = abi_hash(checkpoint);
+        // Checkpoint has to be hashed as a tuple.
+        let hash = abi_hash((checkpoint,));
+
         let signature = sign_secp256k1(secret_key, &hash);
         let signature = from_fvm::to_eth_signature(&signature).context("invalid signature")?;
         let signature = et::Bytes::from(signature.to_vec());
@@ -185,6 +189,9 @@ impl<DB: Blockstore> GatewayCaller<DB> {
 }
 
 /// Hash some value in the same way we'd hash it in Solidity.
+///
+/// Be careful that if we have to hash a single struct, Solidity's `abi.encode`
+/// function will treat it as a tuple.
 pub fn abi_hash<T: Tokenize>(value: T) -> [u8; 32] {
     keccak256(ethers::abi::encode(&value.into_tokens()))
 }
