@@ -96,6 +96,7 @@ macro_rules! state_machine_test {
         fn $name() {
             let machine = $smt;
             arbtest::builder()
+                .min_size(65_536)
                 .budget_ms($ms)
                 .run(|u| $crate::smt::run(u, &machine, $steps))
         }
@@ -105,7 +106,9 @@ macro_rules! state_machine_test {
         #[test]
         fn $name() {
             let machine = $smt;
-            arbtest::builder().run(|u| $crate::smt::run(u, &machine, $steps))
+            arbtest::builder()
+                .min_size(65_536)
+                .run(|u| $crate::smt::run(u, &machine, $steps))
         }
     };
 
@@ -114,6 +117,7 @@ macro_rules! state_machine_test {
         fn $name() {
             let machine = $smt;
             arbtest::builder()
+                .min_size(65_536)
                 .seed($seed)
                 .run(|u| $crate::smt::run(u, &machine, $steps))
         }
