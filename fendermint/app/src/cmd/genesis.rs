@@ -7,7 +7,9 @@ use fendermint_crypto::PublicKey;
 use fvm_shared::address::Address;
 use ipc_provider::config::subnet::{EVMSubnet, SubnetConfig};
 use ipc_provider::IpcProvider;
+use sha2::Digest;
 use std::path::PathBuf;
+use tendermint::chain::id::MAX_LENGTH;
 
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_core::Timestamp;
@@ -189,9 +191,17 @@ where
 fn into_tendermint(genesis_file: &PathBuf, args: &GenesisIntoTendermintArgs) -> anyhow::Result<()> {
     let genesis = read_genesis(genesis_file)?;
     let genesis_json = serde_json::to_value(&genesis)?;
+    // Fendermint chainIDs can only be 50 bytes long. To avoid
+    // arbitrary chain names from exceeding the limit, we compute
+    // the chainID as the 54 most significant bytes of the SHA256
+    // of the chain name.
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(genesis.chain_name);
+    let h_chain_id = hex::encode(hasher.finalize());
+
     let tmg = tendermint::Genesis {
         genesis_time: tendermint::time::Time::from_unix_timestamp(genesis.timestamp.as_secs(), 0)?,
-        chain_id: tendermint::chain::Id::try_from(genesis.chain_name)?,
+        chain_id: tendermint::chain::Id::try_from(&h_chain_id[..MAX_LENGTH])?,
         initial_height: 0,
         // Values are based on the default produced by `tendermint init`
         consensus_params: tendermint::consensus::Params {
