@@ -23,7 +23,7 @@ use fvm::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_car::load_car_unchecked;
-use fvm_ipld_encoding::{CborStore, RawBytes};
+use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
 use fvm_shared::{
     address::{Address, Payload},
     clock::ChainEpoch,
@@ -328,10 +328,22 @@ where
         };
 
         if !apply_ret.msg_receipt.exit_code.is_success() {
+            let error_data = apply_ret.msg_receipt.return_data;
+            let error_data = if error_data.is_empty() {
+                Vec::new()
+            } else {
+                // The EVM actor might return some revert in the output.
+                error_data
+                    .deserialize::<BytesDe>()
+                    .map(|bz| bz.0)
+                    .context("failed to deserialize error data")?
+            };
+
             bail!(
-                "failed to deploy EVM actor: {}; {:?}",
+                "failed to deploy EVM actor: code = {}; data = 0x{}; info = {:?}",
                 apply_ret.msg_receipt.exit_code,
-                apply_ret.failure_info
+                hex::encode(error_data),
+                apply_ret.failure_info,
             );
         }
 
