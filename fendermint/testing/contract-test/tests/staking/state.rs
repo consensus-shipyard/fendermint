@@ -456,7 +456,8 @@ impl arbitrary::Arbitrary<'_> for StakingState {
                 .sum::<BigInt>(),
         );
         let last_stake = &current_configuration.last().unwrap().power.0;
-        let min_collateral = initial_stake - last_stake + choose_amount(u, &last_stake)?;
+        let min_collateral = initial_stake - last_stake
+            + choose_amount(u, &last_stake)?.max(TokenAmount::from_atto(1));
 
         // IPC of the parent subnet itself - most are not going to be used.
         let parent_ipc = IpcParams {
