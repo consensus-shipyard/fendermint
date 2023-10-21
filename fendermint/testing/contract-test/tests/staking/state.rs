@@ -45,6 +45,8 @@ pub struct StakingAccount {
     pub initial_balance: TokenAmount,
     /// Balance after the effects of deposits/withdrawals.
     pub current_balance: TokenAmount,
+    /// Currently it's not possible to specify the locking period, so all claims are immediately available.
+    pub claim_balance: TokenAmount,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -218,13 +220,8 @@ impl StakingState {
             let update = self.pending_updates.pop_front().expect("checked non-empty");
             let addr = update.addr;
 
-            if let Some(StakingOp::Withdraw(v)) = self.current_configuration.update(update) {
-                let a = self
-                    .accounts
-                    .get_mut(&addr)
-                    .expect("validators have accounts");
-
-                a.current_balance += v;
+            if let Some(StakingOp::Withdraw(value)) = self.current_configuration.update(update) {
+                self.add_claim(&addr, value);
             }
         }
         self.last_checkpoint_height = height;
@@ -235,17 +232,63 @@ impl StakingState {
         self.total_deposit(addr).is_positive()
     }
 
+    /// Check whether an account has a non-zero claim balance.
+    pub fn has_claim(&self, addr: &EthAddress) -> bool {
+        self.account(addr).claim_balance.is_positive()
+    }
+
     /// Total amount staked by a validator.
     pub fn total_deposit(&self, addr: &EthAddress) -> TokenAmount {
         self.next_configuration.collateral(addr)
     }
 
+    /// Get and increment the configuration number.
     fn next_configuration_number(&mut self) -> u64 {
         let n = self.next_configuration_number;
         if self.activated {
             self.next_configuration_number += 1;
         }
         n
+    }
+
+    /// Get an account. Panics if it doesn't exist.
+    pub fn account(&self, addr: &EthAddress) -> &StakingAccount {
+        self.accounts.get(&addr).expect("accounts exist")
+    }
+
+    /// Get an account. Panics if it doesn't exist.
+    fn account_mut(&mut self, addr: &EthAddress) -> &mut StakingAccount {
+        self.accounts.get_mut(&addr).expect("accounts exist")
+    }
+
+    /// Increase the claim balance.
+    fn add_claim(&mut self, addr: &EthAddress, value: TokenAmount) {
+        let a = self.account_mut(addr);
+        eprintln!(
+            "> ADD CLAIM addr={} value={} current={}",
+            addr, value, a.claim_balance
+        );
+        a.claim_balance += value;
+    }
+
+    /// Increase the current balance.
+    fn credit(&mut self, addr: &EthAddress, value: TokenAmount) {
+        let a = self.account_mut(addr);
+        eprintln!(
+            "> CREDIT addr={} value={} current={}",
+            addr, value, a.current_balance
+        );
+        a.current_balance += value;
+    }
+
+    /// Decrease the current balance.
+    fn debit(&mut self, addr: &EthAddress, value: TokenAmount) {
+        let a = self.account_mut(addr);
+        eprintln!(
+            "> DEBIT addr={} value={} current={}",
+            addr, value, a.current_balance
+        );
+        a.current_balance -= value;
     }
 
     /// Join with a validator. Repeated joins are allowed.
@@ -256,13 +299,11 @@ impl StakingState {
             return;
         }
         self.update(|this| {
-            let a = this.accounts.get_mut(&addr).expect("accounts exist");
-            debug_assert!(a.current_balance >= value);
-            a.current_balance -= value.clone();
+            this.debit(&addr, value.clone());
 
             StakingUpdate {
-                // Add an extra because joining in the model would cause a metadata update as well.
                 configuration_number: {
+                    // Add an extra because joining in the model would cause a metadata update as well.
                     this.next_configuration_number();
                     this.next_configuration_number()
                 },
@@ -279,12 +320,9 @@ impl StakingState {
             return;
         }
         self.update(|this| {
-            let a = this.accounts.get_mut(&addr).expect("accounts exist");
-            debug_assert!(a.current_balance >= value);
-            a.current_balance -= value.clone();
+            this.debit(&addr, value.clone());
 
             StakingUpdate {
-                // Only increment once.
                 configuration_number: this.next_configuration_number(),
                 addr,
                 op: StakingOp::Deposit(value),
@@ -315,6 +353,17 @@ impl StakingState {
             addr,
             op: StakingOp::Withdraw(value),
         });
+    }
+
+    /// Put released collateral back into the account's current balance.
+    pub fn claim(&mut self, addr: EthAddress) {
+        let a = self.account_mut(&addr);
+        if a.claim_balance.is_zero() {
+            return;
+        }
+        let c = a.claim_balance.clone();
+        a.claim_balance = TokenAmount::from_atto(0);
+        self.credit(&addr, c);
     }
 }
 
@@ -358,6 +407,7 @@ impl arbitrary::Arbitrary<'_> for StakingState {
                 addr,
                 initial_balance,
                 current_balance,
+                claim_balance: TokenAmount::from_atto(0),
             });
         }
 

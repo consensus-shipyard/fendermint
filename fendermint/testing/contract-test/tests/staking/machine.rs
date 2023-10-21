@@ -22,6 +22,7 @@ use fendermint_vm_interpreter::fvm::{
 };
 use fendermint_vm_message::{conv::from_fvm, signed::sign_secp256k1};
 use fvm::engine::MultiEngine;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::bigint::Integer;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::{address::Address, bigint::BigInt};
@@ -61,6 +62,8 @@ pub enum StakingCommand {
     Unstake(EthAddress, TokenAmount),
     /// Remove all collateral at once.
     Leave(EthAddress),
+    /// Claim released collateral.
+    Claim(EthAddress),
 }
 
 #[derive(Default)]
@@ -101,6 +104,7 @@ impl StateMachine for StakingMachine {
         let (root, route) =
             subnet_id_to_eth(&parent_ipc.gateway.subnet_id).expect("subnet ID is valid");
 
+        // TODO: Need to add field to specify release queue lock time.
         let params = SubnetConstructorParams {
             parent_id: ipc_actors_abis::subnet_registry::SubnetID { root, route },
             ipc_gateway_addr: gateway.addr().into(),
@@ -178,6 +182,7 @@ impl StateMachine for StakingMachine {
                 "join",
                 "stake",
                 "leave",
+                "claim",
                 //"unstake",
             ])
             .unwrap()
@@ -213,7 +218,7 @@ impl StateMachine for StakingMachine {
                 let mut sign_power = BigInt::from(0);
 
                 for (addr, collateral) in state.current_configuration.collaterals.iter() {
-                    let a = state.accounts.get(addr).expect("accounts exist");
+                    let a = state.account(addr);
                     signatories.push((*addr, a.secret_key.clone()));
                     sign_power += collateral.0.atto();
 
@@ -253,6 +258,11 @@ impl StateMachine for StakingMachine {
                 // Only limiting it to be under the initial balance so that it's comparable to what the deposits could have been.
                 let b = choose_amount(u, &a.initial_balance)?;
                 StakingCommand::Unstake(a.addr, b)
+            }
+            &"claim" => {
+                // Pick any account, even if has nothing to claim; the system should reject those.
+                let a = choose_account(u, &state)?;
+                StakingCommand::Claim(a.addr)
             }
             other => unimplemented!("unknown command: {other}"),
         };
@@ -338,6 +348,13 @@ impl StateMachine for StakingMachine {
             StakingCommand::Unstake(_addr, _value) => {
                 todo!("implement unstake in the contract")
             }
+            StakingCommand::Claim(addr) => {
+                eprintln!("\n> CMD: CLAIM addr={addr}");
+                system
+                    .subnet
+                    .try_claim(&mut exec_state, addr)
+                    .expect("failed to call: claim")
+            }
         }
     }
 
@@ -378,6 +395,13 @@ impl StateMachine for StakingMachine {
             StakingCommand::Unstake(_addr, _value) => {
                 todo!("implement unstake in the contract")
             }
+            StakingCommand::Claim(addr) => {
+                if !pre_state.has_claim(addr) {
+                    result.expect_err("zero claims should fail");
+                } else {
+                    result.expect("claim should succeed");
+                }
+            }
         }
     }
 
@@ -392,6 +416,7 @@ impl StateMachine for StakingMachine {
             StakingCommand::Stake(addr, value) => state.stake(*addr, value.clone()),
             StakingCommand::Unstake(addr, value) => state.unstake(*addr, value.clone()),
             StakingCommand::Leave(addr) => state.leave(*addr),
+            StakingCommand::Claim(addr) => state.claim(*addr),
         }
         state
     }
@@ -442,26 +467,34 @@ impl StateMachine for StakingMachine {
                         .all(|(_, p)| !p.0.is_zero()),
                     "all child validators have non-zero collateral"
                 );
+
+                for (addr, a) in post_state.accounts.iter() {
+                    let balance = get_actor_balance(&mut exec_state, *addr);
+                    assert_eq!(
+                        balance, a.current_balance,
+                        "current balance mismatch after checkpoint for {addr}"
+                    );
+
+                    // TODO: Check if they are active.
+                }
             }
             StakingCommand::Stake(addr, _)
             | StakingCommand::Unstake(addr, _)
             | StakingCommand::Join(addr, _, _)
-            | StakingCommand::Leave(addr) => {
+            | StakingCommand::Leave(addr)
+            | StakingCommand::Claim(addr) => {
                 let a = post_state.accounts.get(addr).unwrap();
                 debug_assert!(a.current_balance <= a.initial_balance);
 
                 // Check collaterals
-
                 let total = post_system
                     .subnet
                     .total_collateral(&mut exec_state, addr)
                     .expect("failed to get total collateral");
-
                 let confirmed = post_system
                     .subnet
                     .confirmed_collateral(&mut exec_state, addr)
                     .expect("failed to get total collateral");
-
                 assert_eq!(
                     total,
                     post_state.next_configuration.collateral(addr),
@@ -474,20 +507,8 @@ impl StateMachine for StakingMachine {
                 );
 
                 // Check balance
-
-                let actor_id = exec_state
-                    .state_tree_mut()
-                    .lookup_id(&Address::from(*addr))
-                    .expect("failed to get actor ID")
-                    .expect("actor exists");
-
-                let actor = exec_state
-                    .state_tree_mut()
-                    .get_actor(actor_id)
-                    .expect("failed to get actor")
-                    .expect("actor exists");
-
-                assert_eq!(actor.balance, a.current_balance, "current balance mismatch");
+                let balance = get_actor_balance(&mut exec_state, *addr);
+                assert_eq!(balance, a.current_balance, "current balance mismatch");
             }
         }
 
@@ -504,4 +525,23 @@ fn choose_account<'a>(
     let a = u.choose(&state.addrs).expect("accounts not empty");
     let a = state.accounts.get(a).expect("account exists");
     Ok(a)
+}
+
+fn get_actor_balance<DB: Blockstore>(
+    exec_state: &mut FvmExecState<DB>,
+    addr: EthAddress,
+) -> TokenAmount {
+    let actor_id = exec_state
+        .state_tree_mut()
+        .lookup_id(&Address::from(addr))
+        .expect("failed to get actor ID")
+        .expect("actor exists");
+
+    let actor = exec_state
+        .state_tree_mut()
+        .get_actor(actor_id)
+        .expect("failed to get actor")
+        .expect("actor exists");
+
+    actor.balance
 }

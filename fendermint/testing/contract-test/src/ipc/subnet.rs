@@ -38,6 +38,8 @@ impl<DB> SubnetCaller<DB> {
     }
 }
 
+type TryCallResult<T> = anyhow::Result<ContractResult<T, SubnetActorErrors>>;
+
 impl<DB: Blockstore> SubnetCaller<DB> {
     /// Join a subnet as a validator.
     pub fn join(
@@ -60,7 +62,7 @@ impl<DB: Blockstore> SubnetCaller<DB> {
         &self,
         state: &mut FvmExecState<DB>,
         validator: &Validator<Collateral>,
-    ) -> anyhow::Result<ContractResult<(), SubnetActorErrors>> {
+    ) -> TryCallResult<()> {
         let public_key = validator.public_key.0.serialize();
         let addr = EthAddress::new_secp256k1(&public_key)?;
         let deposit = from_fvm::to_eth_tokens(&validator.power.0)?;
@@ -75,19 +77,20 @@ impl<DB: Blockstore> SubnetCaller<DB> {
         state: &mut FvmExecState<DB>,
         addr: &EthAddress,
         value: &TokenAmount,
-    ) -> anyhow::Result<ContractResult<(), SubnetActorErrors>> {
+    ) -> TryCallResult<()> {
         let deposit = from_fvm::to_eth_tokens(value)?;
         self.manager
             .try_call(state, |c| c.stake().from(addr).value(deposit))
     }
 
     /// Try to remove all stake of a validator.
-    pub fn try_leave(
-        &self,
-        state: &mut FvmExecState<DB>,
-        addr: &EthAddress,
-    ) -> anyhow::Result<ContractResult<(), SubnetActorErrors>> {
+    pub fn try_leave(&self, state: &mut FvmExecState<DB>, addr: &EthAddress) -> TryCallResult<()> {
         self.manager.try_call(state, |c| c.leave().from(addr))
+    }
+
+    /// Claim any refunds.
+    pub fn try_claim(&self, state: &mut FvmExecState<DB>, addr: &EthAddress) -> TryCallResult<()> {
+        self.manager.try_call(state, |c| c.claim().from(addr))
     }
 
     /// Submit a bottom-up checkpoint.
@@ -97,7 +100,7 @@ impl<DB: Blockstore> SubnetCaller<DB> {
         checkpoint: manager::BottomUpCheckpoint,
         messages: Vec<manager::CrossMsg>,
         signatures: Vec<(EthAddress, [u8; SECP_SIG_LEN])>,
-    ) -> anyhow::Result<ContractResult<(), SubnetActorErrors>> {
+    ) -> TryCallResult<()> {
         let mut addrs = Vec::new();
         let mut sigs = Vec::new();
         for (addr, sig) in signatures {
