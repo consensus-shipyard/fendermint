@@ -208,7 +208,7 @@ impl StateMachine for StakingMachine {
                 let block_hash = <[u8; 32]>::arbitrary(u)?;
 
                 let majority_percentage = ipc_params.gateway.majority_percentage;
-                let collateral = state.current_configuration.total_collateral();
+                let collateral = state.active_collateral();
                 let collateral = collateral.atto();
                 let quorum_threshold =
                     (collateral * majority_percentage).div_ceil(&BigInt::from(100));
@@ -216,7 +216,7 @@ impl StateMachine for StakingMachine {
                 let mut signatories = Vec::new();
                 let mut sign_power = BigInt::from(0);
 
-                for (collateral, addr) in state.top_validators() {
+                for (collateral, addr) in state.active_validators() {
                     let a = state.account(addr);
                     signatories.push((*addr, a.secret_key.clone()));
                     sign_power += collateral.0.atto();
@@ -474,9 +474,9 @@ impl StateMachine for StakingMachine {
                 // Collect all account info so we can see the ranking, check if there are edge cases.
                 let mut obs = Vec::new();
 
-                let top_validators = post_state.top_validators().collect::<Vec<_>>();
+                let active_validators = post_state.active_validators().collect::<Vec<_>>();
 
-                let active_addresses = top_validators
+                let active_addresses = active_validators
                     .iter()
                     .map(|(_, addr)| addr)
                     .collect::<HashSet<_>>();

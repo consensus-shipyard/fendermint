@@ -63,6 +63,8 @@ pub struct StakingDistribution {
 
 impl StakingDistribution {
     /// Sum of all collaterals from active an inactive validators.
+    ///
+    /// Do not compare this against signature weights because it contains inactive ones!
     pub fn total_collateral(&self) -> TokenAmount {
         self.total_collateral.clone()
     }
@@ -305,10 +307,17 @@ impl StakingState {
             .unwrap_or_default()
     }
 
-    /// Top N validators ordered by collateral
-    pub fn top_validators(&self) -> impl Iterator<Item = &(Collateral, EthAddress)> {
+    /// Top N validators ordered by collateral.
+    pub fn active_validators(&self) -> impl Iterator<Item = &(Collateral, EthAddress)> {
         let n = self.max_validators() as usize;
         self.current_configuration.ranking.iter().take(n)
+    }
+
+    /// Total collateral of the top N validators.
+    ///
+    /// This is what we have to achieve quorum over.
+    pub fn active_collateral(&self) -> TokenAmount {
+        self.active_validators().map(|(c, _)| c.0.clone()).sum()
     }
 
     /// Get and increment the configuration number.
