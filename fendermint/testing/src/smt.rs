@@ -74,6 +74,11 @@ pub fn run<T: StateMachine>(
     Ok(())
 }
 
+/// Default `arbtest` builder.
+pub fn default_builder() -> arbtest::Builder {
+    arbtest::builder()
+}
+
 /// Make a builder with a certain size of random byte vector.
 ///
 /// If the size is less than what is needed by the test,
@@ -82,8 +87,13 @@ pub fn run<T: StateMachine>(
 /// a lot of zeroes.
 ///
 /// The maximum is 4_294_967_295.
-pub fn make_builder(size: u32) -> arbtest::Builder {
+pub fn fixed_size_builder(size: u32) -> arbtest::Builder {
     arbtest::builder().min_size(size).max_size(size)
+}
+
+/// Seed a new builder. The seed carries the size as well as the initial randomness.
+pub fn seeded_builder(seed: u64) -> arbtest::Builder {
+    arbtest::builder().seed(seed)
 }
 
 /// Run a state machine test as a `#[test]`.
@@ -91,8 +101,8 @@ pub fn make_builder(size: u32) -> arbtest::Builder {
 /// # Example
 ///
 /// ```ignore
-/// state_machine_test!(counter, 100 ms, 65_512 bytes, 100 steps, CounterStateMachine { buggy: false });
-/// state_machine_test!(counter_seed_1, 0x001a560e00000020, 65_512 bytes, 100 steps, CounterStateMachine { buggy: true });
+/// state_machine_test!(counter, 100 ms, 32 bytes, 100 steps, CounterStateMachine { buggy: false });
+/// state_machine_test!(counter_seed_1, 0x001a560e00000020, 100 steps, CounterStateMachine { buggy: true });
 /// ```
 ///
 /// If the test fails, it will print out the seed which can be used to reproduce the error.
@@ -103,31 +113,32 @@ pub fn make_builder(size: u32) -> arbtest::Builder {
 /// for example `lazy_static!` global variables.
 #[macro_export]
 macro_rules! state_machine_test {
+    // Run on a fixed time and randomness size budget.
     ($name:ident, $ms:literal ms, $size:literal bytes, $steps:literal steps, $smt:expr) => {
         #[test]
         fn $name() {
             let machine = $smt;
-            $crate::smt::make_builder($size)
+            $crate::smt::fixed_size_builder($size)
                 .budget_ms($ms)
                 .run(|u| $crate::smt::run(u, &machine, $steps))
         }
     };
 
-    ($name:ident, $size:literal bytes, $steps:literal steps, $smt:expr) => {
+    // Run for a certain number of steps varying the size.
+    ($name:ident, $steps:literal steps, $smt:expr) => {
         #[test]
         fn $name() {
             let machine = $smt;
-            $crate::smt::make_builder($size).run(|u| $crate::smt::run(u, &machine, $steps))
+            $crate::smt::default_builder().run(|u| $crate::smt::run(u, &machine, $steps))
         }
     };
 
-    ($name:ident, $seed:literal, $size:literal bytes, $steps:literal steps, $smt:expr) => {
+    // Reproduce a result.
+    ($name:ident, $seed:literal, $steps:literal steps, $smt:expr) => {
         #[test]
         fn $name() {
             let machine = $smt;
-            $crate::smt::make_builder($size)
-                .seed($seed)
-                .run(|u| $crate::smt::run(u, &machine, $steps))
+            $crate::smt::seeded_builder($seed).run(|u| $crate::smt::run(u, &machine, $steps))
         }
     };
 }
@@ -137,17 +148,16 @@ macro_rules! state_machine_test {
 /// # Example
 ///
 /// ```ignore
-/// state_machine_seed!(counter, 0x001a560e00000020, 1024 bytes, 100 steps, CounterStateMachine { buggy: true });
+/// state_machine_seed!(counter, 0x001a560e00000020, 100 steps, CounterStateMachine { buggy: true });
 /// ```
 #[macro_export]
 macro_rules! state_machine_seed {
-    ($name:ident, $seed:literal, $size:literal bytes, $steps:literal steps, $smt:expr) => {
+    ($name:ident, $seed:literal $steps:literal steps, $smt:expr) => {
         paste::paste! {
           #[test]
           fn [<$name _with_seed_ $seed>]() {
             let machine = $smt;
-            $crate::smt::make_builder($size)
-                .seed($seed)
+            $crate::smt::builder_with_seed($seed)
                 .run(|u| $crate::smt::run(u, &machine, $steps))
           }
         }
@@ -257,12 +267,12 @@ mod tests {
         }
     }
 
-    state_machine_test!(counter, 65_512 bytes, 100 steps, CounterStateMachine { buggy: false });
+    state_machine_test!(counter, 100 steps, CounterStateMachine { buggy: false });
 
     /// Test the equivalent of:
     ///
     /// ```ignore
-    /// state_machine_test!(counter, 65_512 bytes, 100 steps, CounterStateMachine { buggy: true });
+    /// state_machine_test!(counter, 100 steps, CounterStateMachine { buggy: true });
     /// ```
     ///
     /// Which would have an output like:
@@ -287,7 +297,7 @@ mod tests {
     /// Test the equivalent of:
     ///
     /// ```ignore
-    /// state_machine_seed!(counter, 0x001a560e00000020, 1024 bytes, 100 steps, CounterStateMachine { buggy: true });
+    /// state_machine_seed!(counter, 0x001a560e00000020 100 steps, CounterStateMachine { buggy: true });
     /// ```
     #[test]
     #[should_panic]
