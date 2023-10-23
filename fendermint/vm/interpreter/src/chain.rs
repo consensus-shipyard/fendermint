@@ -1,4 +1,3 @@
-use std::str::FromStr;
 use std::sync::Arc;
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
@@ -25,9 +24,11 @@ use fendermint_vm_topdown::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
+use ipc_sdk::cross::CrossMsg;
+use ipc_sdk::staking::StakingChangeRequest;
 use num_traits::Zero;
 
 /// A resolution pool for bottom-up and top-down checkpoints.
@@ -246,72 +247,24 @@ where
                         block_hash: p.block_hash,
                     };
 
-                    let msg = self
-                        .gateway_caller
-                        .commit_parent_finality_msg(finality.clone())?;
-                    let (state, ret) = self
-                        .inner
-                        .deliver(state, VerifiableMessage::NotVerify(msg))
+                    let (state, _, (prev_height, prev_finality)) = self
+                        .commit_finality(state, &provider, finality.clone())
                         .await?;
-                    let return_data = if let Ok(inner) = &ret {
-                        inner.fvm.apply_ret.msg_receipt.return_data.clone()
-                    } else {
-                        return Err(anyhow!("cannot commit parent finality"));
-                    };
-                    tracing::debug!("commit finality return data: {:?}", return_data);
-
-                    let (prev_height, prev_finality) =
-                        derive_previous_height(&self.gateway_caller, return_data, &provider)?;
                     tracing::debug!("commit finality parsed: prev_height {prev_height}, prev_finality: {prev_finality:?}");
-
-                    // stash validator changes
 
                     // error happens if we cannot get the validator set from ipc agent after retries
                     let validator_changes = provider
                         .validator_changes_from(prev_height + 1, p.height as u64)
                         .await?;
-                    tracing::debug!("validator changes to stash: {validator_changes:?}");
-                    let msg = self
-                        .gateway_caller
-                        .store_validator_changes_msg(validator_changes)?;
-                    let (mut state, ret) = self
-                        .inner
-                        .deliver(state, VerifiableMessage::NotVerify(msg))
+                    let (state, _, _) = self
+                        .store_validator_changes(state, validator_changes)
                         .await?;
-                    if ret.is_err() {
-                        return Err(anyhow!("failed to store validator changes"));
-                    }
-                    tracing::debug!("validator changes stashed");
-
-                    // Execute top down messages
 
                     // error happens if we cannot get the validator set from ipc agent after retries
                     let messages = provider
                         .top_down_msgs_from(prev_height + 1, p.height as u64, &finality.block_hash)
                         .await?;
-                    let total_value: TokenAmount =
-                        messages.iter().map(|a| a.msg.value.clone()).sum();
-                    let state_tree = state.state_tree_mut();
-                    state_tree.mutate_actor(ipc::GATEWAY_ACTOR_ID, |actor_state| {
-                        actor_state.balance += total_value;
-                        Ok(())
-                    })?;
-
-                    tracing::debug!("top down messages to execute: {messages:?}");
-                    let msg = self.gateway_caller.apply_cross_messages_msg(messages)?;
-                    let (mut state, ret) = self
-                        .inner
-                        .deliver(state, VerifiableMessage::NotVerify(msg))
-                        .await?;
-                    if let Ok(inner) = &ret {
-                        if inner.fvm.apply_ret.msg_receipt.exit_code != fvm_shared::error::ExitCode::OK {
-                            return Err(anyhow!("failed to apply cross messages exit code not 0"));
-                        }
-                    } else {
-                        return Err(anyhow!("failed to apply cross messages"));
-                    }
-
-                    tracing::debug!("top down messages executed");
+                    let (state, ret, _) = self.execute_topdown_msgs(state, messages).await?;
 
                     atomically(|| {
                         provider.set_new_finality(finality.clone(), prev_finality.clone())
@@ -319,16 +272,6 @@ where
                     .await;
                     tracing::debug!("new finality updated in parent provider: {finality:?}");
 
-                    // === debug code
-                    let state_tree = state.state_tree_mut();
-                    let id = state_tree.lookup_id(&Address::from_str(
-                        "t410fdj4tqxvnb2dt7ygeihadiy3nh3pxafgm42mxxjy",
-                    )?)?;
-                    tracing::info!("target actor id after execution: {id:?}");
-                    if let Some(id) = id {
-                        let target = state_tree.get_actor(id)?;
-                        tracing::info!("target actor state after execution: {target:?}");
-                    }
                     Ok(((pool, provider, state), ChainMessageApplyRet::Signed(ret)))
                 }
             },
@@ -349,6 +292,90 @@ where
     ) -> anyhow::Result<(Self::State, Self::EndOutput)> {
         let (state, out) = self.inner.end(state).await?;
         Ok(((pool, provider, state), out))
+    }
+}
+
+/// The util struct that holds the top down execution result.
+type TopdownExecutionResult<T, DB> = (FvmExecState<DB>, SignedMessageApplyRes, T);
+type CommitFinalityResult<DB> = TopdownExecutionResult<(u64, Option<IPCParentFinality>), DB>;
+type EmptyResult<DB> = TopdownExecutionResult<(), DB>;
+
+impl<I, DB> ChainMessageInterpreter<I, DB>
+where
+    DB: Blockstore + Clone + 'static + Send + Sync,
+    I: ExecInterpreter<
+        Message = VerifiableMessage,
+        DeliverOutput = SignedMessageApplyRes,
+        State = FvmExecState<DB>,
+    >,
+{
+    /// Commit the top down parent finality by calling the gateway contract method. Returns the previous
+    /// committed top down parent finality height and its corresponding finality. If there were no
+    /// previously committed finality, it would return the genesis epoch and None for finality.
+    async fn commit_finality(
+        &self,
+        state: FvmExecState<DB>,
+        provider: &TopDownFinalityProvider,
+        finality: IPCParentFinality,
+    ) -> anyhow::Result<CommitFinalityResult<DB>> {
+        let msg = self.gateway_caller.commit_parent_finality_msg(finality)?;
+        let (state, ret) = self
+            .inner
+            .deliver(state, VerifiableMessage::NotVerify(msg))
+            .await?;
+        if is_error(&ret) {
+            return Err(anyhow!("cannot commit parent finality"));
+        }
+        let return_data = if let Ok(inner) = &ret {
+            inner.fvm.apply_ret.msg_receipt.return_data.clone()
+        } else {
+            unreachable!()
+        };
+        tracing::debug!("commit finality return data: {:?}", return_data);
+
+        let r = derive_previous_height(&self.gateway_caller, return_data, provider)?;
+        Ok((state, ret, r))
+    }
+
+    /// Store the validator changes into the child gateway contract.
+    async fn store_validator_changes(
+        &self,
+        state: FvmExecState<DB>,
+        changes: Vec<StakingChangeRequest>,
+    ) -> anyhow::Result<EmptyResult<DB>> {
+        tracing::debug!("validator changes to stash: {changes:?}");
+        let msg = self.gateway_caller.store_validator_changes_msg(changes)?;
+        let (state, ret) = self
+            .inner
+            .deliver(state, VerifiableMessage::NotVerify(msg))
+            .await?;
+        if is_error(&ret) {
+            return Err(anyhow!("failed to store validator changes"));
+        }
+        tracing::debug!("validator changes stashed");
+
+        Ok((state, ret, ()))
+    }
+
+    /// Store the validator changes into the child gateway contract.
+    async fn execute_topdown_msgs(
+        &self,
+        mut state: FvmExecState<DB>,
+        msgs: Vec<CrossMsg>,
+    ) -> anyhow::Result<EmptyResult<DB>> {
+        let total_value: TokenAmount = msgs.iter().map(|a| a.msg.value.clone()).sum();
+        self.gateway_caller
+            .mint_to_gateway(&mut state, total_value)?;
+
+        tracing::debug!("top down messages to execute: {msgs:?}");
+        let msg = self.gateway_caller.apply_cross_messages_msg(msgs)?;
+        let (state, ret) = self
+            .inner
+            .deliver(state, VerifiableMessage::NotVerify(msg))
+            .await?;
+        tracing::debug!("top down messages executed");
+
+        Ok((state, ret, ()))
     }
 }
 
@@ -466,6 +493,14 @@ fn relayed_bottom_up_ckpt_to_fvm(
         .context("failed to create syntetic message")?;
 
     Ok(msg)
+}
+
+fn is_error(ret: &SignedMessageApplyRes) -> bool {
+    if let Ok(inner) = ret {
+        inner.fvm.apply_ret.msg_receipt.exit_code != ExitCode::OK
+    } else {
+        true
+    }
 }
 
 /// Derive the previous committed parent finality height

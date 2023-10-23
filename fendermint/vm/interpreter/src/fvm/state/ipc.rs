@@ -252,6 +252,20 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         encode_to_fvm_implicit(calldata.as_ref())
     }
 
+    /// Call this function to mint some FIL to the gateway contract
+    pub fn mint_to_gateway(
+        &self,
+        state: &mut FvmExecState<DB>,
+        value: TokenAmount,
+    ) -> anyhow::Result<()> {
+        let state_tree = state.state_tree_mut();
+        state_tree.mutate_actor(ipc::GATEWAY_ACTOR_ID, |actor_state| {
+            actor_state.balance += value;
+            Ok(())
+        })?;
+        Ok(())
+    }
+
     pub fn apply_cross_messages_msg(
         &self,
         cross_messages: Vec<CrossMsg>,

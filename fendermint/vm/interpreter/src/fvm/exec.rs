@@ -133,58 +133,57 @@ where
     }
 
     async fn end(&self, mut state: Self::State) -> anyhow::Result<(Self::State, Self::EndOutput)> {
-        // let updates = if let Some((checkpoint, updates)) =
-        //     checkpoint::maybe_create_checkpoint(&self.client, &self.gateway, &mut state)
-        //         .await
-        //         .context("failed to create checkpoint")?
-        // {
-        //     // Asynchronously broadcast signature, if validating.
-        //     if let Some(ref ctx) = self.validator_ctx {
-        //         // Do not resend past signatures.
-        //         if !self.syncing().await? {
-        //             // Fetch any incomplete checkpoints synchronously because the state can't be shared across threads.
-        //             let incomplete_checkpoints = self
-        //                 .gateway
-        //                 .incomplete_checkpoints(&mut state)
-        //                 .context("failed to fetch incomplete checkpoints")?;
-        //
-        //             debug_assert!(
-        //                 incomplete_checkpoints
-        //                     .iter()
-        //                     .any(|cp| cp.block_height == checkpoint.block_height
-        //                         && cp.block_hash == checkpoint.block_hash),
-        //                 "the current checkpoint is incomplete"
-        //             );
-        //
-        //             let client = self.client.clone();
-        //             let gateway = self.gateway.clone();
-        //             let chain_id = state.chain_id();
-        //             let height = checkpoint.block_height;
-        //             let validator_ctx = ctx.clone();
-        //
-        //             tokio::spawn(async move {
-        //                 let res = checkpoint::broadcast_incomplete_signatures(
-        //                     &client,
-        //                     &validator_ctx,
-        //                     &gateway,
-        //                     chain_id,
-        //                     incomplete_checkpoints,
-        //                 )
-        //                 .await;
-        //
-        //                 if let Err(e) = res {
-        //                     tracing::error!(error =? e, height, "error broadcasting checkpoint signature");
-        //                 }
-        //             });
-        //         }
-        //     }
-        //
-        //     updates
-        // } else {
-        //     PowerUpdates::default()
-        // };
-        //
-        // Ok((state, updates.0))
-        Ok((state, PowerUpdates::default().0))
+        let updates = if let Some((checkpoint, updates)) =
+            checkpoint::maybe_create_checkpoint(&self.client, &self.gateway, &mut state)
+                .await
+                .context("failed to create checkpoint")?
+        {
+            // Asynchronously broadcast signature, if validating.
+            if let Some(ref ctx) = self.validator_ctx {
+                // Do not resend past signatures.
+                if !self.syncing().await? {
+                    // Fetch any incomplete checkpoints synchronously because the state can't be shared across threads.
+                    let incomplete_checkpoints = self
+                        .gateway
+                        .incomplete_checkpoints(&mut state)
+                        .context("failed to fetch incomplete checkpoints")?;
+
+                    debug_assert!(
+                        incomplete_checkpoints
+                            .iter()
+                            .any(|cp| cp.block_height == checkpoint.block_height
+                                && cp.block_hash == checkpoint.block_hash),
+                        "the current checkpoint is incomplete"
+                    );
+
+                    let client = self.client.clone();
+                    let gateway = self.gateway.clone();
+                    let chain_id = state.chain_id();
+                    let height = checkpoint.block_height;
+                    let validator_ctx = ctx.clone();
+
+                    tokio::spawn(async move {
+                        let res = checkpoint::broadcast_incomplete_signatures(
+                            &client,
+                            &validator_ctx,
+                            &gateway,
+                            chain_id,
+                            incomplete_checkpoints,
+                        )
+                        .await;
+
+                        if let Err(e) = res {
+                            tracing::error!(error =? e, height, "error broadcasting checkpoint signature");
+                        }
+                    });
+                }
+            }
+
+            updates
+        } else {
+            PowerUpdates::default()
+        };
+
+        Ok((state, updates.0))
     }
 }
