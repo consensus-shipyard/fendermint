@@ -547,8 +547,10 @@ impl StateMachine for StakingMachine {
                             .iter()
                             .filter(|(c, _)| c.0 == min_active_collateral)
                             .count();
+
                         if cnt > 1 {
                             eprintln!("> DISAGREEMENT on the minimum collateral");
+                            // TODO: We can ignore this, but it means we potentially won't be able to sign a checkpoint.
                             continue;
                         }
                     }
