@@ -6,7 +6,7 @@ extend = [
   { path = "scripts/node.toml" },
   { path = "scripts/testnet.toml" },
   { path = "scripts/testnode.toml" },
-  { path = "scripts/child.toml" }
+  { path = "scripts/subnet.toml" }
 ]
 
 [config]
@@ -19,6 +19,8 @@ BALANCE = { value = "1000", condition = { env_not_set = ["BALANCE"] }}
 BASE_FEE = { value = "1000", condition = { env_not_set = ["BASE_FEE"] }}
 TIMESTAMP = { value = "1680101412", condition = { env_not_set = ["TIMESTAMP"] }}
 POWER_SCALE = { value = "3", condition = { env_not_set = ["POWER_SCALE"] }}
+CMT_HOST_PORT = { value = "26657", condition = { env_not_set = ["CMT_HOST_PORT"] }}
+ETHAPI_HOST_PORT = { value = "8545", condition = { env_not_set = ["ETHAPI_HOST_PORT"] }}
 
 # IPC subnet related parameters
 # Use calibration as default value
@@ -51,12 +53,10 @@ FM_DOCKER_IMAGE = "fendermint:latest"
 TEST_DATA_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/fendermint/testing/smoke-test/test-data"
 TEST_SCRIPTS_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/fendermint/testing/smoke-test/scripts"
 ACTORS_BUNDLE = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/../builtin-actors/output/bundle.car"
-CMT_HOST_PORT = 26657
-ETHAPI_HOST_PORT = 8545
 # If this wasn't present, any wait task is skipped.
 CARGO_MAKE_WAIT_MILLISECONDS = 5000
 # This wait time seems to work locally.
-CMT_WAIT_MILLIS = 20000
+CMT_WAIT_MILLIS = 10000
 # Keep example logs to a minimum.
 VERBOSITY = ""
 

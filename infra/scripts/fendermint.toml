@@ -16,7 +16,7 @@ docker run \
   --env LOG_LEVEL=info \
   --entrypoint ${ENTRY} \
   ${FM_DOCKER_IMAGE} \
-  ${CMD}
+  --network=${NETWORK_TYPE} ${CMD}
 """
 dependencies = ["docker-network-create", "fendermint-deps"]
 
