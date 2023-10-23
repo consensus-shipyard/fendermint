@@ -65,11 +65,14 @@ pub fn run<T: StateMachine>(
     let mut state = t.gen_state(u)?;
     let mut system = t.new_system(&state);
     for _ in 0..max_steps {
+        if u.is_empty() {
+            return Err(arbitrary::Error::NotEnoughData);
+        }
         let cmd = t.gen_command(u, &state)?;
         let res = t.run_command(&mut system, &cmd);
         t.check_result(&cmd, &state, res);
         state = t.next_state(&cmd, state);
-        t.check_system(&cmd, &state, &system)
+        t.check_system(&cmd, &state, &system);
     }
     Ok(())
 }

@@ -28,7 +28,9 @@ pub enum Method {
 }
 
 // TODO: We could re-export `fil_evm_actor_shared::address::EvmAddress`.
-#[derive(serde::Deserialize, serde::Serialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(
+    serde::Deserialize, serde::Serialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord,
+)]
 pub struct EthAddress(#[serde(with = "strict_bytes")] pub [u8; 20]);
 
 impl EthAddress {

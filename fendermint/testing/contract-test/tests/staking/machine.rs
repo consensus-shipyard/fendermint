@@ -179,7 +179,7 @@ impl StateMachine for StakingMachine {
         u: &mut Unstructured,
         state: &Self::State,
     ) -> arbitrary::Result<Self::Command> {
-        let cmd = match u
+        let cmd = u
             .choose(&[
                 "checkpoint",
                 "join",
@@ -188,8 +188,9 @@ impl StateMachine for StakingMachine {
                 "claim",
                 //"unstake",
             ])
-            .unwrap()
-        {
+            .unwrap();
+
+        let cmd = match cmd {
             &"checkpoint" => {
                 let next_configuration_number = match state.pending_updates.len() {
                     0 => 0, // No change
@@ -205,11 +206,6 @@ impl StateMachine for StakingMachine {
                     state.last_checkpoint_height + ipc_params.gateway.bottom_up_check_period;
 
                 let block_hash = <[u8; 32]>::arbitrary(u)?;
-
-                assert!(
-                    block_hash.iter().any(|b| *b != 0u8),
-                    "it looks like we ran out of randomness"
-                );
 
                 let majority_percentage = ipc_params.gateway.majority_percentage;
                 let collateral = state.current_configuration.total_collateral();
@@ -363,7 +359,7 @@ impl StateMachine for StakingMachine {
 
     fn check_result(&self, cmd: &Self::Command, pre_state: &Self::State, result: Self::Result) {
         let info = match result {
-            Err(ref e) => format!("{:?}", e.error),
+            Err(ref e) => format!("error: {:?}", e.error),
             Ok(()) => "ok".to_owned(),
         };
         eprintln!("> RESULT: {info}");
@@ -486,7 +482,7 @@ impl StateMachine for StakingMachine {
                     .collect::<HashSet<_>>();
 
                 let min_active_collateral = top_validators
-                    .first()
+                    .last()
                     .map(|(c, _)| c.0.clone())
                     .unwrap_or_default();
 

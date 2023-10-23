@@ -1,7 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 
 use arbitrary::Unstructured;
 use fendermint_crypto::{PublicKey, SecretKey};
@@ -54,7 +54,7 @@ pub struct StakingDistribution {
     /// The highest configuration number applied.
     pub configuration_number: u64,
     /// Stake for each account that put down some collateral.
-    pub collaterals: HashMap<EthAddress, Collateral>,
+    pub collaterals: BTreeMap<EthAddress, Collateral>,
     /// Stakers ordered by collateral in descending order.
     pub ranking: Vec<(Collateral, EthAddress)>,
     /// Total collateral amount, computed because we check it often.
@@ -86,7 +86,7 @@ impl StakingDistribution {
             }
             StakingOp::Withdraw(v) => {
                 match self.collaterals.entry(update.addr) {
-                    std::collections::hash_map::Entry::Occupied(mut e) => {
+                    std::collections::btree_map::Entry::Occupied(mut e) => {
                         let c = e.get().0.clone();
                         let v = v.min(c.clone());
                         let p = Collateral(c - v.clone());
@@ -99,7 +99,7 @@ impl StakingDistribution {
 
                         Some((StakingOp::Withdraw(v), p))
                     }
-                    std::collections::hash_map::Entry::Vacant(_) => {
+                    std::collections::btree_map::Entry::Vacant(_) => {
                         // Tried to withdraw more than put in.
                         None
                     }
@@ -140,7 +140,7 @@ impl StakingDistribution {
 #[derive(Debug, Clone)]
 pub struct StakingState {
     /// Accounts with secret key of accounts in case the contract wants to validate signatures.
-    pub accounts: HashMap<EthAddress, StakingAccount>,
+    pub accounts: BTreeMap<EthAddress, StakingAccount>,
     /// List of account addresses to help pick a random one.
     pub addrs: Vec<EthAddress>,
     /// The parent genesis should include a bunch of accounts we can use to join a subnet.
@@ -180,9 +180,12 @@ impl StakingState {
         let accounts = accounts
             .into_iter()
             .map(|a| (a.addr, a))
-            .collect::<HashMap<_, _>>();
+            .collect::<BTreeMap<_, _>>();
 
-        let addrs = accounts.keys().cloned().collect();
+        let mut addrs: Vec<EthAddress> = accounts.keys().cloned().collect();
+
+        // It's important to sort the addresses so we always pick the same ones given the same seed.
+        addrs.sort();
 
         let mut state = Self {
             accounts,
