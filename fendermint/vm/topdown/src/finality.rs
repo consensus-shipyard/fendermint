@@ -349,7 +349,6 @@ mod tests {
     };
     use async_stm::atomically_or_err;
     use async_trait::async_trait;
-    use ethers::utils::hex;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
     use ipc_provider::manager::{GetBlockHashResult, TopDownQueryPayload};
