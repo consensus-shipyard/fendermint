@@ -243,11 +243,6 @@ impl StakingState {
         if self.current_configuration.total_collateral() >= self.min_collateral() {
             return true;
         }
-        eprintln!(
-            "SUBNET INACTIVE: {} < {}",
-            self.current_configuration.total_collateral(),
-            self.min_collateral()
-        );
         false
     }
 

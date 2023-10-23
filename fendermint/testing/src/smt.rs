@@ -74,10 +74,16 @@ pub fn run<T: StateMachine>(
     Ok(())
 }
 
-pub fn default_builder() -> arbtest::Builder {
-    arbtest::builder()
-        .min_size(1024 * 1024)
-        .max_size(1024 * 1024)
+/// Make a builder with a certain size of random byte vector.
+///
+/// If the size is less than what is needed by the test,
+/// my experience is that it it becomes impossible to repeat
+/// tests by setting the seed, and also that it might generate
+/// a lot of zeroes.
+///
+/// The maximum is 4_294_967_295.
+pub fn make_builder(size: u32) -> arbtest::Builder {
+    arbtest::builder().min_size(size).max_size(size)
 }
 
 /// Run a state machine test as a `#[test]`.
@@ -85,8 +91,8 @@ pub fn default_builder() -> arbtest::Builder {
 /// # Example
 ///
 /// ```ignore
-/// state_machine_test!(counter, 100 ms, 100 steps, CounterStateMachine { buggy: false });
-/// state_machine_test!(counter_seed_1, 0x001a560e00000020, 100 steps, CounterStateMachine { buggy: true });
+/// state_machine_test!(counter, 100 ms, 65_512 bytes, 100 steps, CounterStateMachine { buggy: false });
+/// state_machine_test!(counter_seed_1, 0x001a560e00000020, 65_512 bytes, 100 steps, CounterStateMachine { buggy: true });
 /// ```
 ///
 /// If the test fails, it will print out the seed which can be used to reproduce the error.
@@ -97,29 +103,29 @@ pub fn default_builder() -> arbtest::Builder {
 /// for example `lazy_static!` global variables.
 #[macro_export]
 macro_rules! state_machine_test {
-    ($name:ident, $ms:literal ms, $steps:literal steps, $smt:expr) => {
+    ($name:ident, $ms:literal ms, $size:literal bytes, $steps:literal steps, $smt:expr) => {
         #[test]
         fn $name() {
             let machine = $smt;
-            $crate::smt::default_builder()
+            $crate::smt::make_builder($size)
                 .budget_ms($ms)
                 .run(|u| $crate::smt::run(u, &machine, $steps))
         }
     };
 
-    ($name:ident, $steps:literal steps, $smt:expr) => {
+    ($name:ident, $size:literal bytes, $steps:literal steps, $smt:expr) => {
         #[test]
         fn $name() {
             let machine = $smt;
-            $crate::smt::default_builder().run(|u| $crate::smt::run(u, &machine, $steps))
+            $crate::smt::make_builder($size).run(|u| $crate::smt::run(u, &machine, $steps))
         }
     };
 
-    ($name:ident, $seed:literal, $steps:literal steps, $smt:expr) => {
+    ($name:ident, $seed:literal, $size:literal bytes, $steps:literal steps, $smt:expr) => {
         #[test]
         fn $name() {
             let machine = $smt;
-            $crate::smt::default_builder()
+            $crate::smt::make_builder($size)
                 .seed($seed)
                 .run(|u| $crate::smt::run(u, &machine, $steps))
         }
@@ -131,16 +137,16 @@ macro_rules! state_machine_test {
 /// # Example
 ///
 /// ```ignore
-/// state_machine_seed!(counter, 0x001a560e00000020, 100 steps, CounterStateMachine { buggy: true });
+/// state_machine_seed!(counter, 0x001a560e00000020, 1024 bytes, 100 steps, CounterStateMachine { buggy: true });
 /// ```
 #[macro_export]
 macro_rules! state_machine_seed {
-    ($name:ident, $seed:literal, $steps:literal steps, $smt:expr) => {
+    ($name:ident, $seed:literal, $size:literal bytes, $steps:literal steps, $smt:expr) => {
         paste::paste! {
           #[test]
           fn [<$name _with_seed_ $seed>]() {
             let machine = $smt;
-            $crate::smt::default_builder()
+            $crate::smt::make_builder($size)
                 .seed($seed)
                 .run(|u| $crate::smt::run(u, &machine, $steps))
           }
@@ -251,12 +257,12 @@ mod tests {
         }
     }
 
-    state_machine_test!(counter, 100 steps, CounterStateMachine { buggy: false });
+    state_machine_test!(counter, 65_512 bytes, 100 steps, CounterStateMachine { buggy: false });
 
     /// Test the equivalent of:
     ///
     /// ```ignore
-    /// state_machine_test!(counter, 100 steps, CounterStateMachine { buggy: true });
+    /// state_machine_test!(counter, 65_512 bytes, 100 steps, CounterStateMachine { buggy: true });
     /// ```
     ///
     /// Which would have an output like:
@@ -281,7 +287,7 @@ mod tests {
     /// Test the equivalent of:
     ///
     /// ```ignore
-    /// state_machine_seed!(counter, 0x001a560e00000020, 100 steps, CounterStateMachine { buggy: true });
+    /// state_machine_seed!(counter, 0x001a560e00000020, 1024 bytes, 100 steps, CounterStateMachine { buggy: true });
     /// ```
     #[test]
     #[should_panic]

@@ -81,6 +81,7 @@ impl StateMachine for StakingMachine {
     type Result = ContractResult<(), SubnetActorErrors>;
 
     fn gen_state(&self, u: &mut Unstructured) -> arbitrary::Result<Self::State> {
+        eprintln!("\nNEW STATE");
         StakingState::arbitrary(u)
     }
 
@@ -161,6 +162,8 @@ impl StateMachine for StakingMachine {
             next_configuration_number, 1,
             "after initial joiners configuration should be 1"
         );
+
+        eprintln!("BOOTSTRAPPED");
 
         StakingSystem {
             exec_state: RefCell::new(exec_state),
@@ -472,43 +475,65 @@ impl StateMachine for StakingMachine {
                     "all child validators have non-zero collateral"
                 );
 
-                // Check that we agree on who the active validators are.
-                let mut actives = HashSet::new();
-                for (_, addr) in post_state.top_validators() {
-                    let is_active = post_system
+                // Collect all account info so we can see the ranking, check if there are edge cases.
+                let mut obs = Vec::new();
+
+                let top_validators = post_state
+                    .top_validators()
+                    .map(|(_, addr)| addr)
+                    .collect::<HashSet<_>>();
+
+                for (addr, a) in post_state.accounts.iter() {
+                    // Check balances
+                    let sys_balance = get_actor_balance(&mut exec_state, *addr);
+
+                    // Check that we agree on who the active validators are.
+                    let sys_collateral = post_system
+                        .subnet
+                        .confirmed_collateral(&mut exec_state, addr)
+                        .expect("failed to get confirmed collateral");
+
+                    let sys_active = post_system
                         .subnet
                         .is_active(&mut exec_state, addr)
-                        .expect("failed to call is_active");
+                        .expect("failed to call is_waiting");
 
-                    let is_waiting = post_system
+                    let sys_waiting = post_system
                         .subnet
                         .is_waiting(&mut exec_state, addr)
                         .expect("failed to call is_active");
 
-                    assert!(is_active, "top N validator {} should be active", addr);
-                    assert!(
-                        !is_waiting,
-                        "top N validator {} should not be waiting",
-                        addr
-                    );
-                    actives.insert(addr);
+                    let sys = (sys_balance, sys_collateral, sys_active, sys_waiting);
+
+                    let st_balance = a.current_balance.clone();
+                    let st_collateral = post_state.current_configuration.collateral(addr);
+                    let st_active = top_validators.contains(addr);
+                    let st_waiting = !st_active && st_collateral.is_positive();
+
+                    let st = (st_balance, st_collateral, st_active, st_waiting);
+
+                    obs.push((addr, sys, st))
                 }
 
-                for (addr, a) in post_state.accounts.iter() {
-                    let balance = get_actor_balance(&mut exec_state, *addr);
-                    assert_eq!(
-                        balance, a.current_balance,
-                        "current balance mismatch after checkpoint for {addr}"
-                    );
-
-                    if !actives.contains(addr) {
-                        let is_active = post_system
-                            .subnet
-                            .is_active(&mut exec_state, addr)
-                            .expect("failed to call is_waiting");
-
-                        assert!(!is_active, "{} should not be active validator", addr);
+                for (addr, (_, sys_coll, sys_active, _), (_, _, st_active, _)) in obs.iter() {
+                    if *sys_active || *st_active {
+                        eprintln!(
+                            "> CONFIRMED addr={} collateral={} active=({} vs {})",
+                            addr, sys_coll, sys_active, st_active
+                        );
                     }
+                }
+
+                for (
+                    addr,
+                    (sys_bal, sys_coll, sys_active, sys_waiting),
+                    (st_bal, st_coll, st_active, st_waiting),
+                ) in obs.iter()
+                {
+                    assert_eq!(sys_bal, st_bal, "balance mismatch for {addr}");
+                    assert_eq!(sys_coll, st_coll, "collateral mismatch for {addr}");
+                    assert_eq!(sys_active, st_active, "active mismatch for {addr}");
+                    assert_eq!(sys_waiting, st_waiting, "waiting mismatch for {addr}");
                 }
             }
             StakingCommand::Stake(addr, _)
@@ -544,10 +569,10 @@ impl StateMachine for StakingMachine {
                 assert_eq!(balance, a.current_balance, "current balance mismatch");
             }
         }
-
-        // TODO: Compare the system with the state:
-        // * check that balances match
-        // * check that active powers match
+        eprintln!(
+            "> LAST UPDATE CONFIG NUMBER: {}",
+            post_state.next_configuration.configuration_number
+        );
     }
 }
 
