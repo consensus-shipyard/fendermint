@@ -74,6 +74,12 @@ pub fn run<T: StateMachine>(
     Ok(())
 }
 
+pub fn default_builder() -> arbtest::Builder {
+    arbtest::builder()
+        .min_size(1024 * 1024)
+        .max_size(1024 * 1024)
+}
+
 /// Run a state machine test as a `#[test]`.
 ///
 /// # Example
@@ -95,8 +101,7 @@ macro_rules! state_machine_test {
         #[test]
         fn $name() {
             let machine = $smt;
-            arbtest::builder()
-                .min_size(65_536)
+            $crate::smt::default_builder()
                 .budget_ms($ms)
                 .run(|u| $crate::smt::run(u, &machine, $steps))
         }
@@ -106,9 +111,7 @@ macro_rules! state_machine_test {
         #[test]
         fn $name() {
             let machine = $smt;
-            arbtest::builder()
-                .min_size(65_536)
-                .run(|u| $crate::smt::run(u, &machine, $steps))
+            $crate::smt::default_builder().run(|u| $crate::smt::run(u, &machine, $steps))
         }
     };
 
@@ -116,8 +119,7 @@ macro_rules! state_machine_test {
         #[test]
         fn $name() {
             let machine = $smt;
-            arbtest::builder()
-                .min_size(65_536)
+            $crate::smt::default_builder()
                 .seed($seed)
                 .run(|u| $crate::smt::run(u, &machine, $steps))
         }
@@ -138,9 +140,9 @@ macro_rules! state_machine_seed {
           #[test]
           fn [<$name _with_seed_ $seed>]() {
             let machine = $smt;
-            arbtest::builder()
-              .seed($seed)
-              .run(|u| $crate::smt::run(u, &machine, $steps))
+            $crate::smt::default_builder()
+                .seed($seed)
+                .run(|u| $crate::smt::run(u, &machine, $steps))
           }
         }
     };

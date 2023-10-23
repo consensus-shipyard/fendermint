@@ -57,11 +57,14 @@ pub struct StakingDistribution {
     pub collaterals: HashMap<EthAddress, Collateral>,
     /// Stakers ordered by collateral in descending order.
     pub ranking: Vec<(Collateral, EthAddress)>,
+    /// Total collateral amount, computed because we check it often.
+    total_collateral: TokenAmount,
 }
 
 impl StakingDistribution {
+    /// Sum of all collaterals from active an inactive validators.
     pub fn total_collateral(&self) -> TokenAmount {
-        self.collaterals.values().map(|c| c.0.clone()).sum()
+        self.total_collateral.clone()
     }
 
     /// Collateral of a validator.
@@ -106,6 +109,10 @@ impl StakingDistribution {
 
         match updated {
             Some((op, power)) => {
+                match op {
+                    StakingOp::Deposit(ref v) => self.total_collateral += v.clone(),
+                    StakingOp::Withdraw(ref v) => self.total_collateral -= v.clone(),
+                }
                 self.adjust_rank(update.addr, power);
                 Some(op)
             }
@@ -219,14 +226,7 @@ impl StakingState {
             self.checkpoint(configuration_number, 0);
 
             let total_collateral = self.current_configuration.total_collateral();
-
-            let min_collateral = self
-                .parent_genesis
-                .ipc
-                .clone()
-                .unwrap()
-                .gateway
-                .min_collateral;
+            let min_collateral = self.min_collateral();
 
             if total_collateral >= min_collateral {
                 self.activated = true;
@@ -235,23 +235,43 @@ impl StakingState {
         }
     }
 
+    /// Check if checkpoints can be sent to the system.
+    pub fn can_checkpoint(&self) -> bool {
+        if !self.activated {
+            return true;
+        }
+        if self.current_configuration.total_collateral() >= self.min_collateral() {
+            return true;
+        }
+        eprintln!(
+            "SUBNET INACTIVE: {} < {}",
+            self.current_configuration.total_collateral(),
+            self.min_collateral()
+        );
+        false
+    }
+
     /// Apply the changes up to the `next_configuration_number`.
     pub fn checkpoint(&mut self, next_configuration_number: u64, height: u64) {
-        loop {
-            if self.pending_updates.is_empty() {
-                break;
-            }
-            if self.pending_updates[0].configuration_number > next_configuration_number {
-                break;
-            }
-            let update = self.pending_updates.pop_front().expect("checked non-empty");
-            let addr = update.addr;
+        // TODO: The contract allows staking operations even after the deactivation of a subnet.
+        if self.can_checkpoint() {
+            loop {
+                if self.pending_updates.is_empty() {
+                    break;
+                }
+                if self.pending_updates[0].configuration_number > next_configuration_number {
+                    break;
+                }
+                let update = self.pending_updates.pop_front().expect("checked non-empty");
+                let addr = update.addr;
 
-            if let Some(StakingOp::Withdraw(value)) = self.current_configuration.update(update) {
-                self.add_claim(&addr, value);
+                if let Some(StakingOp::Withdraw(value)) = self.current_configuration.update(update)
+                {
+                    self.add_claim(&addr, value);
+                }
             }
+            self.last_checkpoint_height = height;
         }
-        self.last_checkpoint_height = height;
     }
 
     /// Check whether an account has staked before. The stake does not have to be confirmed by a checkpoint.
@@ -269,11 +289,21 @@ impl StakingState {
         self.next_configuration.collateral(addr)
     }
 
+    /// Maximum number of active validators.
     pub fn max_validators(&self) -> u16 {
         self.child_genesis
             .ipc
             .as_ref()
             .map(|ipc| ipc.gateway.active_validators_limit)
+            .unwrap_or_default()
+    }
+
+    /// Minimum collateral required to activate the subnet.
+    pub fn min_collateral(&self) -> TokenAmount {
+        self.parent_genesis
+            .ipc
+            .as_ref()
+            .map(|ipc| ipc.gateway.min_collateral.clone())
             .unwrap_or_default()
     }
 

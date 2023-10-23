@@ -156,4 +156,24 @@ impl<DB: Blockstore> SubnetCaller<DB> {
     pub fn bootstrapped(&self, state: &mut FvmExecState<DB>) -> anyhow::Result<bool> {
         self.getter.call(state, |c| c.bootstrapped())
     }
+
+    /// Check if a validator is active, ie. they are in the top N.
+    pub fn is_active(
+        &self,
+        state: &mut FvmExecState<DB>,
+        addr: &EthAddress,
+    ) -> anyhow::Result<bool> {
+        self.getter
+            .call(state, |c| c.is_active_validator(addr.into()))
+    }
+
+    /// Check if a validator is wating, ie. they have deposited but are not in the top N.
+    pub fn is_waiting(
+        &self,
+        state: &mut FvmExecState<DB>,
+        addr: &EthAddress,
+    ) -> anyhow::Result<bool> {
+        self.getter
+            .call(state, |c| c.is_waiting_validator(addr.into()))
+    }
 }

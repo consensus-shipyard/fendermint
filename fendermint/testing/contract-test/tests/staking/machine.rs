@@ -1,6 +1,6 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
-use std::{cell::RefCell, sync::Arc};
+use std::{cell::RefCell, collections::HashSet, sync::Arc};
 
 use arbitrary::{Arbitrary, Unstructured};
 use contract_test::ipc::{registry::RegistryCaller, subnet::SubnetCaller};
@@ -366,9 +366,9 @@ impl StateMachine for StakingMachine {
         eprintln!("> RESULT: {info}");
 
         match cmd {
-            StakingCommand::Checkpoint { signatories, .. } => {
-                if signatories.is_empty() {
-                    result.expect_err("all validators have unbonded");
+            StakingCommand::Checkpoint { .. } => {
+                if !pre_state.can_checkpoint() {
+                    result.expect_err("the subnet should be inactive");
                 } else {
                     result.expect("checkpoint submission should succeed");
                 }
@@ -414,15 +414,8 @@ impl StateMachine for StakingMachine {
             StakingCommand::Checkpoint {
                 next_configuration_number,
                 block_height,
-                signatories,
                 ..
-            } => {
-                // TODO: The contract allows further joins even after all validators have unbonded,
-                // but these can never be checkpointed. Probably should be rejected.
-                if !signatories.is_empty() {
-                    state.checkpoint(*next_configuration_number, *block_height);
-                }
-            }
+            } => state.checkpoint(*next_configuration_number, *block_height),
             StakingCommand::Join(addr, value, _) => state.join(*addr, value.clone()),
             StakingCommand::Stake(addr, value) => state.stake(*addr, value.clone()),
             StakingCommand::Unstake(addr, value) => state.unstake(*addr, value.clone()),
@@ -479,6 +472,28 @@ impl StateMachine for StakingMachine {
                     "all child validators have non-zero collateral"
                 );
 
+                // Check that we agree on who the active validators are.
+                let mut actives = HashSet::new();
+                for (_, addr) in post_state.top_validators() {
+                    let is_active = post_system
+                        .subnet
+                        .is_active(&mut exec_state, addr)
+                        .expect("failed to call is_active");
+
+                    let is_waiting = post_system
+                        .subnet
+                        .is_waiting(&mut exec_state, addr)
+                        .expect("failed to call is_active");
+
+                    assert!(is_active, "top N validator {} should be active", addr);
+                    assert!(
+                        !is_waiting,
+                        "top N validator {} should not be waiting",
+                        addr
+                    );
+                    actives.insert(addr);
+                }
+
                 for (addr, a) in post_state.accounts.iter() {
                     let balance = get_actor_balance(&mut exec_state, *addr);
                     assert_eq!(
@@ -486,7 +501,14 @@ impl StateMachine for StakingMachine {
                         "current balance mismatch after checkpoint for {addr}"
                     );
 
-                    // TODO: Check if they are active.
+                    if !actives.contains(addr) {
+                        let is_active = post_system
+                            .subnet
+                            .is_active(&mut exec_state, addr)
+                            .expect("failed to call is_waiting");
+
+                        assert!(!is_active, "{} should not be active validator", addr);
+                    }
                 }
             }
             StakingCommand::Stake(addr, _)
