@@ -481,11 +481,6 @@ impl StateMachine for StakingMachine {
                     .map(|(_, addr)| addr)
                     .collect::<HashSet<_>>();
 
-                let min_active_collateral = top_validators
-                    .last()
-                    .map(|(c, _)| c.0.clone())
-                    .unwrap_or_default();
-
                 for (addr, a) in post_state.accounts.iter() {
                     // Check balances
                     let sys_balance = get_actor_balance(&mut exec_state, *addr);
@@ -523,7 +518,7 @@ impl StateMachine for StakingMachine {
                 for (addr, (_, sys_coll, sys_active, _), (_, _, st_active, _)) in obs.iter() {
                     if *sys_active || *st_active {
                         eprintln!(
-                            "> CONFIRMED addr={} collateral={} active=({} vs {})",
+                            "> CONFIRMED addr={:?} collateral={} active=({} vs {})",
                             addr, sys_coll, sys_active, st_active
                         );
                     }
@@ -552,21 +547,10 @@ impl StateMachine for StakingMachine {
                 {
                     assert_eq!(sys_bal, st_bal, "balance mismatch for {addr}");
                     assert_eq!(sys_coll, st_coll, "collateral mismatch for {addr}");
-
-                    if sys_active != st_active && *st_coll == min_active_collateral {
-                        let cnt = post_state
-                            .current_configuration
-                            .ranking
-                            .iter()
-                            .filter(|(c, _)| c.0 == min_active_collateral)
-                            .count();
-
-                        if cnt > 1 {
-                            eprintln!("> DISAGREEMENT on the minimum collateral");
-                            // TODO: We can ignore this, but it means we potentially won't be able to sign a checkpoint.
-                            continue;
-                        }
-                    }
+                    // We might think that if multiple validators have the same collateral
+                    // and that happens to be the minimum in the top validators then it's
+                    // kind of acceptable to disagree here, but if we allowed that, then
+                    // we'd possibly fail later with a signature error.
                     assert_eq!(sys_active, st_active, "active mismatch for {addr}");
                     assert_eq!(sys_waiting, st_waiting, "waiting mismatch for {addr}");
                 }

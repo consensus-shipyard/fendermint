@@ -1,7 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 
 use cid::multihash::MultihashDigest;
 use fvm_ipld_encoding::{
@@ -29,7 +29,7 @@ pub enum Method {
 
 // TODO: We could re-export `fil_evm_actor_shared::address::EvmAddress`.
 #[derive(
-    serde::Deserialize, serde::Serialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord,
+    serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord,
 )]
 pub struct EthAddress(#[serde(with = "strict_bytes")] pub [u8; 20]);
 
@@ -74,7 +74,13 @@ impl EthAddress {
 
 impl Display for EthAddress {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        ethers::types::Address::from(self.0).fmt(f)
+        Display::fmt(&ethers::types::Address::from(self.0), f)
+    }
+}
+
+impl Debug for EthAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(&ethers::types::Address::from(self.0), f)
     }
 }
 
