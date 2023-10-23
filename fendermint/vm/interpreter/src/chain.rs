@@ -260,7 +260,7 @@ where
                         .store_validator_changes(state, validator_changes)
                         .await?;
 
-                    // error happens if we cannot get the validator set from ipc agent after retries
+                    // error happens if we cannot get the cross messages from ipc agent after retries
                     let messages = provider
                         .top_down_msgs_from(prev_height + 1, p.height as u64, &finality.block_hash)
                         .await?;
@@ -357,7 +357,7 @@ where
         Ok((state, ret, ()))
     }
 
-    /// Store the validator changes into the child gateway contract.
+    /// Executes the topdown messages in the child gateway contract.
     async fn execute_topdown_msgs(
         &self,
         mut state: FvmExecState<DB>,
