@@ -429,7 +429,7 @@ impl StateMachine for StakingMachine {
         cmd: &Self::Command,
         post_state: &Self::State,
         post_system: &Self::System,
-    ) {
+    ) -> bool {
         // Queries need mutable reference too.
         let mut exec_state = post_system.exec_state.borrow_mut();
 
@@ -480,6 +480,11 @@ impl StateMachine for StakingMachine {
                     .iter()
                     .map(|(_, addr)| addr)
                     .collect::<HashSet<_>>();
+
+                let min_active_collateral = active_validators
+                    .last()
+                    .map(|(c, _)| c.0.clone())
+                    .unwrap_or_default();
 
                 for (addr, a) in post_state.accounts.iter() {
                     // Check balances
@@ -547,10 +552,20 @@ impl StateMachine for StakingMachine {
                 {
                     assert_eq!(sys_bal, st_bal, "balance mismatch for {addr}");
                     assert_eq!(sys_coll, st_coll, "collateral mismatch for {addr}");
-                    // We might think that if multiple validators have the same collateral
-                    // and that happens to be the minimum in the top validators then it's
-                    // kind of acceptable to disagree here, but if we allowed that, then
-                    // we'd possibly fail later with a signature error.
+
+                    if sys_active != st_active && *sys_coll == min_active_collateral {
+                        let cnt = obs
+                            .iter()
+                            .filter(|(_, (_, c, _, _), _)| *c == min_active_collateral)
+                            .count();
+
+                        if cnt > 1 {
+                            eprintln!(">>> There is a disagreement at the minimum collateral.");
+                            eprintln!(">>> Quitting now because the next checkpoint might get invalid signature");
+                            return false;
+                        }
+                    }
+
                     assert_eq!(sys_active, st_active, "active mismatch for {addr}");
                     assert_eq!(sys_waiting, st_waiting, "waiting mismatch for {addr}");
                 }
@@ -592,6 +607,8 @@ impl StateMachine for StakingMachine {
             "> LAST UPDATE CONFIG NUMBER: {}",
             post_state.next_configuration.configuration_number
         );
+
+        true
     }
 }
 

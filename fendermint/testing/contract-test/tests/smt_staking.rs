@@ -18,5 +18,5 @@ mod staking;
 
 use staking::machine::StakingMachine;
 
-//state_machine_test!(staking, 20000 ms, 65512 bytes, 100 steps, StakingMachine::default());
-state_machine_test!(staking, 0x52e5b21d0000ffe8, 100 steps, StakingMachine::default());
+state_machine_test!(staking, 30000 ms, 65512 bytes, 100 steps, StakingMachine::default());
+//state_machine_test!(staking, 0x97e361a10000ffe8, 100 steps, StakingMachine::default());

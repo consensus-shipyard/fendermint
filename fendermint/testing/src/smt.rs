@@ -46,12 +46,14 @@ pub trait StateMachine {
     /// was correct, by comparing to the model post-state.
     ///
     /// This can be used to check invariants which should always be true.
+    ///
+    /// Returns a flag indicating whether we should continue testing this system.
     fn check_system(
         &self,
         cmd: &Self::Command,
         post_state: &Self::State,
         post_system: &Self::System,
-    );
+    ) -> bool;
 }
 
 /// Run a state machine test by generating `max_steps` commands.
@@ -72,7 +74,9 @@ pub fn run<T: StateMachine>(
         let res = t.run_command(&mut system, &cmd);
         t.check_result(&cmd, &state, res);
         state = t.next_state(&cmd, state);
-        t.check_system(&cmd, &state, &system);
+        if !t.check_system(&cmd, &state, &system) {
+            break;
+        }
     }
     Ok(())
 }
@@ -264,9 +268,10 @@ mod tests {
             _cmd: &Self::Command,
             post_state: &Self::State,
             post_system: &Self::System,
-        ) {
+        ) -> bool {
             // We can check the state if we want to, or we can wait for a Get command.
-            assert_eq!(post_state, &post_system.get())
+            assert_eq!(post_state, &post_system.get());
+            true
         }
     }
 
