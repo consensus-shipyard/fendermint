@@ -103,7 +103,7 @@ impl Arbitrary for Genesis {
         Self {
             timestamp: Timestamp(u64::arbitrary(g)),
             chain_name: String::arbitrary(g),
-            network_version: NetworkVersion::new(*g.choose(&[18u32]).unwrap()),
+            network_version: NetworkVersion::new(*g.choose(&[18, 19, 20]).unwrap()),
             base_fee: ArbTokenAmount::arbitrary(g).0,
             power_scale: *g.choose(&[-1, 0, 3]).unwrap(),
             validators: (0..nv).map(|_| Arbitrary::arbitrary(g)).collect(),
@@ -123,7 +123,6 @@ impl Arbitrary for ipc::GatewayParams {
             subnet_id: ArbSubnetID::arbitrary(g).0,
             // Gateway constructor would reject 0.
             bottom_up_check_period: u64::arbitrary(g).max(1),
-            top_down_check_period: u64::arbitrary(g),
             // Gateway constructor would reject 0.
             min_collateral: ArbTokenAmount::arbitrary(g)
                 .0
