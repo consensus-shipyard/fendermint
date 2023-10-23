@@ -478,10 +478,17 @@ impl StateMachine for StakingMachine {
                 // Collect all account info so we can see the ranking, check if there are edge cases.
                 let mut obs = Vec::new();
 
-                let top_validators = post_state
-                    .top_validators()
+                let top_validators = post_state.top_validators().collect::<Vec<_>>();
+
+                let active_addresses = top_validators
+                    .iter()
                     .map(|(_, addr)| addr)
                     .collect::<HashSet<_>>();
+
+                let min_active_collateral = top_validators
+                    .first()
+                    .map(|(c, _)| c.0.clone())
+                    .unwrap_or_default();
 
                 for (addr, a) in post_state.accounts.iter() {
                     // Check balances
@@ -507,7 +514,7 @@ impl StateMachine for StakingMachine {
 
                     let st_balance = a.current_balance.clone();
                     let st_collateral = post_state.current_configuration.collateral(addr);
-                    let st_active = top_validators.contains(addr);
+                    let st_active = active_addresses.contains(addr);
                     let st_waiting = !st_active && st_collateral.is_positive();
 
                     let st = (st_balance, st_collateral, st_active, st_waiting);
@@ -532,6 +539,19 @@ impl StateMachine for StakingMachine {
                 {
                     assert_eq!(sys_bal, st_bal, "balance mismatch for {addr}");
                     assert_eq!(sys_coll, st_coll, "collateral mismatch for {addr}");
+
+                    if sys_active != st_active && *st_coll == min_active_collateral {
+                        let cnt = post_state
+                            .current_configuration
+                            .ranking
+                            .iter()
+                            .filter(|(c, _)| c.0 == min_active_collateral)
+                            .count();
+                        if cnt > 1 {
+                            eprintln!("> DISAGREEMENT on the minimum collateral");
+                            continue;
+                        }
+                    }
                     assert_eq!(sys_active, st_active, "active mismatch for {addr}");
                     assert_eq!(sys_waiting, st_waiting, "waiting mismatch for {addr}");
                 }
