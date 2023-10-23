@@ -55,6 +55,8 @@ pub struct StakingDistribution {
     pub configuration_number: u64,
     /// Stake for each account that put down some collateral.
     pub collaterals: HashMap<EthAddress, Collateral>,
+    /// Stakers ordered by collateral in descending order.
+    pub ranking: Vec<(Collateral, EthAddress)>,
 }
 
 impl StakingDistribution {
@@ -62,6 +64,7 @@ impl StakingDistribution {
         self.collaterals.values().map(|c| c.0.clone()).sum()
     }
 
+    /// Collateral of a validator.
     pub fn collateral(&self, addr: &EthAddress) -> TokenAmount {
         self.collaterals
             .get(addr)
@@ -72,25 +75,26 @@ impl StakingDistribution {
     /// Update the staking distribution. Return the actually applied operation, if any.
     pub fn update(&mut self, update: StakingUpdate) -> Option<StakingOp> {
         self.configuration_number = update.configuration_number;
-        match update.op {
+        let updated = match update.op {
             StakingOp::Deposit(v) => {
                 let power = self.collaterals.entry(update.addr).or_default();
                 power.0 += v.clone();
-                Some(StakingOp::Deposit(v))
+                Some((StakingOp::Deposit(v), power.clone()))
             }
             StakingOp::Withdraw(v) => {
                 match self.collaterals.entry(update.addr) {
                     std::collections::hash_map::Entry::Occupied(mut e) => {
                         let c = e.get().0.clone();
                         let v = v.min(c.clone());
+                        let p = Collateral(c - v.clone());
 
-                        if v == c {
+                        if p.0.is_zero() {
                             e.remove();
                         } else {
-                            e.insert(Collateral(c - v.clone()));
-                        }
+                            e.insert(p.clone());
+                        };
 
-                        Some(StakingOp::Withdraw(v))
+                        Some((StakingOp::Withdraw(v), p))
                     }
                     std::collections::hash_map::Entry::Vacant(_) => {
                         // Tried to withdraw more than put in.
@@ -98,6 +102,29 @@ impl StakingDistribution {
                     }
                 }
             }
+        };
+
+        match updated {
+            Some((op, power)) => {
+                self.adjust_rank(update.addr, power);
+                Some(op)
+            }
+            None => None,
+        }
+    }
+
+    fn adjust_rank(&mut self, addr: EthAddress, power: Collateral) {
+        if power.0.is_zero() {
+            self.ranking.retain(|(_, a)| *a != addr);
+        } else {
+            match self.ranking.iter_mut().find(|(_, a)| *a == addr) {
+                None => self.ranking.push((power, addr)),
+                Some(rank) => rank.0 = power,
+            }
+            // Sort by collateral descending. Use a stable sort so already sorted items are not affected.
+            // Hopefully this works like the sink/swim of the priority queues.
+            self.ranking
+                .sort_by(|a, b| b.0 .0.atto().cmp(a.0 .0.atto()));
         }
     }
 }
@@ -240,6 +267,20 @@ impl StakingState {
     /// Total amount staked by a validator.
     pub fn total_deposit(&self, addr: &EthAddress) -> TokenAmount {
         self.next_configuration.collateral(addr)
+    }
+
+    pub fn max_validators(&self) -> u16 {
+        self.child_genesis
+            .ipc
+            .as_ref()
+            .map(|ipc| ipc.gateway.active_validators_limit)
+            .unwrap_or_default()
+    }
+
+    /// Top N validators ordered by collateral
+    pub fn top_validators(&self) -> impl Iterator<Item = &(Collateral, EthAddress)> {
+        let n = self.max_validators() as usize;
+        self.current_configuration.ranking.iter().take(n)
     }
 
     /// Get and increment the configuration number.

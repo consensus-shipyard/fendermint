@@ -217,7 +217,7 @@ impl StateMachine for StakingMachine {
                 let mut signatories = Vec::new();
                 let mut sign_power = BigInt::from(0);
 
-                for (addr, collateral) in state.current_configuration.collaterals.iter() {
+                for (collateral, addr) in state.top_validators() {
                     let a = state.account(addr);
                     signatories.push((*addr, a.secret_key.clone()));
                     sign_power += collateral.0.atto();
@@ -227,7 +227,7 @@ impl StateMachine for StakingMachine {
                     }
                 }
 
-                // Tecnically we cannot build a proper checkpoint here because we don't know the subnet address.
+                // Technically we cannot build a proper checkpoint here because we don't know the subnet address.
                 StakingCommand::Checkpoint {
                     block_height,
                     block_hash,
@@ -366,8 +366,12 @@ impl StateMachine for StakingMachine {
         eprintln!("> RESULT: {info}");
 
         match cmd {
-            StakingCommand::Checkpoint { .. } => {
-                result.expect("checkpoint submission should succeed");
+            StakingCommand::Checkpoint { signatories, .. } => {
+                if signatories.is_empty() {
+                    result.expect_err("all validators have unbonded");
+                } else {
+                    result.expect("checkpoint submission should succeed");
+                }
             }
             StakingCommand::Join(_, value, _) => {
                 if value.is_zero() {
@@ -410,8 +414,15 @@ impl StateMachine for StakingMachine {
             StakingCommand::Checkpoint {
                 next_configuration_number,
                 block_height,
+                signatories,
                 ..
-            } => state.checkpoint(*next_configuration_number, *block_height),
+            } => {
+                // TODO: The contract allows further joins even after all validators have unbonded,
+                // but these can never be checkpointed. Probably should be rejected.
+                if !signatories.is_empty() {
+                    state.checkpoint(*next_configuration_number, *block_height);
+                }
+            }
             StakingCommand::Join(addr, value, _) => state.join(*addr, value.clone()),
             StakingCommand::Stake(addr, value) => state.stake(*addr, value.clone()),
             StakingCommand::Unstake(addr, value) => state.unstake(*addr, value.clone()),
@@ -439,13 +450,13 @@ impl StateMachine for StakingMachine {
 
         assert_eq!(
             next_cn, post_state.next_configuration_number,
-            "next configuration mismatch"
+            "next configuration number mismatch"
         );
 
         assert_eq!(
             start_cn,
             post_state.current_configuration.configuration_number + 1,
-            "start configuration mismatch"
+            "start configuration number mismatch"
         );
 
         match cmd {
@@ -494,7 +505,7 @@ impl StateMachine for StakingMachine {
                 let confirmed = post_system
                     .subnet
                     .confirmed_collateral(&mut exec_state, addr)
-                    .expect("failed to get total collateral");
+                    .expect("failed to get confirmed collateral");
                 assert_eq!(
                     total,
                     post_state.next_configuration.collateral(addr),
