@@ -522,6 +522,8 @@ impl StateMachine for StakingMachine {
                     obs.push((addr, sys, st))
                 }
 
+                let mut sys_active_cnt = 0;
+                let mut st_active_cnt = 0;
                 for (addr, (_, sys_coll, sys_active, _), (_, _, st_active, _)) in obs.iter() {
                     if *sys_active || *st_active {
                         eprintln!(
@@ -529,7 +531,22 @@ impl StateMachine for StakingMachine {
                             addr, sys_coll, sys_active, st_active
                         );
                     }
+                    if *sys_active {
+                        sys_active_cnt += 1;
+                    }
+                    if *st_active {
+                        st_active_cnt += 1;
+                    }
                 }
+
+                assert!(
+                    sys_active_cnt <= post_state.max_validators(),
+                    "system over max active"
+                );
+                assert!(
+                    st_active_cnt <= post_state.max_validators(),
+                    "state over max active"
+                );
 
                 for (
                     addr,
