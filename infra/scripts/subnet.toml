@@ -22,7 +22,7 @@ dependencies = [
     "cometbft-init",
     "fendermint-deps",
     "subnet-config",
-    "fendermint-start",
+    "fendermint-start-ipc",
     "cometbft-start",
     "cometbft-wait",
     "ethapi-start"
