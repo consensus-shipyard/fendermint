@@ -83,6 +83,18 @@ impl<DB: Blockstore> SubnetCaller<DB> {
             .try_call(state, |c| c.stake().from(addr).value(deposit))
     }
 
+    /// Try to decrease the stake of a validator.
+    pub fn try_unstake(
+        &self,
+        state: &mut FvmExecState<DB>,
+        addr: &EthAddress,
+        value: &TokenAmount,
+    ) -> TryCallResult<()> {
+        let withdraw = from_fvm::to_eth_tokens(value)?;
+        self.manager
+            .try_call(state, |c| c.unstake(withdraw).from(addr))
+    }
+
     /// Try to remove all stake of a validator.
     pub fn try_leave(&self, state: &mut FvmExecState<DB>, addr: &EthAddress) -> TryCallResult<()> {
         self.manager.try_call(state, |c| c.leave().from(addr))

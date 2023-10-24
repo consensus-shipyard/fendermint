@@ -180,14 +180,7 @@ impl StateMachine for StakingMachine {
         state: &Self::State,
     ) -> arbitrary::Result<Self::Command> {
         let cmd = u
-            .choose(&[
-                "checkpoint",
-                "join",
-                "stake",
-                "leave",
-                "claim",
-                //"unstake",
-            ])
+            .choose(&["checkpoint", "join", "stake", "leave", "claim", "unstake"])
             .unwrap();
 
         let cmd = match cmd {
@@ -341,15 +334,19 @@ impl StateMachine for StakingMachine {
                     .try_stake(&mut exec_state, addr, value)
                     .expect("failed to call: stake")
             }
+            StakingCommand::Unstake(addr, value) => {
+                eprintln!("\n> CMD: UNSTAKE addr={addr} value={value}");
+                system
+                    .subnet
+                    .try_unstake(&mut exec_state, addr, value)
+                    .expect("failed to call: unstake")
+            }
             StakingCommand::Leave(addr) => {
                 eprintln!("\n> CMD: LEAVE addr={addr}");
                 system
                     .subnet
                     .try_leave(&mut exec_state, addr)
                     .expect("failed to call: leave")
-            }
-            StakingCommand::Unstake(_addr, _value) => {
-                todo!("implement unstake in the contract")
             }
             StakingCommand::Claim(addr) => {
                 eprintln!("\n> CMD: CLAIM addr={addr}");
@@ -392,15 +389,21 @@ impl StateMachine for StakingMachine {
                     result.expect("stake should succeed");
                 }
             }
+            StakingCommand::Unstake(addr, value) => {
+                if value.is_zero() {
+                    result.expect_err("cannot unstake 0");
+                } else if pre_state.total_deposit(addr) <= *value {
+                    result.expect_err("tried to unstake too much");
+                } else {
+                    result.expect("unstake should succeed")
+                }
+            }
             StakingCommand::Leave(addr) => {
                 if !pre_state.has_staked(addr) {
                     result.expect_err("must call join before leave");
                 } else {
                     result.expect("leave should succeed");
                 }
-            }
-            StakingCommand::Unstake(_addr, _value) => {
-                todo!("implement unstake in the contract")
             }
             StakingCommand::Claim(addr) => {
                 if !pre_state.has_claim(addr) {

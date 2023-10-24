@@ -410,7 +410,7 @@ impl StakingState {
 
     /// Enqueue a withdrawal.
     pub fn unstake(&mut self, addr: EthAddress, value: TokenAmount) {
-        if value.is_zero() || !self.has_staked(&addr) {
+        if value.is_zero() || self.total_deposit(&addr) <= value {
             return;
         }
         self.update(|this| StakingUpdate {

@@ -130,8 +130,9 @@ tendermint-proto = { version = "0.31" }
 
 ipc-sdk = { git = "https://github.com/consensus-shipyard/ipc.git", branch = "dev" }
 ipc_ipld_resolver = { git = "https://github.com/consensus-shipyard/ipc-ipld-resolver.git", branch = "main" }
-ipc_actors_abis = { git = "https://github.com/consensus-shipyard/ipc-solidity-actors.git", branch = "integration-testing" }
 ipc-provider = { git = "https://github.com/consensus-shipyard/ipc.git", branch = "dev" }
+# NOTE: If you change the branch here make sure to change IPC_ACTORS_TAG in the Makefile as well.
+ipc_actors_abis = { git = "https://github.com/consensus-shipyard/ipc-solidity-actors.git", branch = "integration-testing" }
 
 [patch.crates-io]
 # Use stable-only features.
