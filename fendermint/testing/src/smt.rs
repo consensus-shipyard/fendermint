@@ -144,6 +144,15 @@ macro_rules! state_machine_test {
         }
     };
 
+    // Run with a fixed randomness.
+    ($name:ident, $size:literal bytes, $steps:literal steps, $smt:expr) => {
+        #[test]
+        fn $name() {
+            let machine = $smt;
+            $crate::smt::fixed_size_builder($size).run(|u| $crate::smt::run(u, &machine, $steps))
+        }
+    };
+
     // Run for a certain number of steps varying the size.
     ($name:ident, $steps:literal steps, $smt:expr) => {
         #[test]
@@ -172,7 +181,7 @@ macro_rules! state_machine_test {
 /// ```
 #[macro_export]
 macro_rules! state_machine_seed {
-    ($name:ident, $seed:literal $steps:literal steps, $smt:expr) => {
+    ($name:ident, $seed:literal, $steps:literal steps, $smt:expr) => {
         paste::paste! {
           #[test]
           fn [<$name _with_seed_ $seed>]() {
@@ -188,7 +197,7 @@ macro_rules! state_machine_seed {
 mod tests {
     use arbitrary::{Result, Unstructured};
 
-    use super::StateMachine;
+    use super::{fixed_size_builder, seeded_builder, StateMachine};
 
     /// A sample System Under Test.
     struct Counter {
@@ -288,12 +297,12 @@ mod tests {
         }
     }
 
-    state_machine_test!(counter, 100 steps, CounterStateMachine { buggy: false });
+    state_machine_test!(counter, 512 bytes, 100 steps, CounterStateMachine { buggy: false });
 
     /// Test the equivalent of:
     ///
     /// ```ignore
-    /// state_machine_test!(counter, 100 steps, CounterStateMachine { buggy: true });
+    /// state_machine_test!(counter, 512 bytes, 100 steps, CounterStateMachine { buggy: true });
     /// ```
     ///
     /// Which would have an output like:
@@ -306,26 +315,24 @@ mod tests {
     ///
     ///
     /// arb_test failed!
-    ///     Seed: 0x001a560e00000020
+    ///     Seed: 0x4327d37100000200
     /// ```
     #[test]
     #[should_panic]
     fn counter_with_bug() {
         let t = CounterStateMachine { buggy: true };
-        arbtest::builder().run(|u| super::run(u, &t, 100))
+        fixed_size_builder(512).run(|u| super::run(u, &t, 100))
     }
 
     /// Test the equivalent of:
     ///
     /// ```ignore
-    /// state_machine_seed!(counter, 0x001a560e00000020 100 steps, CounterStateMachine { buggy: true });
+    /// state_machine_seed!(counter, 0x4327d37100000200, 100 steps, CounterStateMachine { buggy: true });
     /// ```
     #[test]
     #[should_panic]
     fn counter_with_seed() {
         let t = CounterStateMachine { buggy: true };
-        arbtest::builder()
-            .seed(0x001a560e00000020)
-            .run(|u| super::run(u, &t, 100))
+        seeded_builder(0x4327d37100000200).run(|u| super::run(u, &t, 100))
     }
 }
