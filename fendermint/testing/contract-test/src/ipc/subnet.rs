@@ -176,4 +176,13 @@ impl<DB: Blockstore> SubnetCaller<DB> {
         self.getter
             .call(state, |c| c.is_waiting_validator(addr.into()))
     }
+
+    /// This is purely for testing, although we could use it in production to avoid having to match Rust and Solidity semantics.
+    pub fn cross_msgs_hash(
+        &self,
+        state: &mut FvmExecState<DB>,
+        cross_msgs: Vec<getter::CrossMsg>,
+    ) -> anyhow::Result<[u8; 32]> {
+        self.getter.call(state, |c| c.cross_msgs_hash(cross_msgs))
+    }
 }

@@ -38,11 +38,11 @@ use contract_test::ipc::registry::SubnetConstructorParams;
 /// System Under Test for staking.
 pub struct StakingSystem {
     /// FVM state initialized with the parent genesis, and a subnet created for the child.
-    exec_state: RefCell<FvmExecState<MemoryBlockstore>>,
+    pub exec_state: RefCell<FvmExecState<MemoryBlockstore>>,
     _gateway: GatewayCaller<MemoryBlockstore>,
     _registry: RegistryCaller<MemoryBlockstore>,
-    subnet: SubnetCaller<MemoryBlockstore>,
-    subnet_id: SubnetID,
+    pub subnet: SubnetCaller<MemoryBlockstore>,
+    pub subnet_id: SubnetID,
 }
 
 #[derive(Debug)]
@@ -284,8 +284,12 @@ impl StateMachine for StakingMachine {
 
                 // Build the checkpoint payload.
 
-                // No messages in this test.
-                let cross_messages_hash = abi_hash::<Vec<subnet_manager::CrossMsg>>(Vec::new());
+                // No messages in this test. If we generated some messages, they couldn't be just some
+                // random data thrown in, because the contracts would actually try to execute them.
+                // What I'm mainly interested in is whether the ABI hash is calculated correctly
+                // for a vector, which we can test by trying to pass the empty vector as a tuple.
+                let cross_messages = Vec::<subnet_manager::CrossMsg>::new();
+                let cross_messages_hash = abi_hash(cross_messages);
 
                 let (root, route) = subnet_id_to_eth(&system.subnet_id).unwrap();
 
