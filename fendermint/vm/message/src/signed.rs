@@ -127,8 +127,8 @@ impl SignedMessage {
             Signable::Ethereum((hash, from)) => {
                 // If the sender is ethereum, recover the public key from the signature (which verifies it),
                 // then turn it into an `EthAddress` and verify it matches the `from` of the message.
-                let sig =
-                    from_fvm::to_eth_signature(signature).map_err(SignedMessageError::Ethereum)?;
+                let sig = from_fvm::to_eth_signature(signature, true)
+                    .map_err(SignedMessageError::Ethereum)?;
 
                 let rec = sig
                     .recover(hash)
@@ -158,7 +158,7 @@ impl SignedMessage {
             let tx = from_fvm::to_eth_transaction(self.message(), chain_id)
                 .map_err(SignedMessageError::Ethereum)?;
 
-            let sig = from_fvm::to_eth_signature(self.signature())
+            let sig = from_fvm::to_eth_signature(self.signature(), true)
                 .map_err(SignedMessageError::Ethereum)?;
 
             let rlp = tx.rlp_signed(&sig);

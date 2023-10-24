@@ -97,8 +97,6 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         height: u64,
     ) -> anyhow::Result<[u8; 32]> {
         let msgs = self.bottom_up_msgs(state, height)?;
-
-        // TODO: Not sure this is the right way to hash a vector.
         Ok(abi_hash(msgs))
     }
 
@@ -163,7 +161,8 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         let hash = abi_hash((checkpoint,));
 
         let signature = sign_secp256k1(secret_key, &hash);
-        let signature = from_fvm::to_eth_signature(&signature).context("invalid signature")?;
+        let signature =
+            from_fvm::to_eth_signature(&signature, false).context("invalid signature")?;
         let signature = et::Bytes::from(signature.to_vec());
 
         let tree =

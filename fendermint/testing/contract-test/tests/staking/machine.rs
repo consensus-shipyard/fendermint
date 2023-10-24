@@ -309,7 +309,7 @@ impl StateMachine for StakingMachine {
 
                 for (addr, secret_key) in signatories {
                     let signature = sign_secp256k1(secret_key, &checkpoint_hash);
-                    let signature = from_fvm::to_eth_signature(&signature).unwrap();
+                    let signature = from_fvm::to_eth_signature(&signature, false).unwrap();
                     signatures.push((*addr, signature.into()));
                 }
 
