@@ -191,10 +191,11 @@ where
 fn into_tendermint(genesis_file: &PathBuf, args: &GenesisIntoTendermintArgs) -> anyhow::Result<()> {
     let genesis = read_genesis(genesis_file)?;
     let genesis_json = serde_json::to_value(&genesis)?;
+
     // Fendermint chainIDs can only be 50 bytes long. To avoid
     // arbitrary chain names from exceeding the limit, we compute
-    // the chainID as the 54 most significant bytes of the SHA256
-    // of the chain name.
+    // the chainID as the 50 most significant bytes of the hex enconding
+    // of the SHA256 of the chain name
     let mut hasher = sha2::Sha256::new();
     hasher.update(genesis.chain_name);
     let h_chain_id = hex::encode(hasher.finalize());

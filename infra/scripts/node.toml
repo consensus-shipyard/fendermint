@@ -14,14 +14,6 @@ run_task = "cometbft-node-id"
 env = { "CMT_CONTAINER_NAME" = "cometbft-${NETWORK_NAME}-bootstrap" }
 run_task = "node-down"
 
-[tasks.bootstrap-mkdir]
-script="""
-echo creating directories: $BASE_DIR $FM_DIR $CMT_DIR
-mkdir -p $BASE_DIR
-
-mkdir -p $CMT_DIR
-"""
-
 [tasks.node-down]
 dependencies = [
     "cometbft-stop",
@@ -32,7 +24,7 @@ dependencies = [
 [tasks.new-node]
 dependencies = [
     "node-down",
-    "bootstrap-mkdir",
+    "node-mkdir",
     "cometbft-init",
     "seed-enable",
     "set-seeds",
@@ -57,7 +49,6 @@ rm -rf ${BASE_DIR}
 script="""
 echo creating directories: $BASE_DIR $FM_DIR $CMT_DIR
 mkdir -p $BASE_DIR
-mkdir -p $FM_DIR
 
 mkdir -p $CMT_DIR
 """

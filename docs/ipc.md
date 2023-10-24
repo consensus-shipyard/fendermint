@@ -15,7 +15,7 @@ You'll see that by the end of the output, this command should output the network
 [cargo-make] INFO - Build Done in 13.38 seconds.
 ```
 
-If at any time you need to query the endpoint of your bootstrap, you can run: 
+If at any time you need to query the endpoint of your bootstrap, you can run:
 ```bash
 cargo make --makefile infra/Makefile.toml bootstrap-id
 ```
