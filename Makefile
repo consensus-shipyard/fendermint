@@ -16,9 +16,6 @@ IPC_ACTORS_OUT         = $(IPC_ACTORS_DIR)/out
 
 FENDERMINT_CODE       := $(shell find . -type f \( -name "*.rs" -o -name "Cargo.toml" \) | grep -v target)
 
-ipc-actors-out:
-	@echo $(IPC_ACTORS_OUT)
-
 # Override PROFILE env var to choose between `local | ci`
 PROFILE?=local
 
