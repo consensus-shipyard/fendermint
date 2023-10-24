@@ -130,7 +130,7 @@ tendermint-proto = { version = "0.31" }
 
 ipc-sdk = { git = "https://github.com/consensus-shipyard/ipc.git", branch = "dev" }
 ipc_ipld_resolver = { git = "https://github.com/consensus-shipyard/ipc-ipld-resolver.git", branch = "main" }
-ipc_actors_abis = { git = "https://github.com/consensus-shipyard/ipc-solidity-actors.git", branch = "dev" }
+ipc_actors_abis = { git = "https://github.com/consensus-shipyard/ipc-solidity-actors.git", branch = "integration-testing" }
 ipc-provider = { git = "https://github.com/consensus-shipyard/ipc.git", branch = "dev" }
 
 [patch.crates-io]
@@ -145,5 +145,5 @@ merkle-tree-rs = { git = "https://github.com/consensus-shipyard/merkle-tree-rs.g
 # ipc-sdk = { path = "../ipc/ipc/sdk" }
 # ipc-provider = { path = "../ipc/ipc/provider" }
 
-[patch."https://github.com/consensus-shipyard/ipc-solidity-actors.git"]
-ipc_actors_abis = { path = "../ipc-solidity-actors/binding" }
+# [patch."https://github.com/consensus-shipyard/ipc-solidity-actors.git"]
+# ipc_actors_abis = { path = "../ipc-solidity-actors/binding" }
