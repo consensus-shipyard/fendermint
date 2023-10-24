@@ -1373,7 +1373,7 @@ dependencies = [
  "fvm_shared",
  "hex",
  "ipc-sdk",
- "ipc_actors_abis",
+ "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing)",
  "rand 0.8.5",
  "tendermint-rpc",
  "tokio",
@@ -3054,7 +3054,7 @@ dependencies = [
  "fvm_shared",
  "hex",
  "ipc-sdk",
- "ipc_actors_abis",
+ "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing)",
  "lazy_static",
  "merkle-tree-rs",
  "paste",
@@ -3144,7 +3144,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc_actors_abis",
+ "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing)",
  "libipld",
  "num-traits",
  "pin-project",
@@ -3219,7 +3219,7 @@ dependencies = [
  "fvm_shared",
  "ipc-provider",
  "ipc-sdk",
- "ipc_actors_abis",
+ "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing)",
  "num-traits",
  "serde",
  "serde_json",
@@ -4674,7 +4674,7 @@ dependencies = [
  "hex",
  "ipc-identity",
  "ipc-sdk",
- "ipc_actors_abis",
+ "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev)",
  "log",
  "num-derive",
  "num-traits",
@@ -4707,7 +4707,7 @@ dependencies = [
  "fvm_ipld_hamt 0.6.1",
  "fvm_shared",
  "integer-encoding",
- "ipc_actors_abis",
+ "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev)",
  "lazy_static",
  "log",
  "num-traits",
@@ -4720,6 +4720,17 @@ dependencies = [
 [[package]]
 name = "ipc_actors_abis"
 version = "0.1.0"
+source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev#93d8e35a7fc861987bcab1f928ec5de5eeb29c90"
+dependencies = [
+ "anyhow",
+ "ethers",
+ "fvm_shared",
+]
+
+[[package]]
+name = "ipc_actors_abis"
+version = "0.1.0"
+source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing#d4bba7b522fc7134bbe6c4e612c9ab2eeaa494f5"
 dependencies = [
  "anyhow",
  "ethers",

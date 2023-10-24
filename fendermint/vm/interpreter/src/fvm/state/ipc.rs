@@ -180,7 +180,7 @@ impl<DB: Blockstore> GatewayCaller<DB> {
             height,
             membership_proof,
             weight,
-            signature.into(),
+            signature,
         );
 
         let calldata = call

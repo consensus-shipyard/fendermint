@@ -236,23 +236,23 @@ impl StateMachine for StakingMachine {
             }
             &"join" => {
                 // Pick any account, doesn't have to be new; the system should handle repeated joins.
-                let a = choose_account(u, &state)?;
+                let a = choose_account(u, state)?;
                 let b = choose_amount(u, &a.current_balance)?;
                 StakingCommand::Join(a.addr, b, a.public_key)
             }
             &"leave" => {
                 // Pick any account, doesn't have to be bonded; the system should ignore non-validators and not pay out twice.
-                let a = choose_account(u, &state)?;
+                let a = choose_account(u, state)?;
                 StakingCommand::Leave(a.addr)
             }
             &"stake" => {
-                let a = choose_account(u, &state)?;
+                let a = choose_account(u, state)?;
                 // Limit ourselves to the outstanding balance - the user would not be able to send more value to the contract.
                 let b = choose_amount(u, &a.current_balance)?;
                 StakingCommand::Stake(a.addr, b)
             }
             &"unstake" => {
-                let a = choose_account(u, &state)?;
+                let a = choose_account(u, state)?;
                 // We can try sending requests to unbond arbitrarily large amounts of collateral - the system should catch any attempt to steal.
                 // Only limiting it to be under the initial balance so that it's comparable to what the deposits could have been.
                 let b = choose_amount(u, &a.initial_balance)?;
@@ -260,7 +260,7 @@ impl StateMachine for StakingMachine {
             }
             &"claim" => {
                 // Pick any account, even if has nothing to claim; the system should reject those.
-                let a = choose_account(u, &state)?;
+                let a = choose_account(u, state)?;
                 StakingCommand::Claim(a.addr)
             }
             other => unimplemented!("unknown command: {other}"),
@@ -326,7 +326,7 @@ impl StateMachine for StakingMachine {
             StakingCommand::Join(_addr, value, public_key) => {
                 eprintln!("\n> CMD: JOIN addr={_addr} value={value}");
                 let validator = Validator {
-                    public_key: ValidatorKey(public_key.clone()),
+                    public_key: ValidatorKey(*public_key),
                     power: Collateral(value.clone()),
                 };
                 system

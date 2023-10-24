@@ -331,12 +331,12 @@ impl StakingState {
 
     /// Get an account. Panics if it doesn't exist.
     pub fn account(&self, addr: &EthAddress) -> &StakingAccount {
-        self.accounts.get(&addr).expect("accounts exist")
+        self.accounts.get(addr).expect("accounts exist")
     }
 
     /// Get an account. Panics if it doesn't exist.
     fn account_mut(&mut self, addr: &EthAddress) -> &mut StakingAccount {
-        self.accounts.get_mut(&addr).expect("accounts exist")
+        self.accounts.get_mut(addr).expect("accounts exist")
     }
 
     /// Increase the claim balance.
@@ -535,7 +535,7 @@ impl arbitrary::Arbitrary<'_> for StakingState {
         );
         let last_stake = &current_configuration.last().unwrap().power.0;
         let min_collateral = initial_stake - last_stake
-            + choose_amount(u, &last_stake)?.max(TokenAmount::from_atto(1));
+            + choose_amount(u, last_stake)?.max(TokenAmount::from_atto(1));
 
         // IPC of the parent subnet itself - most are not going to be used.
         let parent_ipc = IpcParams {
