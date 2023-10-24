@@ -11,7 +11,7 @@ This guide offers two flavours:
 
 On Linux (links and instructions for Ubuntu):
 
-- Install system packages: `sudo apt install build-essential pkg-config libssl-dev`.
+- Install system packages: `sudo apt install build-essential clang cmake pkg-config libssl-dev protobuf-compiler`.
 - Install Rust. See [instructions](https://www.rust-lang.org/tools/install).
 - Install cargo-make: `cargo install --force cargo-make`.
 - Install Docker. See [instructions](https://docs.docker.com/engine/install/ubuntu/).
