@@ -108,10 +108,10 @@ pub struct TopDownConfig {
     pub chain_head_delay: BlockHeight,
     /// Parent syncing cron period, in seconds
     #[serde_as(as = "DurationSeconds<u64>")]
-    pub polling_interval_secs: Duration,
+    pub polling_interval: Duration,
     /// Top down exponential back off retry base
     #[serde_as(as = "DurationSeconds<u64>")]
-    pub exponential_back_off_secs: Duration,
+    pub exponential_back_off: Duration,
     /// The max number of retries for exponential backoff before giving up
     pub exponential_retry_limit: usize,
     /// The parent rpc http endpoint

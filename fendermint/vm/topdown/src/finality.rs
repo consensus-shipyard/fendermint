@@ -74,7 +74,7 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
         }
 
         retry!(
-            self.config.exponential_back_off_secs,
+            self.config.exponential_back_off,
             self.config.exponential_retry_limit,
             self.parent_client
                 .get_validator_changes(height)
@@ -96,7 +96,7 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
         }
 
         retry!(
-            self.config.exponential_back_off_secs,
+            self.config.exponential_back_off,
             self.config.exponential_retry_limit,
             self.parent_client
                 .get_top_down_msgs_with_hash(height, block_hash)
@@ -354,8 +354,8 @@ mod tests {
     fn new_provider() -> CachedFinalityProvider<MockedParentQuery> {
         let config = Config {
             chain_head_delay: 20,
-            polling_interval_secs: Duration::from_secs(10),
-            exponential_back_off_secs: Duration::from_secs(10),
+            polling_interval: Duration::from_secs(10),
+            exponential_back_off: Duration::from_secs(10),
             exponential_retry_limit: 10,
         };
 
@@ -481,8 +481,8 @@ mod tests {
     async fn test_top_down_msgs_works() {
         let config = Config {
             chain_head_delay: 2,
-            polling_interval_secs: Duration::from_secs(10),
-            exponential_back_off_secs: Duration::from_secs(10),
+            polling_interval: Duration::from_secs(10),
+            exponential_back_off: Duration::from_secs(10),
             exponential_retry_limit: 10,
         };
 

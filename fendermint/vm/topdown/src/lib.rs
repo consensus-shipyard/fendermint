@@ -34,9 +34,9 @@ pub struct Config {
     /// height as final yet.
     pub chain_head_delay: BlockHeight,
     /// Parent syncing cron period, in seconds
-    pub polling_interval_secs: Duration,
+    pub polling_interval: Duration,
     /// Top down exponential back off retry base
-    pub exponential_back_off_secs: Duration,
+    pub exponential_back_off: Duration,
     /// The max number of retries for exponential backoff before giving up
     pub exponential_retry_limit: usize,
 }
