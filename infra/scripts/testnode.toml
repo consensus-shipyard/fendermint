@@ -13,7 +13,7 @@ dependencies = [
     "fendermint-start",
     "cometbft-start",
     "cometbft-wait",
-    "ethapi-start"
+    "ethapi-start",
 ]
 
 [tasks.testnode-network-create]
@@ -63,52 +63,42 @@ dependencies = [
     "testnode-script-new-account",
     "testnode-script-add-validator",
     "testnode-script-new-gateway",
+    "testnode-script-write-genesis",
     "testnode-script-export-keys"
 ]
 
 [tasks.testnode-script-new-genesis]
-cwd = "./target/release"
-script = """
-./fendermint genesis --genesis-file ${GENESIS_FILE} new --chain-name ${CHAIN_NAME} --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP} --power-scale 3
-"""
+extend = "fendermint-run"
+env = { "ENTRY" = "fendermint", "CMD" = "genesis --genesis-file /data/genesis.json new --chain-name ${CHAIN_NAME} --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP} --power-scale 3" }
 
 [tasks.testnode-script-new-key]
-cwd = "./target/release"
-script="""
-mkdir -p $KEYS_DIR
-
-./fendermint key gen --out-dir $KEYS_DIR --name $KEY_NAME;
-chmod 600 ${PRIV_KEY_PATH}
-"""
+extend = "fendermint-run"
+env = { "ENTRY" = "fendermint", "CMD" = "key gen --out-dir /data/${KEYS_RELDIR} --name ${KEY_NAME}" }
+script.pre = "mkdir -p ${BASE_DIR}/${KEYS_RELDIR}"
+script.post = "chmod 600 ${BASE_DIR}/${PRIV_KEY_PATH}"
 
 [tasks.testnode-script-new-account]
-cwd = "./target/release"
-script="""
-./fendermint genesis --genesis-file ${GENESIS_FILE} add-account --public-key ${PUB_KEY_PATH} --balance ${BALANCE}
-"""
-
+extend = "fendermint-run"
+env = { "ENTRY" = "fendermint", "CMD" = "genesis --genesis-file /data/genesis.json add-account --public-key /data/${PUB_KEY_PATH} --balance ${BALANCE}" }
 
 [tasks.testnode-script-add-validator]
-cwd = "./target/release"
-script = """
-./fendermint genesis --genesis-file ${GENESIS_FILE} add-validator --public-key ${PUB_KEY_PATH} --power 1
-"""
+extend = "fendermint-run"
+env = { "ENTRY" = "fendermint", "CMD" = "genesis --genesis-file /data/genesis.json add-validator --public-key /data/${PUB_KEY_PATH} --power 1" }
 
 [tasks.testnode-script-new-gateway]
-cwd = "./target/release"
-script = """
-./fendermint genesis --genesis-file ${GENESIS_FILE} ipc gateway --subnet-id /r0 \
+extend = "fendermint-run"
+env = { "ENTRY" = "fendermint", "CMD" = """genesis --genesis-file /data/genesis.json ipc gateway --subnet-id /r0 \
     --bottom-up-check-period 10 \
     --msg-fee 10 \
     --majority-percentage 67 \
-    --min-collateral 1
-"""
+    --min-collateral 1""" }
+
+[tasks.testnode-script-write-genesis]
+extend = "fendermint-run"
+env = { "ENTRY" = "fendermint", "CMD" = "genesis --genesis-file /data/genesis.json into-tendermint --out /data/genesis.committed.json" }
+script.post = "cp ${BASE_DIR}/genesis.committed.json ${CMT_DIR}/config/genesis.json"
 
 [tasks.testnode-script-export-keys]
-cwd = "./target/release"
-script = """
-./fendermint genesis --genesis-file ${GENESIS_FILE} into-tendermint --out ${CMT_DIR}/config/genesis.json
-
-./fendermint key into-tendermint --secret-key ${PRIV_KEY_PATH} --out ${CMT_DIR}/config/priv_validator_key.json
-chmod 600 ${CMT_DIR}/config/priv_validator_key.json
-"""
+extend = "fendermint-run"
+env = { "ENTRY" = "fendermint", "CMD" = "key into-tendermint --secret-key /data/${PRIV_KEY_PATH} --out /data/priv_validator_key.json" }
+script.post = "cp ${BASE_DIR}/priv_validator_key.json ${CMT_DIR}/config/priv_validator_key.json; chmod 600 ${CMT_DIR}/config/priv_validator_key.json"
