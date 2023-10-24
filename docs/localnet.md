@@ -15,6 +15,7 @@ On Linux (links and instructions for Ubuntu):
 - Install Rust. See [instructions](https://www.rust-lang.org/tools/install).
 - Install cargo-make: `cargo install --force cargo-make`.
 - Install Docker. See [instructions](https://docs.docker.com/engine/install/ubuntu/).
+- Install Foundry. See [instructions](https://book.getfoundry.sh/getting-started/installation).
 
 ## Build Fendermint
 
