@@ -240,7 +240,8 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         let messages = cross_messages
             .into_iter()
             .map(router::CrossMsg::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()
+            .context("failed to convert cross messages")?;
         let r = self
             .router
             .call_with_return(state, |c| c.apply_cross_messages(messages))?;
