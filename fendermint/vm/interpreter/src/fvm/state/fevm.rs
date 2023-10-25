@@ -219,9 +219,9 @@ where
         state: &mut FvmExecState<DB>,
         f: F,
     ) -> anyhow::Result<ContractResult<T, E>>
-        where
-            F: FnOnce(&C) -> MockContractCall<T>,
-            T: Detokenize,
+    where
+        F: FnOnce(&C) -> MockContractCall<T>,
+        T: Detokenize,
     {
         Ok(match self.try_call_with_ret(state, f)? {
             Ok(r) => Ok(r.into_decoded()?),
