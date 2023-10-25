@@ -246,9 +246,11 @@ impl<T> CachedFinalityProvider<T> {
     ) -> StmResult<(), Error> {
         if !top_down_msgs.is_empty() {
             // make sure incoming top down messages are ordered by nonce sequentially
+            tracing::debug!("top down messages: {top_down_msgs:#?}");
             ensure_sequential(&top_down_msgs, |msg| msg.msg.nonce)?;
         };
         if !validator_changes.is_empty() {
+            tracing::debug!("validator changes: {validator_changes:#?}");
             ensure_sequential(&validator_changes, |change| change.configuration_number)?;
         }
 
@@ -332,7 +334,7 @@ fn ensure_sequential<T, F: Fn(&T) -> u64>(msgs: &[T], f: F) -> StmResult<(), Err
     let mut nonce = f(first);
     for msg in msgs.iter().skip(1) {
         if nonce + 1 != f(msg) {
-            return abort(Error::NonceNotSequential);
+            return abort(Error::NotSequential);
         }
         nonce += 1;
     }
