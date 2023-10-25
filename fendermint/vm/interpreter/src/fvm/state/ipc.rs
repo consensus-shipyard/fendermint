@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::{anyhow, Context};
-use ethers::abi::{Token, Tokenizable};
-use ethers::contract::decode_function_data;
 use ethers::types as et;
 use ethers::{abi::Tokenize, utils::keccak256};
 
@@ -31,7 +29,6 @@ use super::{
 };
 use crate::fvm::FvmApplyRet;
 use fendermint_vm_actor_interface::ipc;
-use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::econ::TokenAmount;
 
 #[derive(Clone)]
@@ -189,34 +186,6 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         Ok(calldata)
     }
 
-    pub fn decode_commit_parent_finality_return(
-        &self,
-        bytes: RawBytes,
-    ) -> anyhow::Result<(bool, IPCParentFinality)> {
-        let return_data = bytes
-            .deserialize::<BytesDe>()
-            .context("failed to deserialize return data")?;
-
-        let function = self.router.contract().abi()
-            .functions
-            .get("commitParentFinality")
-            .ok_or_else(|| anyhow!("broken abi"))?
-            .get(0)
-            .ok_or_else(|| anyhow!("function commitParentFinality not found, abi wrong?"))?;
-
-        if let Token::Tuple(mut tuple) = decode_function_data(function, return_data.0, false)? {
-            tracing::debug!("tuple received: {tuple:?}");
-            if tuple.len() != 2 {
-                return Err(anyhow!("invalid decode data len"));
-            }
-            let finality = router::ParentFinality::from_token(tuple.pop().unwrap())?;
-            let committed = bool::from_token(tuple.pop().unwrap())?;
-            Ok((committed, IPCParentFinality::try_from(finality)?))
-        } else {
-            Err(anyhow!("invalida data"))
-        }
-    }
-
     /// Commit the parent finality to the gateway and returns the previously committed finality.
     /// None implies there is no previously committed finality.
     pub fn commit_parent_finality(
@@ -246,9 +215,7 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         }
 
         self.router
-            .call(state, |c| c.store_validator_changes(change_requests))?;
-
-        Ok(())
+            .call(state, |c| c.store_validator_changes(change_requests))
     }
 
     /// Call this function to mint some FIL to the gateway contract
