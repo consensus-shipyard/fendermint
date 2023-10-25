@@ -2852,7 +2852,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
- "sha2 0.10.8",
  "tempfile",
  "tendermint 0.31.1",
  "tendermint-config 0.33.2",

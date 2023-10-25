@@ -3,11 +3,11 @@
 ########################################################################################################################
 
 [tasks.bootstrap]
-env = { "NETWORK_NAME"="${NETWORK_NAME}", "CMT_DIR" = "${BASE_DIR}/bootstrap/cometbft", "CMT_CONTAINER_NAME" = "cometbft-${NETWORK_NAME}-bootstrap", "CMT_HOST_PORT" = "26650"}
+env = { "NETWORK_NAME"="${NETWORK_NAME}", "CMT_DIR" = "${BASE_DIR}/bootstrap/cometbft", "CMT_CONTAINER_NAME" = "cometbft-${NETWORK_NAME}-bootstrap", "CMT_P2P_HOST_PORT" = "26650"}
 run_task = "new-node"
 
 [tasks.bootstrap-id]
-env = { "CMT_CONTAINER_NAME" = "cometbft-${NETWORK_NAME}-bootstrap", "CMT_HOST_PORT" = "26650"}
+env = { "CMT_CONTAINER_NAME" = "cometbft-${NETWORK_NAME}-bootstrap", "CMT_P2P_HOST_PORT" = "26650"}
 run_task = "cometbft-node-id"
 
 [tasks.bootstrap-down]
@@ -68,5 +68,5 @@ sed -i'bak' "s/seed_mode = false/seed_mode = true/" ${CMT_DIR}/config/config.tom
 
 [tasks.set-seeds]
 script="""
-sed -i 's/seeds = ""/seeds = "${COMMA_SEPARATED_BOOTSTRAPS}"/g' ${CMT_DIR}/config/config.toml
+sed -i 's/seeds = ""/seeds = "${BOOTSTRAPS}"/g' ${CMT_DIR}/config/config.toml
 """

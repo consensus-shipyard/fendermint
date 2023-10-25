@@ -14,12 +14,13 @@ default_to_workspace = false
 
 [env]
 # General network-specific parameters
-CHAIN_NAME = { value = "root", condition = { env_not_set = ["CHAIN_NAME"] }}
+SUBNET_ID = { value = "root", condition = { env_not_set = ["SUBNET_ID"] }}
 BALANCE = { value = "1000", condition = { env_not_set = ["BALANCE"] }}
 BASE_FEE = { value = "1000", condition = { env_not_set = ["BASE_FEE"] }}
 TIMESTAMP = { value = "1680101412", condition = { env_not_set = ["TIMESTAMP"] }}
 POWER_SCALE = { value = "3", condition = { env_not_set = ["POWER_SCALE"] }}
-CMT_HOST_PORT = { value = "26657", condition = { env_not_set = ["CMT_HOST_PORT"] }}
+CMT_P2P_HOST_PORT = { value = "26656", condition = { env_not_set = ["CMT_P2P_HOST_PORT"] }}
+CMT_RPC_HOST_PORT = { value = "26657", condition = { env_not_set = ["CMT_RPC_HOST_PORT"] }}
 ETHAPI_HOST_PORT = { value = "8545", condition = { env_not_set = ["ETHAPI_HOST_PORT"] }}
 
 # IPC subnet related parameters
@@ -33,7 +34,7 @@ VALIDATOR_PRIV_KEY = { value = "~/.ipc/priv.key", condition = { env_not_set = ["
 TOPDOWN_CHAIN_HEAD_DELAY = { value = "10", condition = { env_not_set = ["TOPDOWN_CHAIN_HEAD_DELAY"] } }
 
 # Deployment-related
-BASE_DIR="${HOME}/.ipc/${CHAIN_NAME}"
+BASE_DIR="${HOME}/.ipc/${SUBNET_ID}"
 FM_DIR="${BASE_DIR}/fendermint"
 CMT_DIR="${BASE_DIR}/cometbft"
 
@@ -43,7 +44,7 @@ KEY_NAME="validator_key"
 PUB_KEY_PATH="${KEYS_DIR}/${KEY_NAME}.pk"
 PRIV_KEY_PATH="${KEYS_DIR}/${KEY_NAME}.sk"
 
-NETWORK_NAME = "${CHAIN_NAME}"
+NETWORK_NAME = "${SUBNET_ID}"
 
 CMT_CONTAINER_NAME = "${NETWORK_NAME}-cometbft"
 FM_CONTAINER_NAME = "${NETWORK_NAME}-fendermint"
@@ -65,7 +66,7 @@ VERBOSITY = ""
 script="""
 echo
 echo Chain info:
-echo - Chain: ${CHAIN_NAME}
+echo - Chain: ${SUBNET_ID}
 echo - Balance: ${BALANCE}
 echo - Base Fee: ${BASE_FEE}
 echo - Timestamp: ${TIMESTAMP}
@@ -102,9 +103,9 @@ script = ['''
     echo - info: Print the setup information
     echo
     echo Most tasks use these environment variables:
-    echo - CHAIN_NAME (default '${CHAIN_NAME}'): the target IPC subnet
+    echo - SUBNET_ID (default '${SUBNET_ID}'): the target IPC subnet
     echo
-    echo Run 'cargo make -e CHAIN_NAME=chain -e BALANCE=100 -e BASE_FEE=200 ... COMMAND' to populate the variables from CLI or
+    echo Run 'cargo make -e SUBNET_ID=chain -e BALANCE=100 -e BASE_FEE=200 ... COMMAND' to populate the variables from CLI or
     echo Run 'cargo make --env-file=/PATH/.env COMMAND' to populate the variables from the file before running the command.
     echo
     echo Run 'cargo make --list-all-steps' for a complete list of available tasks.

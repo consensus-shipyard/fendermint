@@ -21,7 +21,8 @@ docker run \
   --name ${CMT_CONTAINER_NAME} \
   --user $(id -u) \
   --network ${NETWORK_NAME} \
-  --publish ${CMT_HOST_PORT}:26657 \
+  --publish ${CMT_RPC_HOST_PORT}:26657 \
+  --publish ${CMT_P2P_HOST_PORT}:26656 \
   --volume ${CMT_DIR}:/cometbft \
   --env CMT_PROXY_APP=tcp://${FM_CONTAINER_NAME}:26658 \
   --env CMT_PEX=false \
@@ -34,7 +35,7 @@ dependencies = ["cometbft-pull", "docker-network-create"]
 script = """
 id=`docker exec ${CMT_CONTAINER_NAME} cometbft show-node-id`
 ip=`docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${CMT_CONTAINER_NAME}`
-echo $id@$ip:${CMT_HOST_PORT}
+echo $id@$ip:${CMT_P2P_HOST_PORT}
 """
 
 [tasks.cometbft-rm]

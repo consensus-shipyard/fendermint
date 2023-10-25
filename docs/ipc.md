@@ -1,9 +1,21 @@
 # IPC
 
-This documentation will guide you through the different utils provided in Fendermint for the deployment of Fendermint-based IPC subnets. This docs are only focused on the infrastructure deployment, for an end-to-end walk through of spawning IPC subnets refer to the [IPC quickstart](https://github.com/consensus-shipyard/ipc/blob/main/docs/quickstart-calibration.md).
+This documentation will guide you through the different utils provided in Fendermint for the deployment of Fendermint-based IPC subnets. All node processes are run inside Docker containers in your local environment.
+
+This docs are only focused on the infrastructure deployment, for an end-to-end walk through of spawning IPC subnets refer to the [IPC quickstart](https://github.com/consensus-shipyard/ipc/blob/main/docs/quickstart-calibration.md).
+
+## Prerequisites
+
+On Linux (links and instructions for Ubuntu):
+
+- Install system packages: `sudo apt install build-essential clang cmake pkg-config libssl-dev protobuf-compiler`.
+- Install Rust. See [instructions](https://www.rust-lang.org/tools/install).
+- Install cargo-make: `cargo install --force cargo-make`.
+- Install Docker. See [instructions](https://docs.docker.com/engine/install/ubuntu/).
+- Install Foundry. See [instructions](https://book.getfoundry.sh/getting-started/installation).
 
 ## Deploy subnet bootstrap
-In order not to expose directly the network address information from validators, subnets leverage the use of bootstraps (or `seeds` in CometBFT parlance), for new nodes to discover peers in the network and connect to the subnet's validators. To run a bootstrap node you can run the following command from the root of the repo:
+In order not to expose directly the network address information from validators, subnets leverage the use of bootstrap nodes (or `seeds` in CometBFT parlance), for new nodes to discover peers in the network and connect to the subnet's validators. To run a bootstrap node you can run the following command from the root of the repo:
 ```bash
 cargo make --makefile infra/Makefile.toml bootstrap
 ```
@@ -21,7 +33,8 @@ cargo make --makefile infra/Makefile.toml bootstrap-id
 ```
 
 `cargo-make bootstrap` supports the following environment variables to customize the deployment:
-- `CMT_HOST_PORT` (optional): Specifies the listening port in the localhost for COMETBFT.
+- `CMT_P2P_HOST_PORT` (optional): Specifies the listening port for the bootstraps P2p interface in the localhost for CometBFT. This is the address that needs to be shared with other peers if they want to use the bootstrap as a `seed` to discover connections.
+- `CMT_RPC_HOST_PORT` (optional): Specifies the listening port in the localhost for CometBFT's RPC.
 
 Finally, to remove the bootstrap you can run:
 ```
@@ -34,17 +47,27 @@ Once a child subnet has been bootstrapped in its parent, its subnet actor has be
 
 In order to spawn a validator node in a child subnet, you need to run:
 ```bash
-cargo make --makefile infra/Makefile.toml -e VALIDATOR_PRIV_KEY=<VALIDDATOR_PRIV_KEY> -e CHAIN_NAME=<SUBNET_ID> -e CMT_HOST_PORT=<COMETBFT_PORT> -e COMMA_SEPARATED_BOOTSTRAPS=<BOOTSTRAP_NODE1>,<BOOTSTRAP_NODE2> -e ETHAPI_HOST_PORT=<ETH_RPC_PORT> child-validator
+cargo make --makefile infra/Makefile.toml \
+    -e VALIDATOR_PRIV_KEY=<VALIDATOR_PRIV_KEY> \
+    -e SUBNET_ID=<SUBNET_ID> \
+    -e CMT_P2P_HOST_PORT=<COMETBFT_P2P_PORT> \
+    -e CMT_RPC_HOST_PORT=<COMETBFT_RPC_PORT> \
+    -e ETHAPI_HOST_PORT=<ETH_RPC_PORT> \
+    -e BOOTSTRAPS=<BOOTSTRAP_ENDPOINT>
+    -e PARENT_REGISTRY=<PARENT_REGISTRY_CONTRACT_ADDR> \
+    -e PARENT_GATEAY=<GATEWAY__REGISTRY_CONTRACT_ADDR> \
+    child-validator
 ```
 This command will run the infrastructure for a Fendermint validator in the child subnet. It will generate the genesis of the subnet from the information in its parent, and will run the validator's infrastructure with the specific configuration passed in the command.
 
 `cargo-make child-validator` supports the following environment variables to customize the deployment:
-- `CMT_HOST_PORT` (optional): Specifies the listening port in the localhost for COMETBFT.
+- `CMT_P2P_HOST_PORT` (optional): Specifies the listening port in the localhost for the P2P interface of the CometBFT node.
+- `CMT_RPC_HOST_PORT` (optional): Specifies the listening port in the localhost for CometBFT's RPC.
 - `ETHAPI_HOST_PORT` (optional): Specifies the listening port in the localhost for the ETH RPC of the node.
-- `NODE_NAME` (optional): Name for the node deployment. Along with `CMT_HOST_PORT` and `ETHAPI_HOST_PORT`, these variables come really handy for the deployment of several validator nodes over the same system.
+- `NODE_NAME` (optional): Name for the node deployment. Along with `CMT_P2P_HOST_PORT`, `CMT_RPC_HOST_PORT` and `ETHAPI_HOST_PORT`, these variables come really handy for the deployment of several validator nodes over the same system.
 - `VALIDATOR_PRIV_KEY`: Path of the private key for your validator (it should be the corresponding one used to join the subnet in the parent).
-- `CHAIN_NAME`: SubnetID for the child subnet.
-- `COMMA_SEPARATED_BOOTSTRAPS`: Comma separated list of bootstraps (or seeds in CometBFT parlance).
+- `SUBNET_ID`: SubnetID for the child subnet.
+- `BOOTSTRAPS`: Comma separated list of bootstraps (or seeds in CometBFT parlance).
 - `PARENT_ENDPOINT`: Public endpoint that the validator should use to connect to the parent.
 - `PARENT_REGISTRY`: Ethereum address of the IPC registry contract in the parent
 - `PARENT_GATEWAY`: Ethereum address of the IPC gateway contract in the parent.
