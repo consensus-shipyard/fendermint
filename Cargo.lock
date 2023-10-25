@@ -681,9 +681,9 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
-version = "0.64.0"
+version = "0.65.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4243e6031260db77ede97ad86c27e501d646a27ab57b59a574f725d98ab1fb4"
+checksum = "cfdf7b466f9a4903edc73f95d6d2bcd5baf8ae620638762244d3f60143643cc5"
 dependencies = [
  "bitflags 1.3.2",
  "cexpr",
@@ -691,12 +691,13 @@ dependencies = [
  "lazy_static",
  "lazycell",
  "peeking_take_while",
+ "prettyplease 0.2.15",
  "proc-macro2",
  "quote",
  "regex",
  "rustc-hash",
  "shlex",
- "syn 1.0.109",
+ "syn 2.0.38",
 ]
 
 [[package]]
@@ -1372,6 +1373,7 @@ dependencies = [
  "fvm",
  "fvm_ipld_blockstore",
  "fvm_shared",
+ "hex",
  "ipc-sdk",
  "ipc_actors_abis",
  "rand 0.8.5",
@@ -4635,7 +4637,7 @@ dependencies = [
 [[package]]
 name = "ipc-identity"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc.git?branch=dev#31a3be23a2d587343b23efc594fc0d6f9a825f9a"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=dev#dcfb0e99eed4c9781b1d634cb122c521e718cd07"
 dependencies = [
  "ahash 0.8.6",
  "anyhow",
@@ -4662,7 +4664,7 @@ dependencies = [
 [[package]]
 name = "ipc-provider"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc.git?branch=dev#31a3be23a2d587343b23efc594fc0d6f9a825f9a"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=dev#dcfb0e99eed4c9781b1d634cb122c521e718cd07"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -4670,6 +4672,7 @@ dependencies = [
  "base64 0.21.5",
  "bytes",
  "cid",
+ "dirs",
  "ethers",
  "ethers-contract",
  "fil_actors_runtime 0.0.1",
@@ -4701,7 +4704,7 @@ dependencies = [
 [[package]]
 name = "ipc-sdk"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc.git?branch=dev#31a3be23a2d587343b23efc594fc0d6f9a825f9a"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=dev#dcfb0e99eed4c9781b1d634cb122c521e718cd07"
 dependencies = [
  "anyhow",
  "cid",
@@ -5546,9 +5549,9 @@ dependencies = [
 
 [[package]]
 name = "librocksdb-sys"
-version = "0.8.3+7.4.4"
+version = "0.11.0+8.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "557b255ff04123fcc176162f56ed0c9cd42d8f357cf55b3fabeb60f7413741b3"
+checksum = "d3386f101bcb4bd252d8e9d2fb41ec3b0862a15a62b478c355b2982efa469e3e"
 dependencies = [
  "bindgen",
  "bzip2-sys",
@@ -5556,6 +5559,7 @@ dependencies = [
  "glob",
  "libc",
  "libz-sys",
+ "lz4-sys",
  "zstd-sys",
 ]
 
@@ -5681,6 +5685,16 @@ name = "lru_time_cache"
 version = "0.11.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9106e1d747ffd48e6be5bb2d97fa706ed25b144fbee4d5c02eae110cd8d6badd"
+
+[[package]]
+name = "lz4-sys"
+version = "1.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57d27b317e207b10f69f5e75494119e391a96f48861ae870d1da6edac98ca900"
+dependencies = [
+ "cc",
+ "libc",
+]
 
 [[package]]
 name = "mach"
@@ -7547,9 +7561,9 @@ dependencies = [
 
 [[package]]
 name = "rocksdb"
-version = "0.19.0"
+version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e9562ea1d70c0cc63a34a22d977753b50cca91cc6b6527750463bd5dd8697bc"
+checksum = "bb6f170a4041d50a0ce04b0d2e14916d6ca863ea2e422689a5b694395d299ffe"
 dependencies = [
  "libc",
  "librocksdb-sys",
