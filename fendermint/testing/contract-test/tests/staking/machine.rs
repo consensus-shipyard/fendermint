@@ -9,15 +9,11 @@ use fendermint_crypto::{PublicKey, SecretKey};
 use fendermint_testing::smt::StateMachine;
 use fendermint_vm_actor_interface::{
     eam::EthAddress,
-    ipc::{subnet::SubnetActorErrors, subnet_id_to_eth},
+    ipc::{abi_hash, subnet::SubnetActorErrors, subnet_id_to_eth},
 };
 use fendermint_vm_genesis::{Collateral, Validator, ValidatorKey};
 use fendermint_vm_interpreter::fvm::{
-    state::{
-        fevm::ContractResult,
-        ipc::{abi_hash, GatewayCaller},
-        FvmExecState,
-    },
+    state::{fevm::ContractResult, ipc::GatewayCaller, FvmExecState},
     store::memory::MemoryBlockstore,
 };
 use fendermint_vm_message::{conv::from_fvm, signed::sign_secp256k1};

@@ -16,7 +16,7 @@ use fendermint_testing::{arb::ArbTokenAmount, smt::StateMachine, state_machine_t
 
 mod staking;
 
-use fendermint_vm_interpreter::fvm::state::ipc::abi_hash;
+use fendermint_vm_actor_interface::ipc::abi_hash;
 use fendermint_vm_message::conv::from_fvm;
 use ipc_actors_abis::subnet_actor_getter_facet;
 use staking::machine::StakingMachine;

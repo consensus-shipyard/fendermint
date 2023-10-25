@@ -3,7 +3,6 @@
 
 use anyhow::{anyhow, Context};
 use ethers::types as et;
-use ethers::{abi::Tokenize, utils::keccak256};
 
 use fendermint_vm_message::conv::from_fvm;
 use fvm_ipld_blockstore::Blockstore;
@@ -12,7 +11,7 @@ use fvm_shared::ActorID;
 use fendermint_crypto::SecretKey;
 use fendermint_vm_actor_interface::{
     eam::EthAddress,
-    ipc::{ValidatorMerkleTree, GATEWAY_ACTOR_ID},
+    ipc::{abi_hash, ValidatorMerkleTree, GATEWAY_ACTOR_ID},
 };
 use fendermint_vm_genesis::{Power, Validator};
 use fendermint_vm_message::signed::sign_secp256k1;
@@ -268,12 +267,4 @@ impl<DB: Blockstore> GatewayCaller<DB> {
             .call(state, |c| c.get_latest_parent_finality())?;
         Ok(IPCParentFinality::try_from(r)?)
     }
-}
-
-/// Hash some value in the same way we'd hash it in Solidity.
-///
-/// Be careful that if we have to hash a single struct, Solidity's `abi.encode`
-/// function will treat it as a tuple.
-pub fn abi_hash<T: Tokenize>(value: T) -> [u8; 32] {
-    keccak256(ethers::abi::encode(&value.into_tokens()))
 }

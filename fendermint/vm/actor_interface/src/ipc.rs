@@ -6,7 +6,9 @@
 // Solidity contracts during genesis.
 
 use anyhow::Context;
+use ethers::core::abi::Tokenize;
 use ethers::core::types as et;
+use ethers::core::utils::keccak256;
 use fendermint_vm_genesis::{Power, Validator};
 use fvm_shared::address::Error as AddressError;
 use fvm_shared::address::Payload;
@@ -195,6 +197,15 @@ pub fn subnet_id_to_eth(subnet_id: &SubnetID) -> Result<(u64, Vec<et::Address>),
         route.push(et::H160::from(addr.0))
     }
     Ok((subnet_id.root_id(), route))
+}
+
+/// Hash some value in the same way we'd hash it in Solidity.
+///
+/// Be careful that if we have to hash a single struct,
+/// Solidity's `abi.encode` function will treat it as a tuple,
+/// so it has to be passed as a tuple in Rust. Vectors are fine.
+pub fn abi_hash<T: Tokenize>(value: T) -> [u8; 32] {
+    keccak256(ethers::abi::encode(&value.into_tokens()))
 }
 
 pub mod gateway {
