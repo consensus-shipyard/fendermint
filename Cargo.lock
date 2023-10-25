@@ -160,9 +160,9 @@ dependencies = [
 
 [[package]]
 name = "ahash"
-version = "0.8.5"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd7d5a2cecb58716e47d67d5703a249964b14c7be1ec3cad3affc295b2d1c35d"
+checksum = "91429305e9f0a25f6205c5b8e0d2db09e0708a7a6df0f42212bb56c32c8ac97a"
 dependencies = [
  "cfg-if",
  "getrandom 0.2.10",
@@ -1375,7 +1375,7 @@ dependencies = [
  "fvm_shared",
  "hex",
  "ipc-sdk",
- "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing)",
+ "ipc_actors_abis",
  "rand 0.8.5",
  "tendermint-rpc",
  "tokio",
@@ -3056,7 +3056,7 @@ dependencies = [
  "fvm_shared",
  "hex",
  "ipc-sdk",
- "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing)",
+ "ipc_actors_abis",
  "lazy_static",
  "merkle-tree-rs",
  "paste",
@@ -3146,7 +3146,7 @@ dependencies = [
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
  "hex",
- "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing)",
+ "ipc_actors_abis",
  "libipld",
  "num-traits",
  "pin-project",
@@ -3221,7 +3221,7 @@ dependencies = [
  "fvm_shared",
  "ipc-provider",
  "ipc-sdk",
- "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing)",
+ "ipc_actors_abis",
  "num-traits",
  "serde",
  "serde_json",
@@ -4634,7 +4634,7 @@ name = "ipc-identity"
 version = "0.1.0"
 source = "git+https://github.com/consensus-shipyard/ipc.git?branch=dev#25e060715fc03859ae5db4a6d1326a6e7fdf2df0"
 dependencies = [
- "ahash 0.8.5",
+ "ahash 0.8.6",
  "anyhow",
  "argon2",
  "base64 0.21.5",
@@ -4676,7 +4676,7 @@ dependencies = [
  "hex",
  "ipc-identity",
  "ipc-sdk",
- "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev)",
+ "ipc_actors_abis",
  "log",
  "num-derive",
  "num-traits",
@@ -4709,7 +4709,7 @@ dependencies = [
  "fvm_ipld_hamt 0.6.1",
  "fvm_shared",
  "integer-encoding",
- "ipc_actors_abis 0.1.0 (git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev)",
+ "ipc_actors_abis",
  "lazy_static",
  "log",
  "num-traits",
@@ -4722,17 +4722,7 @@ dependencies = [
 [[package]]
 name = "ipc_actors_abis"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev#b1e37055cfe11f90b606ad06a056d6f306747d2c"
-dependencies = [
- "anyhow",
- "ethers",
- "fvm_shared",
-]
-
-[[package]]
-name = "ipc_actors_abis"
-version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=integration-testing#a31eabb98193ef384d134b106b8851c03aaf424b"
+source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev#7ecad9a249e9a93f5ea28dd3db1080ce5a7d6270"
 dependencies = [
  "anyhow",
  "ethers",
@@ -10668,18 +10658,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.7.13"
+version = "0.7.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ffc046c9f849405a42c87e82e2f2f861d1f0a06b855910c76c2bd1e87be900c"
+checksum = "69c48d63854f77746c68a5fbb4aa17f3997ece1cb301689a257af8cb80610d21"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.7.13"
+version = "0.7.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "246c000cfc5f942bac7ff99fde24a9ebb589d92e024bc758c6c733c15a02a73e"
+checksum = "c258c1040279e4f88763a113de72ce32dde2d50e2a94573f15dd534cea36a16d"
 dependencies = [
  "proc-macro2",
  "quote",
