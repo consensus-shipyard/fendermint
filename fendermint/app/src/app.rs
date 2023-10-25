@@ -689,6 +689,7 @@ where
                     invalid_deliver_tx(AppError::InvalidSignature, d)
                 }
                 ChainMessageApplyRet::Signed(Ok(ret)) => to_deliver_tx(ret.fvm, ret.domain_hash),
+                ChainMessageApplyRet::Ipc(ret) => to_deliver_tx(ret, None),
             },
         };
 

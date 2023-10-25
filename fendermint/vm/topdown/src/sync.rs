@@ -95,7 +95,7 @@ pub async fn launch_polling_syncer<T: ParentFinalityStateQuery + Send + Sync + '
 
     let query = Arc::new(query);
     let finality = query_starting_finality(&query, &parent_client).await?;
-    atomically(|| view_provider.set_new_finality(finality.clone())).await;
+    atomically(|| view_provider.set_new_finality(finality.clone(), None)).await;
     tracing::info!("obtained last committed finality: {finality:?}");
 
     let poll = PollingParentSyncer::new(config, view_provider, parent_client, query);
@@ -305,8 +305,24 @@ async fn get_new_parent_views(
             return Err(Error::ParentChainReorgDetected);
         }
 
+        // for `lotus`, the state at height h is only finalized at h + 1. The block hash
+        // at height h will return empty top down messages. In this case, we need to get
+        // the block hash at height h + 1 to query the top down messages.
+        let next_hash = parent_proxy
+            .get_block_hash(h + 1)
+            .await
+            .map_err(|e| Error::CannotQueryParent(e.to_string()))?;
+        if next_hash.parent_block_hash != block_hash_res.block_hash {
+            tracing::warn!(
+                "next block hash at {} is {:02x?} diff than hash: {:02x?}",
+                h + 1,
+                next_hash.parent_block_hash,
+                block_hash_res.block_hash
+            );
+            return Err(Error::ParentChainReorgDetected);
+        }
         let top_down_msgs_res = parent_proxy
-            .get_top_down_msgs_with_hash(h, &block_hash_res.block_hash)
+            .get_top_down_msgs_with_hash(h, &next_hash.block_hash)
             .await
             .map_err(|e| Error::CannotQueryParent(e.to_string()))?;
 

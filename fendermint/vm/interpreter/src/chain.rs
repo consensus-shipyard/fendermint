@@ -1,8 +1,9 @@
-use std::sync::Arc;
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 use crate::fvm::state::ipc::GatewayCaller;
+use crate::fvm::{topdown, FvmApplyRet};
 use crate::{
+    fvm::state::FvmExecState,
     fvm::FvmMessage,
     signed::{SignedMessageApplyRes, SignedMessageCheckRes, SyntheticMessage, VerifiableMessage},
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
@@ -10,7 +11,7 @@ use crate::{
 use anyhow::{anyhow, Context};
 use async_stm::atomically;
 use async_trait::async_trait;
-use fendermint_vm_actor_interface::{ipc, system};
+use fendermint_vm_actor_interface::ipc;
 use fendermint_vm_message::ipc::ParentFinality;
 use fendermint_vm_message::{
     chain::ChainMessage,
@@ -22,10 +23,11 @@ use fendermint_vm_topdown::{
     CachedFinalityProvider, IPCParentFinality, ParentFinalityProvider, ParentViewProvider, Toggle,
 };
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{BytesSer, RawBytes};
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
+use std::sync::Arc;
 
 /// A resolution pool for bottom-up and top-down checkpoints.
 pub type CheckpointPool = ResolvePool<CheckpointPoolItem>;
@@ -56,6 +58,8 @@ pub struct IllegalMessage;
 // For now this is the only option, later we can expand.
 pub enum ChainMessageApplyRet {
     Signed(SignedMessageApplyRes),
+    /// The IPC chain message execution result
+    Ipc(FvmApplyRet),
 }
 
 /// We only allow signed messages into the mempool.
@@ -167,7 +171,11 @@ where
 impl<I, DB> ExecInterpreter for ChainMessageInterpreter<I, DB>
 where
     DB: Blockstore + Clone + 'static + Send + Sync,
-    I: ExecInterpreter<Message = VerifiableMessage, DeliverOutput = SignedMessageApplyRes>,
+    I: ExecInterpreter<
+        Message = VerifiableMessage,
+        DeliverOutput = SignedMessageApplyRes,
+        State = FvmExecState<DB>,
+    >,
 {
     // The state consists of the resolver pool, which this interpreter needs, and the rest of the
     // state which the inner interpreter uses. This is a technical solution because the pool doesn't
@@ -181,7 +189,7 @@ where
 
     async fn deliver(
         &self,
-        (pool, provider, state): Self::State,
+        (pool, provider, mut state): Self::State,
         msg: Self::Message,
     ) -> anyhow::Result<(Self::State, Self::DeliverOutput)> {
         match msg {
@@ -234,54 +242,36 @@ where
                     }
 
                     // commit parent finality first
-                    let finality = IPCParentFinality {
-                        height: p.height as u64,
-                        block_hash: p.block_hash,
-                    };
-                    let msg = self
-                        .gateway_caller
-                        .commit_parent_finality_msg(finality.clone())?;
-                    let (state, ret) = self
-                        .inner
-                        .deliver(state, VerifiableMessage::NotVerify(msg))
-                        .await?;
-                    if ret.is_err() {
-                        return Err(anyhow!("cannot commit parent finality"));
-                    }
-
-                    // stash validator changes
+                    let finality = IPCParentFinality::new(p.height, p.block_hash);
+                    let (prev_height, prev_finality) = topdown::commit_finality(
+                        &self.gateway_caller,
+                        &mut state,
+                        finality.clone(),
+                        &provider,
+                    )
+                    .await?;
 
                     // error happens if we cannot get the validator set from ipc agent after retries
-                    let validator_changes = provider.validator_changes(p.height as u64).await?;
-                    let msg = self
-                        .gateway_caller
-                        .store_validator_changes_msg(validator_changes)?;
-                    let (state, ret) = self
-                        .inner
-                        .deliver(state, VerifiableMessage::NotVerify(msg))
+                    let validator_changes = provider
+                        .validator_changes_from(prev_height + 1, finality.height)
                         .await?;
-                    if ret.is_err() {
-                        return Err(anyhow!("failed to store validator changes"));
-                    }
+                    self.gateway_caller
+                        .store_validator_changes(&mut state, validator_changes)?;
 
-                    // Execute top down messages
-
-                    // error happens if we cannot get the validator set from ipc agent after retries
-                    let messages = provider
-                        .top_down_msgs(p.height as u64, &finality.block_hash)
+                    // error happens if we cannot get the cross messages from ipc agent after retries
+                    let msgs = provider
+                        .top_down_msgs_from(prev_height + 1, p.height as u64, &finality.block_hash)
                         .await?;
-                    let msg = self.gateway_caller.apply_cross_messages_msg(messages)?;
-                    let (state, ret) = self
-                        .inner
-                        .deliver(state, VerifiableMessage::NotVerify(msg))
+                    let ret = topdown::execute_topdown_msgs(&self.gateway_caller, &mut state, msgs)
                         .await?;
-                    if ret.is_err() {
-                        return Err(anyhow!("failed to apply cross messages"));
-                    }
 
-                    atomically(|| provider.set_new_finality(finality.clone())).await;
+                    atomically(|| {
+                        provider.set_new_finality(finality.clone(), prev_finality.clone())
+                    })
+                    .await;
+                    tracing::debug!("new finality updated: {:?}", finality);
 
-                    Ok(((pool, provider, state), ChainMessageApplyRet::Signed(ret)))
+                    Ok(((pool, provider, state), ChainMessageApplyRet::Ipc(ret)))
                 }
             },
         }
@@ -416,26 +406,6 @@ fn relayed_bottom_up_ckpt_to_fvm(
 
     let msg = SyntheticMessage::new(msg, &relayed.message, relayed.signature.clone())
         .context("failed to create syntetic message")?;
-
-    Ok(msg)
-}
-
-/// Encode to fvm implicit message
-pub fn encode_to_fvm_implicit(bytes: &[u8]) -> anyhow::Result<FvmMessage> {
-    let params = RawBytes::serialize(BytesSer(bytes))?;
-    let msg = FvmMessage {
-        version: 0,
-        from: system::SYSTEM_ACTOR_ADDR,
-        to: ipc::GATEWAY_ACTOR_ADDR,
-        value: TokenAmount::zero(),
-        method_num: ipc::gateway::METHOD_INVOKE_CONTRACT,
-        params,
-        // we are sending a implicit message, no need to set sequence
-        sequence: 0,
-        gas_limit: fvm_shared::BLOCK_GAS_LIMIT,
-        gas_fee_cap: TokenAmount::zero(),
-        gas_premium: TokenAmount::zero(),
-    };
 
     Ok(msg)
 }

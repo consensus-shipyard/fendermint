@@ -5,8 +5,7 @@ use anyhow::{anyhow, Context};
 use ethers::types as et;
 use ethers::{abi::Tokenize, utils::keccak256};
 
-use num_traits::Zero;
-
+use fendermint_vm_message::conv::from_fvm;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::ActorID;
 
@@ -29,9 +28,8 @@ use super::{
     fevm::{ContractCaller, MockProvider, NoRevert},
     FvmExecState,
 };
-use crate::fvm::FvmMessage;
-use fendermint_vm_actor_interface::{ipc, system};
-use fvm_ipld_encoding::{BytesSer, RawBytes};
+use crate::fvm::FvmApplyRet;
+use fendermint_vm_actor_interface::ipc;
 use fvm_shared::econ::TokenAmount;
 
 #[derive(Clone)]
@@ -49,9 +47,12 @@ impl<DB> Default for GatewayCaller<DB> {
 
 impl<DB> GatewayCaller<DB> {
     pub fn new(actor_id: ActorID) -> Self {
+        // A masked ID works for invoking the contract, but internally the EVM uses a different
+        // ID and if we used this address for anything like validating that the sender is the gateway,
+        // we'll face bitter disappointment. For that we have to use the hashed version.
         let addr = EthAddress::from_id(actor_id);
         Self {
-            addr,
+            addr: addr.into_non_masked(),
             getter: ContractCaller::new(addr, GatewayGetterFacet::new),
             router: ContractCaller::new(addr, GatewayRouterFacet::new),
         }
@@ -162,8 +163,13 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         let height = checkpoint.block_height;
         let weight = et::U256::from(validator.power.0);
 
-        let hash = abi_hash(checkpoint);
-        let signature = et::Bytes::from(sign_secp256k1(secret_key, &hash));
+        // Checkpoint has to be hashed as a tuple.
+        let hash = abi_hash((checkpoint,));
+
+        let signature = sign_secp256k1(secret_key, &hash);
+        let signature =
+            from_fvm::to_eth_signature(&signature, false).context("invalid signature")?;
+        let signature = et::Bytes::from(signature.to_vec());
 
         let tree =
             ValidatorMerkleTree::new(power_table).context("failed to construct Merkle tree")?;
@@ -189,54 +195,66 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         Ok(calldata)
     }
 
-    pub fn commit_parent_finality_msg(
+    /// Commit the parent finality to the gateway and returns the previously committed finality.
+    /// None implies there is no previously committed finality.
+    pub fn commit_parent_finality(
         &self,
-        finality: fendermint_vm_topdown::IPCParentFinality,
-    ) -> anyhow::Result<FvmMessage> {
+        state: &mut FvmExecState<DB>,
+        finality: IPCParentFinality,
+    ) -> anyhow::Result<Option<IPCParentFinality>> {
         let evm_finality = router::ParentFinality::try_from(finality)?;
-        let call = self.router.contract().commit_parent_finality(evm_finality);
-        let calldata = call
-            .calldata()
-            .ok_or_else(|| anyhow!("no calldata for commit parent finality"))?;
-
-        encode_to_fvm_implicit(calldata.as_ref())
+        let (has_committed, prev_finality) = self
+            .router
+            .call(state, |c| c.commit_parent_finality(evm_finality))?;
+        Ok(if !has_committed {
+            None
+        } else {
+            Some(IPCParentFinality::try_from(prev_finality)?)
+        })
     }
 
-    pub fn store_validator_changes_msg(
+    pub fn store_validator_changes(
         &self,
+        state: &mut FvmExecState<DB>,
         changes: Vec<StakingChangeRequest>,
-    ) -> anyhow::Result<FvmMessage> {
+    ) -> anyhow::Result<()> {
         let mut change_requests = vec![];
         for c in changes {
             change_requests.push(router::StakingChangeRequest::try_from(c)?);
         }
 
-        let call = self
-            .router
-            .contract()
-            .store_validator_changes(change_requests);
-        let calldata = call
-            .calldata()
-            .ok_or_else(|| anyhow!("no calldata for store validator changes"))?;
-
-        encode_to_fvm_implicit(calldata.as_ref())
+        self.router
+            .call(state, |c| c.store_validator_changes(change_requests))
     }
 
-    pub fn apply_cross_messages_msg(
+    /// Call this function to mint some FIL to the gateway contract
+    pub fn mint_to_gateway(
         &self,
+        state: &mut FvmExecState<DB>,
+        value: TokenAmount,
+    ) -> anyhow::Result<()> {
+        let state_tree = state.state_tree_mut();
+        state_tree.mutate_actor(ipc::GATEWAY_ACTOR_ID, |actor_state| {
+            actor_state.balance += value;
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    pub fn apply_cross_messages(
+        &self,
+        state: &mut FvmExecState<DB>,
         cross_messages: Vec<CrossMsg>,
-    ) -> anyhow::Result<FvmMessage> {
-        let mut messages = vec![];
-        for c in cross_messages {
-            messages.push(router::CrossMsg::try_from(c)?);
-        }
-
-        let call = self.router.contract().apply_cross_messages(messages);
-        let calldata = call
-            .calldata()
-            .ok_or_else(|| anyhow!("no calldata for apply cross messages"))?;
-
-        encode_to_fvm_implicit(calldata.as_ref())
+    ) -> anyhow::Result<FvmApplyRet> {
+        let messages = cross_messages
+            .into_iter()
+            .map(router::CrossMsg::try_from)
+            .collect::<Result<Vec<_>, _>>()
+            .context("failed to convert cross messages")?;
+        let r = self
+            .router
+            .call_with_return(state, |c| c.apply_cross_messages(messages))?;
+        Ok(r.into_return())
     }
 
     pub fn get_latest_parent_finality(
@@ -251,26 +269,9 @@ impl<DB: Blockstore> GatewayCaller<DB> {
 }
 
 /// Hash some value in the same way we'd hash it in Solidity.
-fn abi_hash<T: Tokenize>(value: T) -> [u8; 32] {
+///
+/// Be careful that if we have to hash a single struct, Solidity's `abi.encode`
+/// function will treat it as a tuple.
+pub fn abi_hash<T: Tokenize>(value: T) -> [u8; 32] {
     keccak256(ethers::abi::encode(&value.into_tokens()))
-}
-
-/// Encode to fvm implicit message
-fn encode_to_fvm_implicit(bytes: &[u8]) -> anyhow::Result<FvmMessage> {
-    let params = RawBytes::serialize(BytesSer(bytes))?;
-    let msg = FvmMessage {
-        version: 0,
-        from: system::SYSTEM_ACTOR_ADDR,
-        to: ipc::GATEWAY_ACTOR_ADDR,
-        value: TokenAmount::zero(),
-        method_num: ipc::gateway::METHOD_INVOKE_CONTRACT,
-        params,
-        // we are sending a implicit message, no need to set sequence
-        sequence: 0,
-        gas_limit: fvm_shared::BLOCK_GAS_LIMIT,
-        gas_fee_cap: TokenAmount::zero(),
-        gas_premium: TokenAmount::zero(),
-    };
-
-    Ok(msg)
 }

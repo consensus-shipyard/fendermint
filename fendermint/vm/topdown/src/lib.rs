@@ -12,6 +12,7 @@ mod toggle;
 
 use async_stm::Stm;
 use async_trait::async_trait;
+use fvm_shared::clock::ChainEpoch;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::staking::StakingChangeRequest;
 use serde::{Deserialize, Serialize};
@@ -51,17 +52,41 @@ pub struct IPCParentFinality {
     pub block_hash: BlockHash,
 }
 
+impl IPCParentFinality {
+    pub fn new(height: ChainEpoch, hash: BlockHash) -> Self {
+        Self {
+            height: height as BlockHeight,
+            block_hash: hash,
+        }
+    }
+}
+
 #[async_trait]
 pub trait ParentViewProvider {
+    /// Obtain the genesis epoch of the current subnet in the parent
+    fn genesis_epoch(&self) -> anyhow::Result<BlockHeight>;
+    /// Get the validator changes from and to height.
+    async fn validator_changes_from(
+        &self,
+        from: BlockHeight,
+        to: BlockHeight,
+    ) -> anyhow::Result<Vec<StakingChangeRequest>>;
     /// Get the validator changes at height.
     async fn validator_changes(
         &self,
         height: BlockHeight,
     ) -> anyhow::Result<Vec<StakingChangeRequest>>;
-    /// Get the top down messages at height
+    /// Get the top down messages at height.
     async fn top_down_msgs(
         &self,
         height: BlockHeight,
+        block_hash: &BlockHash,
+    ) -> anyhow::Result<Vec<CrossMsg>>;
+    /// Get the top down messages from and to height.
+    async fn top_down_msgs_from(
+        &self,
+        from: BlockHeight,
+        to: BlockHeight,
         block_hash: &BlockHash,
     ) -> anyhow::Result<Vec<CrossMsg>>;
 }
@@ -72,5 +97,9 @@ pub trait ParentFinalityProvider: ParentViewProvider {
     /// Check if the target proposal is valid
     fn check_proposal(&self, proposal: &IPCParentFinality) -> Stm<bool>;
     /// Called when finality is committed
-    fn set_new_finality(&self, finality: IPCParentFinality) -> Stm<()>;
+    fn set_new_finality(
+        &self,
+        finality: IPCParentFinality,
+        previous_finality: Option<IPCParentFinality>,
+    ) -> Stm<()>;
 }
