@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use anyhow::{anyhow, Context};
 use fendermint_crypto::PublicKey;
+use fendermint_vm_actor_interface::ipc::AbiHash;
 use fendermint_vm_genesis::Collateral;
 use fendermint_vm_genesis::PowerScale;
 use fendermint_vm_message::conv::from_eth;
@@ -74,9 +75,13 @@ where
                 .context("failed to apply validator changes")?;
 
             // Retrieve the bottom-up messages so we can put their hash into the checkpoint.
-            let cross_messages_hash = gateway
-                .bottom_up_msgs_hash(state, height.value())
-                .context("failed to retrieve bottom-up messages hash")?;
+            let cross_msgs = gateway
+                .bottom_up_msgs(state, height.value())
+                .context("failed to retrieve bottom-up messages")?;
+
+            // TODO: circ_supply
+
+            let cross_messages_hash = cross_msgs.abi_hash();
 
             // Construct checkpoint.
             let checkpoint = BottomUpCheckpoint {

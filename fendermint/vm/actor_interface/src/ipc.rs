@@ -208,6 +208,38 @@ pub fn abi_hash<T: Tokenize>(value: T) -> [u8; 32] {
     keccak256(ethers::abi::encode(&value.into_tokens()))
 }
 
+/// Types where we need to match the way we sign them in Solidity and Rust.
+pub trait AbiHash {
+    /// Hash the item the way we would in Solidity.
+    fn abi_hash(self) -> [u8; 32];
+}
+
+macro_rules! abi_hash {
+    (struct $name:ty) => {
+        // Structs have to be hashed as a tuple.
+        impl AbiHash for $name {
+            fn abi_hash(self) -> [u8; 32] {
+                abi_hash((self,))
+            }
+        }
+    };
+
+    (Vec < $name:ty >) => {
+        // Vectors can be hashed as-is
+        impl AbiHash for Vec<$name> {
+            fn abi_hash(self) -> [u8; 32] {
+                abi_hash(self)
+            }
+        }
+    };
+}
+
+abi_hash!(struct ipc_actors_abis::gateway_router_facet::BottomUpCheckpoint);
+abi_hash!(struct ipc_actors_abis::subnet_actor_manager_facet::BottomUpCheckpoint);
+abi_hash!(Vec<ipc_actors_abis::gateway_getter_facet::CrossMsg>);
+abi_hash!(Vec<ipc_actors_abis::subnet_actor_manager_facet::CrossMsg>);
+abi_hash!(Vec<ipc_actors_abis::subnet_actor_getter_facet::CrossMsg>);
+
 pub mod gateway {
     use super::subnet_id_to_eth;
     use ethers::contract::{EthAbiCodec, EthAbiType};

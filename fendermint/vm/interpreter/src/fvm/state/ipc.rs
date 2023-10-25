@@ -11,7 +11,7 @@ use fvm_shared::ActorID;
 use fendermint_crypto::SecretKey;
 use fendermint_vm_actor_interface::{
     eam::EthAddress,
-    ipc::{abi_hash, ValidatorMerkleTree, GATEWAY_ACTOR_ID},
+    ipc::{AbiHash, ValidatorMerkleTree, GATEWAY_ACTOR_ID},
 };
 use fendermint_vm_genesis::{Power, Validator};
 use fendermint_vm_message::signed::sign_secp256k1;
@@ -95,16 +95,6 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         self.getter.call(state, |c| c.bottom_up_messages(height))
     }
 
-    /// Fetch the bottom-up messages enqueued in a given checkpoint.
-    pub fn bottom_up_msgs_hash(
-        &self,
-        state: &mut FvmExecState<DB>,
-        height: u64,
-    ) -> anyhow::Result<[u8; 32]> {
-        let msgs = self.bottom_up_msgs(state, height)?;
-        Ok(abi_hash(msgs))
-    }
-
     /// Insert a new checkpoint at the period boundary.
     pub fn create_bottom_up_checkpoint(
         &self,
@@ -162,8 +152,7 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         let height = checkpoint.block_height;
         let weight = et::U256::from(validator.power.0);
 
-        // Checkpoint has to be hashed as a tuple.
-        let hash = abi_hash((checkpoint,));
+        let hash = checkpoint.abi_hash();
 
         let signature = sign_secp256k1(secret_key, &hash);
         let signature =
