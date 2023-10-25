@@ -23,7 +23,7 @@ You'll see that by the end of the output, this command should output the network
 ```console
 [cargo-make] INFO - Running Task: cometbft-wait
 [cargo-make] INFO - Running Task: cometbft-node-id
-2b23b8298dff7711819172252f9df3c84531b1d9@172.26.0.2:26650
+2b23b8298dff7711819172252f9df3c84531b1d9@193.29.200.123:26656
 [cargo-make] INFO - Build Done in 13.38 seconds.
 ```
 
