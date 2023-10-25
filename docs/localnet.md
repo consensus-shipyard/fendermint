@@ -20,7 +20,7 @@ On Linux (links and instructions for Ubuntu):
 ## Build Fendermint
 
 ```bash
-make actors-bundle build docker-build
+make actor-bundle build docker-build
 ```
 
 ## Single node deployment
