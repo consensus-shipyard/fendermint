@@ -22,6 +22,7 @@ use fendermint_vm_genesis::{Power, Validator, ValidatorKey};
 use ipc_actors_abis::gateway_getter_facet as getter;
 use ipc_actors_abis::gateway_router_facet as router;
 
+use super::state::ipc::tokens_to_burn;
 use super::{
     broadcast::Broadcaster,
     state::{ipc::GatewayCaller, FvmExecState},
@@ -79,7 +80,13 @@ where
                 .bottom_up_msgs(state, height.value())
                 .context("failed to retrieve bottom-up messages")?;
 
-            // TODO: circ_supply
+            // Sum up the value leaving the subnet as part of the bottom-up messages.
+            let burnt_tokens = tokens_to_burn(&cross_msgs);
+
+            // TODO: Should we actually take this from the gateway balance? Or did it already get burnt?
+            state.update_circ_supply(|circ_supply| {
+                *circ_supply -= burnt_tokens;
+            });
 
             let cross_messages_hash = cross_msgs.abi_hash();
 

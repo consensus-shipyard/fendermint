@@ -4,7 +4,7 @@
 use anyhow::{anyhow, Context};
 use ethers::types as et;
 
-use fendermint_vm_message::conv::from_fvm;
+use fendermint_vm_message::conv::{from_eth, from_fvm};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::ActorID;
 
@@ -16,8 +16,8 @@ use fendermint_vm_actor_interface::{
 use fendermint_vm_genesis::{Power, Validator};
 use fendermint_vm_message::signed::sign_secp256k1;
 use fendermint_vm_topdown::IPCParentFinality;
-use ipc_actors_abis::gateway_getter_facet as getter;
 use ipc_actors_abis::gateway_getter_facet::GatewayGetterFacet;
+use ipc_actors_abis::gateway_getter_facet::{self as getter, gateway_getter_facet};
 use ipc_actors_abis::gateway_router_facet as router;
 use ipc_actors_abis::gateway_router_facet::GatewayRouterFacet;
 use ipc_sdk::cross::CrossMsg;
@@ -256,4 +256,28 @@ impl<DB: Blockstore> GatewayCaller<DB> {
             .call(state, |c| c.get_latest_parent_finality())?;
         Ok(IPCParentFinality::try_from(r)?)
     }
+}
+
+/// Total amount of tokens to mint as a result of top-down messages arriving at the subnet.
+///
+/// Fees are ignored, which suggests that they will be paid similarly to gas,
+/// from the balance of the sender already present in the currents subnet.
+pub fn tokens_to_mint(msgs: &[ipc_sdk::cross::CrossMsg]) -> TokenAmount {
+    msgs.iter()
+        .fold(TokenAmount::from_atto(0), |mut total, msg| {
+            total += &msg.msg.value;
+            total
+        })
+}
+
+/// Total amount of tokens to burn as a result of bottom-up messages leaving the subnet.
+///
+/// Fees are ignored, which suggests that they will be paid similarly to gas,
+/// from the balance of the sender already present in the parent subnet.
+pub fn tokens_to_burn(msgs: &[gateway_getter_facet::CrossMsg]) -> TokenAmount {
+    msgs.iter()
+        .fold(TokenAmount::from_atto(0), |mut total, msg| {
+            total += from_eth::to_fvm_tokens(&msg.message.value);
+            total
+        })
 }
