@@ -81,6 +81,9 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
             );
             v.append(&mut r);
         }
+
+        v.sort_by(|a, b| a.configuration_number.cmp(&b.configuration_number));
+
         Ok(v)
     }
 
