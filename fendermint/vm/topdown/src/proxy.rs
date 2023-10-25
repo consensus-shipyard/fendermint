@@ -98,12 +98,14 @@ impl ParentQueryProxy for IPCProviderProxy {
         &self,
         height: BlockHeight,
     ) -> anyhow::Result<TopDownQueryPayload<Vec<StakingChangeRequest>>> {
-        let mut v = self.ipc_provider
+        let mut v = self
+            .ipc_provider
             .get_validator_changeset(&self.child_subnet, height as ChainEpoch)
             .await?;
 
         // sort ascending, we dont assume the changes are ordered
-        v.value.sort_by(|a, b| a.configuration_number.cmp(&b.configuration_number));
+        v.value
+            .sort_by(|a, b| a.configuration_number.cmp(&b.configuration_number));
 
         Ok(v)
     }
