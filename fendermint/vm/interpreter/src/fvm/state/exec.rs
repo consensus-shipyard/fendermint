@@ -80,6 +80,7 @@ where
     /// execution interpreter without having to add yet another piece to track at the app level.
     block_hash: Option<BlockHash>,
 
+    /// State of parameters that are outside the control of the FVM but can change and need to be persisted.
     params: FvmUpdatableParams,
 
     /// Indicate whether the parameters have been updated.
@@ -223,6 +224,23 @@ where
         }
 
         Ok(emitters)
+    }
+
+    /// Update the circulating supply, effective from the next block.
+    pub fn update_circ_supply<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut TokenAmount),
+    {
+        self.update_params(|p| f(&mut p.circ_supply))
+    }
+
+    /// Update the parameters and mark them as dirty.
+    fn update_params<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut FvmUpdatableParams),
+    {
+        f(&mut self.params);
+        self.params_dirty = true;
     }
 }
 

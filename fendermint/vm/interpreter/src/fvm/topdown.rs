@@ -50,8 +50,12 @@ where
     let total_value: TokenAmount = messages.iter().map(|a| a.msg.value.clone()).sum();
 
     gateway_caller
-        .mint_to_gateway(state, total_value)
+        .mint_to_gateway(state, total_value.clone())
         .context("failed to mint to gateway")?;
+
+    state.update_circ_supply(|circ_supply| {
+        *circ_supply += total_value;
+    });
 
     gateway_caller.apply_cross_messages(state, messages)
 }
