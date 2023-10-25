@@ -14,7 +14,7 @@ default_to_workspace = false
 
 [env]
 # General network-specific parameters
-SUBNET_ID = { value = "root", condition = { env_not_set = ["SUBNET_ID"] }}
+SUBNET_ID = { value = "/r0", condition = { env_not_set = ["SUBNET_ID"] }}
 BALANCE = { value = "1000", condition = { env_not_set = ["BALANCE"] }}
 BASE_FEE = { value = "1000", condition = { env_not_set = ["BASE_FEE"] }}
 TIMESTAMP = { value = "1680101412", condition = { env_not_set = ["TIMESTAMP"] }}
@@ -32,6 +32,8 @@ PARENT_REGISTRY = { value = "0x6A4884D2B6A597792dC68014D4B7C117cca5668e", condit
 NETWORK_TYPE = { value = "test", condition = { env_not_set = ["NETWORK_TYPE"] } }
 VALIDATOR_PRIV_KEY = { value = "~/.ipc/priv.key", condition = { env_not_set = ["VALIDATOR_PRIV_KEY"] } }
 TOPDOWN_CHAIN_HEAD_DELAY = { value = "10", condition = { env_not_set = ["TOPDOWN_CHAIN_HEAD_DELAY"] } }
+# Comma-separated list of bootstrap nodes to be used by the CometBFT node.
+BOOTSTRAPS = { value = "", condition = { env_not_set = ["BOOTSTRAPS"] } }
 
 # Deployment-related
 BASE_DIR="${HOME}/.ipc/${SUBNET_ID}"

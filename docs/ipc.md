@@ -35,6 +35,7 @@ cargo make --makefile infra/Makefile.toml bootstrap-id
 `cargo-make bootstrap` supports the following environment variables to customize the deployment:
 - `CMT_P2P_HOST_PORT` (optional): Specifies the listening port for the bootstraps P2p interface in the localhost for CometBFT. This is the address that needs to be shared with other peers if they want to use the bootstrap as a `seed` to discover connections.
 - `CMT_RPC_HOST_PORT` (optional): Specifies the listening port in the localhost for CometBFT's RPC.
+- `NODE_NAME` (optional): Node name information to attach to the containers of the deployment. This will be needed to deploy more than one bootstrap in the same local environment.
 
 Finally, to remove the bootstrap you can run:
 ```
@@ -55,7 +56,7 @@ cargo make --makefile infra/Makefile.toml \
     -e ETHAPI_HOST_PORT=<ETH_RPC_PORT> \
     -e BOOTSTRAPS=<BOOTSTRAP_ENDPOINT>
     -e PARENT_REGISTRY=<PARENT_REGISTRY_CONTRACT_ADDR> \
-    -e PARENT_GATEAY=<GATEWAY__REGISTRY_CONTRACT_ADDR> \
+    -e PARENT_GATEWAY=<GATEWAY_REGISTRY_CONTRACT_ADDR> \
     child-validator
 ```
 This command will run the infrastructure for a Fendermint validator in the child subnet. It will generate the genesis of the subnet from the information in its parent, and will run the validator's infrastructure with the specific configuration passed in the command.
