@@ -1,7 +1,7 @@
-use std::sync::Arc;
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 use crate::fvm::state::ipc::GatewayCaller;
+use crate::fvm::{topdown, FvmApplyRet};
 use crate::{
     fvm::state::FvmExecState,
     fvm::FvmMessage,
@@ -26,10 +26,8 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
-use ipc_sdk::cross::CrossMsg;
-use ipc_sdk::staking::StakingChangeRequest;
 use num_traits::Zero;
+use std::sync::Arc;
 
 /// A resolution pool for bottom-up and top-down checkpoints.
 pub type CheckpointPool = ResolvePool<CheckpointPoolItem>;
@@ -60,6 +58,8 @@ pub struct IllegalMessage;
 // For now this is the only option, later we can expand.
 pub enum ChainMessageApplyRet {
     Signed(SignedMessageApplyRes),
+    /// The IPC chain message execution result
+    Ipc(FvmApplyRet),
 }
 
 /// We only allow signed messages into the mempool.
@@ -189,7 +189,7 @@ where
 
     async fn deliver(
         &self,
-        (pool, provider, state): Self::State,
+        (pool, provider, mut state): Self::State,
         msg: Self::Message,
     ) -> anyhow::Result<(Self::State, Self::DeliverOutput)> {
         match msg {
@@ -242,37 +242,36 @@ where
                     }
 
                     // commit parent finality first
-                    let finality = IPCParentFinality {
-                        height: p.height as u64,
-                        block_hash: p.block_hash,
-                    };
-
-                    let (state, _, (prev_height, prev_finality)) = self
-                        .commit_finality(state, &provider, finality.clone())
-                        .await?;
-                    tracing::debug!("commit finality parsed: prev_height {prev_height}, prev_finality: {prev_finality:?}");
+                    let finality = IPCParentFinality::new(p.height, p.block_hash);
+                    let (prev_height, prev_finality) = topdown::commit_finality(
+                        &self.gateway_caller,
+                        &mut state,
+                        finality.clone(),
+                        &provider,
+                    )
+                    .await?;
 
                     // error happens if we cannot get the validator set from ipc agent after retries
                     let validator_changes = provider
-                        .validator_changes_from(prev_height + 1, p.height as u64)
+                        .validator_changes_from(prev_height + 1, finality.height)
                         .await?;
-                    let (state, _, _) = self
-                        .store_validator_changes(state, validator_changes)
-                        .await?;
+                    self.gateway_caller
+                        .store_validator_changes(&mut state, validator_changes)?;
 
                     // error happens if we cannot get the cross messages from ipc agent after retries
-                    let messages = provider
+                    let msgs = provider
                         .top_down_msgs_from(prev_height + 1, p.height as u64, &finality.block_hash)
                         .await?;
-                    let (state, ret, _) = self.execute_topdown_msgs(state, messages).await?;
+                    let ret = topdown::execute_topdown_msgs(&self.gateway_caller, &mut state, msgs)
+                        .await?;
 
                     atomically(|| {
                         provider.set_new_finality(finality.clone(), prev_finality.clone())
                     })
                     .await;
-                    tracing::debug!("new finality updated in parent provider: {finality:?}");
+                    tracing::debug!("new finality updated: {:?}", finality);
 
-                    Ok(((pool, provider, state), ChainMessageApplyRet::Signed(ret)))
+                    Ok(((pool, provider, state), ChainMessageApplyRet::Ipc(ret)))
                 }
             },
         }
@@ -292,90 +291,6 @@ where
     ) -> anyhow::Result<(Self::State, Self::EndOutput)> {
         let (state, out) = self.inner.end(state).await?;
         Ok(((pool, provider, state), out))
-    }
-}
-
-/// The util struct that holds the top down execution result.
-type TopdownExecutionResult<T, DB> = (FvmExecState<DB>, SignedMessageApplyRes, T);
-type CommitFinalityResult<DB> = TopdownExecutionResult<(u64, Option<IPCParentFinality>), DB>;
-type EmptyResult<DB> = TopdownExecutionResult<(), DB>;
-
-impl<I, DB> ChainMessageInterpreter<I, DB>
-where
-    DB: Blockstore + Clone + 'static + Send + Sync,
-    I: ExecInterpreter<
-        Message = VerifiableMessage,
-        DeliverOutput = SignedMessageApplyRes,
-        State = FvmExecState<DB>,
-    >,
-{
-    /// Commit the top down parent finality by calling the gateway contract method. Returns the previous
-    /// committed top down parent finality height and its corresponding finality. If there were no
-    /// previously committed finality, it would return the genesis epoch and None for finality.
-    async fn commit_finality(
-        &self,
-        state: FvmExecState<DB>,
-        provider: &TopDownFinalityProvider,
-        finality: IPCParentFinality,
-    ) -> anyhow::Result<CommitFinalityResult<DB>> {
-        let msg = self.gateway_caller.commit_parent_finality_msg(finality)?;
-        let (state, ret) = self
-            .inner
-            .deliver(state, VerifiableMessage::NotVerify(msg))
-            .await?;
-        if is_error(&ret) {
-            return Err(anyhow!("cannot commit parent finality"));
-        }
-        let return_data = if let Ok(inner) = &ret {
-            inner.fvm.apply_ret.msg_receipt.return_data.clone()
-        } else {
-            unreachable!()
-        };
-        tracing::debug!("commit finality return data: {:?}", return_data);
-
-        let r = derive_previous_height(&self.gateway_caller, return_data, provider)?;
-        Ok((state, ret, r))
-    }
-
-    /// Store the validator changes into the child gateway contract.
-    async fn store_validator_changes(
-        &self,
-        state: FvmExecState<DB>,
-        changes: Vec<StakingChangeRequest>,
-    ) -> anyhow::Result<EmptyResult<DB>> {
-        tracing::debug!("validator changes to stash: {changes:?}");
-        let msg = self.gateway_caller.store_validator_changes_msg(changes)?;
-        let (state, ret) = self
-            .inner
-            .deliver(state, VerifiableMessage::NotVerify(msg))
-            .await?;
-        if is_error(&ret) {
-            return Err(anyhow!("failed to store validator changes"));
-        }
-        tracing::debug!("validator changes stashed");
-
-        Ok((state, ret, ()))
-    }
-
-    /// Executes the topdown messages in the child gateway contract.
-    async fn execute_topdown_msgs(
-        &self,
-        mut state: FvmExecState<DB>,
-        msgs: Vec<CrossMsg>,
-    ) -> anyhow::Result<EmptyResult<DB>> {
-        let total_value: TokenAmount = msgs.iter().map(|a| a.msg.value.clone()).sum();
-        self.gateway_caller
-            .mint_to_gateway(&mut state, total_value)?;
-
-        tracing::debug!("top down messages to execute: {msgs:?}");
-        let msg = self.gateway_caller.apply_cross_messages_msg(msgs)?;
-        let (state, ret) = self
-            .inner
-            .deliver(state, VerifiableMessage::NotVerify(msg))
-            .await?;
-        tracing::debug!("top down messages executed");
-
-        Ok((state, ret, ()))
     }
 }
 
@@ -493,26 +408,4 @@ fn relayed_bottom_up_ckpt_to_fvm(
         .context("failed to create syntetic message")?;
 
     Ok(msg)
-}
-
-fn is_error(ret: &SignedMessageApplyRes) -> bool {
-    if let Ok(inner) = ret {
-        inner.fvm.apply_ret.msg_receipt.exit_code != ExitCode::OK
-    } else {
-        true
-    }
-}
-
-/// Derive the previous committed parent finality height
-pub fn derive_previous_height<DB: Blockstore>(
-    gateway: &GatewayCaller<DB>,
-    bytes: RawBytes,
-    provider: &TopDownFinalityProvider,
-) -> anyhow::Result<(u64, Option<IPCParentFinality>)> {
-    let (has_committed, prev_finality) = gateway.decode_commit_parent_finality_return(bytes)?;
-    Ok(if !has_committed {
-        (provider.genesis_epoch()?, None)
-    } else {
-        (prev_finality.height, Some(prev_finality))
-    })
 }

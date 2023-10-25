@@ -7,8 +7,6 @@ use ethers::contract::decode_function_data;
 use ethers::types as et;
 use ethers::{abi::Tokenize, utils::keccak256};
 
-use num_traits::Zero;
-
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::ActorID;
 
@@ -31,9 +29,9 @@ use super::{
     fevm::{ContractCaller, MockProvider, NoRevert},
     FvmExecState,
 };
-use crate::fvm::FvmMessage;
-use fendermint_vm_actor_interface::{ipc, system};
-use fvm_ipld_encoding::{BytesDe, BytesSer, RawBytes};
+use crate::fvm::FvmApplyRet;
+use fendermint_vm_actor_interface::ipc;
+use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::econ::TokenAmount;
 
 #[derive(Clone)]
@@ -191,19 +189,6 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         Ok(calldata)
     }
 
-    pub fn commit_parent_finality_msg(
-        &self,
-        finality: fendermint_vm_topdown::IPCParentFinality,
-    ) -> anyhow::Result<FvmMessage> {
-        let evm_finality = router::ParentFinality::try_from(finality)?;
-        let call = self.router.contract().commit_parent_finality(evm_finality);
-        let calldata = call
-            .calldata()
-            .ok_or_else(|| anyhow!("no calldata for commit parent finality"))?;
-
-        encode_to_fvm_implicit(calldata.as_ref())
-    }
-
     pub fn decode_commit_parent_finality_return(
         &self,
         bytes: RawBytes,
@@ -212,12 +197,12 @@ impl<DB: Blockstore> GatewayCaller<DB> {
             .deserialize::<BytesDe>()
             .context("failed to deserialize return data")?;
 
-        let function = router::GATEWAYROUTERFACET_ABI
+        let function = self.router.contract().abi()
             .functions
             .get("commitParentFinality")
             .ok_or_else(|| anyhow!("broken abi"))?
             .get(0)
-            .ok_or_else(|| anyhow!("function not found, abi wrong?"))?;
+            .ok_or_else(|| anyhow!("function commitParentFinality not found, abi wrong?"))?;
 
         if let Token::Tuple(mut tuple) = decode_function_data(function, return_data.0, false)? {
             tracing::debug!("tuple received: {tuple:?}");
@@ -232,24 +217,38 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         }
     }
 
-    pub fn store_validator_changes_msg(
+    /// Commit the parent finality to the gateway and returns the previously committed finality.
+    /// None implies there is no previously committed finality.
+    pub fn commit_parent_finality(
         &self,
+        state: &mut FvmExecState<DB>,
+        finality: IPCParentFinality,
+    ) -> anyhow::Result<Option<IPCParentFinality>> {
+        let evm_finality = router::ParentFinality::try_from(finality)?;
+        let (has_committed, prev_finality) = self
+            .router
+            .call(state, |c| c.commit_parent_finality(evm_finality))?;
+        Ok(if !has_committed {
+            None
+        } else {
+            Some(IPCParentFinality::try_from(prev_finality)?)
+        })
+    }
+
+    pub fn store_validator_changes(
+        &self,
+        state: &mut FvmExecState<DB>,
         changes: Vec<StakingChangeRequest>,
-    ) -> anyhow::Result<FvmMessage> {
+    ) -> anyhow::Result<()> {
         let mut change_requests = vec![];
         for c in changes {
             change_requests.push(router::StakingChangeRequest::try_from(c)?);
         }
 
-        let call = self
-            .router
-            .contract()
-            .store_validator_changes(change_requests);
-        let calldata = call
-            .calldata()
-            .ok_or_else(|| anyhow!("no calldata for store validator changes"))?;
+        self.router
+            .call(state, |c| c.store_validator_changes(change_requests))?;
 
-        encode_to_fvm_implicit(calldata.as_ref())
+        Ok(())
     }
 
     /// Call this function to mint some FIL to the gateway contract
@@ -266,21 +265,19 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         Ok(())
     }
 
-    pub fn apply_cross_messages_msg(
+    pub fn apply_cross_messages(
         &self,
+        state: &mut FvmExecState<DB>,
         cross_messages: Vec<CrossMsg>,
-    ) -> anyhow::Result<FvmMessage> {
-        let mut messages = vec![];
-        for c in cross_messages {
-            messages.push(router::CrossMsg::try_from(c)?);
-        }
-
-        let call = self.router.contract().apply_cross_messages(messages);
-        let calldata = call
-            .calldata()
-            .ok_or_else(|| anyhow!("no calldata for apply cross messages"))?;
-
-        encode_to_fvm_implicit(calldata.as_ref())
+    ) -> anyhow::Result<FvmApplyRet> {
+        let messages = cross_messages
+            .into_iter()
+            .map(router::CrossMsg::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+        let r = self
+            .router
+            .call_with_return(state, |c| c.apply_cross_messages(messages))?;
+        Ok(r.into_return())
     }
 
     pub fn get_latest_parent_finality(
@@ -297,24 +294,4 @@ impl<DB: Blockstore> GatewayCaller<DB> {
 /// Hash some value in the same way we'd hash it in Solidity.
 fn abi_hash<T: Tokenize>(value: T) -> [u8; 32] {
     keccak256(ethers::abi::encode(&value.into_tokens()))
-}
-
-/// Encode to fvm implicit message
-fn encode_to_fvm_implicit(bytes: &[u8]) -> anyhow::Result<FvmMessage> {
-    let params = RawBytes::serialize(BytesSer(bytes))?;
-    let msg = FvmMessage {
-        version: 0,
-        from: system::SYSTEM_ACTOR_ADDR,
-        to: ipc::GATEWAY_ACTOR_ADDR,
-        value: TokenAmount::zero(),
-        method_num: ipc::gateway::METHOD_INVOKE_CONTRACT,
-        params,
-        // we are sending a implicit message, no need to set sequence
-        sequence: 0,
-        gas_limit: fvm_shared::BLOCK_GAS_LIMIT,
-        gas_fee_cap: TokenAmount::zero(),
-        gas_premium: TokenAmount::zero(),
-    };
-
-    Ok(msg)
 }

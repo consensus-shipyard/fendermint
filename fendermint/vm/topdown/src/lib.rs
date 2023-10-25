@@ -12,6 +12,7 @@ mod toggle;
 
 use async_stm::Stm;
 use async_trait::async_trait;
+use fvm_shared::clock::ChainEpoch;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::staking::StakingChangeRequest;
 use serde::{Deserialize, Serialize};
@@ -49,6 +50,15 @@ pub struct IPCParentFinality {
     /// The block hash. For FVM, it is a Cid. For Evm, it is bytes32 as one can now potentially
     /// deploy a subnet on EVM.
     pub block_hash: BlockHash,
+}
+
+impl IPCParentFinality {
+    pub fn new(height: ChainEpoch, hash: BlockHash) -> Self {
+        Self {
+            height: height as BlockHeight,
+            block_hash: hash,
+        }
+    }
 }
 
 #[async_trait]
