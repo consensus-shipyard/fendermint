@@ -5,6 +5,7 @@ use std::any::type_name;
 use std::fmt::Debug;
 use std::{marker::PhantomData, sync::Arc};
 
+use crate::fvm::FvmApplyRet;
 use anyhow::{anyhow, bail, Context};
 use ethers::abi::{AbiDecode, AbiEncode, Detokenize};
 use ethers::core::types as et;
@@ -25,6 +26,7 @@ pub type MockContractCall<T> = ethers::prelude::ContractCall<MockProvider, T>;
 /// Result of trying to decode the data returned in failures as reverts.
 ///
 /// The `E` type is supposed to be the enum unifying all errors that the contract can emit.
+#[derive(Clone)]
 pub enum ContractError<E> {
     /// The contract reverted with one of the expected custom errors.
     Revert(E),
@@ -33,10 +35,11 @@ pub enum ContractError<E> {
 }
 
 /// Error returned by calling a contract.
+#[derive(Clone, Debug)]
 pub struct CallError<E> {
-    exit_code: ExitCode,
-    failure_info: Option<ApplyFailure>,
-    error: ContractError<E>,
+    pub exit_code: ExitCode,
+    pub failure_info: Option<ApplyFailure>,
+    pub error: ContractError<E>,
 }
 
 impl<E> std::fmt::Debug for ContractError<E>
@@ -53,6 +56,33 @@ where
         }
     }
 }
+
+pub struct ContractCallerReturn<T> {
+    ret: FvmApplyRet,
+    call: MockContractCall<T>,
+}
+
+impl<T: Detokenize> ContractCallerReturn<T> {
+    pub fn into_decoded(self) -> anyhow::Result<T> {
+        let data = self
+            .ret
+            .apply_ret
+            .msg_receipt
+            .return_data
+            .deserialize::<BytesDe>()
+            .context("failed to deserialize return data")?;
+
+        let value = decode_function_data(&self.call.function, data.0, false)
+            .context("failed to decode bytes")?;
+        Ok(value)
+    }
+
+    pub fn into_return(self) -> FvmApplyRet {
+        self.ret
+    }
+}
+
+pub type ContractResult<T, E> = Result<T, CallError<E>>;
 
 /// Type we can use if a contract does not return revert errors, e.g. because it's all read-only views.
 #[derive(Clone)]
@@ -146,7 +176,23 @@ where
         F: FnOnce(&C) -> MockContractCall<T>,
         T: Detokenize,
     {
-        match self.try_call(state, f)? {
+        self.call_with_return(state, f)?.into_decoded()
+    }
+
+    /// Call an EVM method implicitly to read its raw return value.
+    ///
+    /// Returns an error if the return code shows is not successful;
+    /// intended to be used with methods that are expected succeed.
+    pub fn call_with_return<T, F>(
+        &self,
+        state: &mut FvmExecState<DB>,
+        f: F,
+    ) -> anyhow::Result<ContractCallerReturn<T>>
+    where
+        F: FnOnce(&C) -> MockContractCall<T>,
+        T: Detokenize,
+    {
+        match self.try_call_with_ret(state, f)? {
             Ok(value) => Ok(value),
             Err(CallError {
                 exit_code,
@@ -172,7 +218,26 @@ where
         &self,
         state: &mut FvmExecState<DB>,
         f: F,
-    ) -> anyhow::Result<Result<T, CallError<E>>>
+    ) -> anyhow::Result<ContractResult<T, E>>
+    where
+        F: FnOnce(&C) -> MockContractCall<T>,
+        T: Detokenize,
+    {
+        Ok(match self.try_call_with_ret(state, f)? {
+            Ok(r) => Ok(r.into_decoded()?),
+            Err(e) => Err(e),
+        })
+    }
+
+    /// Call an EVM method implicitly to read its return value and its original apply return.
+    ///
+    /// Returns either the result or the exit code if it's not successful;
+    /// intended to be used with methods that are expected to fail under certain conditions.
+    pub fn try_call_with_ret<T, F>(
+        &self,
+        state: &mut FvmExecState<DB>,
+        f: F,
+    ) -> anyhow::Result<ContractResult<ContractCallerReturn<T>, E>>
     where
         F: FnOnce(&C) -> MockContractCall<T>,
         T: Detokenize,
@@ -208,7 +273,7 @@ where
         };
 
         //eprintln!("\nCALLING FVM: {msg:?}");
-        let (ret, _) = state.execute_implicit(msg).context("failed to call FEVM")?;
+        let (ret, emitters) = state.execute_implicit(msg).context("failed to call FEVM")?;
         //eprintln!("\nRESULT FROM FVM: {ret:?}");
 
         if !ret.msg_receipt.exit_code.is_success() {
@@ -235,16 +300,15 @@ where
                 error,
             }))
         } else {
-            let data = ret
-                .msg_receipt
-                .return_data
-                .deserialize::<BytesDe>()
-                .context("failed to deserialize return data")?;
-
-            let value = decode_function_data(&call.function, data.0, false)
-                .context("failed to decode bytes")?;
-
-            Ok(Ok(value))
+            let ret = FvmApplyRet {
+                apply_ret: ret,
+                from,
+                to: self.addr,
+                method_num: evm::Method::InvokeContract as u64,
+                gas_limit: fvm_shared::BLOCK_GAS_LIMIT,
+                emitters,
+            };
+            Ok(Ok(ContractCallerReturn { call, ret }))
         }
     }
 }

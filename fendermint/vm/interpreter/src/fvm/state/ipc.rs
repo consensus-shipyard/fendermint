@@ -3,27 +3,33 @@
 
 use anyhow::{anyhow, Context};
 use ethers::types as et;
-use ethers::{abi::Tokenize, utils::keccak256};
 
+use fendermint_vm_message::conv::{from_eth, from_fvm};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::ActorID;
 
 use fendermint_crypto::SecretKey;
 use fendermint_vm_actor_interface::{
     eam::EthAddress,
-    ipc::{ValidatorMerkleTree, GATEWAY_ACTOR_ID},
+    ipc::{AbiHash, ValidatorMerkleTree, GATEWAY_ACTOR_ID},
 };
 use fendermint_vm_genesis::{Power, Validator};
 use fendermint_vm_message::signed::sign_secp256k1;
-use ipc_actors_abis::gateway_getter_facet as getter;
+use fendermint_vm_topdown::IPCParentFinality;
 use ipc_actors_abis::gateway_getter_facet::GatewayGetterFacet;
+use ipc_actors_abis::gateway_getter_facet::{self as getter, gateway_getter_facet};
 use ipc_actors_abis::gateway_router_facet as router;
 use ipc_actors_abis::gateway_router_facet::GatewayRouterFacet;
+use ipc_sdk::cross::CrossMsg;
+use ipc_sdk::staking::StakingChangeRequest;
 
 use super::{
     fevm::{ContractCaller, MockProvider, NoRevert},
     FvmExecState,
 };
+use crate::fvm::FvmApplyRet;
+use fendermint_vm_actor_interface::ipc;
+use fvm_shared::econ::TokenAmount;
 
 #[derive(Clone)]
 pub struct GatewayCaller<DB> {
@@ -40,9 +46,12 @@ impl<DB> Default for GatewayCaller<DB> {
 
 impl<DB> GatewayCaller<DB> {
     pub fn new(actor_id: ActorID) -> Self {
+        // A masked ID works for invoking the contract, but internally the EVM uses a different
+        // ID and if we used this address for anything like validating that the sender is the gateway,
+        // we'll face bitter disappointment. For that we have to use the hashed version.
         let addr = EthAddress::from_id(actor_id);
         Self {
-            addr,
+            addr: addr.into_non_masked(),
             getter: ContractCaller::new(addr, GatewayGetterFacet::new),
             router: ContractCaller::new(addr, GatewayRouterFacet::new),
         }
@@ -84,16 +93,6 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         height: u64,
     ) -> anyhow::Result<Vec<getter::CrossMsg>> {
         self.getter.call(state, |c| c.bottom_up_messages(height))
-    }
-
-    /// Fetch the bottom-up messages enqueued in a given checkpoint.
-    pub fn bottom_up_msgs_hash(
-        &self,
-        state: &mut FvmExecState<DB>,
-        height: u64,
-    ) -> anyhow::Result<[u8; 32]> {
-        let msgs = self.bottom_up_msgs(state, height)?;
-        Ok(abi_hash(msgs))
     }
 
     /// Insert a new checkpoint at the period boundary.
@@ -153,8 +152,12 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         let height = checkpoint.block_height;
         let weight = et::U256::from(validator.power.0);
 
-        let hash = abi_hash(checkpoint);
-        let signature = et::Bytes::from(sign_secp256k1(secret_key, &hash));
+        let hash = checkpoint.abi_hash();
+
+        let signature = sign_secp256k1(secret_key, &hash);
+        let signature =
+            from_fvm::to_eth_signature(&signature, false).context("invalid signature")?;
+        let signature = et::Bytes::from(signature.to_vec());
 
         let tree =
             ValidatorMerkleTree::new(power_table).context("failed to construct Merkle tree")?;
@@ -179,9 +182,103 @@ impl<DB: Blockstore> GatewayCaller<DB> {
 
         Ok(calldata)
     }
+
+    /// Commit the parent finality to the gateway and returns the previously committed finality.
+    /// None implies there is no previously committed finality.
+    pub fn commit_parent_finality(
+        &self,
+        state: &mut FvmExecState<DB>,
+        finality: IPCParentFinality,
+    ) -> anyhow::Result<Option<IPCParentFinality>> {
+        let evm_finality = router::ParentFinality::try_from(finality)?;
+
+        let (has_committed, prev_finality) = self
+            .router
+            .call(state, |c| c.commit_parent_finality(evm_finality))?;
+
+        Ok(if !has_committed {
+            None
+        } else {
+            Some(IPCParentFinality::try_from(prev_finality)?)
+        })
+    }
+
+    pub fn store_validator_changes(
+        &self,
+        state: &mut FvmExecState<DB>,
+        changes: Vec<StakingChangeRequest>,
+    ) -> anyhow::Result<()> {
+        let mut change_requests = vec![];
+        for c in changes {
+            change_requests.push(router::StakingChangeRequest::try_from(c)?);
+        }
+
+        self.router
+            .call(state, |c| c.store_validator_changes(change_requests))
+    }
+
+    /// Call this function to mint some FIL to the gateway contract
+    pub fn mint_to_gateway(
+        &self,
+        state: &mut FvmExecState<DB>,
+        value: TokenAmount,
+    ) -> anyhow::Result<()> {
+        let state_tree = state.state_tree_mut();
+        state_tree.mutate_actor(ipc::GATEWAY_ACTOR_ID, |actor_state| {
+            actor_state.balance += value;
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    pub fn apply_cross_messages(
+        &self,
+        state: &mut FvmExecState<DB>,
+        cross_messages: Vec<CrossMsg>,
+    ) -> anyhow::Result<FvmApplyRet> {
+        let messages = cross_messages
+            .into_iter()
+            .map(router::CrossMsg::try_from)
+            .collect::<Result<Vec<_>, _>>()
+            .context("failed to convert cross messages")?;
+        let r = self
+            .router
+            .call_with_return(state, |c| c.apply_cross_messages(messages))?;
+        Ok(r.into_return())
+    }
+
+    pub fn get_latest_parent_finality(
+        &self,
+        state: &mut FvmExecState<DB>,
+    ) -> anyhow::Result<IPCParentFinality> {
+        let r = self
+            .getter
+            .call(state, |c| c.get_latest_parent_finality())?;
+        Ok(IPCParentFinality::try_from(r)?)
+    }
 }
 
-/// Hash some value in the same way we'd hash it in Solidity.
-fn abi_hash<T: Tokenize>(value: T) -> [u8; 32] {
-    keccak256(ethers::abi::encode(&value.into_tokens()))
+/// Total amount of tokens to mint as a result of top-down messages arriving at the subnet.
+pub fn tokens_to_mint(msgs: &[ipc_sdk::cross::CrossMsg]) -> TokenAmount {
+    msgs.iter()
+        .fold(TokenAmount::from_atto(0), |mut total, msg| {
+            // Both fees and value are considered to enter the ciruculating supply of the subnet.
+            // Fees might be distributed among subnet validators.
+            total += &msg.msg.value;
+            total += &msg.msg.fee;
+            total
+        })
+}
+
+/// Total amount of tokens to burn as a result of bottom-up messages leaving the subnet.
+pub fn tokens_to_burn(msgs: &[gateway_getter_facet::CrossMsg]) -> TokenAmount {
+    msgs.iter()
+        .fold(TokenAmount::from_atto(0), |mut total, msg| {
+            // Both fees and value were taken from the sender, and both are going up to the parent subnet:
+            // https://github.com/consensus-shipyard/ipc-solidity-actors/blob/e4ec0046e2e73e2f91d7ab8ae370af2c487ce526/src/gateway/GatewayManagerFacet.sol#L143-L150
+            // Fees might be distirbuted among relayers.
+            total += from_eth::to_fvm_tokens(&msg.message.value);
+            total += from_eth::to_fvm_tokens(&msg.message.fee);
+            total
+        })
 }

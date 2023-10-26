@@ -16,7 +16,7 @@ if [ -z $UID ]; then UID=$(id -u); fi
 export UID
 export GID
 export CMT_PERSISTENT_PEERS=`cat $BASE_DIR/peers`
-export CHAIN_NAME=$CHAIN_NAME
+export SUBNET_ID=$SUBNET_ID
 export BASE_DIR=$BASE_DIR
 ./infra/run.sh start
 """
@@ -114,7 +114,39 @@ env = { "ENTRY" = "fendermint", "CMD" = """key add-peer \
         --local-peers-file /data/peers \
 """ }
 
+<<<<<<< HEAD
 [tasks.testnet-setup-persistent-peers]
+=======
+[tasks.testnet-cometbft-init-node2]
+extend = "cometbft-init"
+env = { "CMD" = "init", "NETWORK_NAME"="${NETWORK_NAME}", "CMT_DIR" = "${BASE_DIR}/node2/cometbft", "CMT_CONTAINER_NAME" = "cometbft-node2", "FLAGS" = "-a STDOUT -a STDERR --rm"  }
+
+[tasks.testnet-cometbft-init-node3]
+extend = "cometbft-init"
+env = { "CMD" = "init", "NETWORK_NAME"="${NETWORK_NAME}", "CMT_DIR" = "${BASE_DIR}/node3/cometbft", "CMT_CONTAINER_NAME" = "cometbft-node3", "FLAGS" = "-a STDOUT -a STDERR --rm"  }
+
+[tasks.testnet-config]
+dependencies = [
+    "testnet-script-new-genesis",
+    "testnet-script-add-peers",
+    "testnet-script-new-key",
+    "testnet-script-new-account",
+    "testnet-script-new-gateway",
+    "testnet-script-share-genesis"
+]
+
+[tasks.testnet-script-new-genesis]
+cwd = "./target/release"
+script = """
+./fendermint genesis --genesis-file $BASE_DIR/genesis.json \
+      new --chain-name ${SUBNET_ID} --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP} --power-scale ${POWER_SCALE}
+
+cat $BASE_DIR/genesis.json
+"""
+
+[tasks.testnet-script-new-key]
+cwd = "./target/release"
+>>>>>>> main
 script="""
 unset CMT_PERSISTENT_PEERS
 export CMT_PERSISTENT_PEERS=`cat $BASE_DIR/peers`
