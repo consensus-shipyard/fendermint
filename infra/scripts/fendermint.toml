@@ -3,7 +3,7 @@ extend = "fendermint-run"
 env = { "ENTRY" = "fendermint", "CMD" = "run", "FLAGS" = "-d" }
 
 [tasks.fendermint-run]
-script = """
+script.main = """
 docker run \
   ${FLAGS} \
   --name ${FM_CONTAINER_NAME} \
