@@ -71,6 +71,9 @@ pub fn to_deliver_tx(ret: FvmApplyRet, domain_hash: Option<DomainHash>) -> respo
         events.push(to_domain_hash_event(&h));
     }
 
+    // Emit general message metadata.
+    events.push(to_meta_event(ret.from, ret.to));
+
     response::DeliverTx {
         code: to_code(receipt.exit_code),
         data,
@@ -102,8 +105,6 @@ pub fn to_check_tx(ret: FvmCheckRet) -> response::CheckTx {
 }
 
 /// Map the return values from epoch boundary operations to validator updates.
-///
-/// (Currently just a placeholder).
 pub fn to_end_block(power_table: Vec<Validator<Power>>) -> anyhow::Result<response::EndBlock> {
     let validator_updates =
         to_validator_updates(power_table).context("failed to convert validator updates")?;
@@ -111,7 +112,7 @@ pub fn to_end_block(power_table: Vec<Validator<Power>>) -> anyhow::Result<respon
     Ok(response::EndBlock {
         validator_updates,
         consensus_param_updates: None,
-        events: Vec::new(),
+        events: Vec::new(), // TODO: Events from epoch transitions?
     })
 }
 
@@ -193,6 +194,15 @@ pub fn to_domain_hash_event(domain_hash: &DomainHash) -> Event {
             index: true,
         }],
     )
+}
+
+pub fn to_meta_event(from: Address, to: Address) -> Event {
+    let attr = |k: &str, v: Address| EventAttribute {
+        key: k.to_string(),
+        value: v.to_string(),
+        index: true,
+    };
+    Event::new("tx".to_string(), vec![attr("from", from), attr("to", to)])
 }
 
 /// Map to query results.
