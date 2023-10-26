@@ -53,7 +53,7 @@ pub struct KeyGenArgs {
 #[derive(Args, Debug)]
 pub struct EthPrivateToFendermintArgs {
     /// Directory to the path that stores the private key
-    #[arg(long, short, default_value = ".")]
+    #[arg(long, short)]
     pub path: PathBuf,
     /// Name used to distinguish the files from other exported keys.
     #[arg(long, short)]
