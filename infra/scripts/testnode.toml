@@ -6,7 +6,7 @@ workspace = false
 dependencies = [
     "testnode-down",
     "testnode-init",
-    "testnode-network-create",
+    "docker-network-create",
     "cometbft-init",
     "fendermint-deps",
     "testnode-config",
@@ -16,10 +16,6 @@ dependencies = [
     "ethapi-start",
     "testnode-report",
 ]
-
-[tasks.testnode-network-create]
-env = { "NETWORK_NAME"="${NETWORK_NAME}"}
-extend = "docker-network-create"
 
 [tasks.testnode-init]
 dependencies = [
@@ -58,57 +54,19 @@ run_task = { name = [
 # the genesis file with necessary entities and cryptographic keys.
 [tasks.testnode-config]
 dependencies = [
-    "testnode-new-genesis",
-    "testnode-new-key",
-    "testnode-new-accounts",
-    "testnode-add-validator",
-    "testnode-new-gateway",
-    "testnode-write-genesis",
+    "genesis-new",
+    "genesis-new-key",
+    "genesis-new-accounts",
+    "genesis-add-validator",
+    "genesis-new-gateway",
+    "genesis-write",
     "testnode-export-keys"
 ]
 
-[tasks.testnode-new-genesis]
-extend = "fendermint-run"
-env = { "ENTRY" = "fendermint", "CMD" = "genesis --genesis-file /data/genesis.json new --chain-name ${CHAIN_NAME} --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP} --power-scale 3" }
-
-[tasks.testnode-new-key]
-extend = "fendermint-run"
-env = { "ENTRY" = "fendermint", "CMD" = "key gen --out-dir /data/${KEYS_SUBDIR} --name ${KEY_NAME}" }
-script.pre = "mkdir -p ${BASE_DIR}/${KEYS_SUBDIR}"
-script.post = "chmod 600 ${BASE_DIR}/${PRIV_KEY_PATH}"
-
-[tasks.testnode-new-accounts]
-dependencies = ["testnode-new-account-f1", "testnode-new-account-eth"]
-
-[tasks.testnode-new-account-f1]
-extend = "fendermint-run"
-env = { "ENTRY" = "fendermint", "CMD" = "genesis --genesis-file /data/genesis.json add-account --public-key /data/${PUB_KEY_PATH} --balance ${BALANCE}" }
-
-[tasks.testnode-new-account-eth]
-extend = "fendermint-run"
-env = { "ENTRY" = "fendermint", "CMD" = "genesis --genesis-file /data/genesis.json add-account --kind ethereum --public-key /data/${PUB_KEY_PATH} --balance ${BALANCE}" }
-
-[tasks.testnode-add-validator]
-extend = "fendermint-run"
-env = { "ENTRY" = "fendermint", "CMD" = "genesis --genesis-file /data/genesis.json add-validator --public-key /data/${PUB_KEY_PATH} --power 1" }
-
-[tasks.testnode-new-gateway]
-extend = "fendermint-run"
-env = { "ENTRY" = "fendermint", "CMD" = """genesis --genesis-file /data/genesis.json ipc gateway --subnet-id /r0 \
-    --bottom-up-check-period 10 \
-    --msg-fee 10 \
-    --majority-percentage 67 \
-    --min-collateral 1""" }
-
-[tasks.testnode-write-genesis]
-extend = "fendermint-run"
-env = { "ENTRY" = "fendermint", "CMD" = "genesis --genesis-file /data/genesis.json into-tendermint --out /data/genesis.committed.json" }
-script.post = "cp ${BASE_DIR}/genesis.committed.json ${CMT_DIR}/config/genesis.json"
-
 [tasks.testnode-export-keys]
-extend = "fendermint-run"
-env = { "ENTRY" = "fendermint", "CMD" = "key into-tendermint --secret-key /data/${PRIV_KEY_PATH} --out /data/priv_validator_key.json" }
-script.post = "cp ${BASE_DIR}/priv_validator_key.json ${CMT_DIR}/config/priv_validator_key.json; chmod 600 ${CMT_DIR}/config/priv_validator_key.json"
+extend = "fendermint-tool"
+env = { "ENTRY" = "fendermint", "CMD" = "key into-tendermint --secret-key /data/${PRIV_KEY_PATH} --out /data/${COMETBFT_SUBDIR}/config/priv_validator_key.json" }
+script.post = "chmod 600 ${BASE_DIR}/${COMETBFT_SUBDIR}/config/priv_validator_key.json"
 
 [tasks.testnode-report]
 script = """cat << EOF

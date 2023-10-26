@@ -20,6 +20,20 @@ docker run \
 """
 dependencies = ["docker-network-create", "fendermint-deps"]
 
+[tasks.fendermint-tool]
+script.main = """
+docker run \
+  ${FLAGS} \
+  --init \
+  --user $(id -u) \
+  --volume ${BASE_DIR}:/data \
+  --env LOG_LEVEL=info \
+  --entrypoint ${ENTRY} \
+  ${FM_DOCKER_IMAGE} \
+  ${CMD}
+"""
+dependencies = ["fendermint-deps"]
+
 [tasks.fendermint-deps]
 script = """
 # Check if the image exists

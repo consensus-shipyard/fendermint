@@ -3,6 +3,7 @@ extend = [
   { path = "scripts/cometbft.toml" },
   { path = "scripts/fendermint.toml" },
   { path = "scripts/ethapi.toml" },
+  { path = "scripts/genesis.toml"},
   { path = "scripts/node.toml" },
   { path = "scripts/testnet.toml" },
   { path = "scripts/testnode.toml" }
@@ -25,6 +26,8 @@ KEYS_SUBDIR="keys"
 KEY_NAME="validator_key"
 PUB_KEY_PATH="${KEYS_SUBDIR}/${KEY_NAME}.pk"
 PRIV_KEY_PATH="${KEYS_SUBDIR}/${KEY_NAME}.sk"
+
+COMETBFT_SUBDIR = "cometbft"
 
 NETWORK_NAME = "${CHAIN_NAME}"
 
