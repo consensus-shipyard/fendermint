@@ -25,6 +25,7 @@ use libp2p::identity::secp256k1;
 use libp2p::identity::Keypair;
 use std::sync::Arc;
 use tracing::info;
+use fendermint_vm_actor_interface::eam::EthAddress;
 
 use crate::cmd::key::read_secret_key;
 use crate::{cmd, options::run::RunArgs, settings::Settings};
@@ -74,6 +75,7 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
             if sk.exists() && sk.is_file() {
                 let sk = read_secret_key(&sk).context("failed to read validator key")?;
                 let addr = to_address(&sk, &key.kind)?;
+                tracing::info!("validator key address: {addr} detected");
                 Some((sk, addr))
             } else {
                 bail!("validator key does not exist: {}", sk.to_string_lossy());
@@ -325,6 +327,6 @@ fn to_address(sk: &SecretKey, kind: &AccountKind) -> anyhow::Result<Address> {
     let pk = sk.public_key().serialize();
     match kind {
         AccountKind::Regular => Ok(Address::new_secp256k1(&pk)?),
-        AccountKind::Ethereum => Ok(Address::new_delegated(eam::EAM_ACTOR_ID, &pk)?),
+        AccountKind::Ethereum => Ok(Address::from(EthAddress::new_secp256k1(&pk)?)),
     }
 }
