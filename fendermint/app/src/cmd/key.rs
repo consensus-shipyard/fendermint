@@ -32,7 +32,7 @@ cmd! {
 
 cmd! {
     EthPrivateToFendermintArgs(self) {
-        let sk = read_private_key(&self.path)?;
+        let sk = read_private_key_hex(&self.path)?;
         let pk = sk.public_key();
 
         export(&self.out_dir, &self.name, "sk", &secret_to_b64(&sk))?;
