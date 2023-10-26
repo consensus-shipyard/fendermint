@@ -137,9 +137,9 @@ impl FilterKind {
                             queries.iter().map(|q| {
                                 if let Ok(id) = addr.id() {
                                     // If it was a masked ID.
-                                    q.clone().and_eq("message.emitter.id", id.to_string())
+                                    q.clone().and_eq("event.emitter.id", id.to_string())
                                 } else {
-                                    q.clone().and_eq("message.emitter.deleg", addr.to_string())
+                                    q.clone().and_eq("event.emitter.deleg", addr.to_string())
                                 }
                             })
                         })
@@ -154,7 +154,7 @@ impl FilterKind {
                             _ => vec![],
                         };
                         if !topics.is_empty() {
-                            let key = format!("message.t{}", i + 1);
+                            let key = format!("event.t{}", i + 1);
                             queries = topics
                                 .into_iter()
                                 .flat_map(|t| {
@@ -269,7 +269,7 @@ where
                 //                 gas_used: Some("5151233"),
                 //                 events: [
                 //                     Event {
-                //                         kind: "message",
+                //                         kind: "event",
                 //                         attributes: [
                 //                             EventAttribute { key: "emitter.id", value: "108", index: true },
                 //                             EventAttribute { key: "t1", value: "dd...b3ef", index: true },
@@ -284,11 +284,11 @@ where
                 //     },
                 //     events: Some(
                 //     {
-                //         "message.d": ["00...0064"],
-                //         "message.emitter.id": ["108"],
-                //         "message.t1": ["dd...b3ef"],
-                //         "message.t2": ["00...362f"],
-                //         "message.t3": ["00...44eb"],
+                //         "event.d": ["00...0064"],
+                //         "event.emitter.id": ["108"],
+                //         "event.t1": ["dd...b3ef"],
+                //         "event.t2": ["00...362f"],
+                //         "event.t3": ["00...44eb"],
                 //         "tm.event": ["Tx"],
                 //         "tx.hash": ["FA7339B4D9F6AF80AEDB03FC4BFBC1FDD9A62F97632EF8B79C98AAD7044C5BDB"],
                 //         "tx.height": ["1088"]
@@ -739,7 +739,7 @@ mod tests {
         .enumerate()
         {
             let q = queries[i].to_string();
-            let e = format!("tx.height >= 1234 AND message.emitter.id = '100' AND message.t1 = '{}' AND message.t2 = '{}' AND message.t3 = '{}'", hash_hex(t1), hash_hex("Alice"), hash_hex(t3));
+            let e = format!("tx.height >= 1234 AND event.emitter.id = '100' AND event.t1 = '{}' AND event.t2 = '{}' AND event.t3 = '{}'", hash_hex(t1), hash_hex("Alice"), hash_hex(t3));
             assert_eq!(q, e, "combination {i}");
         }
     }

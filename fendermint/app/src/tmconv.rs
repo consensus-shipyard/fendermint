@@ -64,7 +64,7 @@ pub fn to_deliver_tx(ret: FvmApplyRet, domain_hash: Option<DomainHash>) -> respo
     let gas_used: i64 = receipt.gas_used.try_into().unwrap_or(i64::MAX);
 
     let data: bytes::Bytes = receipt.return_data.to_vec().into();
-    let mut events = to_events("message", ret.apply_ret.events, ret.emitters);
+    let mut events = to_events("event", ret.apply_ret.events, ret.emitters);
 
     // Emit an event which causes Tendermint to index our transaction with a custom hash.
     if let Some(h) = domain_hash {
@@ -118,7 +118,7 @@ pub fn to_end_block(power_table: Vec<Validator<Power>>) -> anyhow::Result<respon
 
 /// Map the return values from cron operations.
 pub fn to_begin_block(ret: FvmApplyRet) -> response::BeginBlock {
-    let events = to_events("begin", ret.apply_ret.events, ret.emitters);
+    let events = to_events("event", ret.apply_ret.events, ret.emitters);
 
     response::BeginBlock { events }
 }

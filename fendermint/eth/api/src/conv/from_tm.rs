@@ -370,7 +370,7 @@ pub fn to_logs(
     log_index_start: usize,
 ) -> anyhow::Result<Vec<et::Log>> {
     let mut logs = Vec::new();
-    for (idx, event) in events.iter().filter(|e| e.kind == "message").enumerate() {
+    for (idx, event) in events.iter().filter(|e| e.kind == "event").enumerate() {
         // Lotus looks up an Ethereum address based on the actor ID:
         // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#L1987
 
