@@ -25,7 +25,7 @@ cmd! {
             KeyCommands::IntoTendermint(args) => args.exec(()).await,
             KeyCommands::AddPeer(args) => args.exec(()).await,
             KeyCommands::Address(args) => args.exec(()).await,
-            KeyCommands::EthPrivateToTendermint(args) => args.exec(()).await,
+            KeyCommands::EthToFendermint(args) => args.exec(()).await,
         }
     }
 }
