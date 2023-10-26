@@ -142,7 +142,7 @@ pub fn read_private_key(private_key: &PathBuf) -> anyhow::Result<SecretKey> {
     if hex_str.starts_with("0x") {
         hex_str = hex_str[2..].to_string();
     }
-    let raw_secret = hex::decode(hex_str)?;
+    let raw_secret = hex::decode(hex_str).context("cannot decode hex private key")?;
     let sk = SecretKey::try_from(raw_secret).context("failed to parse secret key")?;
     Ok(sk)
 }
