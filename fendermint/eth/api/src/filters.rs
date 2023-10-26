@@ -104,9 +104,12 @@ impl FilterKind {
                     Query::from(EventType::Tx)
                 };
 
-                if let Some(block_hash) = filter.get_block_hash() {
-                    // TODO #220: This looks wrong, tx.hash is the transaction hash, not the block.
-                    query = query.and_eq("tx.hash", hex::encode(block_hash.0));
+                if let Some(_block_hash) = filter.get_block_hash() {
+                    // Currently we only use these filters for subscribing to future events,
+                    // we don't go back to retireve past ones (although I think Lotus does that).
+                    // As such, it is impossible to subscribe to future block hashes, they are unknown.
+                    // We could add a `block.hash` to the index, but there are other ways to find transactions
+                    // in a block, so it would be storing data for little reason.
                 }
                 if let Some(from_block) = filter.get_from_block() {
                     query = query.and_gte("tx.height", from_block.as_u64());
