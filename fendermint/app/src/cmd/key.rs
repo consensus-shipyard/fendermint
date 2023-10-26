@@ -31,7 +31,7 @@ cmd! {
 }
 
 cmd! {
-    EthPrivateToFendermintArgs(self) {
+    EthToFendermintArgs(self) {
         let sk = read_private_key_hex(&self.path)?;
         let pk = sk.public_key();
 
