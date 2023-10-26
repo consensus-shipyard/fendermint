@@ -55,7 +55,7 @@ pub struct FvmStateParams {
 /// TODO: `base_fee` should surely be here.
 #[derive(Debug)]
 pub struct FvmUpdatableParams {
-    /// The circulating supply changes if IPC is elabled and
+    /// The circulating supply changes if IPC is enabled and
     /// funds/releases are carried out with the parent.
     pub circ_supply: TokenAmount,
     /// Conversion between collateral and voting power.
