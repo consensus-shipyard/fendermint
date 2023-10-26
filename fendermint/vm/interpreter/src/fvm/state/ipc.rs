@@ -259,25 +259,26 @@ impl<DB: Blockstore> GatewayCaller<DB> {
 }
 
 /// Total amount of tokens to mint as a result of top-down messages arriving at the subnet.
-///
-/// Fees are ignored, which suggests that they will be paid similarly to gas,
-/// from the balance of the sender already present in the currents subnet.
 pub fn tokens_to_mint(msgs: &[ipc_sdk::cross::CrossMsg]) -> TokenAmount {
     msgs.iter()
         .fold(TokenAmount::from_atto(0), |mut total, msg| {
+            // Both fees and value are considered to enter the ciruculating supply of the subnet.
+            // Fees might be distributed among subnet validators.
             total += &msg.msg.value;
+            total += &msg.msg.fee;
             total
         })
 }
 
 /// Total amount of tokens to burn as a result of bottom-up messages leaving the subnet.
-///
-/// Fees are ignored, which suggests that they will be paid similarly to gas,
-/// from the balance of the sender already present in the parent subnet.
 pub fn tokens_to_burn(msgs: &[gateway_getter_facet::CrossMsg]) -> TokenAmount {
     msgs.iter()
         .fold(TokenAmount::from_atto(0), |mut total, msg| {
+            // Both fees and value were taken from the sender, and both are going up to the parent subnet:
+            // https://github.com/consensus-shipyard/ipc-solidity-actors/blob/e4ec0046e2e73e2f91d7ab8ae370af2c487ce526/src/gateway/GatewayManagerFacet.sol#L143-L150
+            // Fees might be distirbuted among relayers.
             total += from_eth::to_fvm_tokens(&msg.message.value);
+            total += from_eth::to_fvm_tokens(&msg.message.fee);
             total
         })
 }
