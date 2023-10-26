@@ -15,7 +15,7 @@ pub enum KeyCommands {
     Address(KeyAddressArgs),
     /// Get the peer ID corresponding to a node ID and its network address and print it to a local file.
     AddPeer(AddPeer),
-    /// Converts the eth private key (hex encoded) in to fendermint.
+    /// Converts a hex encoded Ethereum private key in a Base64 encoded Fendermint keypair.
     EthToFendermint(EthToFendermintArgs),
 }
 
