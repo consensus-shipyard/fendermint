@@ -49,6 +49,19 @@ pub struct KeyGenArgs {
 }
 
 #[derive(Args, Debug)]
+pub struct EthPrivateToFendermintArgs {
+    /// Directory to the path that stores the private key
+    #[arg(long, short, default_value = ".")]
+    pub path: PathBuf,
+    /// Name used to distinguish the files from other exported keys.
+    #[arg(long, short)]
+    pub name: String,
+    /// Directory to export the key files to; it must exist.
+    #[arg(long, short, default_value = ".")]
+    pub out_dir: PathBuf,
+}
+
+#[derive(Args, Debug)]
 pub struct KeyIntoTendermintArgs {
     /// Path to the secret key we want to convert to Tendermint format.
     #[arg(long, short)]
