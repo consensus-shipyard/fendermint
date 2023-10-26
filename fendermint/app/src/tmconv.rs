@@ -72,7 +72,7 @@ pub fn to_deliver_tx(ret: FvmApplyRet, domain_hash: Option<DomainHash>) -> respo
     }
 
     // Emit general message metadata.
-    events.push(to_meta_event(ret.from, ret.to));
+    events.push(to_message_event(ret.from, ret.to));
 
     response::DeliverTx {
         code: to_code(receipt.exit_code),
@@ -124,7 +124,6 @@ pub fn to_begin_block(ret: FvmApplyRet) -> response::BeginBlock {
 }
 
 /// Convert events to key-value pairs.
-///
 ///
 /// Fot the EVM, they are returned like so:
 ///
@@ -196,13 +195,17 @@ pub fn to_domain_hash_event(domain_hash: &DomainHash) -> Event {
     )
 }
 
-pub fn to_meta_event(from: Address, to: Address) -> Event {
+/// Event about the message itself.
+pub fn to_message_event(from: Address, to: Address) -> Event {
     let attr = |k: &str, v: Address| EventAttribute {
         key: k.to_string(),
         value: v.to_string(),
         index: true,
     };
-    Event::new("tx".to_string(), vec![attr("from", from), attr("to", to)])
+    Event::new(
+        "message".to_string(),
+        vec![attr("from", from), attr("to", to)],
+    )
 }
 
 /// Map to query results.
