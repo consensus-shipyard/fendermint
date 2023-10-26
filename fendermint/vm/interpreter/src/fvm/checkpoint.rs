@@ -83,7 +83,16 @@ where
             // Sum up the value leaving the subnet as part of the bottom-up messages.
             let burnt_tokens = tokens_to_burn(&cross_msgs);
 
-            // TODO: Should we actually take this from the gateway balance? Or did it already get burnt?
+            // NOTE: Unlike when we minted tokens for the gateway by modifying its balance,
+            // we don't have to burn them here, because it's already being done in
+            // https://github.com/consensus-shipyard/ipc-solidity-actors/pull/263
+            // by sending the funds to the BURNTFUNDS_ACTOR.
+            // Ostensibly we could opt _not_ to decrease the circ supply here, but rather
+            // look up the burnt funds balance at the beginning of each block and subtract
+            // it from the monotonically increasing supply, in which case it could reflect
+            // a wider range of burning activity than just IPC.
+            // It might still be inconsistent if someone uses another address for burning tokens.
+            // By decreasing here, at least `circ_supply` is consistent with IPC.
             state.update_circ_supply(|circ_supply| {
                 *circ_supply -= burnt_tokens;
             });
