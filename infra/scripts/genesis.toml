@@ -1,6 +1,6 @@
 [tasks.genesis-new]
 extend = "fendermint-tool"
-env = { "ENTRY" = "fendermint", "CMD" = "genesis --genesis-file /data/genesis.json new --chain-name ${SUBNET_ID} --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP} --power-scale ${POWER_SCALE}" }
+env = { "ENTRY" = "fendermint", "CMD" = "genesis --genesis-file /data/genesis.json new --chain-name ${NETWORK_NAME} --base-fee ${BASE_FEE} --timestamp ${TIMESTAMP} --power-scale ${POWER_SCALE}" }
 
 ## Takes:
 ## - KEYS_SUBDIR:   directory under /data where to store the key.
