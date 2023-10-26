@@ -51,7 +51,7 @@ pub struct KeyGenArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct EthPrivateToFendermintArgs {
+pub struct EthToFendermintArgs {
     /// Directory to the path that stores the private key
     #[arg(long, short)]
     pub path: PathBuf,
