@@ -137,7 +137,7 @@ pub fn read_public_key(public_key: &PathBuf) -> anyhow::Result<PublicKey> {
     Ok(pk)
 }
 
-pub fn read_private_key(private_key: &PathBuf) -> anyhow::Result<SecretKey> {
+pub fn read_secret_key_hex(private_key: &PathBuf) -> anyhow::Result<SecretKey> {
     let hex_str = std::fs::read_to_string(private_key).context("failed to read private key")?;
     let mut hex_str = hex_str.trim();
     if hex_str.starts_with("0x") {
