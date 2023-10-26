@@ -25,6 +25,7 @@ cmd! {
             KeyCommands::IntoTendermint(args) => args.exec(()).await,
             KeyCommands::AddPeer(args) => args.exec(()).await,
             KeyCommands::Address(args) => args.exec(()).await,
+            KeyCommands::EthPrivateToTendermint(args) => args.exec(()).await,
         }
     }
 }
@@ -137,7 +138,7 @@ pub fn read_public_key(public_key: &PathBuf) -> anyhow::Result<PublicKey> {
 }
 
 pub fn read_private_key(private_key: &PathBuf) -> anyhow::Result<SecretKey> {
-    let mut hex_str = std::fs::read_to_string(private_key).context("failed to read secret key")?;
+    let mut hex_str = std::fs::read_to_string(private_key).context("failed to read private key")?;
     if hex_str.starts_with("0x") {
         hex_str = hex_str[2..].to_string();
     }
