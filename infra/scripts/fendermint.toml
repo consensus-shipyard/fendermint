@@ -57,6 +57,7 @@ docker run \
   --env LOG_LEVEL=info \
   --entrypoint ${ENTRY} \
   ${FM_DOCKER_IMAGE} \
+  --network=${NETWORK_TYPE} \
   ${CMD}
 """
 dependencies = ["fendermint-deps"]
