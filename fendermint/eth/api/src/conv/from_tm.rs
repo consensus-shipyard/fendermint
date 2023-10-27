@@ -499,10 +499,11 @@ pub fn collect_emitters(events: &[abci::Event]) -> HashSet<Address> {
                 .find(|a| a.key == "emitter.id")
                 .and_then(|a| a.value.parse::<u64>().ok())
                 .map(Address::new_id),
-        ] {
-            if let Some(addr) = addr {
-                emitters.insert(addr);
-            }
+        ]
+        .into_iter()
+        .flatten()
+        {
+            emitters.insert(addr);
         }
     }
     emitters
