@@ -8,7 +8,7 @@ services:
       - FM_CHAIN_NAME=$NETWORK_NAME
       - TENDERMINT_RPC_URL=http://cometbft-node${NODE_ID}:26657
       - LOG_LEVEL=info
-      - NETWORK_TYPE=$NETWORK_TYPE
+      - FM_NETWORK=$FM_NETWORK
     volumes:
       - $BASE_DIR/node${NODE_ID}:/data
     networks:

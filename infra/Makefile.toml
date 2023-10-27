@@ -33,7 +33,7 @@ NODE_NAME = { value = "ipc-node", condition = { env_not_set = ["NODE_NAME"] } }
 PARENT_ENDPOINT = { value = "https://api.calibration.node.glif.io/rpc/v1", condition = { env_not_set = ["PARENT_ENDPOINT"] } }
 PARENT_GATEWAY = { value = "0x56948d2CFaa2EF355B8C08Ac925202db212146D1", condition = { env_not_set = ["PARENT_GATEWAY"] } }
 PARENT_REGISTRY = { value = "0x6A4884D2B6A597792dC68014D4B7C117cca5668e", condition = { env_not_set = ["PARENT_REGISTRY"] } }
-NETWORK_TYPE = { value = "test", condition = { env_not_set = ["NETWORK_TYPE"] } }
+FM_NETWORK = { value = "test", condition = { env_not_set = ["FM_NETWORK"] } }
 VALIDATOR_PRIV_KEY = { value = "~/.ipc/priv.key", condition = { env_not_set = ["VALIDATOR_PRIV_KEY"] } }
 TOPDOWN_CHAIN_HEAD_DELAY = { value = "10", condition = { env_not_set = ["TOPDOWN_CHAIN_HEAD_DELAY"] } }
 # Comma-separated list of bootstrap nodes to be used by the CometBFT node.

@@ -18,7 +18,7 @@ docker run \
   --env RUST_BACKTRACE=1 \
   --entrypoint ${ENTRY} \
   ${FM_DOCKER_IMAGE} \
-  --network=${NETWORK_TYPE} \
+  --network=${FM_NETWORK} \
   ${CMD}
 """
 dependencies = ["docker-network-create", "fendermint-deps"]
@@ -54,7 +54,7 @@ docker run \
   --env RUST_BACKTRACE=1 \
   --entrypoint ${ENTRY} \
   ${FM_DOCKER_IMAGE} \
-  --network=${NETWORK_TYPE} \
+  --network=${FM_NETWORK} \
   ${CMD}
 """
 dependencies = ["docker-network-create", "fendermint-deps"]
@@ -70,7 +70,7 @@ docker run \
   --env RUST_BACKTRACE=1 \
   --entrypoint ${ENTRY} \
   ${FM_DOCKER_IMAGE} \
-  --network=${NETWORK_TYPE} \
+  --network=${FM_NETWORK} \
   ${CMD}
 """
 dependencies = ["fendermint-deps"]
