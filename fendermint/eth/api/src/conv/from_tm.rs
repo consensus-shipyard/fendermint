@@ -3,6 +3,7 @@
 
 //! Helper methods to convert between Ethereum and Tendermint data formats.
 
+use std::collections::HashSet;
 use std::str::FromStr;
 
 use anyhow::{anyhow, Context};
@@ -480,4 +481,29 @@ pub fn msg_hash(events: &[Event], tx: &[u8]) -> et::TxHash {
         // Return the default hash, at least there is something
         et::TxHash::from_slice(message_hash(tx).as_bytes())
     }
+}
+
+/// Collect and parse all `emitter.deleg` or `emitter.id` in the events.
+pub fn collect_emitters(events: &[abci::Event]) -> HashSet<Address> {
+    let mut emitters = HashSet::new();
+    for event in events.iter().filter(|e| e.kind == "event") {
+        for addr in [
+            event
+                .attributes
+                .iter()
+                .find(|a| a.key == "emitter.deleg")
+                .and_then(|a| a.value.parse::<Address>().ok()),
+            event
+                .attributes
+                .iter()
+                .find(|a| a.key == "emitter.id")
+                .and_then(|a| a.value.parse::<u64>().ok())
+                .map(Address::new_id),
+        ] {
+            if let Some(addr) = addr {
+                emitters.insert(addr);
+            }
+        }
+    }
+    emitters
 }
