@@ -4,6 +4,7 @@
 use std::fmt::{Debug, Display};
 
 use cid::multihash::MultihashDigest;
+use fendermint_crypto::PublicKey;
 use fvm_ipld_encoding::{
     strict_bytes,
     tuple::{Deserialize_tuple, Serialize_tuple},
@@ -112,6 +113,12 @@ impl From<&EthAddress> for ethers::types::Address {
 impl From<ethers::types::Address> for EthAddress {
     fn from(value: ethers::types::Address) -> Self {
         Self(value.0)
+    }
+}
+
+impl From<PublicKey> for EthAddress {
+    fn from(value: PublicKey) -> Self {
+        Self::new_secp256k1(&value.serialize()).expect("length is 65")
     }
 }
 
