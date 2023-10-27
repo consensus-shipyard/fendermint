@@ -15,9 +15,11 @@ docker run \
   --env FM_CHAIN_NAME=${NETWORK_NAME} \
   --env TENDERMINT_RPC_URL=http://${CMT_CONTAINER_NAME}:26657 \
   --env LOG_LEVEL=info \
+  --env RUST_BACKTRACE=1 \
   --entrypoint ${ENTRY} \
   ${FM_DOCKER_IMAGE} \
-  --network=${NETWORK_TYPE} ${CMD}
+  --network=${NETWORK_TYPE} \
+  ${CMD}
 """
 dependencies = ["docker-network-create", "fendermint-deps"]
 
@@ -49,6 +51,7 @@ docker run \
   --env FM_TENDERMINT_RPC_URL=http://${CMT_CONTAINER_NAME}:26657 \
   --env TENDERMINT_RPC_URL=http://${CMT_CONTAINER_NAME}:26657 \
   --env LOG_LEVEL=info \
+  --env RUST_BACKTRACE=1 \
   --entrypoint ${ENTRY} \
   ${FM_DOCKER_IMAGE} \
   --network=${NETWORK_TYPE} \
@@ -64,6 +67,7 @@ docker run \
   --user $(id -u) \
   --volume ${BASE_DIR}:/data \
   --env LOG_LEVEL=info \
+  --env RUST_BACKTRACE=1 \
   --entrypoint ${ENTRY} \
   ${FM_DOCKER_IMAGE} \
   --network=${NETWORK_TYPE} \
