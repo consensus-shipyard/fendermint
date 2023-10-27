@@ -134,13 +134,16 @@ impl FilterKind {
                     queries = addrs
                         .iter()
                         .flat_map(|addr| {
-                            queries.iter().map(|q| {
-                                if let Ok(id) = addr.id() {
+                            queries.iter().flat_map(|q| {
+                                let mut emitters = if let Ok(id) = addr.id() {
                                     // If it was a masked ID.
-                                    q.clone().and_eq("event.emitter.id", id.to_string())
+                                    vec![q.clone().and_eq("event.emitter.id", id.to_string())]
                                 } else {
-                                    q.clone().and_eq("event.emitter.deleg", addr.to_string())
-                                }
+                                    vec![q.clone().and_eq("event.emitter.deleg", addr.to_string())]
+                                };
+                                emitters.push(q.clone().and_eq("message.from", addr.to_string()));
+                                emitters.push(q.clone().and_eq("message.to", addr.to_string()));
+                                emitters
                             })
                         })
                         .collect();
@@ -702,7 +705,7 @@ mod tests {
         let filter = et::Filter::new()
             .select(1234..)
             .address(
-                "0xff00000000000000000000000000000000000064"
+                "0xb794f5ea0ba39494ce839613fffba74279579268"
                     .parse::<et::Address>()
                     .unwrap(),
             )
@@ -727,20 +730,18 @@ mod tests {
 
         let queries = FilterKind::Logs(Box::new(filter)).to_queries();
 
-        assert_eq!(queries.len(), 4);
+        assert_eq!(queries.len(), 12);
 
-        for (i, (t1, t3)) in [
-            ("Foo", "Bob"),
-            ("Bar", "Bob"),
-            ("Foo", "Charlie"),
-            ("Bar", "Charlie"),
-        ]
-        .iter()
-        .enumerate()
-        {
-            let q = queries[i].to_string();
-            let e = format!("tx.height >= 1234 AND event.emitter.id = '100' AND event.t1 = '{}' AND event.t2 = '{}' AND event.t3 = '{}'", hash_hex(t1), hash_hex("Alice"), hash_hex(t3));
-            assert_eq!(q, e, "combination {i}");
+        let mut i = 0;
+        for t3 in ["Bob", "Charlie"] {
+            for t1 in ["Foo", "Bar"] {
+                for addr in ["event.emitter.deleg", "message.from", "message.to"] {
+                    let q = queries[i].to_string();
+                    let e = format!("tx.height >= 1234 AND {addr} = 'f410fw6kpl2qluokjjtudsyj7765hij4vpetitn2e2wq' AND event.t1 = '{}' AND event.t2 = '{}' AND event.t3 = '{}'", hash_hex(t1), hash_hex("Alice"), hash_hex(t3));
+                    assert_eq!(q, e, "combination {i}");
+                    i += 1;
+                }
+            }
         }
     }
 }
