@@ -7,7 +7,7 @@ use fendermint_app::{App, AppConfig, AppParentFinalityQuery, AppStore, BitswapBl
 use fendermint_app_settings::AccountKind;
 use fendermint_crypto::SecretKey;
 use fendermint_rocksdb::{blockstore::NamespaceBlockstore, namespaces, RocksDb, RocksDbConfig};
-use fendermint_vm_actor_interface::eam;
+use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_interpreter::{
     bytes::{BytesMessageInterpreter, ProposalPrepareMode},
     chain::{ChainMessageInterpreter, CheckpointPool},
@@ -25,7 +25,6 @@ use libp2p::identity::secp256k1;
 use libp2p::identity::Keypair;
 use std::sync::Arc;
 use tracing::info;
-use fendermint_vm_actor_interface::eam::EthAddress;
 
 use crate::cmd::key::read_secret_key;
 use crate::{cmd, options::run::RunArgs, settings::Settings};

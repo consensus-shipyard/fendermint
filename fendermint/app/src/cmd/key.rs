@@ -13,7 +13,7 @@ use super::{from_b64, to_b64};
 use crate::{
     cmd,
     options::key::{
-        AddPeer, EthPrivateToFendermintArgs, KeyAddressArgs, KeyArgs, KeyCommands, KeyGenArgs,
+        AddPeer, EthToFendermintArgs, KeyAddressArgs, KeyArgs, KeyCommands, KeyGenArgs,
         KeyIntoTendermintArgs,
     },
 };
@@ -31,8 +31,8 @@ cmd! {
 }
 
 cmd! {
-    EthPrivateToFendermintArgs(self) {
-        let sk = read_private_key(&self.path)?;
+    EthToFendermintArgs(self) {
+        let sk = read_secret_key_hex(&self.secret_key)?;
         let pk = sk.public_key();
 
         export(&self.out_dir, &self.name, "sk", &secret_to_b64(&sk))?;
