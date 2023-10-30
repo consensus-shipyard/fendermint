@@ -111,7 +111,12 @@ where
             // Save the checkpoint in the ledger.
             // Pass in the current power table, because these are the validators who can sign this checkpoint.
             gateway
-                .create_bottom_up_checkpoint(state, checkpoint.clone(), &power_table.0)
+                .create_bottom_up_checkpoint(
+                    state,
+                    checkpoint.clone(),
+                    &power_table.0,
+                    state.power_scale(),
+                )
                 .context("failed to store checkpoint")?;
 
             // Figure out the power updates if there was some change in the configuration.

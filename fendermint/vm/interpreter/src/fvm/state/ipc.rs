@@ -13,7 +13,7 @@ use fendermint_vm_actor_interface::{
     eam::EthAddress,
     ipc::{AbiHash, ValidatorMerkleTree, GATEWAY_ACTOR_ID},
 };
-use fendermint_vm_genesis::{Power, Validator};
+use fendermint_vm_genesis::{Power, PowerScale, Validator};
 use fendermint_vm_message::signed::sign_secp256k1;
 use fendermint_vm_topdown::IPCParentFinality;
 use ipc_actors_abis::gateway_getter_facet::GatewayGetterFacet;
@@ -101,6 +101,7 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         state: &mut FvmExecState<DB>,
         checkpoint: router::BottomUpCheckpoint,
         power_table: &[Validator<Power>],
+        power_scale: PowerScale,
     ) -> anyhow::Result<()> {
         // Construct a Merkle tree from the power table, which we can use to validate validator set membership
         // when the signatures are submitted in transactions for accumulation.
@@ -110,15 +111,17 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         let total_power = power_table.iter().fold(et::U256::zero(), |p, v| {
             p.saturating_add(et::U256::from(v.power.0))
         });
+        let total_collateral = Power(total_power.as_u64()).into_collateral(power_scale);
 
-        let majority_percentage = self.getter.call(state, |c| {
-            c.majority_percentage()
-        })?;
-
-        tracing::info!("total power: {total_power}, percentage: {majority_percentage}");
+        let majority_percentage = self.getter.call(state, |c| c.majority_percentage())?;
+        tracing::info!(
+            "total collateral: {}, percentage: {majority_percentage}",
+            total_collateral.0
+        );
 
         self.router.call(state, |c| {
-            c.create_bottom_up_checkpoint(checkpoint, tree.root_hash().0, total_power)
+            let collateral = et::U256::from(total_collateral.u64());
+            c.create_bottom_up_checkpoint(checkpoint, tree.root_hash().0, collateral)
         })
     }
 

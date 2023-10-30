@@ -7,9 +7,11 @@ use anyhow::anyhow;
 use fvm_shared::bigint::{BigInt, Integer};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use std::ops::Mul;
 
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{address::Address, econ::TokenAmount};
+use num_traits::ToPrimitive;
 
 use fendermint_crypto::{normalize_public_key, PublicKey};
 use fendermint_vm_core::Timestamp;
@@ -92,6 +94,17 @@ pub struct Collateral(#[serde_as(as = "IsHumanReadable")] pub TokenAmount);
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Copy)]
 pub struct Power(pub u64);
 
+impl Power {
+    /// Convert from [Power] to [Collateral] by specifying the number of significant
+    /// decimal places per FIL that grant 1 power.
+    pub fn into_collateral(self: Power, scale: PowerScale) -> Collateral {
+        let atto_per_power = Collateral::atto_per_power(scale);
+        let atto = BigInt::from(self.0);
+        let collateral = atto.mul(atto_per_power);
+        Collateral(TokenAmount::from_atto(collateral))
+    }
+}
+
 impl Collateral {
     /// Convert from [Collateral] to [Power] by specifying the number of significant
     /// decimal places per FIL that grant 1 power.
@@ -105,6 +118,11 @@ impl Collateral {
         let power = atto.div_floor(&atto_per_power);
         let power = power.min(BigInt::from(u64::MAX));
         Power(power.try_into().expect("clipped to u64::MAX"))
+    }
+
+    /// Convert the collateral into u64 representation. Will cap at u64::MAX.
+    pub fn u64(&self) -> u64 {
+        self.0.atto().to_u64().unwrap_or(u64::MAX)
     }
 
     /// Helper function to convert atto to [Power].
