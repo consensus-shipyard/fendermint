@@ -111,17 +111,16 @@ impl<DB: Blockstore> GatewayCaller<DB> {
         let total_power = power_table.iter().fold(et::U256::zero(), |p, v| {
             p.saturating_add(et::U256::from(v.power.0))
         });
-        let total_collateral = Power(total_power.as_u64()).into_collateral(power_scale);
-
-        let majority_percentage = self.getter.call(state, |c| c.majority_percentage())?;
-        tracing::info!(
-            "total collateral: {}, percentage: {majority_percentage}",
-            total_collateral.0
-        );
+        let collateral = Power(total_power.as_u64())
+            .into_collateral(power_scale)
+            .u64();
 
         self.router.call(state, |c| {
-            let collateral = et::U256::from(total_collateral.u64());
-            c.create_bottom_up_checkpoint(checkpoint, tree.root_hash().0, collateral)
+            c.create_bottom_up_checkpoint(
+                checkpoint,
+                tree.root_hash().0,
+                et::U256::from(collateral),
+            )
         })
     }
 
