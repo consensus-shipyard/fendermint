@@ -11,17 +11,14 @@ This guide offers two flavours:
 
 On Linux (links and instructions for Ubuntu):
 
-- Install system packages: `sudo apt install build-essential clang cmake pkg-config libssl-dev protobuf-compiler`.
-- Install Rust. See [instructions](https://www.rust-lang.org/tools/install).
-- Install cargo-make: `cargo install --force cargo-make`.
 - Install Docker. See [instructions](https://docs.docker.com/engine/install/ubuntu/).
-- Install Foundry. See [instructions](https://book.getfoundry.sh/getting-started/installation).
 
-## Build Fendermint
+## Docker images
 
-```bash
-make actor-bundle build docker-build
-```
+These commands will pull various Docker images from remote repositories, including `fendermint:latest`, by default.
+
+- To override which fendermint Docker image to pull, set the `FM_DOCKER_TAG` env variable to the desired tag.
+- To use an image built locally, set the `FM_PULL_SKIP` env variable to some value, e.g. `FM_PULL_SKIP=true`.
 
 ## Single node deployment
 
