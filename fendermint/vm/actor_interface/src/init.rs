@@ -22,7 +22,7 @@ pub type AddressMap = HashMap<Address, ActorID>;
 
 /// Delegated address of an Ethereum built-in actor.
 ///
-/// This is based to what seems to be going on in the `CREATE_EXTERNAL` method
+/// This is based on what seems to be going on in the `CREATE_EXTERNAL` method
 /// of the EAM actor when it determines a robust address for an account ID,
 /// in that we take something known (a public key, or in this case the ID),
 /// hash it and truncate the results to 20 bytes.
