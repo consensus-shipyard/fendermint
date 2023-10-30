@@ -2,6 +2,10 @@
 extend = "fendermint-run"
 env = { "ENTRY" = "fendermint", "CMD" = "run", "FLAGS" = "-d" }
 
+[tasks.fendermint-pull]
+command = "docker"
+args = ["pull", "${FM_REMOTE_DOCKER_IMAGE}"]
+
 [tasks.fendermint-run]
 script.main = """
 docker run \
