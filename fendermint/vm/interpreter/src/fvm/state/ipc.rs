@@ -111,6 +111,12 @@ impl<DB: Blockstore> GatewayCaller<DB> {
             p.saturating_add(et::U256::from(v.power.0))
         });
 
+        let majority_percentage = self.getter.call(state, |c| {
+            c.majority_percentage()
+        })?;
+
+        tracing::info!("total power: {total_power}, percentage: {majority_percentage}");
+
         self.router.call(state, |c| {
             c.create_bottom_up_checkpoint(checkpoint, tree.root_hash().0, total_power)
         })
