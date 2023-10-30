@@ -29,6 +29,7 @@ dependencies = [
 [tasks.subnet-config]
 dependencies = [
     "subnet-fetch-genesis",
+    "testnode-export-keys",
     "genesis-write",
 ]
 
