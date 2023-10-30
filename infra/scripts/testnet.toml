@@ -52,31 +52,19 @@ nodes = range 0 4
 
 for i in ${nodes}
     NUMBER = set ${i}
-    NODE_DIR = set "node${NUMBER}"
-    KEYS_SUBDIR = set "${NODE_DIR}/keys"
-    KEY_NAME = set "validator${NUMBER}"
+    NODE_NAME = set "node${NUMBER}"
 
-    mkdir -p ${BASE_DIR}/${NODE_DIR}
-    mkdir -p ${BASE_DIR}/${NODE_DIR}/fendermint
-    mkdir -p ${BASE_DIR}/${NODE_DIR}/cometbft
+    mkdir -p ${BASE_DIR}/${NODE_NAME}
+    mkdir -p ${BASE_DIR}/${NODE_NAME}/fendermint
+    mkdir -p ${BASE_DIR}/${NODE_NAME}/cometbft
 
-    set_env NODE_DIR ${NODE_DIR}
+    set_env NODE_NAME ${NODE_NAME}
     set_env NUMBER ${NUMBER}
 
     cm_run_task testnet-cometbft-init
-
-    set_env KEYS_SUBDIR ${KEYS_SUBDIR}
-    set_env KEY_NAME ${KEY_NAME}
-
     cm_run_task genesis-new-key
-
-    set_env PUB_KEY_PATH "${KEYS_SUBDIR}/${KEY_NAME}.pk"
-    set_env PRIV_KEY_PATH "${KEYS_SUBDIR}/${KEY_NAME}.sk"
-
     cm_run_task genesis-new-accounts
     cm_run_task genesis-add-validator
-
-    set_env COMETBFT_SUBDIR ${NODE_DIR}/cometbft
 
     IP_LAST = calc ${NUMBER}+2
     NETWORK_ADDR = set "192.167.10.${IP_LAST}:26656"
@@ -97,18 +85,17 @@ rm -rf ${BASE_DIR}
 
 [tasks.testnet-mkdir]
 script="""
-mkdir -p $BASE_DIR
-mkdir -p $BASE_DIR/out
+mkdir -p ${BASE_DIR}
 """
 
 [tasks.testnet-cometbft-init]
 extend = "cometbft-init"
-env = { "CMD" = "init", "NETWORK_NAME"="${NETWORK_NAME}", "CMT_DIR" = "${BASE_DIR}/${NODE_DIR}/cometbft", "CMT_CONTAINER_NAME" = "cometbft-node${NUMBER}", "FLAGS" = "-a STDOUT -a STDERR --rm"}
+env = { "CMD" = "init", "NETWORK_NAME"="${NETWORK_NAME}", "CMT_DIR" = "${BASE_DIR}/${NODE_NAME}/cometbft", "CMT_CONTAINER_NAME" = "cometbft-node${NUMBER}", "FLAGS" = "-a STDOUT -a STDERR --rm"}
 
 [tasks.testnet-add-peer]
 extend = "fendermint-tool"
 env = { "ENTRY" = "fendermint", "CMD" = """key add-peer \
-        --node-key-file /data/${COMETBFT_SUBDIR}/config/node_key.json \
+        --node-key-file /data/${NODE_NAME}/${COMETBFT_SUBDIR}/config/node_key.json \
         --network-addr ${NETWORK_ADDR} \
         --local-peers-file /data/peers \
 """ }
