@@ -19,8 +19,8 @@ On Linux (links and instructions for Ubuntu):
 
 These commands will pull various Docker images from remote repositories, including `fendermint:latest`, by default.
 
-- To override which fendermint Docker image to pull, set the `FM_DOCKER_TAG` env variable to the desired tag.
-- To use an image built locally, set the `FM_PULL_SKIP` env variable to some value, e.g. `FM_PULL_SKIP=true`.
+- To override which Fendermint Docker image to pull, set the `FM_DOCKER_TAG` env variable to the desired tag.
+- To use a local Fendermint image, set the `FM_PULL_SKIP` env variable to some value, e.g. `FM_PULL_SKIP=true`.
 
 ## Single node deployment
 
