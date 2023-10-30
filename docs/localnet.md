@@ -12,6 +12,8 @@ This guide offers two flavours:
 On Linux (links and instructions for Ubuntu):
 
 - Install Docker. See [instructions](https://docs.docker.com/engine/install/ubuntu/).
+- Install Rust. See [instructions](https://www.rust-lang.org/tools/install).
+- Install cargo-make: `cargo install --force cargo-make`.
 
 ## Docker images
 
