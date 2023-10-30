@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Context};
 use fendermint_crypto::PublicKey;
+use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_actor_interface::ipc::AbiHash;
 use fendermint_vm_genesis::Collateral;
 use fendermint_vm_genesis::PowerScale;
@@ -164,6 +165,39 @@ where
 
         tokio::time::sleep(retry_delay).await;
     }
+}
+
+/// Collect incomplete signatures from the ledger which this validator hasn't signed yet.
+///
+/// It doesn't check whether the validator should have signed it, that's done inside
+/// [broadcast_incomplete_signatures] at the moment. The goal is rather to avoid double
+/// signing for those who have already done it.
+pub fn unsigned_checkpoints<DB>(
+    gateway: &GatewayCaller<DB>,
+    state: &mut FvmExecState<DB>,
+    validator_key: PublicKey,
+) -> anyhow::Result<Vec<getter::BottomUpCheckpoint>>
+where
+    DB: Blockstore + Send + Sync + 'static,
+{
+    let mut unsigned_checkpoints = Vec::new();
+    let validator_addr = EthAddress::from(validator_key);
+
+    let incomplete_checkpoints = gateway
+        .incomplete_checkpoints(state)
+        .context("failed to fetch incomplete checkpoints")?;
+
+    for cp in incomplete_checkpoints {
+        let signatories = gateway
+            .checkpoint_signatories(state, cp.block_height)
+            .context("failed to get checkpoint signatories")?;
+
+        if !signatories.contains(&validator_addr) {
+            unsigned_checkpoints.push(cp);
+        }
+    }
+
+    Ok(unsigned_checkpoints)
 }
 
 /// Sign the current and any incomplete checkpoints.
