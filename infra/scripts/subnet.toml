@@ -26,9 +26,6 @@ dependencies = [
     "ethapi-start"
 ]
 
-# Subnet validator
-# ENV variable for where things are put.
-# Merge everything and test
 [tasks.subnet-config]
 dependencies = [
     "subnet-fetch-genesis",
@@ -37,4 +34,4 @@ dependencies = [
 
 [tasks.subnet-fetch-genesis]
 extend = "fendermint-tool"
-env = { "ENTRY" = "fendermint", "CMD" = "--network=${FM_NETWORK} genesis --genesis-file ${GENESIS_FILE} ipc from-parent --subnet-id ${SUBNET_ID} -p ${PARENT_ENDPOINT}  --parent-gateway ${PARENT_GATEWAY}  --parent-registry ${PARENT_REGISTRY} --base-fee ${BASE_FEE} --power-scale ${POWER_SCALE}" }
+env = { "ENTRY" = "fendermint", "CMD" = "genesis --genesis-file ${GENESIS_FILE} ipc from-parent --subnet-id ${SUBNET_ID} -p ${PARENT_ENDPOINT}  --parent-gateway ${PARENT_GATEWAY}  --parent-registry ${PARENT_REGISTRY} --base-fee ${BASE_FEE} --power-scale ${POWER_SCALE}" }
