@@ -83,6 +83,12 @@ $ cat test-network/keys/alice.pk
 Ak5Juk793ZAg/7Ojj4bzOmIFGpwLhET1vg2ROihUJFkq
 ```
 
+If you want to use existing ethereum private key, perform the follwoing:
+
+```shell
+cargo run -p fendermint_app --release -- key eth-to-fendermint --secret-key <path to private key> --name eth --out-dir test-network/keys
+```
+
 ### Add accounts to the Genesis file
 
 Add one of the keys we created to the Genesis file as a stand-alone account:
@@ -91,6 +97,14 @@ Add one of the keys we created to the Genesis file as a stand-alone account:
  cargo run -p fendermint_app --release -- \
         genesis --genesis-file test-network/genesis.json \
         add-account --public-key test-network/keys/alice.pk --balance 10
+```
+
+If your key is from ethereum, add a `kind` flag to indicate that:
+
+```shell
+ cargo run -p fendermint_app --release -- \
+        genesis --genesis-file test-network/genesis.json \
+        add-account --public-key test-network/keys/alice.pk --balance 10 --kind ethereum
 ```
 
 Check that the balance is correct:

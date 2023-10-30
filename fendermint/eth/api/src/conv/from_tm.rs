@@ -3,6 +3,7 @@
 
 //! Helper methods to convert between Ethereum and Tendermint data formats.
 
+use std::collections::HashSet;
 use std::str::FromStr;
 
 use anyhow::{anyhow, Context};
@@ -370,7 +371,7 @@ pub fn to_logs(
     log_index_start: usize,
 ) -> anyhow::Result<Vec<et::Log>> {
     let mut logs = Vec::new();
-    for (idx, event) in events.iter().filter(|e| e.kind == "message").enumerate() {
+    for (idx, event) in events.iter().filter(|e| e.kind == "event").enumerate() {
         // Lotus looks up an Ethereum address based on the actor ID:
         // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#L1987
 
@@ -461,23 +462,49 @@ pub fn tx_hash(tx: &[u8]) -> tendermint::Hash {
     tendermint::Hash::Sha256(hash)
 }
 
-/// Best effort to find and parse any `eco.hash` attribute emitted among the events.
-fn find_eth_hash(events: &[abci::Event]) -> Option<et::TxHash> {
+/// Best effort to find and parse any `<kind>.hash` attribute emitted among the events.
+pub fn find_hash_event(kind: &str, events: &[abci::Event]) -> Option<et::H256> {
     events
         .iter()
-        .find(|e| e.kind == "eth")
+        .find(|e| e.kind == kind)
         .and_then(|e| e.attributes.iter().find(|a| a.key == "hash"))
         .and_then(|a| hex::decode(&a.value).ok())
         .filter(|bz| bz.len() == 32)
-        .map(|bz| et::TxHash::from_slice(&bz))
+        .map(|bz| et::H256::from_slice(&bz))
 }
 
 // Calculate some kind of hash for the message, preferrably one the tools expect.
 pub fn msg_hash(events: &[Event], tx: &[u8]) -> et::TxHash {
-    if let Some(h) = find_eth_hash(events) {
+    if let Some(h) = find_hash_event("eth", events) {
         h
     } else {
         // Return the default hash, at least there is something
         et::TxHash::from_slice(tx_hash(tx).as_bytes())
     }
+}
+
+/// Collect and parse all `emitter.deleg` or `emitter.id` in the events.
+pub fn collect_emitters(events: &[abci::Event]) -> HashSet<Address> {
+    let mut emitters = HashSet::new();
+    for event in events.iter().filter(|e| e.kind == "event") {
+        for addr in [
+            event
+                .attributes
+                .iter()
+                .find(|a| a.key == "emitter.deleg")
+                .and_then(|a| a.value.parse::<Address>().ok()),
+            event
+                .attributes
+                .iter()
+                .find(|a| a.key == "emitter.id")
+                .and_then(|a| a.value.parse::<u64>().ok())
+                .map(Address::new_id),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            emitters.insert(addr);
+        }
+    }
+    emitters
 }
