@@ -7,7 +7,7 @@ use fendermint_app::{App, AppConfig, AppParentFinalityQuery, AppStore, BitswapBl
 use fendermint_app_settings::AccountKind;
 use fendermint_crypto::SecretKey;
 use fendermint_rocksdb::{blockstore::NamespaceBlockstore, namespaces, RocksDb, RocksDbConfig};
-use fendermint_vm_actor_interface::eam;
+use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_interpreter::{
     bytes::{BytesMessageInterpreter, ProposalPrepareMode},
     chain::{ChainMessageInterpreter, CheckpointPool},
@@ -64,9 +64,11 @@ cmd! {
 ///
 /// This method acts as our composition root.
 async fn run(settings: Settings) -> anyhow::Result<()> {
-    let client: tendermint_rpc::HttpClient =
-        tendermint_rpc::HttpClient::new(settings.tendermint_rpc_url()?)
-            .context("failed to create Tendermint client")?;
+    let tendermint_rpc_url = settings.tendermint_rpc_url()?;
+    tracing::info!("Connecting to Tendermint at {tendermint_rpc_url}");
+
+    let client: tendermint_rpc::HttpClient = tendermint_rpc::HttpClient::new(tendermint_rpc_url)
+        .context("failed to create Tendermint client")?;
 
     let validator = match settings.validator_key {
         Some(ref key) => {
@@ -74,6 +76,7 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
             if sk.exists() && sk.is_file() {
                 let sk = read_secret_key(&sk).context("failed to read validator key")?;
                 let addr = to_address(&sk, &key.kind)?;
+                tracing::info!("validator key address: {addr} detected");
                 Some((sk, addr))
             } else {
                 bail!("validator key does not exist: {}", sk.to_string_lossy());
@@ -95,7 +98,8 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
             settings.fvm.gas_fee_cap.clone(),
             settings.fvm.gas_premium.clone(),
         )
-        .with_max_retries(settings.broadcast.max_retries);
+        .with_max_retries(settings.broadcast.max_retries)
+        .with_retry_delay(settings.broadcast.retry_delay);
 
         ValidatorContext::new(sk, broadcaster)
     });
@@ -325,6 +329,6 @@ fn to_address(sk: &SecretKey, kind: &AccountKind) -> anyhow::Result<Address> {
     let pk = sk.public_key().serialize();
     match kind {
         AccountKind::Regular => Ok(Address::new_secp256k1(&pk)?),
-        AccountKind::Ethereum => Ok(Address::new_delegated(eam::EAM_ACTOR_ID, &pk)?),
+        AccountKind::Ethereum => Ok(Address::from(EthAddress::new_secp256k1(&pk)?)),
     }
 }

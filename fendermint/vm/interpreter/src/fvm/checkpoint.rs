@@ -2,15 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use anyhow::{anyhow, Context};
 use fendermint_crypto::PublicKey;
+use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_actor_interface::ipc::AbiHash;
 use fendermint_vm_genesis::Collateral;
 use fendermint_vm_genesis::PowerScale;
 use fendermint_vm_message::conv::from_eth;
 use ipc_actors_abis::gateway_getter_facet::Membership;
 use tendermint::block::Height;
+use tendermint_rpc::endpoint::commit;
 use tendermint_rpc::{endpoint::validators, Client, Paging};
 
 use fvm_ipld_blockstore::Blockstore;
@@ -138,6 +141,65 @@ where
     }
 }
 
+/// Wait until CometBFT has reached a specific block height.
+///
+/// This is used so we can wait for the next block where the ledger changes
+/// we have done durign execution has been committed.
+async fn wait_for_commit<C>(
+    client: &C,
+    block_height: u64,
+    retry_delay: Duration,
+) -> anyhow::Result<()>
+where
+    C: Client + Clone + Send + Sync + 'static,
+{
+    loop {
+        let res: commit::Response = client
+            .latest_commit()
+            .await
+            .context("failed to fetch latest commit")?;
+
+        if res.signed_header.header().height.value() >= block_height {
+            return Ok(());
+        }
+
+        tokio::time::sleep(retry_delay).await;
+    }
+}
+
+/// Collect incomplete signatures from the ledger which this validator hasn't signed yet.
+///
+/// It doesn't check whether the validator should have signed it, that's done inside
+/// [broadcast_incomplete_signatures] at the moment. The goal is rather to avoid double
+/// signing for those who have already done it.
+pub fn unsigned_checkpoints<DB>(
+    gateway: &GatewayCaller<DB>,
+    state: &mut FvmExecState<DB>,
+    validator_key: PublicKey,
+) -> anyhow::Result<Vec<getter::BottomUpCheckpoint>>
+where
+    DB: Blockstore + Send + Sync + 'static,
+{
+    let mut unsigned_checkpoints = Vec::new();
+    let validator_addr = EthAddress::from(validator_key);
+
+    let incomplete_checkpoints = gateway
+        .incomplete_checkpoints(state)
+        .context("failed to fetch incomplete checkpoints")?;
+
+    for cp in incomplete_checkpoints {
+        let signatories = gateway
+            .checkpoint_signatories(state, cp.block_height)
+            .context("failed to get checkpoint signatories")?;
+
+        if !signatories.contains(&validator_addr) {
+            unsigned_checkpoints.push(cp);
+        }
+    }
+
+    Ok(unsigned_checkpoints)
+}
+
 /// Sign the current and any incomplete checkpoints.
 pub async fn broadcast_incomplete_signatures<C, DB>(
     client: &C,
@@ -150,6 +212,17 @@ where
     C: Client + Clone + Send + Sync + 'static,
     DB: Blockstore + Send + Sync + 'static,
 {
+    // Make sure that these had time to be added to the ledger.
+    if let Some(highest) = incomplete_checkpoints
+        .iter()
+        .map(|cp| cp.block_height)
+        .max()
+    {
+        wait_for_commit(client, highest + 1, validator_ctx.broadcaster.retry_delay())
+            .await
+            .context("failed to wait for commit")?;
+    }
+
     for cp in incomplete_checkpoints {
         let height = Height::try_from(cp.block_height)?;
         let power_table = bft_power_table(client, height)

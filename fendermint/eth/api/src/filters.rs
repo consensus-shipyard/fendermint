@@ -15,6 +15,7 @@ use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_message::{chain::ChainMessage, query::FvmQueryHeight, signed::DomainHash};
 use futures::{Future, StreamExt};
 use fvm_shared::{address::Address, chainid::ChainID, error::ExitCode};
+use lru_time_cache::LruCache;
 use serde::Serialize;
 use tendermint_rpc::{
     event::{Event, EventData},
@@ -27,7 +28,7 @@ use tokio::sync::{
 };
 
 use crate::{
-    conv::from_tm::{self, map_rpc_block_txs, msg_hash},
+    conv::from_tm::{self, find_hash_event, map_rpc_block_txs, msg_hash, tx_hash},
     error::JsonRpcError,
     handlers::ws::{MethodNotification, Notification},
     state::{enrich_block, WebSocketSender},
@@ -104,9 +105,12 @@ impl FilterKind {
                     Query::from(EventType::Tx)
                 };
 
-                if let Some(block_hash) = filter.get_block_hash() {
-                    // TODO #220: This looks wrong, tx.hash is the transaction hash, not the block.
-                    query = query.and_eq("tx.hash", hex::encode(block_hash.0));
+                if let Some(_block_hash) = filter.get_block_hash() {
+                    // Currently we only use these filters for subscribing to future events,
+                    // we don't go back to retireve past ones (although I think Lotus does that).
+                    // As such, it is impossible to subscribe to future block hashes, they are unknown.
+                    // We could add a `block.hash` to the index, but there are other ways to find transactions
+                    // in a block, so it would be storing data for little reason.
                 }
                 if let Some(from_block) = filter.get_from_block() {
                     query = query.and_gte("tx.height", from_block.as_u64());
@@ -134,13 +138,16 @@ impl FilterKind {
                     queries = addrs
                         .iter()
                         .flat_map(|addr| {
-                            queries.iter().map(|q| {
-                                if let Ok(id) = addr.id() {
+                            queries.iter().flat_map(|q| {
+                                let mut emitters = if let Ok(id) = addr.id() {
                                     // If it was a masked ID.
-                                    q.clone().and_eq("message.emitter.id", id.to_string())
+                                    vec![q.clone().and_eq("event.emitter.id", id.to_string())]
                                 } else {
-                                    q.clone().and_eq("message.emitter.deleg", addr.to_string())
-                                }
+                                    vec![q.clone().and_eq("event.emitter.deleg", addr.to_string())]
+                                };
+                                emitters.push(q.clone().and_eq("message.from", addr.to_string()));
+                                emitters.push(q.clone().and_eq("message.to", addr.to_string()));
+                                emitters
                             })
                         })
                         .collect();
@@ -154,7 +161,7 @@ impl FilterKind {
                             _ => vec![],
                         };
                         if !topics.is_empty() {
-                            let key = format!("message.t{}", i + 1);
+                            let key = format!("event.t{}", i + 1);
                             queries = topics
                                 .into_iter()
                                 .flat_map(|t| {
@@ -270,7 +277,7 @@ where
                 //                 gas_used: Some("5151233"),
                 //                 events: [
                 //                     Event {
-                //                         kind: "message",
+                //                         kind: "event",
                 //                         attributes: [
                 //                             EventAttribute { key: "emitter.id", value: "108", index: true },
                 //                             EventAttribute { key: "t1", value: "dd...b3ef", index: true },
@@ -285,21 +292,24 @@ where
                 //     },
                 //     events: Some(
                 //     {
-                //         "message.d": ["00...0064"],
-                //         "message.emitter.id": ["108"],
-                //         "message.t1": ["dd...b3ef"],
-                //         "message.t2": ["00...362f"],
-                //         "message.t3": ["00...44eb"],
+                //         "event.d": ["00...0064"],
+                //         "event.emitter.id": ["108"],
+                //         "event.t1": ["dd...b3ef"],
+                //         "event.t2": ["00...362f"],
+                //         "event.t3": ["00...44eb"],
                 //         "tm.event": ["Tx"],
                 //         "tx.hash": ["FA7339B4D9F6AF80AEDB03FC4BFBC1FDD9A62F97632EF8B79C98AAD7044C5BDB"],
                 //         "tx.height": ["1088"]
                 //     })
                 // }
 
-                // TODO: There is no easy way here to tell the block hash. Maybe it has been given in a preceding event,
+                // There is no easy way here to tell the block hash. Maybe it has been given in a preceding event,
                 // but other than that our only option is to query the Tendermint API. If we do that we should have caching,
                 // otherwise all the transactions in a block hammering the node will act like a DoS attack.
-                let block_hash = et::H256::default();
+                // Or we can add it to the indexed fields.
+                let block_hash =
+                    find_hash_event("block", &tx_result.result.events).unwrap_or_default();
+
                 let block_number = et::U64::from(tx_result.height);
 
                 let transaction_hash = msg_hash(&tx_result.result.events, &tx_result.tx);
@@ -425,7 +435,24 @@ impl FilterDriver {
             None
         };
 
+        // Because there are multiple potentially overlapping subscriptions, we might see the same transaction twice,
+        // e.g. because we were interested in ones that emit events "A or B" we had to subscribe to "A" and also to "B",
+        // so if a transaction emits both "A" and "B" we'll get it twice. Most likely they will be at the same time,
+        // so a short time based cache should help get rid of the duplicates.
+        let mut tx_cache: LruCache<tendermint::Hash, bool> =
+            LruCache::with_expiry_duration(Duration::from_secs(60));
+
         while let Some(cmd) = self.rx.recv().await {
+            // Skip duplicate transactions. We won't see duplidate blocks because there is only 1 query for that.
+            if let FilterCommand::Update(ref event) = cmd {
+                if let EventData::Tx { ref tx_result } = event.data {
+                    let tx_hash = tx_hash(&tx_result.tx);
+                    if tx_cache.insert(tx_hash, true).is_some() {
+                        continue;
+                    }
+                }
+            }
+
             match self.state {
                 FilterState::Poll(ref mut state) => {
                     match cmd {
@@ -721,7 +748,7 @@ mod tests {
         let filter = et::Filter::new()
             .select(1234..)
             .address(
-                "0xff00000000000000000000000000000000000064"
+                "0xb794f5ea0ba39494ce839613fffba74279579268"
                     .parse::<et::Address>()
                     .unwrap(),
             )
@@ -746,20 +773,18 @@ mod tests {
 
         let queries = FilterKind::Logs(Box::new(filter)).to_queries();
 
-        assert_eq!(queries.len(), 4);
+        assert_eq!(queries.len(), 12);
 
-        for (i, (t1, t3)) in [
-            ("Foo", "Bob"),
-            ("Bar", "Bob"),
-            ("Foo", "Charlie"),
-            ("Bar", "Charlie"),
-        ]
-        .iter()
-        .enumerate()
-        {
-            let q = queries[i].to_string();
-            let e = format!("tx.height >= 1234 AND message.emitter.id = '100' AND message.t1 = '{}' AND message.t2 = '{}' AND message.t3 = '{}'", hash_hex(t1), hash_hex("Alice"), hash_hex(t3));
-            assert_eq!(q, e, "combination {i}");
+        let mut i = 0;
+        for t3 in ["Bob", "Charlie"] {
+            for t1 in ["Foo", "Bar"] {
+                for addr in ["event.emitter.deleg", "message.from", "message.to"] {
+                    let q = queries[i].to_string();
+                    let e = format!("tx.height >= 1234 AND {addr} = 'f410fw6kpl2qluokjjtudsyj7765hij4vpetitn2e2wq' AND event.t1 = '{}' AND event.t2 = '{}' AND event.t3 = '{}'", hash_hex(t1), hash_hex("Alice"), hash_hex(t3));
+                    assert_eq!(q, e, "combination {i}");
+                    i += 1;
+                }
+            }
         }
     }
 }
