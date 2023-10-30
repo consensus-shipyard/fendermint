@@ -3,6 +3,7 @@ extend = "fendermint-run"
 env = { "ENTRY" = "fendermint", "CMD" = "run", "FLAGS" = "-d" }
 
 [tasks.fendermint-pull]
+condition = { env_not_set = ["FM_PULL_SKIP"], fail_message = "Skipped pulling fendermint Docker image." }
 command = "docker"
 args = ["pull", "${FM_REMOTE_DOCKER_IMAGE}"]
 
