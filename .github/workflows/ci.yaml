@@ -150,7 +150,7 @@ jobs:
         shell: bash
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $ --password-stdin
 
-      - name: Build and Push Multiarch Docker Image
+      - name: Docker Prep
         run: |
           IMAGE_ID=ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}
 
@@ -166,10 +166,13 @@ jobs:
           # This uses the Docker `latest` tag convention.
           [ "$VERSION" == "main" ] && VERSION=latest
 
-          echo IMAGE_ID=$IMAGE_ID
-          echo VERSION=$VERSION
+          echo ::set-output name=IMAGE_TAG::$IMAGE_ID:$VERSION
 
-          export BUILDX_TAG=$IMAGE_ID:$VERSION
-          export BUILDX_FLAGS="--push --platform linux/amd64,linux/arm64"
+      - name: Docker Deps
+        run: make docker-deps
 
+      - name: Build and Push Multiarch Docker Image
+        run: |
+          export BUILDX_TAG=${{ steps.prep.outputs.IMAGE_TAG }}
+          export BUILDX_FLAGS="--push --platform linux/amd64,linux/arm64 --cache-from=type=gha --cache-to=type=gha,mode=max"
           make docker-build

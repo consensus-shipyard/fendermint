@@ -64,12 +64,13 @@ check-fmt:
 check-clippy:
 	cargo clippy --all --tests -- -D clippy::all
 
-docker-build: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE) $(IPC_ACTORS_ABI)
+docker-deps: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE) $(IPC_ACTORS_ABI)
+	rm -rf docker/.artifacts
 	mkdir -p docker/.artifacts/contracts
-
 	cp -r $(IPC_ACTORS_OUT)/* docker/.artifacts/contracts
 	cp $(BUILTIN_ACTORS_BUNDLE) docker/.artifacts
 
+docker-build: docker-deps
 	if [ "$(PROFILE)" = "ci" ]; then \
 		docker buildx build \
 			$(BUILDX_FLAGS) \
@@ -81,8 +82,6 @@ docker-build: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE) $(IPC_ACTORS_ABI)
 			-f docker/local.Dockerfile \
 			-t fendermint:latest $(PWD); \
 	fi
-
-	rm -rf docker/.artifacts
 
 
 # Build a bundle CAR; this is so we don't have to have a project reference,
