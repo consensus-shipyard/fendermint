@@ -1,0 +1,41 @@
+name: Infra test
+
+on:
+  workflow_call:
+
+  ## TMP TODO REMOVE Only for testing
+  pull_request:
+    branches:
+      - '**'
+    # To add ready_for_review as a trigger we need to list all the defaults.
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+jobs:
+  test:
+    name: Test infra scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the project
+        uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          components: rustfmt
+      - name: Install cargo-make
+        run: |
+          cargo install --force cargo-make
+      - name: Run testnode
+        run: |
+          cargo make --makefile ./infra/Makefile.toml testnode
+          ## TODO run a smoke test
+          cargo make --makefile ./infra/Makefile.toml testnode-down
+      - name: Run testnet
+        run: |
+          cargo make --makefile ./infra/Makefile.toml testnet
+          ## TODO run a smoke test
+          cargo make --makefile ./infra/Makefile.toml testnet-down
