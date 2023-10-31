@@ -627,8 +627,8 @@ pub async fn call<C>(
 where
     C: Client + Sync + Send,
 {
-    let msg = to_fvm_message(tx.into(), true)?;
-    tracing::info!("eth - call msg: {msg:?}");
+    let mut msg = to_fvm_message(tx.into(), true)?;
+    msg.gas_limit = fvm_shared::BLOCK_GAS_LIMIT;
 
     let height = data.query_height(block_id).await?;
     let response = data.client.call(msg, height).await?;
