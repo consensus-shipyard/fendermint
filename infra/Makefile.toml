@@ -38,6 +38,7 @@ FM_NETWORK = { value = "test", condition = { env_not_set = ["FM_NETWORK"] } }
 TOPDOWN_CHAIN_HEAD_DELAY = { value = "10", condition = { env_not_set = ["TOPDOWN_CHAIN_HEAD_DELAY"] } }
 # Comma-separated list of bootstrap nodes to be used by the CometBFT node.
 BOOTSTRAPS = { value = "", condition = { env_not_set = ["BOOTSTRAPS"] } }
+PRIVATE_KEY_PATH = { value = "", condition = { env_not_set = ["PRIVATE_KEY_PATH"] } }
 
 # Deployment-related
 BASE_DIR="${HOME}/.ipc/${NETWORK_NAME}"
@@ -66,7 +67,7 @@ ACTORS_BUNDLE = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/../builtin-actors/out
 # If this wasn't present, any wait task is skipped.
 CARGO_MAKE_WAIT_MILLISECONDS = 5000
 # This wait time seems to work locally.
-CMT_WAIT_MILLIS = 30000
+CMT_WAIT_MILLIS = 20000
 # Keep example logs to a minimum.
 VERBOSITY = ""
 
