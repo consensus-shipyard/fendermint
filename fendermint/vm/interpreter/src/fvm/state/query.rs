@@ -171,6 +171,7 @@ where
         self,
         mut msg: FvmMessage,
     ) -> anyhow::Result<(Self, (ApplyRet, HashMap<u64, Address>))> {
+        tracing::info!("query - call fvm message: {msg:?}");
         self.with_exec_state(|s| {
             // If the sequence is zero, treat it as a signal to use whatever is in the state.
             if msg.sequence.is_zero() {
