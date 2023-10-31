@@ -4,23 +4,17 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use anyhow::Context;
 use async_stm::{atomically, retry, TVar};
-use fendermint_vm_interpreter::fvm::state::snapshot::{BlockHeight, BlockStateParams};
+use fendermint_vm_interpreter::fvm::state::snapshot::{BlockHeight, BlockStateParams, Snapshot};
 use fendermint_vm_interpreter::fvm::state::FvmStateParams;
+use fvm_ipld_blockstore::Blockstore;
 use tendermint_rpc::Client;
-
-const SYNC_POLL_INTERVAL: Duration = Duration::from_secs(60);
 
 /// State of snapshots, including the list of available completed ones
 /// and the next eligible height.
 #[derive(Clone)]
 struct SnapshotState {
-    /// Snapshotted heights are a multiple of the interval.
-    ///
-    /// The manager is free to skip heights if it's busy.
-    snapshot_interval: BlockHeight,
-    /// Location to store completed snapshots.
-    _snapshot_dir: PathBuf,
     /// The latest state parameters at a snapshottable height.
     latest_params: TVar<Option<BlockStateParams>>,
 }
@@ -28,13 +22,15 @@ struct SnapshotState {
 /// Interface to snapshot state for the application.
 #[derive(Clone)]
 pub struct SnapshotClient {
+    /// The client will only notify the manager of snapshottable heights.
+    snapshot_interval: BlockHeight,
     snapshot_state: SnapshotState,
 }
 
 impl SnapshotClient {
     /// Set the latest block state parameters and notify the manager.
     pub async fn on_commit(&self, block_height: BlockHeight, params: FvmStateParams) {
-        if block_height % self.snapshot_state.snapshot_interval == 0 {
+        if block_height % self.snapshot_interval == 0 {
             atomically(|| {
                 self.snapshot_state
                     .latest_params
@@ -46,25 +42,44 @@ impl SnapshotClient {
 }
 
 /// Create snapshots at regular block intervals.
-pub struct SnapshotManager {
+pub struct SnapshotManager<BS> {
+    store: BS,
+    /// Location to store completed snapshots.
+    snapshot_dir: PathBuf,
+    /// Snapshotted heights are a multiple of the interval.
+    ///
+    /// The manager is free to skip heights if it's busy.
+    snapshot_interval: BlockHeight,
     /// Shared state of snapshots.
     snapshot_state: SnapshotState,
+    /// How often to check CometBFT whether it has finished syncing.
+    sync_poll_interval: Duration,
     /// Indicate whether CometBFT has finished syncing with the chain,
     /// so that we can skip snapshotting old states while catching up.
     is_syncing: TVar<bool>,
 }
 
-impl SnapshotManager {
+impl<BS> SnapshotManager<BS>
+where
+    BS: Blockstore + Clone + Send + Sync + 'static,
+{
     /// Create a new manager.
-    pub fn new(snapshot_interval: BlockHeight, snapshot_dir: PathBuf) -> Self {
+    pub fn new(
+        store: BS,
+        snapshot_interval: BlockHeight,
+        snapshot_dir: PathBuf,
+        sync_poll_interval: Duration,
+    ) -> Self {
         Self {
+            store,
+            snapshot_dir,
+            snapshot_interval,
             snapshot_state: SnapshotState {
-                snapshot_interval,
-                _snapshot_dir: snapshot_dir,
                 // Start with nothing to snapshot until we are notified about a new height.
                 // We could also look back to find the latest height we should have snapshotted.
                 latest_params: TVar::new(None),
             },
+            sync_poll_interval,
             // Assume we are syncing until we can determine otherwise.
             is_syncing: TVar::new(true),
         }
@@ -73,6 +88,7 @@ impl SnapshotManager {
     /// Create a client to talk to this manager.
     pub fn snapshot_client(&self) -> SnapshotClient {
         SnapshotClient {
+            snapshot_interval: self.snapshot_interval,
             snapshot_state: self.snapshot_state.clone(),
         }
     }
@@ -87,14 +103,15 @@ impl SnapshotManager {
         // restarted without Fendermint and go through another catch up.
         {
             let is_syncing = self.is_syncing.clone();
-            tokio::spawn(async {
-                poll_sync_status(client, is_syncing).await;
+            let poll_interval = self.sync_poll_interval;
+            tokio::spawn(async move {
+                poll_sync_status(client, is_syncing, poll_interval).await;
             });
         }
 
         let mut last_params = None;
         loop {
-            let new_params = atomically(|| {
+            let (params, height) = atomically(|| {
                 // Check the current sync status. We could just query the API, but then we wouldn't
                 // be notified when we finally reach the end, and we'd only snapshot the next height,
                 // not the last one as soon as the chain is caught up.
@@ -110,19 +127,55 @@ impl SnapshotManager {
             })
             .await;
 
-            last_params = Some(new_params.clone());
+            if let Err(e) = self.create_snapshot(height, params.clone()).await {
+                tracing::warn!(error =? e, height, "failed to create snapshot");
+            }
 
-            self.create_snapshot(new_params).await;
+            last_params = Some((params, height));
         }
     }
 
-    async fn create_snapshot(&self, (_params, _height): BlockStateParams) {
-        todo!()
+    /// Export a snapshot to a temporary file, then copy it to the snapshot directory.
+    async fn create_snapshot(
+        &self,
+        height: BlockHeight,
+        params: FvmStateParams,
+    ) -> anyhow::Result<()> {
+        let snapshot = Snapshot::new(self.store.clone(), params, height)
+            .context("failed to create snapshot")?;
+
+        let file_name = format!("snapshot-{height}.car");
+        let file_path = self.snapshot_dir.join(file_name.clone());
+        let temp_dir = tempfile::tempdir().context("failed to create temp dir for snapshot")?;
+        let temp_path = temp_dir.path().join(file_name);
+
+        // TODO: See if we can reuse the contents of an existing CAR file.
+
+        tracing::debug!(
+            height,
+            path = temp_path.to_string_lossy().to_string(),
+            "exporting snapshot..."
+        );
+
+        snapshot
+            .write_car(temp_path.clone())
+            .await
+            .context("failed to write CAR file")?;
+
+        std::fs::rename(temp_path, file_path.clone()).context("failed to move snapshot file")?;
+
+        tracing::info!(
+            height,
+            path = file_path.to_string_lossy().to_string(),
+            "exported snapshot"
+        );
+
+        Ok(())
     }
 }
 
 /// Periodically ask CometBFT if it has caught up with the chain.
-async fn poll_sync_status<C>(client: C, is_syncing: TVar<bool>)
+async fn poll_sync_status<C>(client: C, is_syncing: TVar<bool>, poll_interval: Duration)
 where
     C: Client + Send + Sync + 'static,
 {
@@ -143,6 +196,6 @@ where
                 tracing::warn!(error =? e, "failed to poll CometBFT sync status");
             }
         }
-        tokio::time::sleep(SYNC_POLL_INTERVAL).await;
+        tokio::time::sleep(poll_interval).await;
     }
 }

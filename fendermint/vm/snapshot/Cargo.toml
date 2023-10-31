@@ -11,10 +11,13 @@ license.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 async-stm = { workspace = true }
+tempfile = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 
 tendermint = { workspace = true }
 tendermint-rpc = { workspace = true }
+
+fvm_ipld_blockstore = { workspace = true }
 
 fendermint_vm_interpreter = { path = "../interpreter" }

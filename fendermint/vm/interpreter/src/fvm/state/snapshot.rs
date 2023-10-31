@@ -39,7 +39,7 @@ type SnapshotStreamer = Box<dyn Send + Unpin + Stream<Item = (Cid, Vec<u8>)>>;
 
 impl<BS> Snapshot<BS>
 where
-    BS: Blockstore + Clone + 'static + Send,
+    BS: Blockstore + 'static + Send,
 {
     pub fn new(
         store: BS,
@@ -135,7 +135,7 @@ pub type BlockStateParams = (FvmStateParams, BlockHeight);
 
 impl<BS> V1Snapshot<BS>
 where
-    BS: Blockstore + Clone + 'static + Send,
+    BS: Blockstore + 'static + Send,
 {
     /// Creates a new V2Snapshot struct. Caller ensure store
     pub fn new(

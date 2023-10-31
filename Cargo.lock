@@ -3221,6 +3221,8 @@ dependencies = [
  "anyhow",
  "async-stm",
  "fendermint_vm_interpreter",
+ "fvm_ipld_blockstore",
+ "tempfile",
  "tendermint 0.31.1",
  "tendermint-rpc",
  "tokio",
