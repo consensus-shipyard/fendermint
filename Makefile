@@ -16,7 +16,12 @@ IPC_ACTORS_OUT         = $(IPC_ACTORS_DIR)/out
 FENDERMINT_CODE       := $(shell find . -type f \( -name "*.rs" -o -name "Cargo.toml" \) | grep -v target)
 
 # Override PROFILE env var to choose between `local | ci`
-PROFILE?=local
+PROFILE     ?= local
+
+# Set to --push the Multiarch Docker image to push during build.
+BUILDX_FLAGS ?= ""
+# Set to the repository where the image is to be pushed.
+BUILDX_TAG   ?= fendermint:latest
 
 all: test build diagrams
 
@@ -66,13 +71,16 @@ docker-build: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE) $(IPC_ACTORS_ABI)
 	cp $(BUILTIN_ACTORS_BUNDLE) docker/.artifacts
 
 	if [ "$(PROFILE)" = "ci" ]; then \
-		$(MAKE) --no-print-directory build && \
-		cp ./target/release/fendermint docker/.artifacts ; \
-	fi && \
-	DOCKER_BUILDKIT=1 \
-	docker build \
-		-f docker/$(PROFILE).Dockerfile \
-		-t fendermint:latest $(PWD)
+		docker buildx $(BUILDX_FLAGS) \
+			--platform linux/amd64,linux/arm64 \
+			-f docker/local.Dockerfile \
+			-t $(BUILDX_TAG) $(PWD); \
+	else \
+		DOCKER_BUILDKIT=1 \
+		docker build \
+			-f docker/local.Dockerfile \
+			-t fendermint:latest $(PWD); \
+	fi
 
 	rm -rf docker/.artifacts
 
