@@ -147,6 +147,8 @@ where
                         checkpoint::unsigned_checkpoints(&self.gateway, &mut state, ctx.public_key)
                             .context("failed to fetch incomplete checkpoints")?;
 
+                    tracing::debug!("incomplete checkpoints: {incomplete_checkpoints:?}");
+
                     debug_assert!(
                         incomplete_checkpoints
                             .iter()
