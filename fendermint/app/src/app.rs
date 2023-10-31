@@ -7,35 +7,41 @@ use std::sync::{Arc, Mutex};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use cid::Cid;
+use fendermint_abci::util::take_until_max_size;
 use fendermint_abci::{AbciResult, Application};
 use fendermint_storage::{
     Codec, Encode, KVCollection, KVRead, KVReadable, KVStore, KVWritable, KVWrite,
 };
 use fendermint_vm_core::Timestamp;
+use fendermint_vm_genesis::{Power, Validator};
 use fendermint_vm_interpreter::bytes::{
-    BytesMessageApplyRet, BytesMessageCheckRet, BytesMessageQuery, BytesMessageQueryRet,
+    BytesMessageApplyRes, BytesMessageCheckRes, BytesMessageQuery, BytesMessageQueryRes,
 };
-use fendermint_vm_interpreter::chain::{ChainMessageApplyRet, IllegalMessage};
+use fendermint_vm_interpreter::chain::{
+    ChainMessageApplyRet, CheckpointPool, IllegalMessage, TopDownFinalityProvider,
+};
 use fendermint_vm_interpreter::fvm::state::{
-    empty_state_tree, FvmCheckState, FvmExecState, FvmGenesisState, FvmQueryState, FvmStateParams,
+    empty_state_tree, CheckStateRef, FvmExecState, FvmGenesisState, FvmQueryState, FvmStateParams,
+    FvmUpdatableParams,
 };
+use fendermint_vm_interpreter::fvm::store::ReadOnlyBlockstore;
 use fendermint_vm_interpreter::fvm::{FvmApplyRet, FvmGenesisOutput};
 use fendermint_vm_interpreter::signed::InvalidSignature;
 use fendermint_vm_interpreter::{
-    CheckInterpreter, ExecInterpreter, GenesisInterpreter, QueryInterpreter,
+    CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
+use fendermint_vm_message::query::FvmQueryHeight;
 use fvm::engine::MultiEngine;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::chainid::ChainID;
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::version::NetworkVersion;
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use tendermint::abci::request::CheckTxKind;
 use tendermint::abci::{request, response};
-use tendermint::block::Height;
 
-use crate::snapshot::{SnapshotConfig, SnapshotManager};
 use crate::{tmconv::*, VERSION};
 use crate::{BlockHeight, APP_VERSION};
 
@@ -59,6 +65,7 @@ pub enum AppError {
     NotInitialized = 54,
 }
 
+/// The application state record we keep a history of in the database.
 #[derive(Serialize, Deserialize)]
 pub struct AppState {
     /// Last committed block height.
@@ -73,13 +80,47 @@ impl AppState {
     pub fn state_root(&self) -> Cid {
         self.state_params.state_root
     }
+
     pub fn chain_id(&self) -> ChainID {
         ChainID::from(self.state_params.chain_id)
     }
+
+    /// Produce an appliction hash that is a commitment to all data replicated by consensus,
+    /// that is, all nodes participating in the network must agree on this otherwise we have
+    /// a consensus failure.
+    ///
+    /// Notably it contains the actor state root _as well as_ some of the metadata maintained
+    /// outside the FVM, such as the timestamp and the circulating supply.
     pub fn app_hash(&self) -> tendermint::hash::AppHash {
-        tendermint::hash::AppHash::try_from(self.state_root().to_bytes())
-            .expect("hash can be wrapped")
+        // Create an artifical CID from the FVM state params, which include everything that
+        // deterministically changes under consensus.
+        let state_params_cid =
+            fendermint_vm_message::cid(&self.state_params).expect("state params have a CID");
+
+        // We could reduce it to a hash to ephasize that this is not something that we can return at the moment,
+        // but we could just as easily store the record in the Blockstore to make it retrievable.
+        // It is generally not a goal to serve the entire state over the IPLD Resolver or ABCI queries, though;
+        // for that we should rely on the CometBFT snapshot mechanism.
+        // But to keep our options open, we can return the hash as a CID that nobody can retrieve, and change our mind later.
+
+        // let state_params_hash = state_params_cid.hash();
+        let state_params_hash = state_params_cid.to_bytes();
+
+        tendermint::hash::AppHash::try_from(state_params_hash).expect("hash can be wrapped")
     }
+}
+
+pub struct AppConfig<S: KVStore> {
+    /// Namespace to store the current app state.
+    pub app_namespace: S::Namespace,
+    /// Namespace to store the app state history.
+    pub state_hist_namespace: S::Namespace,
+    /// Size of state history to keep; 0 means unlimited.
+    pub state_hist_size: u64,
+    /// Path to the Wasm bundle.
+    ///
+    /// Only loaded once during genesis; later comes from the [`StateTree`].
+    pub builtin_actors_bundle: PathBuf,
 }
 
 /// Handle ABCI requests.
@@ -103,9 +144,6 @@ where
     ///
     /// Only loaded once during genesis; later comes from the [`StateTree`].
     builtin_actors_bundle: PathBuf,
-    /// Manages snapshot taking for the blockchain. If None, it will not trigger snapshot of the
-    /// current block chain
-    snapshot: Option<SnapshotManager>,
     /// Namespace to store app state.
     namespace: S::Namespace,
     /// Collection of past state parameters.
@@ -121,10 +159,14 @@ where
     state_hist: KVCollection<S, BlockHeight, FvmStateParams>,
     /// Interpreter for block lifecycle events.
     interpreter: Arc<I>,
+    /// CID resolution pool.
+    resolve_pool: CheckpointPool,
+    /// The parent finality provider for top down checkpoint
+    parent_finality_provider: TopDownFinalityProvider,
     /// State accumulating changes during block execution.
     exec_state: Arc<Mutex<Option<FvmExecState<SS>>>>,
-    /// Projected partial state accumulating during transaction checks.
-    check_state: Arc<tokio::sync::Mutex<Option<FvmCheckState<SS>>>>,
+    /// Projected (partial) state accumulating during transaction checks.
+    check_state: CheckStateRef<SS>,
     /// How much history to keep.
     ///
     /// Zero means unlimited.
@@ -142,52 +184,24 @@ where
     SS: Blockstore + Clone + 'static,
 {
     pub fn new(
+        config: AppConfig<S>,
         db: DB,
         state_store: SS,
-        builtin_actors_bundle: PathBuf,
-        app_namespace: S::Namespace,
-        state_hist_namespace: S::Namespace,
-        state_hist_size: u64,
         interpreter: I,
+        resolve_pool: CheckpointPool,
+        parent_finality_provider: TopDownFinalityProvider,
     ) -> Result<Self> {
         let app = Self {
             db: Arc::new(db),
             state_store: Arc::new(state_store),
             multi_engine: Arc::new(MultiEngine::new(1)),
-            builtin_actors_bundle,
-            snapshot: None,
-            namespace: app_namespace,
-            state_hist: KVCollection::new(state_hist_namespace),
-            state_hist_size,
+            builtin_actors_bundle: config.builtin_actors_bundle,
+            namespace: config.app_namespace,
+            state_hist: KVCollection::new(config.state_hist_namespace),
+            state_hist_size: config.state_hist_size,
             interpreter: Arc::new(interpreter),
-            exec_state: Arc::new(Mutex::new(None)),
-            check_state: Arc::new(tokio::sync::Mutex::new(None)),
-        };
-        app.init_committed_state()?;
-        Ok(app)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn new_with_snapshot(
-        db: DB,
-        state_store: SS,
-        snapshot_config: SnapshotConfig,
-        builtin_actors_bundle: PathBuf,
-        app_namespace: S::Namespace,
-        state_hist_namespace: S::Namespace,
-        state_hist_size: u64,
-        interpreter: I,
-    ) -> Result<Self> {
-        let app = Self {
-            db: Arc::new(db),
-            state_store: Arc::new(state_store),
-            multi_engine: Arc::new(MultiEngine::new(1)),
-            builtin_actors_bundle,
-            snapshot: Some(SnapshotManager::new(snapshot_config)),
-            namespace: app_namespace,
-            state_hist: KVCollection::new(state_hist_namespace),
-            state_hist_size,
-            interpreter: Arc::new(interpreter),
+            resolve_pool,
+            parent_finality_provider,
             exec_state: Arc::new(Mutex::new(None)),
             check_state: Arc::new(tokio::sync::Mutex::new(None)),
         };
@@ -228,6 +242,7 @@ where
                     base_fee: TokenAmount::zero(),
                     circ_supply: TokenAmount::zero(),
                     chain_id: 0,
+                    power_scale: 0,
                 },
             };
             self.set_committed_state(state)?;
@@ -288,16 +303,65 @@ where
         guard.take().expect("exec state empty")
     }
 
+    /// Apply a function on the state, if it exists.
+    fn map_exec_state<T, F>(&self, f: F) -> Option<T>
+    where
+        F: FnOnce(&FvmExecState<SS>) -> T,
+    {
+        let guard = self.exec_state.lock().expect("mutex poisoned");
+        guard.as_ref().map(f)
+    }
+
     /// Take the execution state, update it, put it back, return the output.
     async fn modify_exec_state<T, F, R>(&self, f: F) -> Result<T>
     where
-        F: FnOnce(FvmExecState<SS>) -> R,
-        R: Future<Output = Result<(FvmExecState<SS>, T)>>,
+        F: FnOnce((CheckpointPool, TopDownFinalityProvider, FvmExecState<SS>)) -> R,
+        R: Future<
+            Output = Result<(
+                (CheckpointPool, TopDownFinalityProvider, FvmExecState<SS>),
+                T,
+            )>,
+        >,
     {
         let state = self.take_exec_state();
-        let (state, ret) = f(state).await?;
+        let ((_pool, _provider, state), ret) = f((
+            self.resolve_pool.clone(),
+            self.parent_finality_provider.clone(),
+            state,
+        ))
+        .await?;
         self.put_exec_state(state);
         Ok(ret)
+    }
+
+    /// Get a read only fvm execution state. This is useful to perform query commands targeting
+    /// the latest state.
+    pub fn new_read_only_exec_state(
+        &self,
+    ) -> Result<Option<FvmExecState<ReadOnlyBlockstore<Arc<SS>>>>> {
+        let maybe_app_state = self.get_committed_state()?;
+
+        Ok(if let Some(app_state) = maybe_app_state {
+            let block_height = app_state.block_height;
+            let state_params = app_state.state_params;
+
+            // wait for block production
+            if block_height == 0 {
+                return Ok(None);
+            }
+
+            let exec_state = FvmExecState::new(
+                ReadOnlyBlockstore::new(self.state_store.clone()),
+                self.multi_engine.as_ref(),
+                block_height as ChainEpoch,
+                state_params,
+            )
+            .context("error creating execution state")?;
+
+            Some(exec_state)
+        } else {
+            None
+        })
     }
 
     /// Look up a past state at a particular height Tendermint Core is looking for.
@@ -308,9 +372,11 @@ where
     /// because it doesn't contain any initialized state for the actors.
     ///
     /// Returns the state params and the height of the block which committed it.
-    fn state_params_at_height(&self, height: Height) -> Result<(FvmStateParams, BlockHeight)> {
-        let h = height.value();
-        if h > 0 {
+    fn state_params_at_height(
+        &self,
+        height: FvmQueryHeight,
+    ) -> Result<(FvmStateParams, BlockHeight)> {
+        if let FvmQueryHeight::Height(h) = height {
             let tx = self.db.read();
             let sh = self
                 .state_hist
@@ -342,27 +408,28 @@ where
     S::Namespace: Sync + Send,
     DB: KVWritable<S> + KVReadable<S> + Clone + Send + Sync + 'static,
     SS: Blockstore + Clone + Send + Sync + 'static,
-    I: ExecInterpreter<
-        State = FvmExecState<SS>,
-        Message = Vec<u8>,
-        BeginOutput = FvmApplyRet,
-        DeliverOutput = BytesMessageApplyRet,
-        EndOutput = (),
-    >,
-    I: CheckInterpreter<
-        State = FvmCheckState<SS>,
-        Message = Vec<u8>,
-        Output = BytesMessageCheckRet,
-    >,
-    I: QueryInterpreter<
-        State = FvmQueryState<SS>,
-        Query = BytesMessageQuery,
-        Output = BytesMessageQueryRet,
-    >,
     I: GenesisInterpreter<
         State = FvmGenesisState<SS>,
         Genesis = Vec<u8>,
         Output = FvmGenesisOutput,
+    >,
+    I: ProposalInterpreter<State = (CheckpointPool, TopDownFinalityProvider), Message = Vec<u8>>,
+    I: ExecInterpreter<
+        State = (CheckpointPool, TopDownFinalityProvider, FvmExecState<SS>),
+        Message = Vec<u8>,
+        BeginOutput = FvmApplyRet,
+        DeliverOutput = BytesMessageApplyRes,
+        EndOutput = Vec<Validator<Power>>,
+    >,
+    I: CheckInterpreter<
+        State = FvmExecState<ReadOnlyBlockstore<SS>>,
+        Message = Vec<u8>,
+        Output = BytesMessageCheckRes,
+    >,
+    I: QueryInterpreter<
+        State = FvmQueryState<SS>,
+        Query = BytesMessageQuery,
+        Output = BytesMessageQueryRes,
     >,
 {
     /// Provide information about the ABCI application.
@@ -418,6 +485,7 @@ where
                 base_fee: out.base_fee,
                 circ_supply: out.circ_supply,
                 chain_id: out.chain_id.into(),
+                power_scale: out.power_scale,
             },
         };
 
@@ -428,8 +496,8 @@ where
         };
 
         tracing::info!(
-            state_root = format!("{}", app_state.state_root()),
-            app_hash = format!("{}", app_state.app_hash()),
+            state_root = app_state.state_root().to_string(),
+            app_hash = app_state.app_hash().to_string(),
             "init chain"
         );
 
@@ -441,7 +509,8 @@ where
     /// Query the application for data at the current or past height.
     async fn query(&self, request: request::Query) -> AbciResult<response::Query> {
         let db = self.state_store_clone();
-        let (state_params, block_height) = self.state_params_at_height(request.height)?;
+        let height = FvmQueryHeight::from(request.height.value());
+        let (state_params, block_height) = self.state_params_at_height(height)?;
 
         tracing::info!(
             query_height = request.height.value(),
@@ -463,6 +532,8 @@ where
             self.multi_engine.clone(),
             block_height.try_into()?,
             state_params,
+            self.check_state.clone(),
+            height == FvmQueryHeight::Pending,
         )
         .context("error creating query state")?;
 
@@ -491,8 +562,18 @@ where
             None => {
                 let db = self.state_store_clone();
                 let state = self.committed_state()?;
-                FvmCheckState::new(db, state.state_root(), state.chain_id())
-                    .context("error creating check state")?
+
+                // This would create a partial state, but some client scenarios need the full one.
+                // FvmCheckState::new(db, state.state_root(), state.chain_id())
+                //     .context("error creating check state")?
+
+                FvmExecState::new(
+                    ReadOnlyBlockstore::new(db),
+                    self.multi_engine.as_ref(),
+                    state.block_height.try_into()?,
+                    state.state_params,
+                )
+                .context("error creating check state")?
             }
         };
 
@@ -513,28 +594,83 @@ where
             Err(e) => invalid_check_tx(AppError::InvalidEncoding, e.description),
             Ok(result) => match result {
                 Err(IllegalMessage) => invalid_check_tx(AppError::IllegalMessage, "".to_owned()),
-                Ok(result) => match result {
-                    Err(InvalidSignature(d)) => invalid_check_tx(AppError::InvalidSignature, d),
-                    Ok(ret) => to_check_tx(ret),
-                },
+                Ok(Err(InvalidSignature(d))) => invalid_check_tx(AppError::InvalidSignature, d),
+                Ok(Ok(ret)) => to_check_tx(ret),
             },
         };
 
         Ok(response)
     }
 
+    /// Amend which transactions to put into the next block proposal.
+    async fn prepare_proposal(
+        &self,
+        request: request::PrepareProposal,
+    ) -> AbciResult<response::PrepareProposal> {
+        let txs = request.txs.into_iter().map(|tx| tx.to_vec()).collect();
+
+        let txs = self
+            .interpreter
+            .prepare(
+                (
+                    self.resolve_pool.clone(),
+                    self.parent_finality_provider.clone(),
+                ),
+                txs,
+            )
+            .await
+            .context("failed to prepare proposal")?;
+
+        let txs = txs.into_iter().map(bytes::Bytes::from).collect();
+        let txs = take_until_max_size(txs, request.max_tx_bytes.try_into().unwrap());
+
+        Ok(response::PrepareProposal { txs })
+    }
+
+    /// Inspect a proposal and decide whether to vote on it.
+    async fn process_proposal(
+        &self,
+        request: request::ProcessProposal,
+    ) -> AbciResult<response::ProcessProposal> {
+        let txs = request.txs.into_iter().map(|tx| tx.to_vec()).collect();
+
+        let accept = self
+            .interpreter
+            .process(
+                (
+                    self.resolve_pool.clone(),
+                    self.parent_finality_provider.clone(),
+                ),
+                txs,
+            )
+            .await
+            .context("failed to process proposal")?;
+
+        if accept {
+            Ok(response::ProcessProposal::Accept)
+        } else {
+            Ok(response::ProcessProposal::Reject)
+        }
+    }
+
     /// Signals the beginning of a new block, prior to any `DeliverTx` calls.
     async fn begin_block(&self, request: request::BeginBlock) -> AbciResult<response::BeginBlock> {
+        let block_height = request.header.height.into();
+        let block_hash = match request.hash {
+            tendermint::Hash::Sha256(h) => h,
+            tendermint::Hash::None => return Err(anyhow!("empty block hash").into()),
+        };
+
+        tracing::debug!(block_height, "begin block");
+
         let db = self.state_store_clone();
-        let height = request.header.height.into();
         let state = self.committed_state()?;
         let mut state_params = state.state_params.clone();
         state_params.timestamp = to_timestamp(request.header.time);
 
-        tracing::debug!(height, "begin block");
-
-        let state = FvmExecState::new(db, self.multi_engine.as_ref(), height, state_params)
-            .context("error creating new state")?;
+        let state = FvmExecState::new(db, self.multi_engine.as_ref(), block_height, state_params)
+            .context("error creating new state")?
+            .with_block_hash(block_hash);
 
         tracing::debug!("initialized exec state");
 
@@ -556,6 +692,8 @@ where
             .await
             .context("deliver failed")?;
 
+        let block_hash = self.map_exec_state(|s| s.block_hash()).flatten();
+
         let response = match result {
             Err(e) => invalid_deliver_tx(AppError::InvalidEncoding, e.description),
             Ok(ret) => match ret {
@@ -563,14 +701,9 @@ where
                     invalid_deliver_tx(AppError::InvalidSignature, d)
                 }
                 ChainMessageApplyRet::Signed(Ok(ret)) => {
-                    tracing::info!(
-                        from = ret.from.to_string(),
-                        to = ret.to.to_string(),
-                        method_num = ret.method_num,
-                        "tx delivered"
-                    );
-                    to_deliver_tx(ret)
+                    to_deliver_tx(ret.fvm, ret.domain_hash, block_hash)
                 }
+                ChainMessageApplyRet::Ipc(ret) => to_deliver_tx(ret, None, block_hash),
             },
         };
 
@@ -595,34 +728,56 @@ where
             .await
             .context("end failed")?;
 
-        if let Some(snapshot) = &self.snapshot {
-            if snapshot.should_run(request.height as BlockHeight) {
-                let (state_params, block_height) =
-                    self.state_params_at_height(Height::try_from(request.height)?)?;
-                snapshot.start(block_height, state_params, self.state_store_clone());
-            }
-        }
-
-        Ok(to_end_block(ret))
+        Ok(to_end_block(ret)?)
     }
 
     /// Commit the current state at the current height.
     async fn commit(&self) -> AbciResult<response::Commit> {
         let exec_state = self.take_exec_state();
 
+        // Commit the execution state to the datastore.
         let mut state = self.committed_state()?;
         state.block_height = exec_state.block_height().try_into()?;
         state.state_params.timestamp = exec_state.timestamp();
-        state.state_params.state_root = exec_state.commit().context("failed to commit FVM")?;
 
-        let state_root = state.state_root();
+        let (
+            state_root,
+            FvmUpdatableParams {
+                power_scale,
+                circ_supply,
+            },
+            _,
+        ) = exec_state.commit().context("failed to commit FVM")?;
+
+        state.state_params.state_root = state_root;
+        state.state_params.power_scale = power_scale;
+        state.state_params.circ_supply = circ_supply;
+
+        let app_hash = state.app_hash();
 
         tracing::debug!(
             state_root = state_root.to_string(),
+            app_hash = app_hash.to_string(),
             timestamp = state.state_params.timestamp.0,
             "commit state"
         );
 
+        // TODO: We can defer committing changes the resolution pool to this point.
+        // For example if a checkpoint is successfully executed, that's when we want to remove
+        // that checkpoint from the pool, and not propose it to other validators again.
+        // However, once Tendermint starts delivering the transactions, the commit will surely
+        // follow at the end, so we can also remove these checkpoints from memory at the time
+        // the transaction is delivered, rather than when the whole thing is committed.
+        // It is only important to the persistent database changes as an atomic step in the
+        // commit in case the block execution fails somewhere in the middle for uknown reasons.
+        // But if that happened, we will have to restart the application again anyway, and
+        // repopulate the in-memory checkpoints based on the last committed ledger.
+        // So, while the pool is theoretically part of the evolving state and we can pass
+        // it in and out, unless we want to defer commit to here (which the interpreters aren't
+        // notified about), we could add it to the `ChainMessageInterpreter` as a constructor argument,
+        // a sort of "ambient state", and not worry about in in the `App` at all.
+
+        // Commit app state to the datastore.
         self.set_committed_state(state)?;
 
         // Reset check state.
@@ -632,7 +787,7 @@ where
         tracing::debug!("committed state");
 
         let response = response::Commit {
-            data: state_root.to_bytes().into(),
+            data: app_hash.into(),
             // We have to retain blocks until we can support Snapshots.
             retain_height: Default::default(),
         };

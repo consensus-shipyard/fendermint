@@ -11,12 +11,12 @@ use fendermint_vm_actor_interface::{
     eam::{self, EthAddress},
     ethaccount::ETHACCOUNT_ACTOR_CODE_ID,
     evm,
-    init::{self, eth_builtin_deleg_addr},
+    init::{self, builtin_actor_eth_addr},
     multisig::{self, MULTISIG_ACTOR_CODE_ID},
     system, EMPTY_ARR,
 };
 use fendermint_vm_core::Timestamp;
-use fendermint_vm_genesis::{Account, Multisig};
+use fendermint_vm_genesis::{Account, Multisig, PowerScale};
 use fvm::{
     engine::MultiEngine,
     machine::Manifest,
@@ -24,7 +24,7 @@ use fvm::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_car::load_car_unchecked;
-use fvm_ipld_encoding::{CborStore, RawBytes};
+use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
 use fvm_shared::{
     address::{Address, Payload},
     clock::ChainEpoch,
@@ -120,6 +120,7 @@ where
         base_fee: TokenAmount,
         circ_supply: TokenAmount,
         chain_id: u64,
+        power_scale: PowerScale,
     ) -> anyhow::Result<()> {
         self.stage = match self.stage {
             Stage::Exec(_) => bail!("execution engine already initialized"),
@@ -134,6 +135,7 @@ where
                     base_fee,
                     circ_supply,
                     chain_id,
+                    power_scale,
                 };
 
                 let exec_state =
@@ -150,7 +152,10 @@ where
     pub fn commit(self) -> anyhow::Result<Cid> {
         match self.stage {
             Stage::Tree(mut state_tree) => Ok(state_tree.flush()?),
-            Stage::Exec(exec_state) => exec_state.commit(),
+            Stage::Exec(exec_state) => match exec_state.commit()? {
+                (_, _, true) => bail!("FVM parameters are not expected to be updated in genesis"),
+                (cid, _, _) => Ok(cid),
+            },
         }
     }
 
@@ -293,8 +298,8 @@ where
 
         // When a contract is constructed the EVM actor verifies that it has an Ethereum delegated address.
         // This has been inserted into the Init actor state as well.
-        let f4_addr = eth_builtin_deleg_addr(id);
         let f0_addr = Address::new_id(id);
+        let f4_addr = Address::from(builtin_actor_eth_addr(id));
 
         let msg = Message {
             version: 0,
@@ -319,7 +324,7 @@ where
         )
         .context("failed to create empty actor")?;
 
-        let apply_ret = match self.stage {
+        let (apply_ret, _) = match self.stage {
             Stage::Tree(_) => bail!("execution engine not initialized"),
             Stage::Exec(ref mut exec_state) => exec_state
                 .execute_implicit(msg)
@@ -327,10 +332,22 @@ where
         };
 
         if !apply_ret.msg_receipt.exit_code.is_success() {
+            let error_data = apply_ret.msg_receipt.return_data;
+            let error_data = if error_data.is_empty() {
+                Vec::new()
+            } else {
+                // The EVM actor might return some revert in the output.
+                error_data
+                    .deserialize::<BytesDe>()
+                    .map(|bz| bz.0)
+                    .context("failed to deserialize error data")?
+            };
+
             bail!(
-                "failed to deploy EVM actor: {}; {:?}",
+                "failed to deploy EVM actor: code = {}; data = 0x{}; info = {:?}",
                 apply_ret.msg_receipt.exit_code,
-                apply_ret.failure_info
+                hex::encode(error_data),
+                apply_ret.failure_info,
             );
         }
 
@@ -344,6 +361,20 @@ where
 
     pub fn store(&mut self) -> &DB {
         &self.store
+    }
+
+    pub fn exec_state(&mut self) -> Option<&mut FvmExecState<DB>> {
+        match self.stage {
+            Stage::Tree(_) => None,
+            Stage::Exec(ref mut exec) => Some(exec),
+        }
+    }
+
+    pub fn into_exec_state(self) -> Result<FvmExecState<DB>, Self> {
+        match self.stage {
+            Stage::Tree(_) => Err(self),
+            Stage::Exec(exec) => Ok(exec),
+        }
     }
 
     fn put_state(&mut self, state: impl Serialize) -> anyhow::Result<Cid> {

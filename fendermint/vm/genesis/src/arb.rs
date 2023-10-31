@@ -1,18 +1,14 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 use crate::{
-    ipc, Account, Actor, ActorMeta, Genesis, Multisig, Power, SignerAddr, Validator, ValidatorKey,
+    ipc, Account, Actor, ActorMeta, Collateral, Genesis, Multisig, Power, SignerAddr, Validator,
+    ValidatorKey,
 };
 use cid::multihash::MultihashDigest;
-use fendermint_testing::arb::ArbTokenAmount;
+use fendermint_crypto::SecretKey;
+use fendermint_testing::arb::{ArbSubnetID, ArbTokenAmount};
 use fendermint_vm_core::Timestamp;
-use fvm_shared::{
-    address::Address,
-    bigint::{BigInt, Integer},
-    econ::TokenAmount,
-    version::NetworkVersion,
-};
-use ipc_sdk::subnet_id::SubnetID;
+use fvm_shared::{address::Address, econ::TokenAmount, version::NetworkVersion};
 use quickcheck::{Arbitrary, Gen};
 use rand::{rngs::StdRng, SeedableRng};
 
@@ -65,18 +61,37 @@ impl Arbitrary for Actor {
 
 impl Arbitrary for ValidatorKey {
     fn arbitrary(g: &mut Gen) -> Self {
-        let mut rng = StdRng::seed_from_u64(u64::arbitrary(g));
-        let sk = libsecp256k1::SecretKey::random(&mut rng);
-        let pk = libsecp256k1::PublicKey::from_secret_key(&sk);
+        // Using a full 32 byte seed instead of `StdRng::seed_from_u64` to reduce the annoying collisions
+        // when trying to generate multiple validators. Probably 0 is generated more often than other u64
+        // for example, but there is a high probability of matching keys, which is possible but usually
+        // not what we are trying to test, and using a common `Rng` to generate all validators is cumbersome.
+        let seed: [u8; 32] = std::array::from_fn(|_| u8::arbitrary(g));
+        let mut rng = StdRng::from_seed(seed);
+        let sk = SecretKey::random(&mut rng);
+        let pk = sk.public_key();
         Self::new(pk)
     }
 }
 
-impl Arbitrary for Validator {
+impl Arbitrary for Collateral {
+    fn arbitrary(g: &mut Gen) -> Self {
+        Self(ArbTokenAmount::arbitrary(g).0)
+    }
+}
+
+impl Arbitrary for Power {
+    fn arbitrary(g: &mut Gen) -> Self {
+        // Giving at least 1 power. 0 is a valid value to signal deletion,
+        // but not that useful in the more common power table setting.
+        Self(u64::arbitrary(g).saturating_add(1))
+    }
+}
+
+impl<P: Arbitrary> Arbitrary for Validator<P> {
     fn arbitrary(g: &mut Gen) -> Self {
         Self {
             public_key: ValidatorKey::arbitrary(g),
-            power: Power(u64::arbitrary(g)),
+            power: P::arbitrary(g),
         }
     }
 }
@@ -88,8 +103,9 @@ impl Arbitrary for Genesis {
         Self {
             timestamp: Timestamp(u64::arbitrary(g)),
             chain_name: String::arbitrary(g),
-            network_version: NetworkVersion::new(*g.choose(&[18u32]).unwrap()),
+            network_version: NetworkVersion::new(*g.choose(&[18, 19, 20]).unwrap()),
             base_fee: ArbTokenAmount::arbitrary(g).0,
+            power_scale: *g.choose(&[-1, 0, 3]).unwrap(),
             validators: (0..nv).map(|_| Arbitrary::arbitrary(g)).collect(),
             accounts: (0..na).map(|_| Arbitrary::arbitrary(g)).collect(),
             ipc: if bool::arbitrary(g) {
@@ -101,49 +117,19 @@ impl Arbitrary for Genesis {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ArbSubnetID(SubnetID);
-
-impl Arbitrary for ArbSubnetID {
-    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        let child_count = usize::arbitrary(g) % 4;
-
-        let children = (0..child_count)
-            .map(|_| {
-                if bool::arbitrary(g) {
-                    Address::new_id(u64::arbitrary(g))
-                } else {
-                    // Only expectign EAM managed delegated addresses.
-                    let subaddr: [u8; 20] = std::array::from_fn(|_| Arbitrary::arbitrary(g));
-                    Address::new_delegated(10, &subaddr).unwrap()
-                }
-            })
-            .collect::<Vec<_>>();
-
-        Self(SubnetID::new(u64::arbitrary(g), children))
-    }
-}
-
-/// `TokenAmount` well within the limits of U256
-#[derive(Debug, Clone)]
-struct ArbFee(TokenAmount);
-
-impl Arbitrary for ArbFee {
-    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        let t = ArbTokenAmount::arbitrary(g).0;
-        let (_, t) = t.atto().div_mod_floor(&BigInt::from(u64::MAX));
-        Self(TokenAmount::from_atto(t))
-    }
-}
-
 impl Arbitrary for ipc::GatewayParams {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
         Self {
             subnet_id: ArbSubnetID::arbitrary(g).0,
-            bottom_up_check_period: u64::arbitrary(g),
-            top_down_check_period: u64::arbitrary(g),
-            msg_fee: ArbFee::arbitrary(g).0,
-            majority_percentage: u8::arbitrary(g) % 101,
+            // Gateway constructor would reject 0.
+            bottom_up_check_period: u64::arbitrary(g).max(1),
+            // Gateway constructor would reject 0.
+            min_collateral: ArbTokenAmount::arbitrary(g)
+                .0
+                .max(TokenAmount::from_atto(1)),
+            msg_fee: ArbTokenAmount::arbitrary(g).0,
+            majority_percentage: u8::arbitrary(g) % 50 + 51,
+            active_validators_limit: u16::arbitrary(g) % 100 + 1,
         }
     }
 }

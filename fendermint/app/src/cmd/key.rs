@@ -2,33 +2,51 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::{anyhow, Context};
+use fendermint_crypto::{PublicKey, SecretKey};
 use fvm_shared::address::Address;
-use libsecp256k1::{PublicKey, SecretKey};
 use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
 use serde_json::json;
 use std::path::{Path, PathBuf};
+use tendermint_config::NodeKey;
 
 use super::{from_b64, to_b64};
 use crate::{
     cmd,
-    options::key::{KeyAddressArgs, KeyArgs, KeyCommands, KeyGenArgs, KeyIntoTendermintArgs},
+    options::key::{
+        AddPeer, EthToFendermintArgs, KeyAddressArgs, KeyArgs, KeyCommands, KeyGenArgs,
+        KeyIntoTendermintArgs,
+    },
 };
 
 cmd! {
-  KeyArgs(self) {
-    match &self.command {
-        KeyCommands::Gen(args) => args.exec(()).await,
-        KeyCommands::IntoTendermint(args) => args.exec(()).await,
-        KeyCommands::Address(args) => args.exec(()).await,
+    KeyArgs(self) {
+        match &self.command {
+            KeyCommands::Gen(args) => args.exec(()).await,
+            KeyCommands::IntoTendermint(args) => args.exec(()).await,
+            KeyCommands::AddPeer(args) => args.exec(()).await,
+            KeyCommands::Address(args) => args.exec(()).await,
+            KeyCommands::EthToFendermint(args) => args.exec(()).await,
+        }
     }
-  }
+}
+
+cmd! {
+    EthToFendermintArgs(self) {
+        let sk = read_secret_key_hex(&self.secret_key)?;
+        let pk = sk.public_key();
+
+        export(&self.out_dir, &self.name, "sk", &secret_to_b64(&sk))?;
+        export(&self.out_dir, &self.name, "pk", &public_to_b64(&pk))?;
+
+        Ok(())
+    }
 }
 
 cmd! {
   KeyGenArgs(self) {
     let mut rng = ChaCha20Rng::from_entropy();
     let sk = SecretKey::random(&mut rng);
-    let pk = PublicKey::from_secret_key(&sk);
+    let pk = sk.public_key();
 
     export(&self.out_dir, &self.name, "sk", &secret_to_b64(&sk))?;
     export(&self.out_dir, &self.name, "pk", &public_to_b64(&pk))?;
@@ -40,7 +58,7 @@ cmd! {
 cmd! {
   KeyIntoTendermintArgs(self) {
     let sk = read_secret_key(&self.secret_key)?;
-    let pk = PublicKey::from_secret_key(&sk);
+    let pk = sk.public_key();
     let vk = tendermint::crypto::default::ecdsa_secp256k1::VerifyingKey::from_sec1_bytes(&pk.serialize())
       .map_err(|e| anyhow!("failed to convert public key: {e}"))?;
     let pub_key = tendermint::PublicKey::Secp256k1(vk);
@@ -67,16 +85,34 @@ cmd! {
 }
 
 cmd! {
-  KeyAddressArgs(self) {
-    let pk = read_public_key(&self.public_key)?;
-    let addr = Address::new_secp256k1(&pk.serialize())?;
-    println!("{}", addr);
-    Ok(())
+    AddPeer(self) {
+        let node_key = NodeKey::load_json_file(&self.node_key_file).context("failed to read node key file")?;
+        let peer_id = format!("{}@{}", node_key.node_id(), self.network_addr);
+        let mut peers = std::fs::read_to_string(&self.local_peers_file).unwrap_or_default();
+
+        if peers.is_empty()  {
+            peers.push_str(&peer_id);
+        } else {
+            peers.push(',');
+            peers.push_str(peer_id.as_str());
+        }
+
+        std::fs::write(&self.local_peers_file, peers).context("failed to write to the peers file")?;
+        Ok(())
   }
 }
 
+cmd! {
+    KeyAddressArgs(self) {
+        let pk = read_public_key(&self.public_key)?;
+        let addr = Address::new_secp256k1(&pk.serialize())?;
+        println!("{}", addr);
+        Ok(())
+    }
+}
+
 fn secret_to_b64(sk: &SecretKey) -> String {
-    to_b64(&sk.serialize())
+    to_b64(sk.serialize().as_ref())
 }
 
 fn public_to_b64(pk: &PublicKey) -> String {
@@ -91,7 +127,7 @@ fn b64_to_public(b64: &str) -> anyhow::Result<PublicKey> {
 
 fn b64_to_secret(b64: &str) -> anyhow::Result<SecretKey> {
     let bz = from_b64(b64)?;
-    let sk = SecretKey::parse_slice(&bz)?;
+    let sk = SecretKey::try_from(bz)?;
     Ok(sk)
 }
 
@@ -99,6 +135,17 @@ pub fn read_public_key(public_key: &PathBuf) -> anyhow::Result<PublicKey> {
     let b64 = std::fs::read_to_string(public_key).context("failed to read public key")?;
     let pk = b64_to_public(&b64).context("failed to parse public key")?;
     Ok(pk)
+}
+
+pub fn read_secret_key_hex(private_key: &PathBuf) -> anyhow::Result<SecretKey> {
+    let hex_str = std::fs::read_to_string(private_key).context("failed to read private key")?;
+    let mut hex_str = hex_str.trim();
+    if hex_str.starts_with("0x") {
+        hex_str = &hex_str[2..];
+    }
+    let raw_secret = hex::decode(hex_str).context("cannot decode hex private key")?;
+    let sk = SecretKey::try_from(raw_secret).context("failed to parse secret key")?;
+    Ok(sk)
 }
 
 pub fn read_secret_key(secret_key: &PathBuf) -> anyhow::Result<SecretKey> {

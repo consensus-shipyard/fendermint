@@ -18,12 +18,15 @@ use fendermint_rpc::response::decode_fevm_invoke;
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_actor_interface::evm;
 use fendermint_vm_message::chain::ChainMessage;
+use fendermint_vm_message::query::FvmQueryHeight;
 use fendermint_vm_message::signed::SignedMessage;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
+use fvm_shared::bigint::BigInt;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::{chainid::ChainID, error::ExitCode};
 use jsonrpc_v2::Params;
+use rand::Rng;
 use tendermint_rpc::endpoint::{self, status};
 use tendermint_rpc::SubscriptionClient;
 use tendermint_rpc::{
@@ -31,8 +34,9 @@ use tendermint_rpc::{
     Client,
 };
 
-use crate::conv::from_eth::{to_fvm_message, to_tm_hash};
-use crate::conv::from_tm::{self, message_hash, to_chain_message, to_cumulative};
+use crate::conv::from_eth::to_fvm_message;
+use crate::conv::from_tm::{self, msg_hash, to_chain_message, to_cumulative};
+use crate::error::error_with_data;
 use crate::filters::{matches_topics, FilterId, FilterKind, FilterRecords};
 use crate::{
     conv::{
@@ -42,8 +46,6 @@ use crate::{
     },
     error, JsonRpcData, JsonRpcResult,
 };
-
-const MAX_FEE_HIST_SIZE: usize = 1024;
 
 /// Returns a list of addresses owned by client.
 ///
@@ -67,7 +69,7 @@ pub async fn chain_id<C>(data: JsonRpcData<C>) -> JsonRpcResult<et::U64>
 where
     C: Client + Sync + Send,
 {
-    let res = data.client.state_params(None).await?;
+    let res = data.client.state_params(FvmQueryHeight::default()).await?;
     Ok(et::U64::from(res.value.chain_id))
 }
 
@@ -76,9 +78,96 @@ pub async fn protocol_version<C>(data: JsonRpcData<C>) -> JsonRpcResult<String>
 where
     C: Client + Sync + Send,
 {
-    let res = data.client.state_params(None).await?;
+    let res = data.client.state_params(FvmQueryHeight::default()).await?;
     let version: u32 = res.value.network_version.into();
     Ok(version.to_string())
+}
+
+/// Returns a fee per gas that is an estimate of how much you can pay as a
+/// priority fee, or 'tip', to get a transaction included in the current block.
+pub async fn max_priority_fee_per_gas<C>(data: JsonRpcData<C>) -> JsonRpcResult<et::U256>
+where
+    C: Client + Sync + Send,
+{
+    // get the latest block
+    let res: block::Response = data.tm().latest_block().await?;
+    let latest_h = res.block.header.height;
+
+    // get consensus params to fetch block gas limit
+    // (this just needs to be done once as we assume that is constant
+    // for all blocks)
+    let consensus_params: consensus_params::Response = data
+        .tm()
+        .consensus_params(latest_h)
+        .await
+        .context("failed to get consensus params")?;
+    let mut block_gas_limit = consensus_params.consensus_params.block.max_gas;
+    if block_gas_limit <= 0 {
+        block_gas_limit =
+            i64::try_from(fvm_shared::BLOCK_GAS_LIMIT).expect("FVM block gas limit not i64")
+    };
+
+    let mut premiums = Vec::new();
+    // iterate through the blocks in the range
+    // we may be able to de-duplicate a lot of this code from fee_history
+    let latest_h: u64 = latest_h.into();
+    let mut blk = latest_h;
+    while blk > latest_h - data.gas_opt.num_blocks_max_prio_fee {
+        let block = data
+            .block_by_height(blk.into())
+            .await
+            .context("failed to get block")?;
+
+        let height = block.header().height;
+
+        // Genesis has height 1, but no relevant fees.
+        if height.value() <= 1 {
+            break;
+        }
+
+        let state_params = data
+            .client
+            .state_params(FvmQueryHeight::Height(height.value()))
+            .await?;
+
+        let base_fee = &state_params.value.base_fee;
+
+        // The latest block might not have results yet.
+        if let Ok(block_results) = data.tm().block_results(height).await {
+            let txs_results = block_results.txs_results.unwrap_or_default();
+
+            for (tx, txres) in block.data().iter().zip(txs_results) {
+                let msg = fvm_ipld_encoding::from_slice::<ChainMessage>(tx)
+                    .context("failed to decode tx as ChainMessage")?;
+
+                if let ChainMessage::Signed(msg) = msg {
+                    let premium = crate::gas::effective_gas_premium(&msg.message, base_fee);
+                    premiums.push((premium, txres.gas_used));
+                }
+            }
+        }
+        blk -= 1;
+    }
+
+    // compute median gas price
+    let mut median = crate::gas::median_gas_premium(&mut premiums, block_gas_limit);
+    let min_premium = data.gas_opt.min_gas_premium.clone();
+    if median < min_premium {
+        median = min_premium;
+    }
+
+    // add some noise to normalize behaviour of message selection
+    // mean 1, stddev 0.005 => 95% within +-1%
+    const PRECISION: u32 = 32;
+    let mut rng = rand::thread_rng();
+    let noise: f64 = 1.0 + rng.gen::<f64>() * 0.005;
+    let precision: i64 = 32;
+    let coeff: u64 = ((noise * (1 << precision) as f64) as u64) + 1;
+
+    median *= BigInt::from(coeff);
+    median.div_ceil(BigInt::from(1 << PRECISION));
+
+    Ok(to_eth_tokens(&median)?)
 }
 
 /// Returns transaction base fee per gas and effective priority fee per gas for the requested/supported block range.
@@ -93,7 +182,7 @@ pub async fn fee_history<C>(
 where
     C: Client + Sync + Send,
 {
-    if block_count > et::U256::from(MAX_FEE_HIST_SIZE) {
+    if block_count > et::U256::from(data.gas_opt.max_fee_hist_size) {
         return error(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             "block_count must be <= 1024",
@@ -121,7 +210,12 @@ where
         if height.value() <= 1 {
             break;
         }
-        let state_params = data.client.state_params(Some(height)).await?;
+
+        let state_params = data
+            .client
+            .state_params(FvmQueryHeight::Height(height.value()))
+            .await?;
+
         let base_fee = &state_params.value.base_fee;
 
         let consensus_params: consensus_params::Response = data
@@ -197,7 +291,7 @@ pub async fn gas_price<C>(data: JsonRpcData<C>) -> JsonRpcResult<et::U256>
 where
     C: Client + Sync + Send,
 {
-    let res = data.client.state_params(None).await?;
+    let res = data.client.state_params(FvmQueryHeight::default()).await?;
     let price = to_eth_tokens(&res.value.base_fee)?;
     Ok(price)
 }
@@ -210,10 +304,9 @@ pub async fn get_balance<C>(
 where
     C: Client + Sync + Send,
 {
-    let header = data.header_by_id(block_id).await?;
-    let height = header.height;
     let addr = to_fvm_address(addr);
-    let res = data.client.actor_state(&addr, Some(height)).await?;
+    let height = data.query_height(block_id).await?;
+    let res = data.client.actor_state(&addr, height).await?;
 
     match res.value {
         Some((_, state)) => Ok(to_eth_tokens(&state.balance)?),
@@ -314,27 +407,27 @@ pub async fn get_transaction_by_hash<C>(
 where
     C: Client + Sync + Send,
 {
-    let hash = to_tm_hash(&tx_hash)?;
+    if let Some(res) = data.tx_by_hash(tx_hash).await? {
+        let msg = to_chain_message(&res.tx)?;
 
-    match data.tm().tx(hash, false).await {
-        Ok(res) => {
-            let msg = to_chain_message(&res.tx)?;
-
-            if let ChainMessage::Signed(msg) = msg {
-                let header: header::Response = data.tm().header(res.height).await?;
-                let sp = data.client.state_params(Some(res.height)).await?;
-                let chain_id = ChainID::from(sp.value.chain_id);
-                let mut tx = to_eth_transaction(hash, *msg, chain_id)?;
-                tx.transaction_index = Some(et::U64::from(res.index));
-                tx.block_hash = Some(et::H256::from_slice(header.header.hash().as_bytes()));
-                tx.block_number = Some(et::U64::from(res.height.value()));
-                Ok(Some(tx))
-            } else {
-                error(ExitCode::USR_ILLEGAL_ARGUMENT, "incompatible transaction")
-            }
+        if let ChainMessage::Signed(msg) = msg {
+            let header: header::Response = data.tm().header(res.height).await?;
+            let sp = data
+                .client
+                .state_params(FvmQueryHeight::Height(header.header.height.value()))
+                .await?;
+            let chain_id = ChainID::from(sp.value.chain_id);
+            let hash = msg_hash(&res.tx_result.events, &res.tx);
+            let mut tx = to_eth_transaction(msg, chain_id, hash)?;
+            tx.transaction_index = Some(et::U64::from(res.index));
+            tx.block_hash = Some(et::H256::from_slice(header.header.hash().as_bytes()));
+            tx.block_number = Some(et::U64::from(res.height.value()));
+            Ok(Some(tx))
+        } else {
+            error(ExitCode::USR_ILLEGAL_ARGUMENT, "incompatible transaction")
         }
-        Err(e) if e.to_string().contains("not found") => Ok(None),
-        Err(e) => error(ExitCode::USR_UNSPECIFIED, e),
+    } else {
+        Ok(None)
     }
 }
 
@@ -348,10 +441,9 @@ pub async fn get_transaction_count<C>(
 where
     C: Client + Sync + Send,
 {
-    let header = data.header_by_id(block_id).await?;
-    let height = header.height;
     let addr = to_fvm_address(addr);
-    let res = data.client.actor_state(&addr, Some(height)).await?;
+    let height = data.query_height(block_id).await?;
+    let res = data.client.actor_state(&addr, height).await?;
 
     match res.value {
         Some((_, state)) => {
@@ -370,33 +462,32 @@ pub async fn get_transaction_receipt<C>(
 where
     C: Client + Sync + Send,
 {
-    let hash = to_tm_hash(&tx_hash)?;
+    if let Some(res) = data.tx_by_hash(tx_hash).await? {
+        let header: header::Response = data.tm().header(res.height).await?;
+        let block_results: block_results::Response = data.tm().block_results(res.height).await?;
+        let cumulative = to_cumulative(&block_results);
+        let state_params = data
+            .client
+            .state_params(FvmQueryHeight::Height(header.header.height.value()))
+            .await?;
+        let msg = to_chain_message(&res.tx)?;
+        if let ChainMessage::Signed(msg) = msg {
+            let receipt = to_eth_receipt(
+                &msg,
+                &res,
+                &cumulative,
+                &header.header,
+                &state_params.value.base_fee,
+            )
+            .await
+            .context("failed to convert to receipt")?;
 
-    match data.tm().tx(hash, false).await {
-        Ok(res) => {
-            let header: header::Response = data.tm().header(res.height).await?;
-            let block_results: block_results::Response =
-                data.tm().block_results(res.height).await?;
-            let cumulative = to_cumulative(&block_results);
-            let state_params = data.client.state_params(Some(res.height)).await?;
-            let msg = to_chain_message(&res.tx)?;
-            if let ChainMessage::Signed(msg) = msg {
-                let receipt = to_eth_receipt(
-                    &msg,
-                    &res,
-                    &cumulative,
-                    &header.header,
-                    &state_params.value.base_fee,
-                )
-                .context("failed to convert to receipt")?;
-
-                Ok(Some(receipt))
-            } else {
-                error(ExitCode::USR_ILLEGAL_ARGUMENT, "incompatible transaction")
-            }
+            Ok(Some(receipt))
+        } else {
+            error(ExitCode::USR_ILLEGAL_ARGUMENT, "incompatible transaction")
         }
-        Err(e) if e.to_string().contains("not found") => Ok(None),
-        Err(e) => error(ExitCode::USR_UNSPECIFIED, e),
+    } else {
+        Ok(None)
     }
 }
 
@@ -410,7 +501,10 @@ where
 {
     let block = data.block_by_height(block_number).await?;
     let height = block.header.height;
-    let state_params = data.client.state_params(Some(height)).await?;
+    let state_params = data
+        .client
+        .state_params(FvmQueryHeight::Height(height.value()))
+        .await?;
     let block_results: block_results::Response = data.tm().block_results(height).await?;
     let cumulative = to_cumulative(&block_results);
     let mut receipts = Vec::new();
@@ -418,15 +512,13 @@ where
     for (index, (tx, tx_result)) in block
         .data
         .into_iter()
-        .zip(block_results.txs_results.unwrap_or_default().into_iter())
+        .zip(block_results.txs_results.unwrap_or_default())
         .enumerate()
     {
         let msg = to_chain_message(&tx)?;
         if let ChainMessage::Signed(msg) = msg {
-            let hash = message_hash(&tx)?;
-
             let result = endpoint::tx::Response {
-                hash,
+                hash: Default::default(), // Shouldn't use this anyway.
                 height,
                 index: index as u32,
                 tx_result,
@@ -440,7 +532,8 @@ where
                 &cumulative,
                 &block.header,
                 &state_params.value.base_fee,
-            )?;
+            )
+            .await?;
             receipts.push(receipt)
         }
     }
@@ -499,16 +592,25 @@ where
     let (tx, sig) = TypedTransaction::decode_signed(&rlp)
         .context("failed to decode RLP as signed TypedTransaction")?;
 
+    let sighash = tx.sighash();
+    let msghash = et::TxHash::from(ethers_core::utils::keccak256(rlp.as_raw()));
+
     let msg = to_fvm_message(tx, false)?;
     let msg = SignedMessage {
         message: msg,
         signature: Signature::new_secp256k1(sig.to_vec()),
     };
-    let msg = ChainMessage::Signed(Box::new(msg));
+    let msg = ChainMessage::Signed(msg);
     let bz: Vec<u8> = MessageFactory::serialize(&msg)?;
+    // Use the broadcast version which waits for basic checks to complete,
+    // but not the execution results - those will have to be polled with get_transaction_receipt.
     let res: tx_sync::Response = data.tm().broadcast_tx_sync(bz).await?;
+    tracing::debug!(?sighash, eth_hash = ?msghash, tm_hash = ?res.hash, "received raw transaction");
     if res.code.is_ok() {
-        Ok(et::TxHash::from_slice(res.hash.as_bytes()))
+        // The following hash would be okay for ethers-rs,and we could use it to look up the TX with Tendermint,
+        // but ethers.js would reject it because it doesn't match what Ethereum would use.
+        // Ok(et::TxHash::from_slice(res.hash.as_bytes()))
+        Ok(msghash)
     } else {
         error(
             ExitCode::new(res.code.value()),
@@ -526,13 +628,23 @@ where
     C: Client + Sync + Send,
 {
     let msg = to_fvm_message(tx.into(), true)?;
-    let header = data.header_by_id(block_id).await?;
-    let response = data.client.call(msg, Some(header.height)).await?;
+    let height = data.query_height(block_id).await?;
+    let response = data.client.call(msg, height).await?;
     let deliver_tx = response.value;
 
     // Based on Lotus, we should return the data from the receipt.
     if deliver_tx.code.is_err() {
-        error(ExitCode::new(deliver_tx.code.value()), deliver_tx.info)
+        // There might be some revert data encoded as ABI in the response.
+        let revert_data_hex = decode_fevm_invoke(&deliver_tx)
+            .ok()
+            .map(hex::encode)
+            .unwrap_or_default();
+
+        error_with_data(
+            ExitCode::new(deliver_tx.code.value()),
+            deliver_tx.info,
+            revert_data_hex,
+        )
     } else {
         let return_data = decode_fevm_invoke(&deliver_tx)
             .context("error decoding data from deliver_tx in query")?;
@@ -559,14 +671,14 @@ where
 
     let msg = to_fvm_message(tx.into(), true).context("failed to convert to FVM message")?;
 
-    let header = data
-        .header_by_id(block_id)
+    let height = data
+        .query_height(block_id)
         .await
-        .context("failed to get header")?;
+        .context("failed to get height")?;
 
     let response = data
         .client
-        .estimate_gas(msg, Some(header.height))
+        .estimate_gas(msg, height)
         .await
         .context("failed to call estimate gas query")?;
 
@@ -601,14 +713,22 @@ where
         },
     };
     let params = RawBytes::serialize(params).context("failed to serialize position to IPLD")?;
+    let height = data.query_height(block_id).await?;
 
-    let ret: evm::GetStorageAtReturn = data
-        .read_evm_actor(address, evm::Method::GetStorageAt, params, block_id)
+    let ret = data
+        .read_evm_actor::<evm::GetStorageAtReturn>(
+            address,
+            evm::Method::GetStorageAt,
+            params,
+            height,
+        )
         .await?;
 
     // The client library expects hex encoded string.
     let mut bz = [0u8; 32];
-    ret.storage.to_big_endian(&mut bz);
+    if let Some(ret) = ret {
+        ret.storage.to_big_endian(&mut bz);
+    }
     Ok(hex::encode(bz))
 }
 
@@ -622,17 +742,18 @@ where
 {
     // This method has no input parameters.
     let params = RawBytes::default();
+    let height = data.query_height(block_id).await?;
 
-    let ret: evm::BytecodeReturn = data
-        .read_evm_actor(address, evm::Method::GetBytecode, params, block_id)
+    let ret = data
+        .read_evm_actor::<evm::BytecodeReturn>(address, evm::Method::GetBytecode, params, height)
         .await?;
 
-    match ret.code {
+    match ret.and_then(|r| r.code) {
         None => Ok(et::Bytes::default()),
         Some(cid) => {
             let code = data
                 .client
-                .ipld(&cid)
+                .ipld(&cid, height)
                 .await
                 .context("failed to fetch bytecode")?;
 
@@ -734,18 +855,24 @@ where
 
                 let mut log_index_start = 0usize;
                 for ((tx_idx, tx_result), tx) in tx_results.iter().enumerate().zip(block.data()) {
-                    let tx_hash = from_tm::message_hash(tx)?;
-                    let tx_hash = et::H256::from_slice(tx_hash.as_bytes());
-                    let tx_idx = et::U64::from(tx_idx);
+                    let msg = match to_chain_message(tx) {
+                        Ok(ChainMessage::Signed(msg)) => msg,
+                        _ => continue,
+                    };
+
+                    let emitters = from_tm::collect_emitters(&tx_result.events);
 
                     // Filter by address.
-                    if !addrs.is_empty() {
-                        if let Ok(ChainMessage::Signed(msg)) = to_chain_message(tx) {
-                            if !addrs.contains(&msg.message().from) {
-                                continue;
-                            }
-                        }
+                    if !addrs.is_empty()
+                        && !addrs.contains(&msg.message().from)
+                        && !addrs.contains(&msg.message().to)
+                        && addrs.intersection(&emitters).next().is_none()
+                    {
+                        continue;
                     }
+
+                    let tx_hash = msg_hash(&tx_result.events, tx);
+                    let tx_idx = et::U64::from(tx_idx);
 
                     let mut tx_logs = from_tm::to_logs(
                         &tx_result.events,

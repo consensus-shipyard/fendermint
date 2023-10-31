@@ -1,18 +1,16 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use clap::Parser;
 use tracing_subscriber::FmtSubscriber;
 
-mod cmd;
-mod options;
-mod settings;
+pub use fendermint_app_options as options;
+pub use fendermint_app_settings as settings;
 
-use options::Options;
+mod cmd;
 
 #[tokio::main]
 async fn main() {
-    let opts: Options = Options::parse();
+    let opts = options::parse();
 
     // Log events to stdout.
     if let Some(level) = opts.tracing_level() {

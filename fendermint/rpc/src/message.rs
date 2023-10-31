@@ -6,13 +6,13 @@ use std::path::Path;
 use anyhow::Context;
 use base64::Engine;
 use bytes::Bytes;
+use fendermint_crypto::SecretKey;
 use fendermint_vm_actor_interface::{eam, evm};
 use fendermint_vm_message::{chain::ChainMessage, signed::SignedMessage};
 use fvm_ipld_encoding::{BytesSer, RawBytes};
 use fvm_shared::{
     address::Address, chainid::ChainID, econ::TokenAmount, message::Message, MethodNum, METHOD_SEND,
 };
-use libsecp256k1::{PublicKey, SecretKey};
 
 use crate::B64_ENGINE;
 
@@ -28,15 +28,21 @@ pub struct MessageFactory {
 }
 
 impl MessageFactory {
-    pub fn new(sk: SecretKey, sequence: u64, chain_id: ChainID) -> anyhow::Result<Self> {
-        let pk = PublicKey::from_secret_key(&sk);
-        let addr = Address::new_secp256k1(&pk.serialize())?;
-        Ok(Self {
+    /// Create a factor from a secret key and its corresponding address, which could be a delegated one.
+    pub fn new(sk: SecretKey, addr: Address, sequence: u64, chain_id: ChainID) -> Self {
+        Self {
             sk,
             addr,
             sequence,
             chain_id,
-        })
+        }
+    }
+
+    /// Treat the secret key as an f1 type account.
+    pub fn new_secp256k1(sk: SecretKey, sequence: u64, chain_id: ChainID) -> Self {
+        let pk = sk.public_key();
+        let addr = Address::new_secp256k1(&pk.serialize()).expect("public key is 65 bytes");
+        Self::new(sk, addr, sequence, chain_id)
     }
 
     /// Convenience method to read the secret key from a file, expected to be in Base64 format.
@@ -45,7 +51,7 @@ impl MessageFactory {
         let bz: Vec<u8> = B64_ENGINE
             .decode(b64)
             .context("failed to parse base64 string")?;
-        let sk = SecretKey::parse_slice(&bz)?;
+        let sk = SecretKey::try_from(bz)?;
         Ok(sk)
     }
 
@@ -97,7 +103,7 @@ impl MessageFactory {
         };
         self.sequence += 1;
         let signed = SignedMessage::new_secp256k1(message, &self.sk, &self.chain_id)?;
-        let chain = ChainMessage::Signed(Box::new(signed));
+        let chain = ChainMessage::Signed(signed);
         Ok(chain)
     }
 

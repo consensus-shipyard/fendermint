@@ -11,7 +11,13 @@ KEYS_DIR=$FM_DIR/keys
 GENESIS_FILE=$FM_DIR/genesis.json
 
 # Create a genesis file
-fendermint genesis --genesis-file $GENESIS_FILE new --chain-name $FM_CHAIN_NAME --base-fee 1000  --timestamp 1680101412
+fendermint \
+  genesis --genesis-file $GENESIS_FILE \
+  new \
+    --chain-name $FM_CHAIN_NAME \
+    --base-fee 1000 \
+    --timestamp 1680101412 \
+    --power-scale 0
 
 # Create test keys
 mkdir -p $KEYS_DIR
@@ -54,8 +60,8 @@ fendermint \
   genesis --genesis-file $GENESIS_FILE \
   ipc gateway \
     --subnet-id /r0 \
-    --top-down-check-period 10 \
     --bottom-up-check-period 10 \
+    --min-collateral 1 \
     --msg-fee 10 \
     --majority-percentage 66
 

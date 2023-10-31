@@ -10,10 +10,12 @@ use std::{
 
 use anyhow::{anyhow, Context};
 use ethers_core::types as et;
-use fendermint_rpc::client::FendermintClient;
+use fendermint_rpc::{client::FendermintClient, query::QueryClient};
 use fendermint_vm_actor_interface::eam::EthAddress;
+use fendermint_vm_message::{chain::ChainMessage, query::FvmQueryHeight, signed::DomainHash};
 use futures::{Future, StreamExt};
-use fvm_shared::{address::Address, error::ExitCode};
+use fvm_shared::{address::Address, chainid::ChainID, error::ExitCode};
+use lru_time_cache::LruCache;
 use serde::Serialize;
 use tendermint_rpc::{
     event::{Event, EventData},
@@ -26,7 +28,7 @@ use tokio::sync::{
 };
 
 use crate::{
-    conv::from_tm::{self, map_rpc_block_txs},
+    conv::from_tm::{self, find_hash_event, map_rpc_block_txs, msg_hash, tx_hash},
     error::JsonRpcError,
     handlers::ws::{MethodNotification, Notification},
     state::{enrich_block, WebSocketSender},
@@ -88,17 +90,27 @@ impl FilterKind {
     /// cartesian product of all conditions in it and subscribe individually.
     ///
     /// https://docs.tendermint.com/v0.34/rpc/#/Websocket/subscribe
-    pub fn to_queries(&self) -> anyhow::Result<Vec<Query>> {
+    pub fn to_queries(&self) -> Vec<Query> {
         match self {
-            FilterKind::NewBlocks => Ok(vec![Query::from(EventType::NewBlock)]),
+            FilterKind::NewBlocks => vec![Query::from(EventType::NewBlock)],
             // Testing indicates that `EventType::Tx` might only be raised
             // if there are events emitted by the transaction itself.
-            FilterKind::PendingTransactions => Ok(vec![Query::from(EventType::NewBlock)]),
+            FilterKind::PendingTransactions => vec![Query::from(EventType::NewBlock)],
             FilterKind::Logs(filter) => {
-                let mut query = Query::from(EventType::Tx);
+                // `Query::from(EventType::Tx)` doesn't seem to combine well with non-standard keys.
+                // But `Query::default()` doesn't return anything if we subscribe to `Filter::default()`.
+                let mut query = if filter.has_topics() || filter.address.is_some() {
+                    Query::default()
+                } else {
+                    Query::from(EventType::Tx)
+                };
 
-                if let Some(block_hash) = filter.get_block_hash() {
-                    query = query.and_eq("tx.hash", hex::encode(block_hash.0));
+                if let Some(_block_hash) = filter.get_block_hash() {
+                    // Currently we only use these filters for subscribing to future events,
+                    // we don't go back to retireve past ones (although I think Lotus does that).
+                    // As such, it is impossible to subscribe to future block hashes, they are unknown.
+                    // We could add a `block.hash` to the index, but there are other ways to find transactions
+                    // in a block, so it would be storing data for little reason.
                 }
                 if let Some(from_block) = filter.get_from_block() {
                     query = query.and_gte("tx.height", from_block.as_u64());
@@ -115,22 +127,28 @@ impl FilterKind {
                     Some(et::ValueOrArray::Array(addrs)) => addrs.clone(),
                 };
 
+                // We need to turn the Ethereum addresses f410 addresses, which is something we asked CometBFT to index
+                // so that we can use it for filtering.
                 let addrs = addrs
                     .into_iter()
-                    .map(|addr| {
-                        Address::from(EthAddress(addr.0))
-                            .id()
-                            .context("only f0 type addresses are supported")
-                    })
-                    .collect::<Result<Vec<u64>, _>>()?;
+                    .map(|addr| Address::from(EthAddress(addr.0)))
+                    .collect::<Vec<_>>();
 
                 if !addrs.is_empty() {
                     queries = addrs
                         .iter()
                         .flat_map(|addr| {
-                            queries
-                                .iter()
-                                .map(|q| q.clone().and_eq("message.emitter", addr.to_string()))
+                            queries.iter().flat_map(|q| {
+                                let mut emitters = if let Ok(id) = addr.id() {
+                                    // If it was a masked ID.
+                                    vec![q.clone().and_eq("event.emitter.id", id.to_string())]
+                                } else {
+                                    vec![q.clone().and_eq("event.emitter.deleg", addr.to_string())]
+                                };
+                                emitters.push(q.clone().and_eq("message.from", addr.to_string()));
+                                emitters.push(q.clone().and_eq("message.to", addr.to_string()));
+                                emitters
+                            })
                         })
                         .collect();
                 };
@@ -143,7 +161,7 @@ impl FilterKind {
                             _ => vec![],
                         };
                         if !topics.is_empty() {
-                            let key = format!("message.t{}", i + 1);
+                            let key = format!("event.t{}", i + 1);
                             queries = topics
                                 .into_iter()
                                 .flat_map(|t| {
@@ -156,7 +174,7 @@ impl FilterKind {
                     }
                 }
 
-                Ok(queries)
+                queries
             }
         }
     }
@@ -210,7 +228,13 @@ where
     }
 
     /// Accumulate the events.
-    async fn update<F>(&mut self, event: Event, f: F) -> anyhow::Result<()>
+    async fn update<F>(
+        &mut self,
+        event: Event,
+        to_block: F,
+        chain_id: &ChainID,
+        filter: &Option<et::Filter>,
+    ) -> anyhow::Result<()>
     where
         F: FnOnce(tendermint::Block) -> Pin<Box<dyn Future<Output = anyhow::Result<B>> + Send>>,
     {
@@ -221,7 +245,7 @@ where
                     block: Some(block), ..
                 },
             ) => {
-                let b: B = f(block).await?;
+                let b: B = to_block(block).await?;
                 blocks.push(b);
             }
             (
@@ -231,9 +255,11 @@ where
                 },
             ) => {
                 for tx in &block.data {
-                    let h = from_tm::message_hash(tx)?;
-                    let h = et::H256::from_slice(h.as_bytes());
-                    hashes.push(h);
+                    if let Ok(ChainMessage::Signed(msg)) = fvm_ipld_encoding::from_slice(tx) {
+                        if let Ok(Some(DomainHash::Eth(h))) = msg.domain_hash(chain_id) {
+                            hashes.push(et::TxHash::from(h))
+                        }
+                    }
                 }
             }
             (Self::Logs(ref mut logs), EventData::Tx { tx_result }) => {
@@ -251,9 +277,9 @@ where
                 //                 gas_used: Some("5151233"),
                 //                 events: [
                 //                     Event {
-                //                         kind: "message",
+                //                         kind: "event",
                 //                         attributes: [
-                //                             EventAttribute { key: "emitter", value: "108", index: true },
+                //                             EventAttribute { key: "emitter.id", value: "108", index: true },
                 //                             EventAttribute { key: "t1", value: "dd...b3ef", index: true },
                 //                             EventAttribute { key: "t2", value: "00...362f", index: true },
                 //                             EventAttribute { key: "t3", value: "00...44eb", index: true },
@@ -266,25 +292,27 @@ where
                 //     },
                 //     events: Some(
                 //     {
-                //         "message.d": ["00...0064"],
-                //         "message.emitter": ["108"],
-                //         "message.t1": ["dd...b3ef"],
-                //         "message.t2": ["00...362f"],
-                //         "message.t3": ["00...44eb"],
+                //         "event.d": ["00...0064"],
+                //         "event.emitter.id": ["108"],
+                //         "event.t1": ["dd...b3ef"],
+                //         "event.t2": ["00...362f"],
+                //         "event.t3": ["00...44eb"],
                 //         "tm.event": ["Tx"],
                 //         "tx.hash": ["FA7339B4D9F6AF80AEDB03FC4BFBC1FDD9A62F97632EF8B79C98AAD7044C5BDB"],
                 //         "tx.height": ["1088"]
                 //     })
                 // }
 
-                // TODO: There is no easy way here to tell the block hash. Maybe it has been given in a preceding event,
+                // There is no easy way here to tell the block hash. Maybe it has been given in a preceding event,
                 // but other than that our only option is to query the Tendermint API. If we do that we should have caching,
                 // otherwise all the transactions in a block hammering the node will act like a DoS attack.
-                let block_hash = et::H256::default();
+                // Or we can add it to the indexed fields.
+                let block_hash =
+                    find_hash_event("block", &tx_result.result.events).unwrap_or_default();
+
                 let block_number = et::U64::from(tx_result.height);
 
-                let transaction_hash = from_tm::message_hash(&tx_result.tx)?;
-                let transaction_hash = et::H256::from_slice(transaction_hash.as_bytes());
+                let transaction_hash = msg_hash(&tx_result.result.events, &tx_result.tx);
 
                 // TODO: The transaction index comes as None.
                 let transaction_index = et::U64::from(tx_result.index.unwrap_or_default());
@@ -292,7 +320,7 @@ where
                 // TODO: We have no way to tell where the logs start within the block.
                 let log_index_start = Default::default();
 
-                let tx_logs = from_tm::to_logs(
+                let mut tx_logs = from_tm::to_logs(
                     &tx_result.result.events,
                     block_hash,
                     block_number,
@@ -300,6 +328,10 @@ where
                     transaction_index,
                     log_index_start,
                 )?;
+
+                if let Some(filter) = filter {
+                    tx_logs.retain(|log| matches_topics(filter, log));
+                }
 
                 logs.extend(tx_logs)
             }
@@ -319,15 +351,16 @@ fn to_json_vec<R: Serialize>(records: &[R]) -> anyhow::Result<Vec<serde_json::Va
     Ok(values)
 }
 
-pub struct FilterDriver<C> {
+pub struct FilterDriver {
     id: FilterId,
-    state: FilterState<C>,
+    kind: FilterKind,
+    state: FilterState,
     rx: Receiver<FilterCommand>,
 }
 
-enum FilterState<C> {
+enum FilterState {
     Poll(PollState),
-    Subscription(SubscriptionState<C>),
+    Subscription(SubscriptionState),
 }
 
 /// Accumulate changes between polls.
@@ -341,31 +374,21 @@ struct PollState {
 }
 
 /// Send changes to a WebSocket as soon as they happen, one by one, not in batches.
-struct SubscriptionState<C> {
-    client: FendermintClient<C>,
-    kind: FilterKind,
+struct SubscriptionState {
     ws_sender: WebSocketSender,
 }
 
-impl<C> FilterDriver<C>
-where
-    C: Client + Send + Sync + Clone + 'static,
-{
+impl FilterDriver {
     pub fn new(
         id: FilterId,
         timeout: Duration,
         kind: FilterKind,
         ws_sender: Option<WebSocketSender>,
-        client: FendermintClient<C>,
     ) -> (Self, Sender<FilterCommand>) {
         let (tx, rx) = tokio::sync::mpsc::channel(10);
 
         let state = match ws_sender {
-            Some(ws_sender) => FilterState::Subscription(SubscriptionState {
-                kind,
-                ws_sender,
-                client,
-            }),
+            Some(ws_sender) => FilterState::Subscription(SubscriptionState { ws_sender }),
             None => FilterState::Poll(PollState {
                 timeout,
                 last_poll: Instant::now(),
@@ -374,7 +397,12 @@ where
             }),
         };
 
-        let r = Self { id, state, rx };
+        let r = Self {
+            id,
+            kind,
+            state,
+            rx,
+        };
 
         (r, tx)
     }
@@ -386,11 +414,45 @@ where
     /// Consume commands until some end condition is met.
     ///
     /// In the end the filter removes itself from the registry.
-    pub async fn run(mut self, filters: FilterMap) {
+    pub async fn run<C>(mut self, filters: FilterMap, client: FendermintClient<C>)
+    where
+        C: Client + Send + Sync + Clone + 'static,
+    {
         let id = self.id;
 
         tracing::info!(?id, "handling filter events");
+
+        // Get the Chain ID once. In practice it will not change and will last the entire session.
+        let chain_id = client
+            .state_params(FvmQueryHeight::default())
+            .await
+            .map(|state_params| ChainID::from(state_params.value.chain_id));
+
+        // Logs need to be filtered by topics.
+        let filter = if let FilterKind::Logs(ref filter) = self.kind {
+            Some(filter.as_ref().to_owned())
+        } else {
+            None
+        };
+
+        // Because there are multiple potentially overlapping subscriptions, we might see the same transaction twice,
+        // e.g. because we were interested in ones that emit events "A or B" we had to subscribe to "A" and also to "B",
+        // so if a transaction emits both "A" and "B" we'll get it twice. Most likely they will be at the same time,
+        // so a short time based cache should help get rid of the duplicates.
+        let mut tx_cache: LruCache<tendermint::Hash, bool> =
+            LruCache::with_expiry_duration(Duration::from_secs(60));
+
         while let Some(cmd) = self.rx.recv().await {
+            // Skip duplicate transactions. We won't see duplidate blocks because there is only 1 query for that.
+            if let FilterCommand::Update(ref event) = cmd {
+                if let EventData::Tx { ref tx_result } = event.data {
+                    let tx_hash = tx_hash(&tx_result.tx);
+                    if tx_cache.insert(tx_hash, true).is_some() {
+                        continue;
+                    }
+                }
+            }
+
             match self.state {
                 FilterState::Poll(ref mut state) => {
                     match cmd {
@@ -404,14 +466,26 @@ where
                                 continue;
                             }
 
-                            let res = state
-                                .records
-                                .update(event, |block| {
-                                    Box::pin(async move {
-                                        Ok(et::H256::from_slice(block.header().hash().as_bytes()))
-                                    })
-                                })
-                                .await;
+                            let res = match &chain_id {
+                                Ok(chain_id) => {
+                                    state
+                                        .records
+                                        .update(
+                                            event,
+                                            |block| {
+                                                Box::pin(async move {
+                                                    Ok(et::H256::from_slice(
+                                                        block.header().hash().as_bytes(),
+                                                    ))
+                                                })
+                                            },
+                                            chain_id,
+                                            &filter,
+                                        )
+                                        .await
+                                }
+                                Err(e) => Err(anyhow!("failed to get chain ID: {e}")),
+                            };
 
                             if let Err(err) = res {
                                 tracing::error!(?id, "failed to update filter: {err}");
@@ -442,19 +516,29 @@ where
                 }
                 FilterState::Subscription(ref state) => match cmd {
                     FilterCommand::Update(event) => {
-                        let mut records = FilterRecords::<et::Block<et::TxHash>>::new(&state.kind);
+                        let mut records = FilterRecords::<et::Block<et::TxHash>>::new(&self.kind);
 
-                        let res = records
-                            .update(event, |block| {
-                                let client = state.client.clone();
-                                Box::pin(async move {
-                                    let block = enrich_block(&client, block).await?;
-                                    let block: anyhow::Result<et::Block<et::TxHash>> =
-                                        map_rpc_block_txs(block, |tx| Ok(tx.hash()));
-                                    block
-                                })
-                            })
-                            .await;
+                        let res = match &chain_id {
+                            Ok(chain_id) => {
+                                records
+                                    .update(
+                                        event,
+                                        |block| {
+                                            let client = client.clone();
+                                            Box::pin(async move {
+                                                let block = enrich_block(&client, block).await?;
+                                                let block: anyhow::Result<et::Block<et::TxHash>> =
+                                                    map_rpc_block_txs(block, |tx| Ok(tx.hash()));
+                                                block
+                                            })
+                                        },
+                                        chain_id,
+                                        &filter,
+                                    )
+                                    .await
+                            }
+                            Err(e) => Err(anyhow!("failed to get chain ID: {e}")),
+                        };
 
                         match res {
                             Err(e) => {
@@ -500,7 +584,7 @@ where
                         // This should not be used, but because we treat subscriptions and filters
                         // under the same umbrella, it is possible to send a request to get changes.
                         // Respond with empty, because all of the changes were already sent to the socket.
-                        let _ = tx.send(Ok(Some(FilterRecords::new(&state.kind))));
+                        let _ = tx.send(Ok(Some(FilterRecords::new(&self.kind))));
                     }
                     FilterCommand::Uninstall => {
                         tracing::debug!(?id, "subscription uninstalled");
@@ -522,6 +606,7 @@ fn send_error(ws_sender: &WebSocketSender, exit_code: ExitCode, msg: String, id:
     let err = JsonRpcError {
         code: exit_code.value().into(),
         message: msg,
+        data: None,
     };
     let err = jsonrpc_v2::Error::from(err);
 
@@ -539,7 +624,9 @@ fn send_error(ws_sender: &WebSocketSender, exit_code: ExitCode, msg: String, id:
 fn notification(subscription: FilterId, result: serde_json::Value) -> MethodNotification {
     MethodNotification {
         // We know this is the only one at the moment.
-        method: "eth_subscribe".into(),
+        // The go-ethereum client checks that the suffix is "_subscription":
+        // https://github.com/ethereum/go-ethereum/blob/92b8f28df3255c6cef9605063850d77b46146763/rpc/handler.go#L236C42-L236C42
+        method: "eth_subscription".into(),
         notification: Notification {
             subscription,
             result,
@@ -639,6 +726,16 @@ mod tests {
     use super::FilterKind;
 
     #[test]
+    fn default_filter_to_query() {
+        let filter = et::Filter::default();
+
+        let queries = FilterKind::Logs(Box::new(filter)).to_queries();
+
+        assert_eq!(queries.len(), 1);
+        assert_eq!(queries[0].to_string(), "tm.event = 'Tx'");
+    }
+
+    #[test]
     fn filter_to_query() {
         fn hash(s: &str) -> et::H256 {
             et::H256::from(ethers_core::utils::keccak256(s))
@@ -651,7 +748,7 @@ mod tests {
         let filter = et::Filter::new()
             .select(1234..)
             .address(
-                "0xff00000000000000000000000000000000000064"
+                "0xb794f5ea0ba39494ce839613fffba74279579268"
                     .parse::<et::Address>()
                     .unwrap(),
             )
@@ -674,24 +771,20 @@ mod tests {
             ]))
         );
 
-        let queries = FilterKind::Logs(Box::new(filter))
-            .to_queries()
-            .expect("failed to convert");
+        let queries = FilterKind::Logs(Box::new(filter)).to_queries();
 
-        assert_eq!(queries.len(), 4);
+        assert_eq!(queries.len(), 12);
 
-        for (i, (t1, t3)) in [
-            ("Foo", "Bob"),
-            ("Bar", "Bob"),
-            ("Foo", "Charlie"),
-            ("Bar", "Charlie"),
-        ]
-        .iter()
-        .enumerate()
-        {
-            let q = queries[i].to_string();
-            let e = format!("tm.event = 'Tx' AND tx.height >= 1234 AND message.emitter = '100' AND message.t1 = '{}' AND message.t2 = '{}' AND message.t3 = '{}'", hash_hex(t1), hash_hex("Alice"), hash_hex(t3));
-            assert_eq!(q, e, "combination {i}");
+        let mut i = 0;
+        for t3 in ["Bob", "Charlie"] {
+            for t1 in ["Foo", "Bar"] {
+                for addr in ["event.emitter.deleg", "message.from", "message.to"] {
+                    let q = queries[i].to_string();
+                    let e = format!("tx.height >= 1234 AND {addr} = 'f410fw6kpl2qluokjjtudsyj7765hij4vpetitn2e2wq' AND event.t1 = '{}' AND event.t2 = '{}' AND event.t3 = '{}'", hash_hex(t1), hash_hex("Alice"), hash_hex(t3));
+                    assert_eq!(q, e, "combination {i}");
+                    i += 1;
+                }
+            }
         }
     }
 }

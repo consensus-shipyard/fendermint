@@ -1,16 +1,24 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use anyhow::Context;
 use async_trait::async_trait;
+use fendermint_vm_genesis::{Power, Validator};
+use std::collections::HashMap;
 
 use fendermint_vm_actor_interface::{cron, system};
 use fvm::executor::ApplyRet;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_shared::{address::Address, MethodNum, BLOCK_GAS_LIMIT};
+use fvm_shared::{address::Address, ActorID, MethodNum, BLOCK_GAS_LIMIT};
+use tendermint_rpc::Client;
 
 use crate::ExecInterpreter;
 
-use super::{state::FvmExecState, FvmMessage, FvmMessageInterpreter};
+use super::{
+    checkpoint::{self, PowerUpdates},
+    state::FvmExecState,
+    FvmMessage, FvmMessageInterpreter,
+};
 
 /// The return value extended with some things from the message that
 /// might not be available to the caller, because of the message lookups
@@ -22,18 +30,24 @@ pub struct FvmApplyRet {
     pub to: Address,
     pub method_num: MethodNum,
     pub gas_limit: u64,
+    /// Delegated addresses of event emitters, if they have one.
+    pub emitters: HashMap<ActorID, Address>,
 }
 
 #[async_trait]
-impl<DB> ExecInterpreter for FvmMessageInterpreter<DB>
+impl<DB, TC> ExecInterpreter for FvmMessageInterpreter<DB, TC>
 where
-    DB: Blockstore + 'static + Send + Sync,
+    DB: Blockstore + Clone + 'static + Send + Sync,
+    TC: Client + Clone + Send + Sync + 'static,
 {
     type State = FvmExecState<DB>;
     type Message = FvmMessage;
     type BeginOutput = FvmApplyRet;
     type DeliverOutput = FvmApplyRet;
-    type EndOutput = ();
+    /// Return validator power updates.
+    /// Currently ignoring events as there aren't any emitted by the smart contract,
+    /// but keep in mind that if there were, those would have to be propagated.
+    type EndOutput = Vec<Validator<Power>>;
 
     async fn begin(
         &self,
@@ -47,6 +61,7 @@ where
         let from = system::SYSTEM_ACTOR_ADDR;
         let to = cron::CRON_ACTOR_ADDR;
         let method_num = cron::Method::EpochTick as u64;
+
         // Cron.
         let msg = FvmMessage {
             from,
@@ -61,7 +76,7 @@ where
             gas_premium: Default::default(),
         };
 
-        let apply_ret = state.execute_implicit(msg)?;
+        let (apply_ret, emitters) = state.execute_implicit(msg)?;
 
         // Failing cron would be fatal.
         if let Some(err) = apply_ret.failure_info {
@@ -74,6 +89,7 @@ where
             to,
             method_num,
             gas_limit,
+            emitters,
         };
 
         Ok((state, ret))
@@ -89,7 +105,20 @@ where
         let method_num = msg.method_num;
         let gas_limit = msg.gas_limit;
 
-        let apply_ret = state.execute_explicit(msg)?;
+        let (apply_ret, emitters) = if from == system::SYSTEM_ACTOR_ADDR {
+            state.execute_implicit(msg)?
+        } else {
+            state.execute_explicit(msg)?
+        };
+
+        tracing::info!(
+            height = state.block_height(),
+            from = from.to_string(),
+            to = to.to_string(),
+            method_num = method_num,
+            exit_code = apply_ret.msg_receipt.exit_code.value(),
+            "tx delivered"
+        );
 
         let ret = FvmApplyRet {
             apply_ret,
@@ -97,13 +126,63 @@ where
             to,
             method_num,
             gas_limit,
+            emitters,
         };
 
         Ok((state, ret))
     }
 
-    async fn end(&self, state: Self::State) -> anyhow::Result<(Self::State, Self::EndOutput)> {
-        // TODO: Epoch transitions for checkpointing.
-        Ok((state, ()))
+    async fn end(&self, mut state: Self::State) -> anyhow::Result<(Self::State, Self::EndOutput)> {
+        let updates = if let Some((checkpoint, updates)) =
+            checkpoint::maybe_create_checkpoint(&self.client, &self.gateway, &mut state)
+                .await
+                .context("failed to create checkpoint")?
+        {
+            // Asynchronously broadcast signature, if validating.
+            if let Some(ref ctx) = self.validator_ctx {
+                // Do not resend past signatures.
+                if !self.syncing().await? {
+                    // Fetch any incomplete checkpoints synchronously because the state can't be shared across threads.
+                    let incomplete_checkpoints =
+                        checkpoint::unsigned_checkpoints(&self.gateway, &mut state, ctx.public_key)
+                            .context("failed to fetch incomplete checkpoints")?;
+
+                    debug_assert!(
+                        incomplete_checkpoints
+                            .iter()
+                            .any(|cp| cp.block_height == checkpoint.block_height
+                                && cp.block_hash == checkpoint.block_hash),
+                        "the current checkpoint is incomplete"
+                    );
+
+                    let client = self.client.clone();
+                    let gateway = self.gateway.clone();
+                    let chain_id = state.chain_id();
+                    let height = checkpoint.block_height;
+                    let validator_ctx = ctx.clone();
+
+                    tokio::spawn(async move {
+                        let res = checkpoint::broadcast_incomplete_signatures(
+                            &client,
+                            &validator_ctx,
+                            &gateway,
+                            chain_id,
+                            incomplete_checkpoints,
+                        )
+                        .await;
+
+                        if let Err(e) = res {
+                            tracing::error!(error =? e, height, "error broadcasting checkpoint signature");
+                        }
+                    });
+                }
+            }
+
+            updates
+        } else {
+            PowerUpdates::default()
+        };
+
+        Ok((state, updates.0))
     }
 }

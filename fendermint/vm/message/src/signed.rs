@@ -3,8 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::anyhow;
+use cid::multihash::MultihashDigest;
 use cid::Cid;
 use ethers_core::types as et;
+use fendermint_crypto::SecretKey;
 use fendermint_vm_actor_interface::{eam, evm};
 use fvm_ipld_encoding::tuple::{Deserialize_tuple, Serialize_tuple};
 use fvm_shared::address::{Address, Payload};
@@ -33,6 +35,16 @@ pub enum SignedMessageError {
     Ethereum(#[from] anyhow::Error),
 }
 
+/// Domain specific transaction hash.
+///
+/// Some tools like ethers.js refuse to accept Tendermint hashes,
+/// which use a different algorithm than Ethereum.
+///
+/// We can potentially extend this list to include CID based indexing.
+pub enum DomainHash {
+    Eth([u8; 32]),
+}
+
 /// Represents a wrapped message with signature bytes.
 ///
 /// This is the message that the client needs to send, but only the `message`
@@ -57,16 +69,12 @@ impl SignedMessage {
     /// Create a signed message.
     pub fn new_secp256k1(
         message: Message,
-        sk: &libsecp256k1::SecretKey,
+        sk: &SecretKey,
         chain_id: &ChainID,
     ) -> Result<Self, SignedMessageError> {
-        let sig = match Self::signable(&message, chain_id)? {
-            Signable::Ethereum((hash, _)) => sign_eth(sk, hash).to_vec(),
-            Signable::Regular(data) => sign_regular(sk, &data).to_vec(),
-        };
-        let signature = Signature {
-            sig_type: SignatureType::Secp256k1,
-            bytes: sig,
+        let signature = match Self::signable(&message, chain_id)? {
+            Signable::Ethereum((hash, _)) => sign_eth(sk, hash),
+            Signable::Regular(data) => sign_regular(sk, &data),
         };
         Ok(Self { message, signature })
     }
@@ -119,8 +127,8 @@ impl SignedMessage {
             Signable::Ethereum((hash, from)) => {
                 // If the sender is ethereum, recover the public key from the signature (which verifies it),
                 // then turn it into an `EthAddress` and verify it matches the `from` of the message.
-                let sig =
-                    from_fvm::to_eth_signature(signature).map_err(SignedMessageError::Ethereum)?;
+                let sig = from_fvm::to_eth_signature(signature, true)
+                    .map_err(SignedMessageError::Ethereum)?;
 
                 let rec = sig
                     .recover(hash)
@@ -138,6 +146,30 @@ impl SignedMessage {
                     .verify(&data, &message.from)
                     .map_err(SignedMessageError::InvalidSignature)
             }
+        }
+    }
+
+    /// Calculate an optional hash that ecosystem tools expect.
+    pub fn domain_hash(
+        &self,
+        chain_id: &ChainID,
+    ) -> Result<Option<DomainHash>, SignedMessageError> {
+        if maybe_eth_address(&self.message.from).is_some() {
+            let tx = from_fvm::to_eth_transaction(self.message(), chain_id)
+                .map_err(SignedMessageError::Ethereum)?;
+
+            let sig = from_fvm::to_eth_signature(self.signature(), true)
+                .map_err(SignedMessageError::Ethereum)?;
+
+            let rlp = tx.rlp_signed(&sig);
+
+            let hash = cid::multihash::Code::Keccak256.digest(&rlp);
+            let hash = hash.digest().try_into().expect("Keccak256 is 32 bytes");
+
+            Ok(Some(DomainHash::Eth(hash)))
+        } else {
+            // Use the default transaction ID.
+            Ok(None)
         }
     }
 
@@ -173,7 +205,7 @@ impl SignedMessage {
 }
 
 /// Sign a transaction pre-image using Blake2b256, in a way that [Signature::verify] expects it.
-fn sign_regular(sk: &libsecp256k1::SecretKey, data: &[u8]) -> [u8; SECP_SIG_LEN] {
+fn sign_regular(sk: &SecretKey, data: &[u8]) -> Signature {
     let hash: [u8; 32] = blake2b_simd::Params::new()
         .hash_length(32)
         .to_state()
@@ -187,22 +219,12 @@ fn sign_regular(sk: &libsecp256k1::SecretKey, data: &[u8]) -> [u8; SECP_SIG_LEN]
 }
 
 /// Sign a transaction pre-image in the same way Ethereum clients would sign it.
-fn sign_eth(sk: &libsecp256k1::SecretKey, hash: et::H256) -> [u8; SECP_SIG_LEN] {
+fn sign_eth(sk: &SecretKey, hash: et::H256) -> Signature {
     sign_secp256k1(sk, &hash.0)
 }
 
-/// Sign a hash using the secret key.
-fn sign_secp256k1(sk: &libsecp256k1::SecretKey, hash: &[u8; 32]) -> [u8; SECP_SIG_LEN] {
-    let (sig, recovery_id) = libsecp256k1::sign(&libsecp256k1::Message::parse(hash), sk);
-
-    let mut signature = [0u8; SECP_SIG_LEN];
-    signature[..64].copy_from_slice(&sig.serialize());
-    signature[64] = recovery_id.serialize();
-    signature
-}
-
 /// Turn a [`ChainID`] into bytes. Uses big-endian encoding.
-fn chain_id_bytes(chain_id: &ChainID) -> [u8; 8] {
+pub fn chain_id_bytes(chain_id: &ChainID) -> [u8; 8] {
     u64::from(*chain_id).to_be_bytes()
 }
 
@@ -239,6 +261,20 @@ fn verify_eth_method(msg: &Message) -> Result<(), SignedMessageError> {
         )));
     }
     Ok(())
+}
+
+/// Sign a hash using the secret key.
+pub fn sign_secp256k1(sk: &SecretKey, hash: &[u8; 32]) -> Signature {
+    let (sig, recovery_id) = sk.sign(hash);
+
+    let mut signature = [0u8; SECP_SIG_LEN];
+    signature[..64].copy_from_slice(&sig.serialize());
+    signature[64] = recovery_id.serialize();
+
+    Signature {
+        sig_type: SignatureType::Secp256k1,
+        bytes: signature.to_vec(),
+    }
 }
 
 /// Signed message with an invalid random signature.
@@ -304,7 +340,7 @@ mod tests {
         let KeyPair { sk, pk } = key;
 
         // Set the message to the address we are going to sign with.
-        let ea = EthAddress::new_secp256k1(&pk.serialize()).map_err(|e| e.to_string())?;
+        let ea = EthAddress::from(pk);
         let mut msg = msg.0;
         msg.from = Address::from(ea);
 

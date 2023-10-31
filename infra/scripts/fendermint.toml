@@ -1,0 +1,82 @@
+[tasks.fendermint-start]
+extend = "fendermint-run"
+env = { "ENTRY" = "fendermint", "CMD" = "run", "FLAGS" = "-d" }
+
+[tasks.fendermint-run]
+script = """
+docker run \
+  ${FLAGS} \
+  --name ${FM_CONTAINER_NAME} \
+  --init \
+  --user $(id -u) \
+  --network ${NETWORK_NAME} \
+  --volume ${BASE_DIR}:/data \
+  --env FM_DATA_DIR=/data/fendermint/data \
+  --env FM_CHAIN_NAME=${NETWORK_NAME} \
+  --env TENDERMINT_RPC_URL=http://${CMT_CONTAINER_NAME}:26657 \
+  --env LOG_LEVEL=info \
+  --entrypoint ${ENTRY} \
+  ${FM_DOCKER_IMAGE} \
+  --network=${NETWORK_TYPE} ${CMD}
+"""
+dependencies = ["docker-network-create", "fendermint-deps"]
+
+[tasks.fendermint-start-ipc]
+extend = "fendermint-run-ipc"
+env = { "ENTRY" = "fendermint", "CMD" = "run", "FLAGS" = "-d" }
+
+[tasks.fendermint-run-ipc]
+script = """
+docker run \
+  ${FLAGS} \
+  --name ${FM_CONTAINER_NAME} \
+  --init \
+  --user $(id -u) \
+  --network ${NETWORK_NAME} \
+  --volume ${BASE_DIR}:/data \
+  --env FM_DATA_DIR=/data/fendermint/data \
+  --env FM_CHAIN_NAME=${NETWORK_NAME} \
+  --env FM_IPC__SUBNET_ID=${NETWORK_NAME} \
+  --env FM_IPC__TOPDOWN__CHAIN_HEAD_DELAY=${TOPDOWN_CHAIN_HEAD_DELAY} \
+  --env FM_IPC__TOPDOWN__PARENT_HTTP_ENDPOINT=${PARENT_ENDPOINT} \
+  --env FM_IPC__TOPDOWN__PARENT_REGISTRY=${PARENT_REGISTRY} \
+  --env FM_IPC__TOPDOWN__PARENT_GATEWAY=${PARENT_GATEWAY} \
+  --env FM_IPC__TOPDOWN__EXPONENTIAL_BACK_OFF=5 \
+  --env FM_IPC__TOPDOWN__EXPONENTIAL_RETRY_LIMIT=5 \
+  --env FM_IPC__TOPDOWN__POLLING_INTERVAL=10 \
+  --env FM_ABCI__LISTEN__HOST=0.0.0.0 \
+  --env FM_ETH__LISTEN__HOST=0.0.0.0 \
+  --env FM_TENDERMINT_RPC_URL=http://${CMT_CONTAINER_NAME}:26657 \
+  --env TENDERMINT_RPC_URL=http://${CMT_CONTAINER_NAME}:26657 \
+  --env LOG_LEVEL=info \
+  --entrypoint ${ENTRY} \
+  ${FM_DOCKER_IMAGE} \
+  --network=${NETWORK_TYPE} \
+  ${CMD}
+"""
+dependencies = ["docker-network-create", "fendermint-deps"]
+
+[tasks.fendermint-deps]
+script = """
+# Check if the image exists
+# TODO: Check the version or use a flag to always re-build?
+if docker images | awk '{print $1":"$2}' | grep fendermint; then
+    echo fendermint image already exists
+    docker images | grep fendermint
+else
+    cd ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}
+    make docker-build
+fi
+"""
+
+[tasks.fendermint-rm]
+extend = "docker-rm"
+env = { "CONTAINER_NAME" = "${FM_CONTAINER_NAME}" }
+
+[tasks.fendermint-stop]
+extend = "docker-stop"
+env = { "CONTAINER_NAME" = "${FM_CONTAINER_NAME}" }
+
+[tasks.fendermint-logs]
+extend = "docker-logs"
+env = { "CONTAINER_NAME" = "${FM_CONTAINER_NAME}" }

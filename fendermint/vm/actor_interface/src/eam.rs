@@ -1,7 +1,10 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::fmt::{Debug, Display};
+
 use cid::multihash::MultihashDigest;
+use fendermint_crypto::PublicKey;
 use fvm_ipld_encoding::{
     strict_bytes,
     tuple::{Deserialize_tuple, Serialize_tuple},
@@ -26,7 +29,9 @@ pub enum Method {
 }
 
 // TODO: We could re-export `fil_evm_actor_shared::address::EvmAddress`.
-#[derive(serde::Deserialize, serde::Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord,
+)]
 pub struct EthAddress(#[serde(with = "strict_bytes")] pub [u8; 20]);
 
 impl EthAddress {
@@ -58,6 +63,18 @@ impl EthAddress {
     }
 }
 
+impl Display for EthAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&ethers::types::Address::from(self.0), f)
+    }
+}
+
+impl Debug for EthAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(&ethers::types::Address::from(self.0), f)
+    }
+}
+
 impl From<EthAddress> for Address {
     fn from(value: EthAddress) -> Address {
         if value.is_masked_id() {
@@ -68,6 +85,30 @@ impl From<EthAddress> for Address {
         } else {
             Address::new_delegated(EAM_ACTOR_ID, &value.0).expect("EthAddress is delegated")
         }
+    }
+}
+
+impl From<EthAddress> for ethers::types::Address {
+    fn from(value: EthAddress) -> Self {
+        Self(value.0)
+    }
+}
+
+impl From<&EthAddress> for ethers::types::Address {
+    fn from(value: &EthAddress) -> Self {
+        Self(value.0)
+    }
+}
+
+impl From<ethers::types::Address> for EthAddress {
+    fn from(value: ethers::types::Address) -> Self {
+        Self(value.0)
+    }
+}
+
+impl From<PublicKey> for EthAddress {
+    fn from(value: PublicKey) -> Self {
+        Self::new_secp256k1(&value.serialize()).expect("length is 65")
     }
 }
 
@@ -95,6 +136,7 @@ impl CreateReturn {
 #[cfg(test)]
 mod tests {
     use ethers_core::k256::ecdsa::SigningKey;
+    use fendermint_crypto::SecretKey;
     use quickcheck_macros::quickcheck;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
@@ -104,13 +146,12 @@ mod tests {
     #[quickcheck]
     fn prop_new_secp256k1(seed: u64) -> bool {
         let mut rng = StdRng::seed_from_u64(seed);
-        let sk = libsecp256k1::SecretKey::random(&mut rng);
-        let pk = libsecp256k1::PublicKey::from_secret_key(&sk);
+        let sk = SecretKey::random(&mut rng);
 
-        let signing_key = SigningKey::from_slice(&sk.serialize()).unwrap();
+        let signing_key = SigningKey::from_slice(sk.serialize().as_ref()).unwrap();
         let address = ethers_core::utils::secret_key_to_address(&signing_key);
 
-        let eth_address = EthAddress::new_secp256k1(&pk.serialize()).unwrap();
+        let eth_address = EthAddress::from(sk.public_key());
 
         address.0 == eth_address.0
     }

@@ -3,13 +3,17 @@
 
 use anyhow::{anyhow, Context};
 use fendermint_app::APP_VERSION;
+use fendermint_crypto::PublicKey;
 use fvm_shared::address::Address;
+use ipc_provider::config::subnet::{EVMSubnet, SubnetConfig};
+use ipc_provider::IpcProvider;
 use std::path::PathBuf;
 
 use fendermint_vm_actor_interface::eam::EthAddress;
-use fendermint_vm_core::Timestamp;
+use fendermint_vm_core::{chainid, Timestamp};
 use fendermint_vm_genesis::{
-    ipc, Account, Actor, ActorMeta, Genesis, Multisig, Power, SignerAddr, Validator, ValidatorKey,
+    ipc, Account, Actor, ActorMeta, Collateral, Genesis, Multisig, SignerAddr, Validator,
+    ValidatorKey,
 };
 
 use crate::cmd;
@@ -38,6 +42,7 @@ cmd! {
       chain_name: self.chain_name.clone(),
       network_version: self.network_version,
       base_fee: self.base_fee.clone(),
+      power_scale: self.power_scale,
       validators: Vec::new(),
       accounts: Vec::new(),
       ipc: None
@@ -79,6 +84,8 @@ cmd! {
     match self {
         GenesisIpcCommands::Gateway(args) =>
             set_ipc_gateway(&genesis_file, args),
+        GenesisIpcCommands::FromParent(args) =>
+            new_genesis_from_parent(&genesis_file, args).await
     }
   }
 }
@@ -155,7 +162,7 @@ fn add_validator(genesis_file: &PathBuf, args: &GenesisAddValidatorArgs) -> anyh
         }
         let validator = Validator {
             public_key: vk,
-            power: Power(args.power),
+            power: Collateral(args.power.clone()),
         };
         genesis.validators.push(validator);
         Ok(genesis)
@@ -182,9 +189,13 @@ where
 fn into_tendermint(genesis_file: &PathBuf, args: &GenesisIntoTendermintArgs) -> anyhow::Result<()> {
     let genesis = read_genesis(genesis_file)?;
     let genesis_json = serde_json::to_value(&genesis)?;
+
+    let chain_id: u64 = chainid::from_str_hashed(&genesis.chain_name)?.into();
+    let chain_id = chain_id.to_string();
+
     let tmg = tendermint::Genesis {
         genesis_time: tendermint::time::Time::from_unix_timestamp(genesis.timestamp.as_secs(), 0)?,
-        chain_id: tendermint::chain::Id::try_from(genesis.chain_name)?,
+        chain_id: tendermint::chain::Id::try_from(chain_id)?,
         initial_height: 0,
         // Values are based on the default produced by `tendermint init`
         consensus_params: tendermint::consensus::Params {
@@ -222,9 +233,10 @@ fn set_ipc_gateway(genesis_file: &PathBuf, args: &GenesisIpcGatewayArgs) -> anyh
         let gateway_params = ipc::GatewayParams {
             subnet_id: args.subnet_id.clone(),
             bottom_up_check_period: args.bottom_up_check_period,
-            top_down_check_period: args.top_down_check_period,
+            min_collateral: args.min_collateral.clone(),
             msg_fee: args.msg_fee.clone(),
             majority_percentage: args.majority_percentage,
+            active_validators_limit: args.active_validators_limit,
         };
 
         let ipc_params = match genesis.ipc {
@@ -241,4 +253,67 @@ fn set_ipc_gateway(genesis_file: &PathBuf, args: &GenesisIpcGatewayArgs) -> anyh
 
         Ok(genesis)
     })
+}
+
+async fn new_genesis_from_parent(
+    genesis_file: &PathBuf,
+    args: &GenesisFromParentArgs,
+) -> anyhow::Result<()> {
+    // provider with the parent.
+    let parent_provider = IpcProvider::new_with_subnet(
+        None,
+        ipc_provider::config::Subnet {
+            id: args
+                .subnet_id
+                .parent()
+                .ok_or_else(|| anyhow!("subnet is not a child"))?,
+            config: SubnetConfig::Fevm(EVMSubnet {
+                provider_http: args.parent_endpoint.clone(),
+                auth_token: None,
+                registry_addr: args.parent_registry,
+                gateway_addr: args.parent_gateway,
+            }),
+        },
+    )?;
+
+    let genesis_info = parent_provider.get_genesis_info(&args.subnet_id).await?;
+
+    // get gateway genesis
+    let ipc_params = ipc::IpcParams {
+        gateway: ipc::GatewayParams {
+            subnet_id: args.subnet_id.clone(),
+            bottom_up_check_period: genesis_info.bottom_up_checkpoint_period,
+            min_collateral: genesis_info.min_collateral,
+            msg_fee: genesis_info.msg_fee,
+            majority_percentage: genesis_info.majority_percentage,
+            active_validators_limit: genesis_info.active_validators_limit,
+        },
+    };
+    let mut genesis = Genesis {
+        // We set the genesis epoch as the genesis timestamp so it can be
+        // generated deterministically by all participants
+        // genesis_epoch should be a positive number, we can afford panicking
+        // here if this is not the case.
+        timestamp: Timestamp(genesis_info.genesis_epoch.try_into().unwrap()),
+        chain_name: args.subnet_id.to_string(),
+        network_version: args.network_version,
+        base_fee: args.base_fee.clone(),
+        power_scale: args.power_scale,
+        validators: Vec::new(),
+        accounts: Vec::new(),
+        ipc: Some(ipc_params),
+    };
+
+    for v in genesis_info.validators {
+        let pk = PublicKey::parse_slice(&v.metadata, None)?;
+        genesis.validators.push(Validator {
+            public_key: ValidatorKey(pk),
+            power: Collateral(v.weight),
+        })
+    }
+
+    let json = serde_json::to_string_pretty(&genesis)?;
+    std::fs::write(genesis_file, json)?;
+
+    Ok(())
 }

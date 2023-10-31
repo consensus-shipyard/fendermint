@@ -3,11 +3,13 @@
 
 use anyhow::anyhow;
 use axum::routing::{get, post};
+use fvm_shared::econ::TokenAmount;
 use jsonrpc_v2::Data;
 use std::{net::ToSocketAddrs, sync::Arc, time::Duration};
 use tendermint_rpc::WebSocketClient;
 
 mod apis;
+mod cache;
 mod conv;
 mod error;
 mod filters;
@@ -30,14 +32,28 @@ pub struct AppState {
     pub rpc_state: Arc<JsonRpcState<WebSocketClient>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct GasOpt {
+    pub min_gas_premium: TokenAmount,
+    pub num_blocks_max_prio_fee: u64,
+    pub max_fee_hist_size: u64,
+}
+
 /// Start listening to JSON-RPC requests.
 pub async fn listen<A: ToSocketAddrs>(
     listen_addr: A,
     client: WebSocketClient,
     filter_timeout: Duration,
+    cache_capacity: usize,
+    gas_opt: GasOpt,
 ) -> anyhow::Result<()> {
     if let Some(listen_addr) = listen_addr.to_socket_addrs()?.next() {
-        let rpc_state = Arc::new(JsonRpcState::new(client, filter_timeout));
+        let rpc_state = Arc::new(JsonRpcState::new(
+            client,
+            filter_timeout,
+            cache_capacity,
+            gas_opt,
+        ));
         let rpc_server = make_server(rpc_state.clone());
         let app_state = AppState {
             rpc_server,

@@ -1,21 +1,25 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::collections::HashMap;
 use std::{cell::RefCell, sync::Arc};
 
 use anyhow::{anyhow, Context};
 
 use cid::Cid;
 use fendermint_vm_actor_interface::system::SYSTEM_ACTOR_ADDR;
+use fendermint_vm_core::chainid::HasChainID;
 use fendermint_vm_message::query::ActorState;
-use fvm::{engine::MultiEngine, executor::ApplyRet, state_tree::StateTree};
+use fvm::engine::MultiEngine;
+use fvm::executor::ApplyRet;
+use fvm::state_tree::StateTree;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_shared::{address::Address, clock::ChainEpoch, ActorID};
+use fvm_shared::{address::Address, chainid::ChainID, clock::ChainEpoch, ActorID};
 use num_traits::Zero;
 
 use crate::fvm::{store::ReadOnlyBlockstore, FvmMessage};
 
-use super::{FvmExecState, FvmStateParams};
+use super::{CheckStateRef, FvmExecState, FvmStateParams};
 
 /// The state over which we run queries. These can interrogate the IPLD block store or the state tree.
 pub struct FvmQueryState<DB>
@@ -32,10 +36,12 @@ where
     block_height: ChainEpoch,
     /// State at the height we want to query.
     state_params: FvmStateParams,
-    /// Lazy loaded state tree.
-    state_tree: RefCell<Option<StateTree<ReadOnlyBlockstore<DB>>>>,
     /// Lazy loaded execution state.
     exec_state: RefCell<Option<FvmExecState<ReadOnlyBlockstore<DB>>>>,
+    /// Lazy locked check state.
+    check_state: CheckStateRef<DB>,
+    /// Whether to try ot use the check state or not.
+    pending: bool,
 }
 
 impl<DB> FvmQueryState<DB>
@@ -47,6 +53,8 @@ where
         multi_engine: Arc<MultiEngine>,
         block_height: ChainEpoch,
         state_params: FvmStateParams,
+        check_state: CheckStateRef<DB>,
+        pending: bool,
     ) -> anyhow::Result<Self> {
         // Sanity check that the blockstore contains the supplied state root.
         if !blockstore
@@ -64,44 +72,60 @@ where
             multi_engine,
             block_height,
             state_params,
-            // NOTE: Not loading a state tree in case it's not needed; it would initialize the HAMT.
-            state_tree: RefCell::new(None),
             exec_state: RefCell::new(None),
+            check_state,
+            pending,
         };
 
         Ok(state)
     }
 
-    /// If we know the query is over the state, cache the state tree.
-    fn with_state_tree<T, F>(&self, f: F) -> anyhow::Result<T>
+    /// Do not make the changes in the call persistent. They should be run on top of
+    /// transactions added to the mempool, but they can run independent of each other.
+    ///
+    /// There is no way to specify stacking in the API and only transactions should modify things.
+    fn with_revert<T, F>(
+        &self,
+        exec_state: &mut FvmExecState<ReadOnlyBlockstore<DB>>,
+        f: F,
+    ) -> anyhow::Result<T>
     where
-        F: FnOnce(&StateTree<ReadOnlyBlockstore<DB>>) -> anyhow::Result<T>,
+        F: FnOnce(&mut FvmExecState<ReadOnlyBlockstore<DB>>) -> anyhow::Result<T>,
     {
-        let mut cache = self.state_tree.borrow_mut();
-        if let Some(state_tree) = cache.as_ref() {
-            return f(state_tree);
-        }
+        exec_state.state_tree_mut().begin_transaction();
 
-        let state_tree =
-            StateTree::new_from_root(self.store.clone(), &self.state_params.state_root)?;
+        let res = f(exec_state);
 
-        let res = f(&state_tree);
-        *cache = Some(state_tree);
+        exec_state
+            .state_tree_mut()
+            .end_transaction(true)
+            .expect("we just started a transaction");
         res
     }
 
     /// If we know the query is over the state, cache the state tree.
-    /// If `use_cache` is enabled, the result of the execution will be
-    /// buffered in the cache, if not the result is returned but not cached.
-    fn with_exec_state<T, F>(&self, use_cache: bool, f: F) -> anyhow::Result<T>
+    async fn with_exec_state<T, F>(self, f: F) -> anyhow::Result<(Self, T)>
     where
         F: FnOnce(&mut FvmExecState<ReadOnlyBlockstore<DB>>) -> anyhow::Result<T>,
     {
-        let mut cache = self.exec_state.borrow_mut();
-        if use_cache {
-            if let Some(exec_state) = cache.as_mut() {
-                return f(exec_state);
+        if self.pending {
+            // XXX: This will block all `check_tx` from going through and also all other queries.
+            let mut guard = self.check_state.lock().await;
+
+            if let Some(ref mut exec_state) = *guard {
+                let res = self.with_revert(exec_state, f);
+                drop(guard);
+                return res.map(|r| (self, r));
             }
+        }
+
+        // Not using pending, or there is no pending state.
+        let mut cache = self.exec_state.borrow_mut();
+
+        if let Some(exec_state) = cache.as_mut() {
+            let res = self.with_revert(exec_state, f);
+            drop(cache);
+            return res.map(|r| (self, r));
         }
 
         let mut exec_state = FvmExecState::new(
@@ -112,11 +136,12 @@ where
         )
         .context("error creating execution state")?;
 
-        let res = f(&mut exec_state);
-        if use_cache {
-            *cache = Some(exec_state);
-        }
-        res
+        let res = self.with_revert(&mut exec_state, f);
+
+        *cache = Some(exec_state);
+        drop(cache);
+
+        res.map(|r| (self, r))
     }
 
     /// Read a CID from the underlying IPLD store.
@@ -125,40 +150,38 @@ where
     }
 
     /// Get the state of an actor, if it exists.
-    pub fn actor_state(&self, addr: &Address) -> anyhow::Result<Option<(ActorID, ActorState)>> {
-        self.with_state_tree(|state_tree| {
-            if let Some(id) = state_tree.lookup_id(addr)? {
-                Ok(state_tree.get_actor(id)?.map(|st| {
-                    let st = ActorState {
-                        code: st.code,
-                        state: st.state,
-                        sequence: st.sequence,
-                        balance: st.balance,
-                        delegated_address: st.delegated_address,
-                    };
-                    (id, st)
-                }))
-            } else {
-                Ok(None)
-            }
+    pub async fn actor_state(
+        self,
+        addr: &Address,
+    ) -> anyhow::Result<(Self, Option<(ActorID, ActorState)>)> {
+        self.with_exec_state(|exec_state| {
+            let state_tree = exec_state.state_tree_mut();
+            get_actor_state(state_tree, addr)
         })
+        .await
     }
 
     /// Run a "read-only" message.
     ///
     /// The results are never going to be flushed, so it's semantically read-only,
     /// but it might write into the buffered block store the FVM creates. Running
-    /// multiple such messages results in their buffered effects stacking up if
-    /// `use_cache` is enabled. If `use_cache` is not enabled, the results of the
-    /// execution are not cached.
-    pub fn call(&self, mut msg: FvmMessage, use_cache: bool) -> anyhow::Result<ApplyRet> {
-        // If the sequence is zero, treat it as a signal to use whatever is in the state.
-        if msg.sequence.is_zero() {
-            if let Some((_, state)) = self.actor_state(&msg.from)? {
-                msg.sequence = state.sequence;
+    /// multiple such messages results in their buffered effects stacking up,
+    /// unless it's called with `revert`.
+    pub async fn call(
+        self,
+        mut msg: FvmMessage,
+    ) -> anyhow::Result<(Self, (ApplyRet, HashMap<u64, Address>))> {
+        self.with_exec_state(|s| {
+            // If the sequence is zero, treat it as a signal to use whatever is in the state.
+            if msg.sequence.is_zero() {
+                let state_tree = s.state_tree_mut();
+                if let Some(id) = state_tree.lookup_id(&msg.from)? {
+                    state_tree.get_actor(id)?.map(|st| {
+                        msg.sequence = st.sequence;
+                        st
+                    });
+                }
             }
-        }
-        self.with_exec_state(use_cache, |s| {
             if msg.from == SYSTEM_ACTOR_ADDR {
                 // Explicit execution requires `from` to be an account kind.
                 s.execute_implicit(msg)
@@ -166,9 +189,50 @@ where
                 s.execute_explicit(msg)
             }
         })
+        .await
     }
 
     pub fn state_params(&self) -> &FvmStateParams {
         &self.state_params
+    }
+
+    pub fn block_height(&self) -> ChainEpoch {
+        self.block_height
+    }
+
+    pub fn pending(&self) -> bool {
+        self.pending
+    }
+}
+
+impl<DB> HasChainID for FvmQueryState<DB>
+where
+    DB: Blockstore + 'static,
+{
+    fn chain_id(&self) -> ChainID {
+        ChainID::from(self.state_params.chain_id)
+    }
+}
+
+fn get_actor_state<DB>(
+    state_tree: &StateTree<DB>,
+    addr: &Address,
+) -> anyhow::Result<Option<(ActorID, ActorState)>>
+where
+    DB: Blockstore,
+{
+    if let Some(id) = state_tree.lookup_id(addr)? {
+        Ok(state_tree.get_actor(id)?.map(|st| {
+            let st = ActorState {
+                code: st.code,
+                state: st.state,
+                sequence: st.sequence,
+                balance: st.balance,
+                delegated_address: st.delegated_address,
+            };
+            (id, st)
+        }))
+    } else {
+        Ok(None)
     }
 }

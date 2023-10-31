@@ -14,7 +14,9 @@ use cid::Cid;
 use fvm_shared::ActorID;
 use fvm_shared::{address::Address, error::ExitCode};
 
-use fendermint_vm_message::query::{ActorState, FvmQuery, GasEstimate, StateParams};
+use fendermint_vm_message::query::{
+    ActorState, FvmQuery, FvmQueryHeight, GasEstimate, StateParams,
+};
 
 use crate::response::encode_data;
 
@@ -29,8 +31,8 @@ pub struct QueryResponse<T> {
 #[async_trait]
 pub trait QueryClient: Sync {
     /// Query the contents of a CID from the IPLD store.
-    async fn ipld(&self, cid: &Cid) -> anyhow::Result<Option<Vec<u8>>> {
-        let res = self.perform(FvmQuery::Ipld(*cid), None).await?;
+    async fn ipld(&self, cid: &Cid, height: FvmQueryHeight) -> anyhow::Result<Option<Vec<u8>>> {
+        let res = self.perform(FvmQuery::Ipld(*cid), height).await?;
         extract_opt(res, |res| Ok(res.value))
     }
 
@@ -38,19 +40,11 @@ pub trait QueryClient: Sync {
     async fn actor_state(
         &self,
         address: &Address,
-        height: Option<Height>,
+        height: FvmQueryHeight,
     ) -> anyhow::Result<QueryResponse<Option<(ActorID, ActorState)>>> {
         let res = self.perform(FvmQuery::ActorState(*address), height).await?;
         let height = res.height;
-        let value = extract_opt(res, |res| {
-            let state: ActorState =
-                fvm_ipld_encoding::from_slice(&res.value).context("failed to decode state")?;
-
-            let id: ActorID =
-                fvm_ipld_encoding::from_slice(&res.key).context("failed to decode ID")?;
-
-            Ok((id, state))
-        })?;
+        let value = extract_actor_state(res)?;
         Ok(QueryResponse { height, value })
     }
 
@@ -58,7 +52,7 @@ pub trait QueryClient: Sync {
     async fn call(
         &self,
         message: Message,
-        height: Option<Height>,
+        height: FvmQueryHeight,
     ) -> anyhow::Result<QueryResponse<response::DeliverTx>> {
         let res = self
             .perform(FvmQuery::Call(Box::new(message)), height)
@@ -85,9 +79,12 @@ pub trait QueryClient: Sync {
     /// Estimate the gas limit of a message.
     async fn estimate_gas(
         &self,
-        message: Message,
-        height: Option<Height>,
+        mut message: Message,
+        height: FvmQueryHeight,
     ) -> anyhow::Result<QueryResponse<GasEstimate>> {
+        // Using 0 sequence so estimation doesn't get tripped over by nonce mismatch.
+        message.sequence = 0;
+
         let res = self
             .perform(FvmQuery::EstimateGas(Box::new(message)), height)
             .await?;
@@ -102,7 +99,7 @@ pub trait QueryClient: Sync {
     /// Slowly changing state parameters.
     async fn state_params(
         &self,
-        height: Option<Height>,
+        height: FvmQueryHeight,
     ) -> anyhow::Result<QueryResponse<StateParams>> {
         let res = self.perform(FvmQuery::StateParams, height).await?;
         let height = res.height;
@@ -114,7 +111,7 @@ pub trait QueryClient: Sync {
     }
 
     /// Run an ABCI query.
-    async fn perform(&self, query: FvmQuery, height: Option<Height>) -> anyhow::Result<AbciQuery>;
+    async fn perform(&self, query: FvmQuery, height: FvmQueryHeight) -> anyhow::Result<AbciQuery>;
 }
 
 /// Extract some value from the query result, unless it's not found or other error.
@@ -142,6 +139,17 @@ where
     } else {
         f(res)
     }
+}
+
+fn extract_actor_state(res: AbciQuery) -> anyhow::Result<Option<(ActorID, ActorState)>> {
+    extract_opt(res, |res| {
+        let state: ActorState =
+            fvm_ipld_encoding::from_slice(&res.value).context("failed to decode state")?;
+
+        let id: ActorID = fvm_ipld_encoding::from_slice(&res.key).context("failed to decode ID")?;
+
+        Ok((id, state))
+    })
 }
 
 fn is_not_found(res: &AbciQuery) -> bool {

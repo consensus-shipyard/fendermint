@@ -8,6 +8,8 @@ use std::pin::Pin;
 use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
+use fendermint_app_options::genesis::AccountKind;
+use fendermint_crypto::SecretKey;
 use fendermint_rpc::client::BoundFendermintClient;
 use fendermint_rpc::tx::{
     AsyncResponse, BoundClient, CallClient, CommitResponse, SyncResponse, TxAsync, TxClient,
@@ -15,6 +17,7 @@ use fendermint_rpc::tx::{
 };
 use fendermint_vm_core::chainid;
 use fendermint_vm_message::chain::ChainMessage;
+use fendermint_vm_message::query::FvmQueryHeight;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
@@ -27,7 +30,7 @@ use tendermint_rpc::HttpClient;
 
 use fendermint_rpc::message::{GasParams, MessageFactory};
 use fendermint_rpc::{client::FendermintClient, query::QueryClient};
-use fendermint_vm_actor_interface::eam::{self, CreateReturn};
+use fendermint_vm_actor_interface::eam::{self, CreateReturn, EthAddress};
 
 use crate::cmd;
 use crate::options::rpc::{BroadcastMode, FevmArgs, RpcFevmCommands, TransArgs};
@@ -78,13 +81,14 @@ async fn query(
     height: Height,
     command: RpcQueryCommands,
 ) -> anyhow::Result<()> {
+    let height = FvmQueryHeight::from(height.value());
     match command {
-        RpcQueryCommands::Ipld { cid } => match client.ipld(&cid).await? {
+        RpcQueryCommands::Ipld { cid } => match client.ipld(&cid, height).await? {
             Some(data) => println!("{}", to_b64(&data)),
             None => eprintln!("CID not found"),
         },
         RpcQueryCommands::ActorState { address } => {
-            match client.actor_state(&address, Some(height)).await?.value {
+            match client.actor_state(&address, height).await?.value {
                 Some((id, state)) => {
                     let out = json! ({
                       "id": id,
@@ -98,7 +102,7 @@ async fn query(
             }
         }
         RpcQueryCommands::StateParams => {
-            let res = client.state_params(Some(height)).await?;
+            let res = client.state_params(height).await?;
             let json = json!({ "response": res });
             print_json(&json)?;
         }
@@ -240,10 +244,11 @@ async fn fevm_call(
     let mut client = TransClient::new(client, &args)?;
     let gas_params = gas_params(&args);
     let value = args.value;
+    let height = FvmQueryHeight::from(height.value());
 
     let res = client
         .inner
-        .fevm_call(contract, calldata, value, gas_params, Some(height))
+        .fevm_call(contract, calldata, value, gas_params, height)
         .await?;
 
     let return_data = res
@@ -269,10 +274,11 @@ async fn fevm_estimate_gas(
     let mut client = TransClient::new(client, &args)?;
     let gas_params = gas_params(&args);
     let value = args.value;
+    let height = FvmQueryHeight::from(height.value());
 
     let res = client
         .inner
-        .fevm_estmiate_gas(contract, calldata, value, gas_params, Some(height))
+        .fevm_estimate_gas(contract, calldata, value, gas_params, height)
         .await?;
 
     let json = json!({ "response": res });
@@ -311,24 +317,27 @@ pub enum BroadcastResponse<T> {
     Commit(CommitResponse<T>),
 }
 
-impl fendermint_rpc::tx::BroadcastMode for BroadcastMode {
+struct BroadcastModeWrapper(BroadcastMode);
+
+impl fendermint_rpc::tx::BroadcastMode for BroadcastModeWrapper {
     type Response<T> = BroadcastResponse<T>;
 }
 
 struct TransClient {
     inner: BoundFendermintClient<HttpClient>,
-    broadcast_mode: BroadcastMode,
+    broadcast_mode: BroadcastModeWrapper,
 }
 
 impl TransClient {
     pub fn new(client: FendermintClient, args: &TransArgs) -> anyhow::Result<Self> {
         let sk = read_secret_key(&args.secret_key)?;
+        let addr = to_address(&sk, &args.account_kind)?;
         let chain_id = chainid::from_str_hashed(&args.chain_name)?;
-        let mf = MessageFactory::new(sk, args.sequence, chain_id)?;
+        let mf = MessageFactory::new(sk, addr, args.sequence, chain_id);
         let client = client.bind(mf);
         let client = Self {
             inner: client,
-            broadcast_mode: args.broadcast_mode,
+            broadcast_mode: BroadcastModeWrapper(args.broadcast_mode),
         };
         Ok(client)
     }
@@ -341,13 +350,13 @@ impl BoundClient for TransClient {
 }
 
 #[async_trait]
-impl TxClient<BroadcastMode> for TransClient {
+impl TxClient<BroadcastModeWrapper> for TransClient {
     async fn perform<F, T>(&self, msg: ChainMessage, f: F) -> anyhow::Result<BroadcastResponse<T>>
     where
         F: FnOnce(&DeliverTx) -> anyhow::Result<T> + Sync + Send,
         T: Sync + Send,
     {
-        match self.broadcast_mode {
+        match self.broadcast_mode.0 {
             BroadcastMode::Async => {
                 let res = TxClient::<TxAsync>::perform(&self.inner, msg, f).await?;
                 Ok(BroadcastResponse::Async(res))
@@ -369,5 +378,13 @@ fn gas_params(args: &TransArgs) -> GasParams {
         gas_limit: args.gas_limit,
         gas_fee_cap: args.gas_fee_cap.clone(),
         gas_premium: args.gas_premium.clone(),
+    }
+}
+
+fn to_address(sk: &SecretKey, kind: &AccountKind) -> anyhow::Result<Address> {
+    let pk = sk.public_key().serialize();
+    match kind {
+        AccountKind::Regular => Ok(Address::new_secp256k1(&pk)?),
+        AccountKind::Ethereum => Ok(Address::from(EthAddress::new_secp256k1(&pk)?)),
     }
 }

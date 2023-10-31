@@ -12,22 +12,35 @@ license.workspace = true
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 arbitrary = { workspace = true, optional = true }
-quickcheck = { workspace = true, optional = true }
+ethers = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
+lazy_static = { workspace = true }
+num-bigint = { workspace = true, optional = true }
+quickcheck = { workspace = true, optional = true }
+arbtest = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 
 cid = { workspace = true, optional = true }
 fvm_ipld_encoding = { workspace = true, optional = true }
 fvm_shared = { workspace = true, optional = true, features = ["arb"] }
+ipc-sdk = { workspace = true, optional = true }
 
 [dev-dependencies]
-arbtest = { workspace = true }
 arbitrary = { workspace = true }
 
 fendermint_testing = { path = ".", features = ["smt"] }
 
 [features]
 default = []
-smt = ["arbitrary"]
+smt = ["arbitrary", "arbtest"]
 golden = ["quickcheck", "hex", "serde", "serde_json", "cid", "fvm_ipld_encoding"]
-arb = ["quickcheck", "rand", "cid", "fvm_shared"]
+arb = [
+  "quickcheck",
+  "rand",
+  "cid",
+  "fvm_shared",
+  "ipc-sdk",
+  "arbitrary",
+  "num-bigint/arbitrary",
+  "ethers",
+]

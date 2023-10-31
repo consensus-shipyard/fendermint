@@ -3,11 +3,12 @@
 //! Conversions to Tendermint data types.
 use anyhow::{anyhow, Context};
 use fendermint_vm_core::Timestamp;
-use fendermint_vm_genesis::Validator;
-use fendermint_vm_interpreter::fvm::{FvmApplyRet, FvmCheckRet, FvmQueryRet};
-use fvm_shared::{error::ExitCode, event::StampedEvent};
+use fendermint_vm_genesis::{Power, Validator};
+use fendermint_vm_interpreter::fvm::{state::BlockHash, FvmApplyRet, FvmCheckRet, FvmQueryRet};
+use fendermint_vm_message::signed::DomainHash;
+use fvm_shared::{address::Address, error::ExitCode, event::StampedEvent, ActorID};
 use prost::Message;
-use std::num::NonZeroU32;
+use std::{collections::HashMap, num::NonZeroU32};
 use tendermint::abci::{response, Code, Event, EventAttribute};
 
 use crate::{app::AppError, BlockHeight};
@@ -52,7 +53,11 @@ pub fn invalid_query(err: AppError, description: String) -> response::Query {
     }
 }
 
-pub fn to_deliver_tx(ret: FvmApplyRet) -> response::DeliverTx {
+pub fn to_deliver_tx(
+    ret: FvmApplyRet,
+    domain_hash: Option<DomainHash>,
+    block_hash: Option<BlockHash>,
+) -> response::DeliverTx {
     let receipt = ret.apply_ret.msg_receipt;
 
     // Based on the sanity check in the `DefaultExecutor`.
@@ -63,7 +68,31 @@ pub fn to_deliver_tx(ret: FvmApplyRet) -> response::DeliverTx {
     let gas_used: i64 = receipt.gas_used.try_into().unwrap_or(i64::MAX);
 
     let data: bytes::Bytes = receipt.return_data.to_vec().into();
-    let events = to_events("message", ret.apply_ret.events);
+    let mut events = to_events("event", ret.apply_ret.events, ret.emitters);
+
+    // Emit the block hash. It's not useful to subscribe by as it's a-priori unknown,
+    // but we can use it during subscription to fill in the block hash field which Ethereum
+    // subscriptions expect, and it's otherwise not available.
+    if let Some(h) = block_hash {
+        events.push(Event::new(
+            "block",
+            vec![EventAttribute {
+                key: "hash".to_string(),
+                value: hex::encode(h),
+                index: true,
+            }],
+        ));
+    }
+
+    // Emit an event which causes Tendermint to index our transaction with a custom hash.
+    // In theory we could emit multiple values under `tx.hash`, but in subscriptions we are
+    // looking to emit the one expected by Ethereum clients.
+    if let Some(h) = domain_hash {
+        events.push(to_domain_hash_event(&h));
+    }
+
+    // Emit general message metadata.
+    events.push(to_message_event(ret.from, ret.to));
 
     response::DeliverTx {
         code: to_code(receipt.exit_code),
@@ -73,6 +102,7 @@ pub fn to_deliver_tx(ret: FvmApplyRet) -> response::DeliverTx {
             .apply_ret
             .failure_info
             .map(|i| i.to_string())
+            .filter(|s| !s.is_empty())
             .unwrap_or_else(|| to_error_msg(receipt.exit_code).to_owned()),
         gas_wanted,
         gas_used,
@@ -86,6 +116,7 @@ pub fn to_check_tx(ret: FvmCheckRet) -> response::CheckTx {
         code: to_code(ret.exit_code),
         info: ret
             .info
+            .filter(|s| !s.is_empty())
             .unwrap_or_else(|| to_error_msg(ret.exit_code).to_owned()),
         gas_wanted: ret.gas_limit.try_into().unwrap_or(i64::MAX),
         sender: ret.sender.to_string(),
@@ -94,25 +125,25 @@ pub fn to_check_tx(ret: FvmCheckRet) -> response::CheckTx {
 }
 
 /// Map the return values from epoch boundary operations to validator updates.
-///
-/// (Currently just a placeholder).
-pub fn to_end_block(_ret: ()) -> response::EndBlock {
-    response::EndBlock {
-        validator_updates: Vec::new(),
+pub fn to_end_block(power_table: Vec<Validator<Power>>) -> anyhow::Result<response::EndBlock> {
+    let validator_updates =
+        to_validator_updates(power_table).context("failed to convert validator updates")?;
+
+    Ok(response::EndBlock {
+        validator_updates,
         consensus_param_updates: None,
-        events: Vec::new(),
-    }
+        events: Vec::new(), // TODO: Events from epoch transitions?
+    })
 }
 
 /// Map the return values from cron operations.
 pub fn to_begin_block(ret: FvmApplyRet) -> response::BeginBlock {
-    let events = to_events("begin", ret.apply_ret.events);
+    let events = to_events("event", ret.apply_ret.events, ret.emitters);
 
     response::BeginBlock { events }
 }
 
 /// Convert events to key-value pairs.
-///
 ///
 /// Fot the EVM, they are returned like so:
 ///
@@ -130,17 +161,31 @@ pub fn to_begin_block(ret: FvmApplyRet) -> response::BeginBlock {
 /// * "t2" will be the first indexed argument, i.e. _from  (cbor encoded byte array; needs padding to 32 bytes to work with ethers)
 /// * "t3" will be the second indexed argument, i.e. _to (cbor encoded byte array; needs padding to 32 bytes to work with ethers)
 /// * "d" is a cbor encoded byte array of all the remaining arguments
-pub fn to_events(kind: &str, stamped_events: Vec<StampedEvent>) -> Vec<Event> {
+pub fn to_events(
+    kind: &str,
+    stamped_events: Vec<StampedEvent>,
+    emitters: HashMap<ActorID, Address>,
+) -> Vec<Event> {
     stamped_events
         .into_iter()
         .map(|se| {
             let mut attrs = Vec::new();
 
             attrs.push(EventAttribute {
-                key: "emitter".to_string(),
+                key: "emitter.id".to_string(),
                 value: se.emitter.to_string(),
                 index: true,
             });
+
+            // This is emitted because some clients might want to subscribe to events
+            // based on the deterministic Ethereum address even before a contract is created.
+            if let Some(deleg_addr) = emitters.get(&se.emitter) {
+                attrs.push(EventAttribute {
+                    key: "emitter.deleg".to_string(),
+                    value: deleg_addr.to_string(),
+                    index: true,
+                });
+            }
 
             for e in se.event.entries {
                 attrs.push(EventAttribute {
@@ -153,6 +198,34 @@ pub fn to_events(kind: &str, stamped_events: Vec<StampedEvent>) -> Vec<Event> {
             Event::new(kind.to_string(), attrs)
         })
         .collect()
+}
+
+/// Construct an indexable event from a custom transaction hash.
+pub fn to_domain_hash_event(domain_hash: &DomainHash) -> Event {
+    let (k, v) = match domain_hash {
+        DomainHash::Eth(h) => ("eth", hex::encode(h)),
+    };
+    Event::new(
+        k,
+        vec![EventAttribute {
+            key: "hash".to_string(),
+            value: v,
+            index: true,
+        }],
+    )
+}
+
+/// Event about the message itself.
+pub fn to_message_event(from: Address, to: Address) -> Event {
+    let attr = |k: &str, v: Address| EventAttribute {
+        key: k.to_string(),
+        value: v.to_string(),
+        index: true,
+    };
+    Event::new(
+        "message".to_string(),
+        vec![attr("from", from), attr("to", to)],
+    )
 }
 
 /// Map to query results.
@@ -183,7 +256,7 @@ pub fn to_query(ret: FvmQueryRet, block_height: BlockHeight) -> anyhow::Result<r
             // Send back an entire Tendermint deliver_tx response, encoded as IPLD.
             // This is so there is a single representation of a call result, instead
             // of a normal delivery being one way and a query exposing `FvmApplyRet`.
-            let dtx = to_deliver_tx(ret);
+            let dtx = to_deliver_tx(ret, None, None);
             let dtx = tendermint_proto::abci::ResponseDeliverTx::from(dtx);
             let mut buf = bytes::BytesMut::new();
             dtx.encode(&mut buf)?;
@@ -219,17 +292,12 @@ pub fn to_query(ret: FvmQueryRet, block_height: BlockHeight) -> anyhow::Result<r
 
 /// Project Genesis validators to Tendermint.
 pub fn to_validator_updates(
-    validators: Vec<Validator>,
+    validators: Vec<Validator<Power>>,
 ) -> anyhow::Result<Vec<tendermint::validator::Update>> {
     let mut updates = vec![];
     for v in validators {
-        let bz = v.public_key.0.serialize();
-
-        let key = tendermint::crypto::default::ecdsa_secp256k1::VerifyingKey::from_sec1_bytes(&bz)
-            .map_err(|e| anyhow!("failed to convert public key: {e}"))?;
-
         updates.push(tendermint::validator::Update {
-            pub_key: tendermint::public_key::PublicKey::Secp256k1(key),
+            pub_key: tendermint::PublicKey::try_from(v.public_key)?,
             power: tendermint::vote::Power::try_from(v.power.0)?,
         });
     }

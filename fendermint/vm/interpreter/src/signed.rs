@@ -4,7 +4,13 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 
 use fendermint_vm_core::chainid::HasChainID;
-use fendermint_vm_message::signed::{SignedMessage, SignedMessageError};
+use fendermint_vm_message::{
+    query::FvmQuery,
+    signed::{chain_id_bytes, DomainHash, SignedMessage, SignedMessageError},
+};
+use fvm_ipld_encoding::Error as IpldError;
+use fvm_shared::{chainid::ChainID, crypto::signature::Signature};
+use serde::Serialize;
 
 use crate::{
     fvm::{FvmApplyRet, FvmCheckRet, FvmMessage},
@@ -14,8 +20,89 @@ use crate::{
 /// Message validation failed due to an invalid signature.
 pub struct InvalidSignature(pub String);
 
-pub type SignedMessageApplyRet = Result<FvmApplyRet, InvalidSignature>;
-pub type SignedMessageCheckRet = Result<FvmCheckRet, InvalidSignature>;
+pub struct SignedMessageApplyRet {
+    pub fvm: FvmApplyRet,
+    pub domain_hash: Option<DomainHash>,
+}
+
+pub type SignedMessageApplyRes = Result<SignedMessageApplyRet, InvalidSignature>;
+pub type SignedMessageCheckRes = Result<FvmCheckRet, InvalidSignature>;
+
+/// Different kinds of signed messages.
+///
+/// This technical construct was introduced so we can have a simple linear interpreter stack
+/// where everything flows through all layers, which means to pass something to the FVM we
+/// have to go through the signature check.
+pub enum VerifiableMessage {
+    /// A normal message sent by a user.
+    Signed(SignedMessage),
+    /// Something we constructed to pass on to the FVM.
+    Synthetic(SyntheticMessage),
+    /// Does not require verification
+    NotVerify(FvmMessage),
+}
+
+impl VerifiableMessage {
+    pub fn verify(&self, chain_id: &ChainID) -> Result<(), SignedMessageError> {
+        match self {
+            Self::Signed(m) => m.verify(chain_id),
+            Self::Synthetic(m) => m.verify(chain_id),
+            Self::NotVerify(_) => Ok(()),
+        }
+    }
+
+    pub fn into_message(self) -> FvmMessage {
+        match self {
+            Self::Signed(m) => m.into_message(),
+            Self::Synthetic(m) => m.message,
+            Self::NotVerify(m) => m,
+        }
+    }
+
+    pub fn domain_hash(
+        &self,
+        chain_id: &ChainID,
+    ) -> Result<Option<DomainHash>, SignedMessageError> {
+        match self {
+            Self::Signed(m) => m.domain_hash(chain_id),
+            Self::Synthetic(_) => Ok(None),
+            Self::NotVerify(_) => Ok(None),
+        }
+    }
+}
+
+pub struct SyntheticMessage {
+    /// The artifical message.
+    message: FvmMessage,
+    /// The CID of the original message (assuming here that that's what was signed).
+    orig_cid: cid::Cid,
+    /// The signature over the original CID.
+    signature: Signature,
+}
+
+impl SyntheticMessage {
+    pub fn new<T: Serialize>(
+        message: FvmMessage,
+        orig: &T,
+        signature: Signature,
+    ) -> Result<Self, IpldError> {
+        let orig_cid = fendermint_vm_message::cid(orig)?;
+        Ok(Self {
+            message,
+            orig_cid,
+            signature,
+        })
+    }
+
+    pub fn verify(&self, chain_id: &ChainID) -> Result<(), SignedMessageError> {
+        let mut data = self.orig_cid.to_bytes();
+        data.extend(chain_id_bytes(chain_id).iter());
+
+        self.signature
+            .verify(&data, &self.message.from)
+            .map_err(SignedMessageError::InvalidSignature)
+    }
+}
 
 /// Interpreter working on signed messages, validating their signature before sending
 /// the unsigned parts on for execution.
@@ -31,15 +118,15 @@ impl<I> SignedMessageInterpreter<I> {
 }
 
 #[async_trait]
-impl<I, S> ExecInterpreter for SignedMessageInterpreter<I>
+impl<I> ExecInterpreter for SignedMessageInterpreter<I>
 where
-    I: ExecInterpreter<Message = FvmMessage, DeliverOutput = FvmApplyRet, State = S>,
-    S: HasChainID + Send + 'static,
+    I: ExecInterpreter<Message = FvmMessage, DeliverOutput = FvmApplyRet>,
+    I::State: HasChainID,
 {
     type State = I::State;
-    type Message = SignedMessage;
+    type Message = VerifiableMessage;
     type BeginOutput = I::BeginOutput;
-    type DeliverOutput = SignedMessageApplyRet;
+    type DeliverOutput = SignedMessageApplyRes;
     type EndOutput = I::EndOutput;
 
     async fn deliver(
@@ -51,7 +138,7 @@ where
         // async call to `inner.deliver` would be inside a match holding a reference to `state`.
         let chain_id = state.chain_id();
 
-        match msg.verify(chain_id) {
+        match msg.verify(&chain_id) {
             Err(SignedMessageError::Ipld(e)) => Err(anyhow!(e)),
             Err(SignedMessageError::Ethereum(e)) => {
                 Ok((state, Err(InvalidSignature(e.to_string()))))
@@ -61,7 +148,12 @@ where
                 Ok((state, Err(InvalidSignature(s))))
             }
             Ok(()) => {
-                let (state, ret) = self.inner.deliver(state, msg.message).await?;
+                let domain_hash = msg.domain_hash(&chain_id)?;
+                let (state, ret) = self.inner.deliver(state, msg.into_message()).await?;
+                let ret = SignedMessageApplyRet {
+                    fvm: ret,
+                    domain_hash,
+                };
                 Ok((state, Ok(ret)))
             }
         }
@@ -77,14 +169,14 @@ where
 }
 
 #[async_trait]
-impl<I, S> CheckInterpreter for SignedMessageInterpreter<I>
+impl<I> CheckInterpreter for SignedMessageInterpreter<I>
 where
-    I: CheckInterpreter<Message = FvmMessage, Output = FvmCheckRet, State = S>,
-    S: HasChainID + Send + 'static,
+    I: CheckInterpreter<Message = FvmMessage, Output = FvmCheckRet>,
+    I::State: HasChainID + Send + 'static,
 {
     type State = I::State;
-    type Message = SignedMessage;
-    type Output = SignedMessageCheckRet;
+    type Message = VerifiableMessage;
+    type Output = SignedMessageCheckRes;
 
     async fn check(
         &self,
@@ -95,7 +187,7 @@ where
         let verify_result = if is_recheck {
             Ok(())
         } else {
-            msg.verify(state.chain_id())
+            msg.verify(&state.chain_id())
         };
 
         match verify_result {
@@ -109,7 +201,10 @@ where
                 Ok((state, Err(InvalidSignature(s))))
             }
             Ok(()) => {
-                let (state, ret) = self.inner.check(state, msg.message, is_recheck).await?;
+                let (state, ret) = self
+                    .inner
+                    .check(state, msg.into_message(), is_recheck)
+                    .await?;
                 Ok((state, Ok(ret)))
             }
         }
@@ -119,7 +214,7 @@ where
 #[async_trait]
 impl<I> QueryInterpreter for SignedMessageInterpreter<I>
 where
-    I: QueryInterpreter,
+    I: QueryInterpreter<Query = FvmQuery>,
 {
     type State = I::State;
     type Query = I::Query;

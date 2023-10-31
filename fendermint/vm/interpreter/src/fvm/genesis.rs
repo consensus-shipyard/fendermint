@@ -17,12 +17,12 @@ use fendermint_vm_actor_interface::{
     account, burntfunds, cron, eam, init, ipc, reward, system, EMPTY_ARR,
 };
 use fendermint_vm_core::{chainid, Timestamp};
-use fendermint_vm_genesis::{ActorMeta, Genesis, Validator};
-use fendermint_vm_ipc_actors::i_diamond::FacetCut;
+use fendermint_vm_genesis::{ActorMeta, Genesis, Power, PowerScale, Validator};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::version::NetworkVersion;
+use ipc_actors_abis::i_diamond::FacetCut;
 use num_traits::Zero;
 
 use crate::GenesisInterpreter;
@@ -35,14 +35,16 @@ pub struct FvmGenesisOutput {
     pub timestamp: Timestamp,
     pub network_version: NetworkVersion,
     pub base_fee: TokenAmount,
+    pub power_scale: PowerScale,
     pub circ_supply: TokenAmount,
-    pub validators: Vec<Validator>,
+    pub validators: Vec<Validator<Power>>,
 }
 
 #[async_trait]
-impl<DB> GenesisInterpreter for FvmMessageInterpreter<DB>
+impl<DB, TC> GenesisInterpreter for FvmMessageInterpreter<DB, TC>
 where
     DB: Blockstore + 'static + Send + Sync + Clone,
+    TC: Send + Sync + 'static,
 {
     type State = FvmGenesisState<DB>;
     type Genesis = Genesis;
@@ -81,6 +83,14 @@ where
         //       presumably Tendermint checks that its peers have the same.
         let chain_id = chainid::from_str_hashed(&genesis.chain_name)?;
 
+        // Convert validators to CometBFT power scale.
+        let validators = genesis
+            .validators
+            .iter()
+            .cloned()
+            .map(|vc| vc.map_power(|c| c.into_power(genesis.power_scale)))
+            .collect();
+
         // Currently we just pass them back as they are, but later we should
         // store them in the IPC actors; or in case of a snapshot restore them
         // from the state.
@@ -90,7 +100,8 @@ where
             network_version: genesis.network_version,
             circ_supply: circ_supply(&genesis),
             base_fee: genesis.base_fee,
-            validators: genesis.validators,
+            power_scale: genesis.power_scale,
+            validators,
         };
 
         // STAGE 0: Declare the built-in EVM contracts we'll have to deploy.
@@ -102,7 +113,7 @@ where
 
         // Only allocate IDs if the contracts are deployed.
         if genesis.ipc.is_some() {
-            eth_contracts.extend(IPC_CONTRACTS.clone().into_iter());
+            eth_contracts.extend(IPC_CONTRACTS.clone());
         }
 
         eth_builtin_ids.extend(eth_contracts.values().map(|c| c.actor_id));
@@ -245,6 +256,7 @@ where
                 out.base_fee.clone(),
                 out.circ_supply.clone(),
                 out.chain_id.into(),
+                out.power_scale,
             )
             .context("failed to init exec state")?;
 
@@ -260,7 +272,7 @@ where
             let gateway_addr = {
                 use ipc::gateway::ConstructorParameters;
 
-                let params = ConstructorParameters::try_from(ipc_params.gateway)
+                let params = ConstructorParameters::new(ipc_params.gateway, genesis.validators)
                     .context("failed to create gateway constructor")?;
 
                 let facets = deployer
@@ -279,7 +291,7 @@ where
                 let manager_facet = facets.remove(1);
                 let getter_facet = facets.remove(0);
 
-                assert!(facets.is_empty(), "SubnetRegistry has 2 facets");
+                debug_assert!(facets.is_empty(), "SubnetRegistry has 2 facets");
 
                 deployer.deploy_contract(
                     &mut state,
@@ -373,7 +385,7 @@ where
     where
         T: Tokenize,
     {
-        let contract = self.contract(contract_name)?;
+        let contract = self.top_contract(contract_name)?;
         let contract_id = contract.actor_id;
         let contract_src = contract_src(contract_name);
 
@@ -397,12 +409,13 @@ where
             "deployed Ethereum contract"
         );
 
-        Ok(id_addr)
+        // The Ethereum address is more usable inside the EVM than the ID address.
+        Ok(eth_addr)
     }
 
     /// Collect Facet Cuts for the diamond pattern, where the facet address comes from already deployed library facets.
     pub fn facets(&self, contract_name: &str) -> anyhow::Result<Vec<FacetCut>> {
-        let contract = self.contract(contract_name)?;
+        let contract = self.top_contract(contract_name)?;
         let mut facet_cuts = Vec::new();
 
         for facet in contract.facets.iter() {
@@ -434,7 +447,7 @@ where
         Ok(facet_cuts)
     }
 
-    fn contract(&self, contract_name: &str) -> anyhow::Result<&EthContract> {
+    fn top_contract(&self, contract_name: &str) -> anyhow::Result<&EthContract> {
         self.top_contracts
             .get(contract_name)
             .ok_or(anyhow!("unknown top contract name"))
@@ -459,6 +472,7 @@ mod tests {
     use crate::{
         fvm::{
             bundle::{bundle_path, contracts_path},
+            state::ipc::GatewayCaller,
             store::memory::MemoryBlockstore,
             FvmMessageInterpreter,
         },
@@ -471,7 +485,11 @@ mod tests {
     async fn load_genesis() {
         let mut g = quickcheck::Gen::new(5);
         let mut genesis = Genesis::arbitrary(&mut g);
+
+        // Make sure we have IPC enabled.
         genesis.ipc = Some(IpcParams::arbitrary(&mut g));
+
+        eprintln!("genesis = {genesis:?}");
 
         let bundle = std::fs::read(bundle_path()).expect("failed to read bundle");
         let store = MemoryBlockstore::new();
@@ -481,15 +499,29 @@ mod tests {
             .await
             .expect("failed to create state");
 
-        let interpreter = FvmMessageInterpreter::new(contracts_path(), 1.05, 1.05);
+        let (client, _) =
+            tendermint_rpc::MockClient::new(tendermint_rpc::MockRequestMethodMatcher::default());
 
-        let (state, out) = interpreter
+        let interpreter =
+            FvmMessageInterpreter::new(client, None, contracts_path(), 1.05, 1.05, false);
+
+        let (mut state, out) = interpreter
             .init(state, genesis.clone())
             .await
             .expect("failed to create actors");
 
-        let _state_root = state.commit().expect("failed to commit");
+        assert_eq!(out.validators.len(), genesis.validators.len());
 
-        assert_eq!(out.validators, genesis.validators);
+        // Try calling a method on the IPC Gateway.
+        let exec_state = state.exec_state().expect("should be in exec stage");
+        let caller = GatewayCaller::default();
+
+        let period = caller
+            .bottom_up_check_period(exec_state)
+            .expect("error calling the gateway");
+
+        assert_eq!(period, genesis.ipc.unwrap().gateway.bottom_up_check_period);
+
+        let _state_root = state.commit().expect("failed to commit");
     }
 }

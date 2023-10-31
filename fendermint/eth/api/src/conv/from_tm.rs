@@ -3,17 +3,19 @@
 
 //! Helper methods to convert between Ethereum and Tendermint data formats.
 
+use std::collections::HashSet;
 use std::str::FromStr;
 
 use anyhow::{anyhow, Context};
 use ethers_core::types::{self as et};
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_message::{chain::ChainMessage, signed::SignedMessage};
+use fvm_shared::address::Address;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::{bigint::BigInt, econ::TokenAmount};
 use lazy_static::lazy_static;
 use tendermint::abci::response::DeliverTx;
-use tendermint::abci::{self, EventAttribute};
+use tendermint::abci::{self, Event, EventAttribute};
 use tendermint::crypto::sha256::Sha256;
 use tendermint_rpc::endpoint;
 
@@ -87,21 +89,25 @@ pub fn to_eth_block(
     // potentially through multiple hops. Let's leave that for the future and for now
     // assume that all we have is signed transactions.
     for (idx, data) in block.data().iter().enumerate() {
-        size += et::U256::from(data.len());
+        let result = match transaction_results.get(idx) {
+            Some(result) => result,
+            None => continue,
+        };
 
-        if let Some(result) = transaction_results.get(idx) {
-            gas_used += et::U256::from(result.gas_used);
-            gas_limit += et::U256::from(result.gas_wanted);
-        }
+        size += et::U256::from(data.len());
+        gas_used += et::U256::from(result.gas_used);
+        gas_limit += et::U256::from(result.gas_wanted);
 
         let msg = to_chain_message(data)?;
 
         if let ChainMessage::Signed(msg) = msg {
-            let hash = message_hash(data)?;
+            let hash = msg_hash(&result.events, data);
 
-            let mut tx = to_eth_transaction(hash, *msg, chain_id)
+            let mut tx = to_eth_transaction(msg, chain_id, hash)
                 .context("failed to convert to eth transaction")?;
+
             tx.transaction_index = Some(et::U64::from(idx));
+
             transactions.push(tx);
         }
     }
@@ -123,7 +129,7 @@ pub fn to_eth_block(
         uncles_hash: *EMPTY_UNCLE_HASH,
         receipts_root: *EMPTY_ROOT_HASH,
         extra_data: et::Bytes::default(),
-        logs_bloom: None,
+        logs_bloom: Some(et::Bloom::from_slice(&*EMPTY_ETH_BLOOM)),
         withdrawals_root: None,
         withdrawals: None,
         seal_fields: Vec::new(),
@@ -138,13 +144,13 @@ pub fn to_eth_block(
 }
 
 pub fn to_eth_transaction(
-    hash: tendermint::Hash,
     msg: SignedMessage,
     chain_id: ChainID,
+    hash: et::TxHash,
 ) -> anyhow::Result<et::Transaction> {
     // Based on https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#L2048
-    let sig = to_eth_signature(msg.signature()).context("failed to convert to eth signature")?;
-    let hash = et::H256::from_slice(hash.as_bytes());
+    let sig =
+        to_eth_signature(msg.signature(), true).context("failed to convert to eth signature")?;
     let msg = msg.message;
 
     let tx = et::Transaction {
@@ -191,7 +197,7 @@ pub fn to_cumulative(block_results: &endpoint::block_results::Response) -> Vec<(
 
 // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#L2174
 // https://github.com/evmos/ethermint/blob/07cf2bd2b1ce9bdb2e44ec42a39e7239292a14af/rpc/backend/tx_info.go#L147
-pub fn to_eth_receipt(
+pub async fn to_eth_receipt(
     msg: &SignedMessage,
     result: &endpoint::tx::Response,
     cumulative: &[(et::U256, usize)],
@@ -200,8 +206,8 @@ pub fn to_eth_receipt(
 ) -> anyhow::Result<et::TransactionReceipt> {
     let block_hash = et::H256::from_slice(header.hash().as_bytes());
     let block_number = et::U64::from(result.height.value());
-    let transaction_hash = et::H256::from_slice(result.hash.as_bytes());
     let transaction_index = et::U64::from(result.index);
+    let transaction_hash = msg_hash(&result.tx_result.events, &result.tx);
 
     let msg = &msg.message;
     // Lotus effective gas price is based on total spend divided by gas used,
@@ -342,13 +348,20 @@ fn maybe_contract_address(deliver_tx: &DeliverTx) -> Option<EthAddress> {
     fendermint_rpc::response::decode_fevm_create(deliver_tx)
         .ok()
         .map(|cr| {
-            // We can return `cr.eth_address` here and that's an address usable for calling the contract.
-            // However, the events are reported using the actor ID, so unless we want to translate those
-            // to ETH addresses on the fly, we can return a masked address here and see if that works.
-            EthAddress::from_id(cr.actor_id)
+            // We can return either `cr.actor_id` as a masked address,
+            // or `cr.eth_address`. Both addresses are usable for calling the contract.
+            // However, the masked ID doesn't work with some of the Ethereum tooling which check some hash properties.
+            // We also have to make sure to use the same kind of address that we do in the filtering and event logs,
+            // otherwise the two doesn't align and it makes the API difficult to use. It's impossible(?) to find out
+            // the actor ID just using the Ethereum API, so best use the same.
+            // EthAddress::from_id(cr.actor_id)
+            cr.eth_address
         })
 }
 
+/// Turn Events into Ethereum logs.
+///
+/// We need to turn Actor IDs into Ethereum addresses because that's what the tooling expects.
 pub fn to_logs(
     events: &[abci::Event],
     block_hash: et::H256,
@@ -358,17 +371,26 @@ pub fn to_logs(
     log_index_start: usize,
 ) -> anyhow::Result<Vec<et::Log>> {
     let mut logs = Vec::new();
-    for (idx, event) in events.iter().enumerate() {
-        // TODO: Lotus looks up an Ethereum address based on the actor ID:
+    for (idx, event) in events.iter().filter(|e| e.kind == "event").enumerate() {
+        // Lotus looks up an Ethereum address based on the actor ID:
         // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#L1987
-        let address = event
+
+        let addr = event
             .attributes
             .iter()
-            .find(|a| a.key == "emitter")
+            .find(|a| a.key == "emitter.deleg")
+            .and_then(|a| a.value.parse::<Address>().ok());
+
+        let actor_id = event
+            .attributes
+            .iter()
+            .find(|a| a.key == "emitter.id")
             .and_then(|a| a.value.parse::<u64>().ok())
-            .map(EthAddress::from_id)
-            .map(|a| et::H160::from_slice(&a.0))
-            .unwrap_or_default();
+            .ok_or_else(|| anyhow!("cannot find the 'emitter.id' key"))?;
+
+        let address = addr
+            .and_then(|a| to_eth_address(&a))
+            .unwrap_or_else(|| et::H160::from(EthAddress::from_id(actor_id).0));
 
         // https://github.com/filecoin-project/lotus/blob/6cc506f5cf751215be6badc94a960251c6453202/node/impl/full/eth.go#LL2240C9-L2240C15
         let (topics, data) =
@@ -418,7 +440,7 @@ fn to_topics_and_data(attrs: &Vec<EventAttribute>) -> anyhow::Result<(Vec<et::H2
                 topics[i] = h;
             }
             "d" => data = Some(et::Bytes::from(decode_value()?)),
-            _ => {} // e.g. "emitter"
+            _ => {} // e.g. "emitter.*"
         }
     }
     Ok((topics, data.unwrap_or_default()))
@@ -431,9 +453,58 @@ pub fn to_chain_message(tx: &[u8]) -> anyhow::Result<ChainMessage> {
 
 /// Hash the transaction payload the way Tendermint does,
 /// to calculate the transaction hash which is otherwise unavailable.
-pub fn message_hash(tx: &[u8]) -> anyhow::Result<tendermint::Hash> {
+///
+/// This is here for reference only and should not be returned to Ethereum tools which expect
+/// the hash to be based on RLP and Keccak256.
+pub fn tx_hash(tx: &[u8]) -> tendermint::Hash {
     // based on how `tendermint::Header::hash` works.
     let hash = tendermint::crypto::default::Sha256::digest(tx);
-    let hash = tendermint::Hash::Sha256(hash);
-    Ok(hash)
+    tendermint::Hash::Sha256(hash)
+}
+
+/// Best effort to find and parse any `<kind>.hash` attribute emitted among the events.
+pub fn find_hash_event(kind: &str, events: &[abci::Event]) -> Option<et::H256> {
+    events
+        .iter()
+        .find(|e| e.kind == kind)
+        .and_then(|e| e.attributes.iter().find(|a| a.key == "hash"))
+        .and_then(|a| hex::decode(&a.value).ok())
+        .filter(|bz| bz.len() == 32)
+        .map(|bz| et::H256::from_slice(&bz))
+}
+
+// Calculate some kind of hash for the message, preferrably one the tools expect.
+pub fn msg_hash(events: &[Event], tx: &[u8]) -> et::TxHash {
+    if let Some(h) = find_hash_event("eth", events) {
+        h
+    } else {
+        // Return the default hash, at least there is something
+        et::TxHash::from_slice(tx_hash(tx).as_bytes())
+    }
+}
+
+/// Collect and parse all `emitter.deleg` or `emitter.id` in the events.
+pub fn collect_emitters(events: &[abci::Event]) -> HashSet<Address> {
+    let mut emitters = HashSet::new();
+    for event in events.iter().filter(|e| e.kind == "event") {
+        for addr in [
+            event
+                .attributes
+                .iter()
+                .find(|a| a.key == "emitter.deleg")
+                .and_then(|a| a.value.parse::<Address>().ok()),
+            event
+                .attributes
+                .iter()
+                .find(|a| a.key == "emitter.id")
+                .and_then(|a| a.value.parse::<u64>().ok())
+                .map(Address::new_id),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            emitters.insert(addr);
+        }
+    }
+    emitters
 }

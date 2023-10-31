@@ -26,12 +26,25 @@ In the following sections we will create a Genesis file for a network named `tes
 mkdir test-network
 ```
 
+If you are running in test network, define the network using env variable.
+```shell
+export FM_NETWORK=test
+```
+
 ### Create a new Genesis file
 
 First, create a new `genesis.json` file devoid of accounts and validators. The `--base-fee` here is completely arbitrary.
+The `--power-scale` value of `0` means we'll grant 1 voting power per 1 FIL; to use more precision, we can set it to `3`
+to use milliFIL for example.
 
 ```shell
-cargo run -p fendermint_app -- genesis --genesis-file test-network/genesis.json new --chain-name test --base-fee 1000 --timestamp 1680101412
+cargo run -p fendermint_app --release -- \
+  genesis --genesis-file test-network/genesis.json \
+  new \
+  --chain-name test \
+  --base-fee 1000 \
+  --timestamp 1680101412 \
+  --power-scale 0
 ```
 
 We can check what the contents look like:
@@ -43,6 +56,7 @@ $ cat test-network/genesis.json
   "chain_name": "test",
   "network_version": 18,
   "base_fee": "1000",
+  "power_scale": 0,
   "validators": [],
   "accounts": []
 }
@@ -55,7 +69,7 @@ Next, let's create some cryptographic key pairs we want want to use either for a
 ```shell
 mkdir test-network/keys
 for NAME in alice bob charlie dave; do
-  cargo run -p fendermint_app -- key gen --out-dir test-network/keys --name $NAME;
+  cargo run -p fendermint_app --release -- key gen --out-dir test-network/keys --name $NAME;
 done
 ```
 
@@ -69,14 +83,28 @@ $ cat test-network/keys/alice.pk
 Ak5Juk793ZAg/7Ojj4bzOmIFGpwLhET1vg2ROihUJFkq
 ```
 
+If you want to use existing ethereum private key, perform the follwoing:
+
+```shell
+cargo run -p fendermint_app --release -- key eth-to-fendermint --secret-key <path to private key> --name eth --out-dir test-network/keys
+```
+
 ### Add accounts to the Genesis file
 
 Add one of the keys we created to the Genesis file as a stand-alone account:
 
 ```shell
- cargo run -p fendermint_app -- \
+ cargo run -p fendermint_app --release -- \
         genesis --genesis-file test-network/genesis.json \
         add-account --public-key test-network/keys/alice.pk --balance 10
+```
+
+If your key is from ethereum, add a `kind` flag to indicate that:
+
+```shell
+ cargo run -p fendermint_app --release -- \
+        genesis --genesis-file test-network/genesis.json \
+        add-account --public-key test-network/keys/alice.pk --balance 10 --kind ethereum
 ```
 
 Check that the balance is correct:
@@ -101,7 +129,7 @@ but it has to be one based on a public key, otherwise we would not be able to va
 Let's add an example of the other possible account type, a multi-sig account:
 
 ```shell
-cargo run -p fendermint_app -- \
+cargo run -p fendermint_app --release -- \
         genesis --genesis-file test-network/genesis.json \
         add-multisig --public-key test-network/keys/bob.pk --public-key test-network/keys/charlie.pk --public-key test-network/keys/dave.pk \
           --threshold 2 --vesting-start 0 --vesting-duration 1000000 --balance 30
@@ -133,19 +161,22 @@ $ cat test-network/genesis.json | jq .accounts[1]
 Finally, let's add one validator to the Genesis, with a monopoly on voting power, so we can run a standalone node:
 
 ```shell
-cargo run -p fendermint_app -- \
+cargo run -p fendermint_app --release -- \
       genesis --genesis-file test-network/genesis.json \
       add-validator --public-key test-network/keys/bob.pk --power 1;
 ```
 
-The value of power doens't matter in this case, as `bob` is our only validator. Check the result:
+The value of power doesn't matter in this case, as `bob` is our only validator. It's value is expressed in tokens,
+ie. FIL, and will be serialized in atto, hence the 18 zeroes.
+
+Check the result:
 
 ```console
 $ cat test-network/genesis.json | jq .validators
 [
   {
     "public_key": "BCImfwVC/LeFJN9bB612aCtjbCYWuilf2SorSUXez/QEy8cVKNuvTU/EOTibo3hIyOQslvSouzIpR24h1kkqCSI=",
-    "power": 1
+    "power": "1000000000000000000"
   },
 ]
 ```
@@ -153,6 +184,32 @@ $ cat test-network/genesis.json | jq .validators
 The public key was spliced in as it was, in base64 format, which is how it would appear in Tendermint's
 own genesis file format. Note that here we don't have the option to use `Address`, because we have to return
 these as actual `PublicKey` types to Tendermint through ABCI, not as a hash of a key.
+
+### (Optional) Add ipc to the Genesis file
+
+If you need ipc related function, let's add the subnet info to the Genesis with deployed subnet id: /r31415926
+
+```shell
+cargo run -p fendermint_app --release -- \
+      genesis --genesis-file test-network/genesis.json \
+      ipc \
+      gateway --subnet-id /r31415926 \
+      --bottom-up-check-period 10 \
+      --msg-fee 1 --majority-percentage 65 --min-collateral 1
+```
+Check the result:
+```console
+$ cat test-network/genesis.json | jq .ipc
+{
+  "gateway": {
+    "subnet_id": "/r31415926",
+    "bottom_up_check_period": 10,
+    "top_down_check_period": 10,
+    "msg_fee": "1",
+    "majority_percentage": 65
+  }
+}
+```
 
 ### Configure CometBFT
 
@@ -179,7 +236,7 @@ file we created earlier to the format CometBFT accepts. Start with the genesis f
 
 ```shell
 mv ~/.cometbft/config/genesis.json ~/.cometbft/config/genesis.json.orig
-cargo run -p fendermint_app -- \
+cargo run -p fendermint_app --release -- \
   genesis --genesis-file test-network/genesis.json \
   into-tendermint --out ~/.cometbft/config/genesis.json
 ```
@@ -269,7 +326,7 @@ one of the validators we created.
 
 ```shell
 mv ~/.cometbft/config/priv_validator_key.json ~/.cometbft/config/priv_validator_key.json.orig
-cargo run -p fendermint_app -- \
+cargo run -p fendermint_app --release -- \
   key into-tendermint --secret-key test-network/keys/bob.sk --out ~/.cometbft/config/priv_validator_key.json
 ```
 
@@ -410,7 +467,7 @@ Note that the first block execution is very slow because we have to load the Was
 but after that the blocks come in fast, one per second.
 
 ### Run ETH API
-If we want to use `evm` related API, such as running `fendermint/eth/api/examples/ethers.rs`, we need to start ETH API process. 
+If we want to use `evm` related API, such as running `fendermint/eth/api/examples/ethers.rs`, we need to start ETH API process.
 
 The ETH RPC api runs on top of cometbft. Make sure you have cometbft running properly. The architecture is as follows:
 ```
@@ -655,3 +712,54 @@ $ cargo run -p fendermint_rpc --release --example simplecoin -- --secret-key tes
 ```
 
 Note that the script figures out the Alice's nonce on its own, so we don't have to pass it in. It also has an example of running an EVM view method (which is read-only) either as as a distributed read-transaction (which is included on the chain and costs gas) or a query anwered by our node without involving the blockchain. Both have their uses, depending on our level of trust.
+
+## Deploy IPC child subnet
+
+### Crate genesis from parent
+Fendermint includes a command to automatically create the genesis file for an IPC child subnet according to the information for the subnet available in its parent. Here's an example of the generation of a genesis file for a subnet that has already been bootstrapped in the parent.
+```shell
+cargo run -p fendermint_app -- \
+    --network=test \
+    genesis --genesis-file test-network/genesis.json \
+    ipc from-parent --subnet-id <CHILD_SUBNET_ID> -p <PARENT_ENDPOINT> \
+    --parent-gateway <PARENT_GATEWAY_CONTRACT> \
+    --parent-registry <PARENT_REGISTRY_CONTRACT>
+```
+
+Here's a sample execution of the command for an already bootstrapped subnet in `/r314159`:
+```shell
+cargo run -p fendermint_app -- \
+    --network=test \
+    genesis --genesis-file test-network/genesis.json \
+    ipc from-parent \
+    --subnet-id /r314159/t410fdoh27lsddz4my2v3e77qnxdp5vsjxkdfokc7sti \
+    -p https://api.calibration.node.glif.io/rpc/v1 \
+    --parent-gateway 0x56948d2CFaa2EF355B8C08Ac925202db212146D1 \
+    --parent-registry 0x6A4884D2B6A597792dC68014D4B7C117cca5668e```
+
+Leading to the following genesis file:
+```console
+{
+  "chain_name": "/r314159/t410fdoh27lsddz4my2v3e77qnxdp5vsjxkdfokc7sti",
+  "timestamp": 1007560,
+  "network_version": 18,
+  "base_fee": "1000",
+  "power_scale": 3,
+  "validators": [
+    {
+      "public_key": "BDOFw7mriml8177GymI8vdD+oSk+i0ZN+CWxBOtYpEzI76zGo0grhmuF7N9zS11O9UlXN96zSGJc5qNVNhQtKVU=",
+      "power": "1000000000000000000"
+    }
+  ],
+  "accounts": [],
+  "ipc": {
+    "gateway": {
+      "subnet_id": "/r314159/t410fdoh27lsddz4my2v3e77qnxdp5vsjxkdfokc7sti",
+      "bottom_up_check_period": 30,
+      "msg_fee": "1000000000000",
+      "majority_percentage": 60,
+      "min_collateral": "1000000000000000000",
+      "active_validators_limit": 100
+    }
+}
+```

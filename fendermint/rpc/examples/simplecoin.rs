@@ -19,13 +19,14 @@ use bytes::Bytes;
 use clap::Parser;
 use ethers::abi::Tokenizable;
 use ethers::prelude::{abigen, decode_function_data};
-use ethers::types::H160;
+use ethers::types::{H160, U256};
+use fendermint_crypto::SecretKey;
 use fendermint_rpc::query::QueryClient;
 use fendermint_vm_actor_interface::eam::{self, CreateReturn, EthAddress};
+use fendermint_vm_message::query::FvmQueryHeight;
 use fvm_shared::address::Address;
 use fvm_shared::chainid::ChainID;
 use lazy_static::lazy_static;
-use libsecp256k1::{PublicKey, SecretKey};
 use tendermint_rpc::Url;
 use tracing::Level;
 
@@ -120,14 +121,13 @@ async fn main() {
     // Query the chain ID, so it doesn't need to be passed as an arg.
     // We could the chain name using `client.underlying().genesis().await?.chain_id.as_str()` as well.
     let chain_id = client
-        .state_params(None)
+        .state_params(FvmQueryHeight::default())
         .await
         .expect("error getting state params")
         .value
         .chain_id;
 
-    let mf = MessageFactory::new(sk, sn, ChainID::from(chain_id))
-        .expect("failed to create message factor");
+    let mf = MessageFactory::new_secp256k1(sk, sn, ChainID::from(chain_id));
 
     let mut client = client.bind(mf);
 
@@ -173,15 +173,19 @@ async fn run(
         "owner balance"
     );
 
+    let _sufficient = send_coin(client, &create_return.eth_address, &owner_eth_addr, 100)
+        .await
+        .context("failed to send coin")?;
+
     Ok(())
 }
 
 /// Get the next sequence number (nonce) of an account.
 async fn sequence(client: &impl QueryClient, sk: &SecretKey) -> anyhow::Result<u64> {
-    let pk = PublicKey::from_secret_key(sk);
+    let pk = sk.public_key();
     let addr = Address::new_secp256k1(&pk.serialize()).unwrap();
     let state = client
-        .actor_state(&addr, None)
+        .actor_state(&addr, FvmQueryHeight::default())
         .await
         .context("failed to get actor state")?;
 
@@ -193,7 +197,7 @@ async fn sequence(client: &impl QueryClient, sk: &SecretKey) -> anyhow::Result<u
 
 async fn actor_id(client: &impl QueryClient, addr: &Address) -> anyhow::Result<u64> {
     let state = client
-        .actor_state(addr, None)
+        .actor_state(addr, FvmQueryHeight::default())
         .await
         .context("failed to get actor state")?;
 
@@ -216,6 +220,8 @@ async fn deploy_contract(client: &mut impl TxClient<TxCommit>) -> anyhow::Result
         )
         .await
         .context("error deploying contract")?;
+
+    tracing::info!(tx_hash = ?res.response.hash, "deployment transaction");
 
     let ret = res.return_data.ok_or(anyhow!(
         "no CreateReturn data; response was {:?}",
@@ -241,6 +247,24 @@ async fn get_balance(
         .context("failed to call contract")?;
 
     Ok(balance)
+}
+
+/// Invoke or call SimpleCoin to send some coins to self.
+async fn send_coin(
+    client: &mut (impl TxClient<TxCommit> + CallClient),
+    contract_eth_addr: &EthAddress,
+    owner_eth_addr: &EthAddress,
+    value: u32,
+) -> anyhow::Result<bool> {
+    let contract = coin_contract(contract_eth_addr);
+    let owner_h160_addr = eth_addr_to_h160(owner_eth_addr);
+    let call = contract.send_coin(owner_h160_addr, U256::from(value));
+
+    let sufficient: bool = invoke_or_call_contract(client, contract_eth_addr, call, true)
+        .await
+        .context("failed to call contract")?;
+
+    Ok(sufficient)
 }
 
 /// Invoke FEVM through Tendermint with the calldata encoded by ethers, decoding the result into the expected type.
@@ -269,6 +293,8 @@ async fn invoke_or_call_contract<T: Tokenizable>(
             .await
             .context("failed to invoke FEVM")?;
 
+        tracing::info!(tx_hash = ?res.response.hash, "invoked transaction");
+
         res.return_data
     } else {
         let res = client
@@ -277,7 +303,7 @@ async fn invoke_or_call_contract<T: Tokenizable>(
                 calldata.0,
                 TokenAmount::default(),
                 GAS_PARAMS.clone(),
-                None,
+                FvmQueryHeight::default(),
             )
             .await
             .context("failed to call FEVM")?;

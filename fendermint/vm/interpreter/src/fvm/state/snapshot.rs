@@ -29,7 +29,7 @@ pub enum Snapshot<BS> {
 
 /// Contains the overall metadata for the snapshot
 #[derive(Serialize, Deserialize)]
-struct SnapShotMetadata {
+struct SnapshotMetadata {
     version: u8,
     data_root_cid: Cid,
 }
@@ -39,7 +39,7 @@ type SnapshotStreamer = Box<dyn Send + Unpin + Stream<Item = (Cid, Vec<u8>)>>;
 
 impl<BS> Snapshot<BS>
 where
-    BS: Blockstore + 'static + Send,
+    BS: Blockstore + Clone + 'static + Send,
 {
     pub fn new(
         store: BS,
@@ -63,7 +63,7 @@ where
         }
 
         let metadata_cid = roots[0];
-        let metadata = if let Some(metadata) = store.get_cbor::<SnapShotMetadata>(&metadata_cid)? {
+        let metadata = if let Some(metadata) = store.get_cbor::<SnapshotMetadata>(&metadata_cid)? {
             metadata
         } else {
             return Err(anyhow!("invalid snapshot, metadata not found"));
@@ -78,7 +78,11 @@ where
         }
     }
 
-    /// Write the snapshot to car file
+    /// Write the snapshot to car file.
+    ///
+    /// The root cid points to the metadata, i.e `SnapshotMetadata` struct. From the snapshot metadata
+    /// one can query the version and root data cid. Based on the version, one can parse the underlying
+    /// data of the snapshot from the root cid.
     pub async fn write_car(self, path: impl AsRef<Path>) -> anyhow::Result<()> {
         let file = tokio::fs::File::create(path).await?;
 
@@ -104,12 +108,12 @@ where
         Ok(())
     }
 
-    fn into_streamer(self) -> anyhow::Result<(SnapShotMetadata, SnapshotStreamer)> {
+    fn into_streamer(self) -> anyhow::Result<(SnapshotMetadata, SnapshotStreamer)> {
         match self {
             Snapshot::V1(inner) => {
                 let (data_root_cid, streamer) = inner.into_streamer()?;
                 Ok((
-                    SnapShotMetadata {
+                    SnapshotMetadata {
                         version: 1,
                         data_root_cid,
                     },
@@ -131,7 +135,7 @@ type BlockStateParams = (FvmStateParams, BlockHeight);
 
 impl<BS> V1Snapshot<BS>
 where
-    BS: Blockstore + 'static + Send,
+    BS: Blockstore + Clone + 'static + Send,
 {
     /// Creates a new V2Snapshot struct. Caller ensure store
     pub fn new(
@@ -221,11 +225,11 @@ impl<BS: Blockstore> Stream for StateTreeStreamer<BS> {
                     return Poll::Ready(Some((cid, bytes)));
                 }
                 Ok(None) => {
-                    tracing::warn!("cid: {cid:?} has no value in block store, skip");
+                    tracing::debug!("cid: {cid:?} has no value in block store, skip");
                     continue;
                 }
                 Err(e) => {
-                    tracing::warn!("cannot get from block store: {}", e.to_string());
+                    tracing::error!("cannot get from block store: {}", e.to_string());
                     // TODO: consider returning Result, but it won't work with `car.write_stream_async`.
                     return Poll::Ready(None);
                 }
@@ -338,6 +342,7 @@ mod tests {
             base_fee: Default::default(),
             circ_supply: Default::default(),
             chain_id: 1024,
+            power_scale: 0,
         };
         let block_height = 2048;
 
