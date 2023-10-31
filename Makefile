@@ -71,8 +71,8 @@ docker-build: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE) $(IPC_ACTORS_ABI)
 	cp $(BUILTIN_ACTORS_BUNDLE) docker/.artifacts
 
 	if [ "$(PROFILE)" = "ci" ]; then \
-		docker buildx $(BUILDX_FLAGS) \
-			--platform linux/amd64,linux/arm64 \
+		docker buildx \
+			$(BUILDX_FLAGS) \
 			-f docker/local.Dockerfile \
 			-t $(BUILDX_TAG) $(PWD); \
 	else \

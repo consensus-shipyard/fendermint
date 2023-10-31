@@ -170,6 +170,6 @@ jobs:
           echo VERSION=$VERSION
 
           export BUILDX_TAG=$IMAGE_ID:$VERSION
-          export BUILDX_FLAGS=--push
+          export BUILDX_FLAGS="--push --platform linux/amd64,linux/arm64"
 
           make docker-build
