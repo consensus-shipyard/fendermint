@@ -43,6 +43,8 @@ pub fn to_fvm_message(tx: &Eip1559TransactionRequest) -> anyhow::Result<Message>
     let calldata = tx.data.clone().unwrap_or_default().to_vec();
     let params = RawBytes::serialize(BytesSer(&calldata))?;
 
+    println!("tx gas: {:?}", tx.gas);
+
     let msg = Message {
         version: 0,
         from,
