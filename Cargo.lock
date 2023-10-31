@@ -3215,6 +3215,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "fendermint_vm_snapshot"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-stm",
+ "fendermint_vm_interpreter",
+ "tendermint 0.31.1",
+ "tendermint-rpc",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "fendermint_vm_topdown"
 version = "0.1.0"
 dependencies = [
