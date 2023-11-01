@@ -18,9 +18,11 @@ FENDERMINT_CODE       := $(shell find . -type f \( -name "*.rs" -o -name "Cargo.
 # Override PROFILE env var to choose between `local | ci`
 PROFILE     ?= local
 
-# Set to --push the Multiarch Docker image to push during build.
+# Set to `--push` to push the multiarch image during the build.
+BUILDX_PUSH ?=
+# Set according to what kind of `--platform` and `--cache` to use.
 BUILDX_FLAGS ?=
-# Set to the repository where the image is to be pushed.
+# Set to the `<repo>/<image>:<tag>` label the image.
 BUILDX_TAG   ?= fendermint:latest
 
 all: test build diagrams
@@ -74,12 +76,21 @@ docker-build: docker-deps
 	if [ "$(PROFILE)" = "ci" ]; then \
 		docker buildx build \
 			$(BUILDX_FLAGS) \
-			-f docker/local.Dockerfile \
+			-f docker/builder.ci.Dockerfile \
+			-t fendermint-builder:latest $(PWD); \
+		docker buildx build \
+			$(BUILDX_PUSH) \
+			$(BUILDX_FLAGS) \
+			-f docker/runner.Dockerfile \
 			-t $(BUILDX_TAG) $(PWD); \
 	else \
 		DOCKER_BUILDKIT=1 \
 		docker build \
-			-f docker/local.Dockerfile \
+			-f docker/builder.local.Dockerfile \
+			-t fendermint-builder:latest $(PWD) && \
+		DOCKER_BUILDKIT=1 \
+		docker build \
+			-f docker/runner.Dockerfile \
 			-t fendermint:latest $(PWD); \
 	fi
 
