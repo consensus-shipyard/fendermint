@@ -594,6 +594,7 @@ where
 
     let sighash = tx.sighash();
     let msghash = et::TxHash::from(ethers_core::utils::keccak256(rlp.as_raw()));
+    println!("eth message hash: {msghash}, signature hash: {sighash}");
 
     let msg = to_fvm_message(tx, false)?;
     let msg = SignedMessage {
