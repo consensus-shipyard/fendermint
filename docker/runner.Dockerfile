@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # The builder and runner are in separate Dockerfile so that we can use different caching strategies
-# in the builder depending on whether we are building on CI or locally.
+# in the builder depending on whether we are building on CI or locally, but they are concatenated
+# just before the build.
 
 FROM debian:bookworm-slim
 
@@ -27,5 +28,5 @@ ENV FM_ETH__LISTEN__HOST=0.0.0.0
 # but we should be able to copy it from somewhere.
 COPY docker/.artifacts/bundle.car $FM_HOME_DIR/bundle.car
 COPY docker/.artifacts/contracts $FM_HOME_DIR/contracts
-COPY --from=fendermint-builder /app/fendermint/app/config $FM_HOME_DIR/config
-COPY --from=fendermint-builder /app/output/bin/fendermint /usr/local/bin/fendermint
+COPY --from=builder /app/fendermint/app/config $FM_HOME_DIR/config
+COPY --from=builder /app/output/bin/fendermint /usr/local/bin/fendermint

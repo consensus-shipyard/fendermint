@@ -74,24 +74,17 @@ docker-deps: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE) $(IPC_ACTORS_ABI)
 
 docker-build: docker-deps
 	if [ "$(PROFILE)" = "ci" ]; then \
-		docker buildx build \
-			--load \
-			$(BUILDX_FLAGS) \
-			-f docker/builder.ci.Dockerfile \
-			-t fendermint-builder:latest $(PWD); \
+		cat docker/builder.ci.Dockerfile docker/runner.Dockerfile > docker/Dockerfile ; \
 		docker buildx build \
 			$(BUILDX_PUSH) \
 			$(BUILDX_FLAGS) \
-			-f docker/runner.Dockerfile \
+			-f docker/Dockerfile \
 			-t $(BUILDX_TAG) $(PWD); \
 	else \
+		cat docker/builder.local.Dockerfile docker/runner.Dockerfile > docker/Dockerfile ; \
 		DOCKER_BUILDKIT=1 \
 		docker build \
-			-f docker/builder.local.Dockerfile \
-			-t fendermint-builder:latest $(PWD) && \
-		DOCKER_BUILDKIT=1 \
-		docker build \
-			-f docker/runner.Dockerfile \
+			-f docker/Dockerfile \
 			-t fendermint:latest $(PWD); \
 	fi
 
