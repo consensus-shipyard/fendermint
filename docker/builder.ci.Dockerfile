@@ -5,17 +5,20 @@
 # https://www.docker.com/blog/multi-arch-build-and-images-the-simple-way/
 # https://github.com/cross-rs/cross/wiki/Recipes#openssl
 
-FROM --platform=$BUILDPLATFORM rust:bookworm as builder
+FROM --platform=$BUILDPLATFORM ubuntu:latest as builder
 
 ARG TARGETARCH
 
-RUN dpkg --add-architecture ${TARGETARCH}
 RUN apt-get update && \
-  apt-get install -y build-essential clang cmake protobuf-compiler \
+  apt-get install -y build-essential clang cmake protobuf-compiler curl \
   g++-aarch64-linux-gnu libc6-dev-arm64-cross \
-  libssl-dev:${TARGETARCH} pkg-config \
+  openssl libssl-dev pkg-config \
   && \
   rm -rf /var/lib/apt/lists/*
+
+# Get Rust
+RUN curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain stable -y
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 RUN rustup target add aarch64-unknown-linux-gnu
 RUN rustup toolchain install stable-aarch64-unknown-linux-gnu
@@ -23,6 +26,27 @@ RUN rustup toolchain install stable-aarch64-unknown-linux-gnu
 ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
   CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
   CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++
+
+# ENV SSL_VERSION=1.1.1
+
+# RUN curl https://www.openssl.org/source/openssl-$SSL_VERSION.tar.gz -O && \
+#   tar -xzf openssl-$SSL_VERSION.tar.gz && \
+#   cd openssl-$SSL_VERSION && ./config && make depend && make install && \
+#   cd .. && rm -rf openssl-$SSL_VERSION*
+
+# # https://github.com/sfackler/rust-openssl/issues/766
+# # https://askubuntu.com/questions/729213/missing-opensslconf-h-when-compiling-git
+# ENV OPENSSL_STATIC=1 \
+#   OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu \
+#   OPENSSL_INCLUDE_DIR=/usr/include/openssl \
+#   AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu \
+#   AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR=/usr/include/openssl
+
+# # There are include files at /urs/local/include/openssl which contain opensslconf.h,
+# # but something still looks for it in /urs/include/openssl, and configuration.h only exists there.
+# RUN cd /usr/include/openssl && \
+#   ln -s /usr/include/x86_64-linux-gnu/openssl/opensslconf.h opensslconf.h && \
+#   ln -s /usr/include/x86_64-linux-gnu/openssl/configuration.h configuration.h
 
 WORKDIR /app
 
@@ -32,13 +56,11 @@ COPY . .
 # If we used `--mount=type=cache` here then it looks like the different platforms would be mounted at the same place
 # and then one of them can get blocked trying to acquire a lock on the build directory.
 
-# XXX: I'm not sure why we have to add the target again blow, but it doesn't work without it.
-
 RUN set -eux; \
   case "${TARGETARCH}" in \
-  amd64) CARGO_TARGET='x86_64-unknown-linux-gnu' ;; \
-  arm64) CARGO_TARGET='aarch64-unknown-linux-gnu'; rustup target add aarch64-unknown-linux-gnu ;; \
+  amd64) ARCH='x86_64'  ;; \
+  arm64) ARCH='aarch64' ;; \
   *) echo >&2 "unsupported architecture: ${TARGETARCH}"; exit 1 ;; \
   esac; \
   rustup show ; \
-  cargo install --root output --path fendermint/app --target $CARGO_TARGET
+  cargo install --root output --path fendermint/app --target ${ARCH}-unknown-linux-gnu

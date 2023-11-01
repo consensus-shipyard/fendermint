@@ -87,7 +87,7 @@ url = "2.4.1"
 zeroize = "1.6"
 
 # Vendored for cross-compilation, see https://github.com/cross-rs/cross/wiki/Recipes#openssl
-openssl = { version = "0.9", features = ["vendored"] }
+openssl = { version = "0.10", features = ["vendored"] }
 
 # Stable FVM dependencies from crates.io
 
