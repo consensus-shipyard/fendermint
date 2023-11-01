@@ -3,16 +3,17 @@
 # https://www.docker.com/blog/faster-multi-platform-builds-dockerfile-cross-compilation-guide/
 # https://www.docker.com/blog/cross-compiling-rust-code-for-multiple-architectures/
 # https://www.docker.com/blog/multi-arch-build-and-images-the-simple-way/
+# https://github.com/cross-rs/cross/wiki/Recipes#openssl
 
 FROM --platform=$BUILDPLATFORM rust:bookworm as builder
 
 ARG TARGETARCH
 
-
+RUN dpkg --add-architecture ${TARGETARCH}
 RUN apt-get update && \
   apt-get install -y build-essential clang cmake protobuf-compiler \
   g++-aarch64-linux-gnu libc6-dev-arm64-cross \
-  libssl-dev pkg-config \
+  libssl-dev:${TARGETARCH} pkg-config \
   && \
   rm -rf /var/lib/apt/lists/*
 
