@@ -129,11 +129,12 @@ impl SignedMessage {
                 // then turn it into an `EthAddress` and verify it matches the `from` of the message.
                 let sig = from_fvm::to_eth_signature(signature, true)
                     .map_err(SignedMessageError::Ethereum)?;
+                println!("converted signature: {sig}, hash: {hash}");
 
                 let rec = sig
                     .recover(hash)
                     .map_err(|e| SignedMessageError::Ethereum(anyhow!(e)))?;
-
+                println!("recovered address: {rec}");
                 if rec == from {
                     verify_eth_method(message)
                 } else {
