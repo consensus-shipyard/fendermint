@@ -20,6 +20,7 @@ env:
   CC: "sccache clang"
   CXX: "sccache clang++"
   PROFILE: "ci"
+  BUILDX_FLAGS: "--cache-from=type=gha --cache-to=type=gha,mode=max"
 
 jobs:
   # Check code formatting; anything that doesn't require compilation.
@@ -175,6 +176,6 @@ jobs:
       - name: Build and Push Multiarch Docker Image
         run: |
           export BUILDX_TAG=${{ steps.prep.outputs.IMAGE_TAG }}
-          export BUILDX_PUSH="--push"
-          export BUILDX_FLAGS="--platform linux/amd64,linux/arm64 --cache-from=type=gha --cache-to=type=gha,mode=max"
+          export BUILDX_STORE="--push"
+          export BUILDX_FLAGS="--platform linux/amd64,linux/arm64 ${BUILDX_FLAGS}"
           make docker-build
