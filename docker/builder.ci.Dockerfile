@@ -27,27 +27,6 @@ ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
   CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
   CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++
 
-# ENV SSL_VERSION=1.1.1
-
-# RUN curl https://www.openssl.org/source/openssl-$SSL_VERSION.tar.gz -O && \
-#   tar -xzf openssl-$SSL_VERSION.tar.gz && \
-#   cd openssl-$SSL_VERSION && ./config && make depend && make install && \
-#   cd .. && rm -rf openssl-$SSL_VERSION*
-
-# # https://github.com/sfackler/rust-openssl/issues/766
-# # https://askubuntu.com/questions/729213/missing-opensslconf-h-when-compiling-git
-# ENV OPENSSL_STATIC=1 \
-#   OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu \
-#   OPENSSL_INCLUDE_DIR=/usr/include/openssl \
-#   AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu \
-#   AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR=/usr/include/openssl
-
-# # There are include files at /urs/local/include/openssl which contain opensslconf.h,
-# # but something still looks for it in /urs/include/openssl, and configuration.h only exists there.
-# RUN cd /usr/include/openssl && \
-#   ln -s /usr/include/x86_64-linux-gnu/openssl/opensslconf.h opensslconf.h && \
-#   ln -s /usr/include/x86_64-linux-gnu/openssl/configuration.h configuration.h
-
 WORKDIR /app
 
 COPY . .
