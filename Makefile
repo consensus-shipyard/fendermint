@@ -19,7 +19,7 @@ FENDERMINT_CODE       := $(shell find . -type f \( -name "*.rs" -o -name "Cargo.
 PROFILE     ?= local
 
 # Set to --push the Multiarch Docker image to push during build.
-BUILDX_FLAGS ?= ""
+BUILDX_FLAGS ?=
 # Set to the repository where the image is to be pushed.
 BUILDX_TAG   ?= fendermint:latest
 
