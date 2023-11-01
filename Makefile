@@ -16,10 +16,10 @@ IPC_ACTORS_OUT         = $(IPC_ACTORS_DIR)/out
 FENDERMINT_CODE       := $(shell find . -type f \( -name "*.rs" -o -name "Cargo.toml" \) | grep -v target)
 
 # Override PROFILE env var to choose between `local | ci`
-PROFILE     ?= local
+PROFILE ?= local
 
-# Set to `--push` to push the multiarch image during the build.
-BUILDX_PUSH ?=
+# Set to `--push` to push the multiarch image during the build. Leave empty for local build.
+BUILDX_PUSH  ?=
 # Set according to what kind of `--platform` and `--cache` to use.
 BUILDX_FLAGS ?=
 # Set to the `<repo>/<image>:<tag>` label the image.
@@ -75,6 +75,7 @@ docker-deps: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE) $(IPC_ACTORS_ABI)
 docker-build: docker-deps
 	if [ "$(PROFILE)" = "ci" ]; then \
 		docker buildx build \
+			--load \
 			$(BUILDX_FLAGS) \
 			-f docker/builder.ci.Dockerfile \
 			-t fendermint-builder:latest $(PWD); \

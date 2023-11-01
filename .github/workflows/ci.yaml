@@ -175,5 +175,6 @@ jobs:
       - name: Build and Push Multiarch Docker Image
         run: |
           export BUILDX_TAG=${{ steps.prep.outputs.IMAGE_TAG }}
-          export BUILDX_FLAGS="--push --platform linux/amd64,linux/arm64 --cache-from=type=gha --cache-to=type=gha,mode=max"
+          export BUILDX_PUSH="--push"
+          export BUILDX_FLAGS="--platform linux/amd64,linux/arm64 --cache-from=type=gha --cache-to=type=gha,mode=max"
           make docker-build
