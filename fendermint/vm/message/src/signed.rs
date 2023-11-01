@@ -106,6 +106,7 @@ impl SignedMessage {
             Some(addr) => {
                 let tx = from_fvm::to_eth_transaction(message, chain_id)
                     .map_err(SignedMessageError::Ethereum)?;
+                println!("recovered txn: {tx:?}");
 
                 Ok(Signable::Ethereum((tx.sighash(), addr)))
             }
