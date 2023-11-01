@@ -37,12 +37,8 @@ pub fn to_fvm_message(tx: &Eip1559TransactionRequest) -> anyhow::Result<Message>
     // The `from` of the transaction is inferred from the signature.
     // As long as the client and the server use the same hashing scheme,
     // this should be usable as a delegated address.
-    let from = if let Some(from) = tx.from {
-        to_fvm_address(from)
-    } else {
-        // This is similar to https://github.com/filecoin-project/lotus/blob/master/node/impl/full/eth_utils.go#L124
-        system::SYSTEM_ACTOR_ADDR
-    };
+    // If none, use SYSTEM_ACTOR_ADDR. This is similar to https://github.com/filecoin-project/lotus/blob/master/node/impl/full/eth_utils.go#L124
+    let from = tx.from.map_or(system::SYSTEM_ACTOR_ADDR, to_fvm_address);
 
     // Wrap calldata in IPLD byte format.
     let calldata = tx.data.clone().unwrap_or_default().to_vec();
