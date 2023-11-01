@@ -168,7 +168,7 @@ jobs:
           # This uses the Docker `latest` tag convention.
           [ "$VERSION" == "main" ] && VERSION=latest
 
-          echo ::set-output name=IMAGE_TAG::$IMAGE_ID:$VERSION
+          echo "IMAGE_TAG=$IMAGE_ID:$VERSION" >> $GITHUB_OUTPUT
 
       - name: Docker Deps
         run: make docker-deps
