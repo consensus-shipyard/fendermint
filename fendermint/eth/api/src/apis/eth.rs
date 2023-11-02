@@ -450,7 +450,7 @@ where
             let nonce = state.sequence;
             Ok(et::U64::from(nonce))
         }
-        None => error(ExitCode::USR_NOT_FOUND, format!("actor {addr} not found")),
+        None => Ok(et::U64::zero()),
     }
 }
 
