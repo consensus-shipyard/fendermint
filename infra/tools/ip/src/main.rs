@@ -70,15 +70,15 @@ async fn main() -> Result<(), &'static str> {
         Some(ip) => {
             let ip = format_ip_addr(ip);
             print!("{}", ip);
-            return Ok(());
+            Ok(())
         }
-        None => return Err("failed to resolve external IP".into()),
+        None => Err("failed to resolve external IP"),
     }
 }
 
 fn format_ip_addr(addr: String) -> String {
-    if addr.contains(":") {
+    if addr.contains(':') {
         return format!("[{}]", addr);
     }
-    return addr;
+    addr
 }
