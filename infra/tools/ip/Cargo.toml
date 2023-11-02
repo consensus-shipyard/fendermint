@@ -1,0 +1,17 @@
+[package]
+name = "fendermint_infra_ip"
+description = "IP tool for the deployment of Fendermint infrastructure"
+version = "0.1.0"
+edition.workspace = true
+
+[[bin]]
+name = "ip"
+path = "src/main.rs"
+
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+reqwest = { version = "0.11", features = ["blocking"] }
+tokio = { version = "1.33.0", features = ["macros"] }
+futures = "0.3.29"

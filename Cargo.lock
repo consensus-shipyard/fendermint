@@ -2966,6 +2966,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fendermint_infra_ip"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "reqwest",
+ "tokio",
+]
+
+[[package]]
 name = "fendermint_rocksdb"
 version = "0.1.0"
 dependencies = [

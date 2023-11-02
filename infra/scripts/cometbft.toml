@@ -34,7 +34,7 @@ dependencies = ["cometbft-pull", "docker-network-create"]
 [tasks.cometbft-node-id]
 script = """
 id=`docker exec ${CMT_CONTAINER_NAME} cometbft show-node-id`
-ip=`curl ifconfig.me`
+ip=`./target/release/ip`
 echo $id@$ip:${CMT_P2P_HOST_PORT}
 """
 
