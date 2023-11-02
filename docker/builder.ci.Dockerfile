@@ -26,7 +26,8 @@ ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
 WORKDIR /app
 
 # Update the version here if our `rust-toolchain.toml` would cause something new to be fetched every time.
-RUN rustup install 1.73
+ARG RUST_VERSION=1.73
+RUN rustup install ${RUST_VERSION} && rustup target add wasm-unknown-unknown
 
 # Defined here so anything above it can be cached as a common dependency.
 ARG TARGETARCH
