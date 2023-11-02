@@ -8,8 +8,6 @@
 # The goal of this step is to copy the `Cargo.toml` and `Cargo.lock` files _without_ the source code,
 # so that we can run a step in `builder` that compiles the dependencies only. To do so we first
 # copy the whole codebase then get rid of everything except the dependencies and do a build.
-# https://stackoverflow.com/questions/49939960/docker-copy-files-using-glob-pattern
-# https://stackoverflow.com/questions/58473606/cache-rust-dependencies-with-docker-build/58474618#58474618
 FROM --platform=$BUILDPLATFORM ubuntu:latest as stripper
 
 WORKDIR /app
@@ -21,8 +19,8 @@ COPY fendermint fendermint/
 # Delete anything other than cargo files: Rust sources, config files, Markdown, etc.
 RUN find fendermint -type f \! -name "Cargo.*" | xargs rm -rf
 
-# Construct dummy sources.
-RUN echo "fn main() {}" > fendermint/app/src/main.rs && \
+# Construct dummy sources. Add a print to help debug the case if we failed to properly replace the file.
+RUN echo "fn main() { println!(\"I'm the dummy.\"); }" > fendermint/app/src/main.rs && \
   for crate in $(find fendermint -name "Cargo.toml" | xargs dirname); do \
   touch $crate/src/lib.rs; \
   done
@@ -61,10 +59,10 @@ RUN if [ "${TARGETARCH}" = "arm64" ]; then \
   rustup toolchain install stable-aarch64-unknown-linux-gnu; \
   fi
 
-# Copy the stripped source code...
+# Copy the stripped source code.
 COPY --from=stripper /app /app
 
-# ... and build the dependencies.
+# Build the dependencies.
 RUN set -eux; \
   case "${TARGETARCH}" in \
   amd64) ARCH='x86_64'  ;; \
@@ -74,16 +72,16 @@ RUN set -eux; \
   rustup show ; \
   cargo build --release -p fendermint_app --target ${ARCH}-unknown-linux-gnu
 
-# Now copy the full source...
+# Now copy the full source.
 COPY . .
 
-# ... and do the final build.
-# Using `cargo build` instead of `cargo install` because the latter doesn't seem to work with the stripper for some reason.
+# Need to invalidate build caches otherwise they won't be recompiled with the real code.
+RUN find fendermint -type f \( -wholename "**/src/lib.rs" -o -wholename "**/src/main.rs" \) | xargs touch
+
+# Do the final build.
 RUN set -eux; \
   case "${TARGETARCH}" in \
   amd64) ARCH='x86_64'  ;; \
   arm64) ARCH='aarch64' ;; \
   esac; \
-  cargo build --release -p fendermint_app --target ${ARCH}-unknown-linux-gnu && \
-  mkdir -p output/bin && \
-  cp target/${ARCH}-unknown-linux-gnu/release/fendermint output/bin
+  cargo install --root output --path fendermint/app --target ${ARCH}-unknown-linux-gnu
