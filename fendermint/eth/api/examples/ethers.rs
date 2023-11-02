@@ -323,6 +323,12 @@ where
     )?;
 
     request(
+        "eth_getBalance (non-existent)",
+        provider.get_balance(Address::default(), None).await,
+        |b| b.is_zero(),
+    )?;
+
+    request(
         "eth_getUncleCountByBlockHash",
         provider
             .get_uncle_count(BlockId::Hash(H256([0u8; 32])))
@@ -361,6 +367,14 @@ where
             .get_transaction_count(from.eth_addr, Some(BlockId::Number(BlockNumber::Earliest)))
             .await,
         |u| u.is_zero(),
+    )?;
+
+    request(
+        "eth_getTransactionCount (non-existent)",
+        provider
+            .get_transaction_count(Address::default(), None)
+            .await,
+        |b| b.is_zero(),
     )?;
 
     // Get a block without transactions
