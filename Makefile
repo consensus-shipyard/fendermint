@@ -38,7 +38,7 @@ install:
 	cargo install --path fendermint/app
 
 # Using --release for testing because wasm can otherwise be slow.
-test: $(IPC_ACTORS_ABI) $(BUILTIN_ACTORS_BUNDLE)
+test: $(IPC_ACTORS_ABI) $(BUILTIN_ACTORS_BUNDLE) $(BUILTIN_ACTORS_DIR)
 	FM_BUILTIN_ACTORS_BUNDLE=$(BUILTIN_ACTORS_BUNDLE) \
 	FM_CONTRACTS_DIR=$(IPC_ACTORS_OUT) \
 	cargo test --release --workspace --exclude smoke-test
