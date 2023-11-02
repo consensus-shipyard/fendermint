@@ -73,9 +73,8 @@ docker-deps: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE) $(IPC_ACTORS_ABI)
 
 docker-build: docker-deps
 	if [ "$(PROFILE)" = "ci" ]; then \
-		cat docker/actors.Dockerfile \
-			docker/builder.ci.Dockerfile \
-			docker/runner.Dockerfile \
+		cat docker/builder.ci.Dockerfile \
+				docker/runner.Dockerfile \
 			> docker/Dockerfile ; \
 		docker buildx build \
 			$(BUILDX_STORE) \
@@ -83,9 +82,8 @@ docker-build: docker-deps
 			-f docker/Dockerfile \
 			-t $(BUILDX_TAG) $(PWD); \
 	else \
-		cat docker/actors.Dockerfile \
-			docker/builder.local.Dockerfile \
-			docker/runner.Dockerfile \
+		cat docker/builder.local.Dockerfile \
+				docker/runner.Dockerfile \
 			> docker/Dockerfile ; \
 		DOCKER_BUILDKIT=1 \
 		docker build \
@@ -99,15 +97,10 @@ docker-build: docker-deps
 # so long as they work together.
 actor-bundle: $(BUILTIN_ACTORS_BUNDLE)
 
-# Build the builtin-actors bundle in a Docker image so people don't need to install cargo for this.
+# Download a released builtin-actors bundle CAR file.
 $(BUILTIN_ACTORS_BUNDLE):
 	mkdir -p $(dir $@)
-	DOCKER_BUILDKIT=1 \
-	docker build \
-		--build-arg="ACTORS_TAG=$(BUILTIN_ACTORS_TAG)" \
-		-f docker/actors.Dockerfile \
-		--output type=local,dest=$(dir $@) \
-		$(PWD)
+	curl -s -o $@ https://github.com/filecoin-project/builtin-actors/releases/download/$(BUILTIN_ACTORS_TAG)/builtin-actors-mainnet.car
 
 # Some test expect the builtin-actors repo to be checked out where they can find test contracts.
 $(BUILTIN_ACTORS_DIR):
