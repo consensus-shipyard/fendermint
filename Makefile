@@ -38,12 +38,12 @@ install:
 	cargo install --path fendermint/app
 
 # Using --release for testing because wasm can otherwise be slow.
-test: $(IPC_ACTORS_ABI) $(BUILTIN_ACTORS_BUNDLE) $(BUILTIN_ACTORS_DIR)
+test: $(IPC_ACTORS_ABI) $(BUILTIN_ACTORS_BUNDLE)
 	FM_BUILTIN_ACTORS_BUNDLE=$(BUILTIN_ACTORS_BUNDLE) \
 	FM_CONTRACTS_DIR=$(IPC_ACTORS_OUT) \
 	cargo test --release --workspace --exclude smoke-test
 
-e2e: docker-build
+e2e: docker-build $(BUILTIN_ACTORS_DIR)
 	cd fendermint/testing/smoke-test && cargo make --profile $(PROFILE)
 
 clean:
@@ -75,7 +75,7 @@ docker-deps: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE) $(IPC_ACTORS_ABI)
 docker-build: docker-deps
 	if [ "$(PROFILE)" = "ci" ]; then \
 		cat docker/actors.Dockerfile \
-		  docker/builder.ci.Dockerfile \
+			docker/builder.ci.Dockerfile \
 			docker/runner.Dockerfile \
 			> docker/Dockerfile ; \
 		docker buildx build \
@@ -85,7 +85,7 @@ docker-build: docker-deps
 			-t $(BUILDX_TAG) $(PWD); \
 	else \
 		cat docker/actors.Dockerfile \
-		  docker/builder.local.Dockerfile \
+			docker/builder.local.Dockerfile \
 			docker/runner.Dockerfile \
 			> docker/Dockerfile ; \
 		DOCKER_BUILDKIT=1 \
