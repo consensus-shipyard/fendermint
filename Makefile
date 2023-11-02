@@ -71,22 +71,22 @@ docker-deps: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE) $(IPC_ACTORS_ABI)
 	cp -r $(IPC_ACTORS_OUT)/* docker/.artifacts/contracts
 	cp $(BUILTIN_ACTORS_BUNDLE) docker/.artifacts
 
+# To use `buildx` locally to produce multiplatform images, one needs to run `docker buildx create --use`.
+# After that it looks like even the regular docker build needs the `--load` parameter, which hopefully
+# it can handle for anyone with `DOCKER_BUILDKIT=1`.
 docker-build: docker-deps
 	if [ "$(PROFILE)" = "ci" ]; then \
-		cat docker/builder.ci.Dockerfile \
-				docker/runner.Dockerfile \
-			> docker/Dockerfile ; \
+		cat docker/builder.ci.Dockerfile docker/runner.Dockerfile > docker/Dockerfile ; \
 		docker buildx build \
 			$(BUILDX_STORE) \
 			$(BUILDX_FLAGS) \
 			-f docker/Dockerfile \
 			-t $(BUILDX_TAG) $(PWD); \
 	else \
-		cat docker/builder.local.Dockerfile \
-				docker/runner.Dockerfile \
-			> docker/Dockerfile ; \
+		cat docker/builder.local.Dockerfile docker/runner.Dockerfile > docker/Dockerfile ; \
 		DOCKER_BUILDKIT=1 \
 		docker build \
+			$(BUILDX_STORE) \
 			-f docker/Dockerfile \
 			-t fendermint:latest $(PWD); \
 	fi
