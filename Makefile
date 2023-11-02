@@ -74,14 +74,20 @@ docker-deps: $(BUILTIN_ACTORS_BUNDLE) $(FENDERMINT_CODE) $(IPC_ACTORS_ABI)
 
 docker-build: docker-deps
 	if [ "$(PROFILE)" = "ci" ]; then \
-		cat docker/builder.ci.Dockerfile docker/runner.Dockerfile > docker/Dockerfile ; \
+		cat docker/actors.Dockerfile \
+		  docker/builder.ci.Dockerfile \
+			docker/runner.Dockerfile \
+			> docker/Dockerfile ; \
 		docker buildx build \
 			$(BUILDX_STORE) \
 			$(BUILDX_FLAGS) \
 			-f docker/Dockerfile \
 			-t $(BUILDX_TAG) $(PWD); \
 	else \
-		cat docker/builder.local.Dockerfile docker/runner.Dockerfile > docker/Dockerfile ; \
+		cat docker/actors.Dockerfile \
+		  docker/builder.local.Dockerfile \
+			docker/runner.Dockerfile \
+			> docker/Dockerfile ; \
 		DOCKER_BUILDKIT=1 \
 		docker build \
 			-f docker/Dockerfile \
