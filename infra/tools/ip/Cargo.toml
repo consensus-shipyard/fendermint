@@ -2,7 +2,9 @@
 name = "fendermint_infra_ip"
 description = "IP tool for the deployment of Fendermint infrastructure"
 version = "0.1.0"
+authors.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [[bin]]
 name = "ip"
