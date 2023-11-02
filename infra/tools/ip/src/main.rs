@@ -70,7 +70,7 @@ async fn main() -> Result<(), &'static str> {
         Some(ip) => {
             let ip = format_ip_addr(ip);
             print!("{}", ip);
-            return Ok(())
+            return Ok(());
         }
         None => return Err("failed to resolve external IP".into()),
     }
