@@ -78,9 +78,12 @@ RUN set -eux; \
 COPY . .
 
 # ... and do the final build.
+# Using `cargo build` instead of `cargo install` because the latter doesn't seem to work with the stripper for some reason.
 RUN set -eux; \
   case "${TARGETARCH}" in \
   amd64) ARCH='x86_64'  ;; \
   arm64) ARCH='aarch64' ;; \
   esac; \
-  cargo install --root output --path fendermint/app --target ${ARCH}-unknown-linux-gnu
+  cargo build --release -p fendermint_app --target ${ARCH}-unknown-linux-gnu && \
+  mkdir -p output/bin && \
+  cp target/${ARCH}-unknown-linux-gnu/release/fendermint output/bin
