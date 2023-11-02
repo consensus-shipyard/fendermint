@@ -108,8 +108,8 @@ jobs:
   # Publish Docker image on the main branch
   publish:
     name: Publish artifacts
-    #needs: [tests]
-    #if: github.ref == 'refs/heads/main'
+    needs: [tests]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     permissions:
