@@ -1,12 +1,10 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
-use crate::reqwest::Client;
+use reqwest::Client;
 use futures::{stream, StreamExt};
-use reqwest;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::time::Duration;
-use tokio;
 
 const CONCURRENT_REQUESTS: usize = 2;
 
