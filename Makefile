@@ -6,12 +6,11 @@ BUILTIN_ACTORS_DIR    := ../builtin-actors
 
 # Tag used to disambiguate if there are multiple options.
 IPC_ACTORS_TAG				?= dev
-IPC_ACTORS_FIND       := scripts/find-ipc-actors.sh $(IPC_ACTORS_TAG)
-IPC_ACTORS_CODE       := $(shell find $(shell $(IPC_ACTORS_FIND)) -type f -name "*.sol")
+IPC_ACTORS_DIR        := $(PWD)/../ipc-solidity-actors
+IPC_ACTORS_CODE       := $(shell find $(IPC_ACTORS_DIR) -type f -name "*.sol")
 IPC_ACTORS_ABI        := .make/.ipc-actors-abi
-# Note that without `:=`, just `=`, it should evaluate it every time it appears in a target.
-IPC_ACTORS_DIR         = $(shell $(IPC_ACTORS_FIND))
-IPC_ACTORS_OUT         = $(IPC_ACTORS_DIR)/out
+IPC_ACTORS_OUT        := $(IPC_ACTORS_DIR)/out
+
 FENDERMINT_CODE       := $(shell find . -type f \( -name "*.rs" -o -name "Cargo.toml" \) | grep -v target)
 
 # Override PROFILE env var to choose between `local | ci`
@@ -122,14 +121,16 @@ $(BUILTIN_ACTORS_DIR):
 ipc-actors-abi: $(IPC_ACTORS_ABI)
 
 # Check out the IPC Solidity actors if necessary and compile the ABI, putting down a marker at the end.
-# Doing a recursive call if the checkouts haven't been done before because of how $(shell) is already evaluated.
 $(IPC_ACTORS_ABI): $(IPC_ACTORS_CODE) | forge
-	if [ -z $(IPC_ACTORS_DIR) ]; then \
-		cargo fetch; \
-		$(MAKE) ipc-actors-abi; \
-	else \
-		$(MAKE) -C $(IPC_ACTORS_DIR) compile-abi; \
+	if [ ! -d $(IPC_ACTORS_DIR) ]; then \
+		mkdir -p $(IPC_ACTORS_DIR) && \
+		cd $(IPC_ACTORS_DIR) && \
+		git clone https://github.com/consensus-shipyard/ipc-solidity-actors.git .; \
 	fi
+	cd $(IPC_ACTORS_DIR) && \
+	git fetch origin && \
+	git checkout $(IPC_ACTORS_TAG)
+	make -C $(IPC_ACTORS_DIR) compile-abi
 	mkdir -p $(dir $@) && touch $@
 
 # Forge is used by the ipc-solidity-actors compilation steps.
