@@ -1,9 +1,8 @@
 .PHONY: all build test lint license check-fmt check-clippy actor-bundle
 
 BUILTIN_ACTORS_TAG    ?= v11.0.0
+BUILTIN_ACTORS_BUNDLE := $(PWD)/builtin-actors/output/bundle.car
 BUILTIN_ACTORS_DIR    := ../builtin-actors
-BUILTIN_ACTORS_CODE   := $(shell find $(BUILTIN_ACTORS_DIR) -type f -name "*.rs" | grep -v target)
-BUILTIN_ACTORS_BUNDLE := $(shell pwd)/$(BUILTIN_ACTORS_DIR)/output/bundle.car
 
 # Tag used to disambiguate if there are multiple options.
 IPC_ACTORS_TAG				?= dev
@@ -39,7 +38,7 @@ install:
 	cargo install --path fendermint/app
 
 # Using --release for testing because wasm can otherwise be slow.
-test: $(IPC_ACTORS_ABI) $(BUILTIN_ACTORS_BUNDLE)
+test: $(IPC_ACTORS_ABI) $(BUILTIN_ACTORS_BUNDLE) $(BUILTIN_ACTORS_DIR)
 	FM_BUILTIN_ACTORS_BUNDLE=$(BUILTIN_ACTORS_BUNDLE) \
 	FM_CONTRACTS_DIR=$(IPC_ACTORS_OUT) \
 	cargo test --release --workspace --exclude smoke-test
@@ -49,7 +48,6 @@ e2e: docker-build
 
 clean:
 	cargo clean
-	cd $(BUILTIN_ACTORS_DIR) && cargo clean
 	rm $(BUILTIN_ACTORS_BUNDLE)
 	rm -rf .make
 
@@ -96,17 +94,22 @@ docker-build: docker-deps
 # so long as they work together.
 actor-bundle: $(BUILTIN_ACTORS_BUNDLE)
 
-$(BUILTIN_ACTORS_BUNDLE): $(BUILTIN_ACTORS_CODE)
-	if [ ! -d $(BUILTIN_ACTORS_DIR) ]; then \
-		mkdir -p $(BUILTIN_ACTORS_DIR) && \
-		cd $(BUILTIN_ACTORS_DIR) && \
-		cd .. && \
-		git clone https://github.com/filecoin-project/builtin-actors.git; \
-	fi
+# Build the builtin-actors bundle in a Docker image so people don't need to install cargo for this.
+$(BUILTIN_ACTORS_BUNDLE):
+	mkdir -p $(dir $@)
+	DOCKER_BUILDKIT=1 \
+	docker build \
+		--build-arg="ACTORS_TAG=$(BUILTIN_ACTORS_TAG)" \
+		-f docker/actors.Dockerfile \
+		--output type=local,dest=$(dir $@) \
+		$(PWD)
+
+# Some test expect the builtin-actors repo to be checked out where they can find test contracts.
+$(BUILTIN_ACTORS_DIR):
+	mkdir -p $(BUILTIN_ACTORS_DIR) && \
 	cd $(BUILTIN_ACTORS_DIR) && \
-	git checkout $(BUILTIN_ACTORS_TAG) && \
-	rustup target add wasm32-unknown-unknown && \
-	cargo run --release -- -o output/$(shell basename $@)
+	git clone https://github.com/filecoin-project/builtin-actors.git . && \
+	git checkout $(BUILTIN_ACTORS_TAG)
 
 
 # Compile the ABI artifacts of the IPC Solidity actors.
