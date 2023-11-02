@@ -5,6 +5,10 @@
 # https://www.docker.com/blog/multi-arch-build-and-images-the-simple-way/
 # https://github.com/cross-rs/cross/wiki/Recipes#openssl
 
+# Using `ubuntu` here because when I try `rust:bookworm` like in `builder.local.Dockerfile` then
+# even though I add `aarch64` rustup target as a RUN step, it can't compile `core` later on
+# unless that step is repeated in the same command as the cargo build. That doesn't happen
+# with the `ubuntu` base and Rust installed.
 FROM --platform=$BUILDPLATFORM ubuntu:latest as builder
 
 ARG TARGETARCH
