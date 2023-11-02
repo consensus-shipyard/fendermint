@@ -4,7 +4,7 @@ BUILTIN_ACTORS_TAG    ?= v11.0.0
 BUILTIN_ACTORS_BUNDLE := $(PWD)/builtin-actors/output/bundle.car
 BUILTIN_ACTORS_DIR    := ../builtin-actors
 
-# Tag used to disambiguate if there are multiple options.
+# Make sure this tag matches the one in Cargo.toml
 IPC_ACTORS_TAG				?= dev
 IPC_ACTORS_DIR        := $(PWD)/../ipc-solidity-actors
 IPC_ACTORS_CODE       := $(shell find $(IPC_ACTORS_DIR) -type f -name "*.sol")
