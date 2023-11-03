@@ -12,7 +12,8 @@ runs:
 
   steps:
     - name: Setup sccache
-      uses: hanabi1224/sccache-action@v1.2.0 # https://github.com/hanabi1224/sccache-action used by Forest.
+      # uses: hanabi1224/sccache-action@v1.2.0 # https://github.com/hanabi1224/sccache-action used by Forest.
+      uses: consensus-shipyard/sccache-action@no-date
       with:
         release-name: v0.3.1
         # Caching everything separately, in case they don't ask for the same things to be compiled.
@@ -20,3 +21,5 @@ runs:
         # Not sure why we should ever update a cache that has the hash of the lock file in it.
         # In Forest it only contains the rust-toolchain, so it makes sense to update because dependencies could have changed.
         cache-update: ${{ inputs.cache-update }}
+        # Don't append the date to the cache.
+        cache-date: false
