@@ -3216,8 +3216,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-stm",
+ "cid",
  "fendermint_vm_interpreter",
  "fvm_ipld_blockstore",
+ "multihash 0.16.3",
+ "sha2 0.10.8",
  "tempfile",
  "tendermint 0.31.1",
  "tendermint-rpc",

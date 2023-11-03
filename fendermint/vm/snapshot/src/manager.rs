@@ -1,7 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::Context;
@@ -9,6 +9,7 @@ use async_stm::{atomically, retry, TVar};
 use fendermint_vm_interpreter::fvm::state::snapshot::{BlockHeight, BlockStateParams, Snapshot};
 use fendermint_vm_interpreter::fvm::state::FvmStateParams;
 use fvm_ipld_blockstore::Blockstore;
+use sha2::{Digest, Sha256};
 use tendermint_rpc::Client;
 
 /// State of snapshots, including the list of available completed ones
@@ -170,6 +171,15 @@ where
     }
 }
 
+/// Create a Sha256 checksum of a file.
+fn checksum(path: impl AsRef<Path>) -> anyhow::Result<[u8; 32]> {
+    let mut file = std::fs::File::open(&path)?;
+    let mut hasher = Sha256::new();
+    let _ = std::io::copy(&mut file, &mut hasher)?;
+    let hash = hasher.finalize().into();
+    Ok(hash)
+}
+
 /// Periodically ask CometBFT if it has caught up with the chain.
 async fn poll_sync_status<C>(client: C, is_syncing: TVar<bool>, poll_interval: Duration)
 where
@@ -193,5 +203,30 @@ where
             }
         }
         tokio::time::sleep(poll_interval).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use cid::multihash::MultihashDigest;
+    use tempfile::NamedTempFile;
+
+    use super::checksum;
+
+    #[test]
+    fn file_checksum() {
+        let content = b"Hello Checksum!";
+
+        let mut file = NamedTempFile::new().expect("new temp file");
+        file.write_all(content).expect("write contents");
+        let file_path = file.into_temp_path();
+        let file_digest = checksum(file_path).expect("checksum");
+
+        let content_digest = cid::multihash::Code::Sha2_256.digest(content);
+        let content_digest = content_digest.digest();
+
+        assert_eq!(file_digest, content_digest)
     }
 }
