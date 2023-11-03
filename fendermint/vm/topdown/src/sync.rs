@@ -23,7 +23,7 @@ const MAX_PARENT_VIEW_BLOCK_GAP: BlockHeight = 100;
 /// the polling will stop for this iteration and commit the result to cache.
 const TOPDOWN_MSG_LEN_THRESHOLD: usize = 500;
 /// The null round error message
-const NULL_ROUND_ERR_MSG: &str = "(code: 1, message: requested epoch was a null round, data: None)";
+const NULL_ROUND_ERR_MSG: &str = "requested epoch was a null round";
 
 type GetParentViewPayload = Vec<(
     BlockHeight,
@@ -217,7 +217,7 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
         ending_height,
     )
     .await;
-    let new_parent_views = match error_handling(maybe_error) {
+    let new_parent_views = match handle_parent_view_error(maybe_error) {
         Ok(views) => views,
         Err(Error::ParentChainReorgDetected) => {
             return reset_cache(parent_proxy, provider, query).await;
@@ -240,7 +240,7 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     Ok(())
 }
 
-fn error_handling(
+fn handle_parent_view_error(
     maybe_error: Result<GetParentViewPayload, Error>,
 ) -> Result<GetParentViewPayload, Error> {
     match maybe_error {
@@ -252,7 +252,7 @@ fn error_handling(
             // A null round will never have a block, which means that we can advance to the next height
             // without proposing any proof of finality in the subnet (null rounds do not execute or commit any messages).
             // We just need to return empty vec as it does not contain any information.
-            if e == NULL_ROUND_ERR_MSG {
+            if e.contains(NULL_ROUND_ERR_MSG) {
                 tracing::warn!("null round detected at height: {height}. Skip.");
                 Ok(vec![])
             } else {
