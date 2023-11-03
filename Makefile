@@ -30,7 +30,7 @@ all: test build diagrams
 diagrams:
 	make -C docs/diagrams diagrams
 
-build:
+build: | protoc
 	cargo build --release
 
 install:
@@ -126,10 +126,9 @@ $(IPC_ACTORS_ABI): $(IPC_ACTORS_CODE) | forge
 	make -C $(IPC_ACTORS_DIR) compile-abi
 	mkdir -p $(dir $@) && touch $@
 
-# Forge is used by the ipc-solidity-actors compilation steps.
-.PHONY: forge
-forge:
-	@if [ -z "$(shell which forge)" ]; then \
-		echo "Please install Foundry. See https://book.getfoundry.sh/getting-started/installation"; \
+.PHONY: protoc
+protoc:
+	@if [ -z "$(shell which protoc)" ]; then \
+		echo "Please install the Protobuf Compiler. See https://grpc.io/docs/protoc-installation/"; \
 		exit 1; \
 	fi
