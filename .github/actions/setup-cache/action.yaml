@@ -14,7 +14,7 @@ runs:
   steps:
     - name: Setup sccache
       # uses: hanabi1224/sccache-action@v1.2.0 # https://github.com/hanabi1224/sccache-action used by Forest.
-      uses: consensus-shipyard/sccache-action@no-date
+      uses: consensus-shipyard/sccache-action@fendermint
       with:
         release-name: v0.3.1
         cache-key: ${{ inputs.cache-prefix }}
