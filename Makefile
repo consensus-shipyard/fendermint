@@ -100,7 +100,7 @@ actor-bundle: $(BUILTIN_ACTORS_BUNDLE)
 # Download a released builtin-actors bundle CAR file.
 $(BUILTIN_ACTORS_BUNDLE):
 	mkdir -p $(dir $@)
-	curl -s -o $@ https://github.com/filecoin-project/builtin-actors/releases/download/$(BUILTIN_ACTORS_TAG)/builtin-actors-mainnet.car
+	curl -L -o $@ https://github.com/filecoin-project/builtin-actors/releases/download/$(BUILTIN_ACTORS_TAG)/builtin-actors-mainnet.car
 
 # Some test expect the builtin-actors repo to be checked out where they can find test contracts.
 $(BUILTIN_ACTORS_DIR):
