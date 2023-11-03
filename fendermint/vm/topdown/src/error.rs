@@ -1,7 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use crate::SequentialAppendError;
+use crate::{BlockHeight, SequentialAppendError};
 use thiserror::Error;
 
 /// The errors for top down checkpointing
@@ -14,5 +14,5 @@ pub enum Error {
     #[error("Parent chain reorg detected")]
     ParentChainReorgDetected,
     #[error("Cannot query parent")]
-    CannotQueryParent(String),
+    CannotQueryParent(String, BlockHeight),
 }

@@ -22,6 +22,15 @@ const MAX_PARENT_VIEW_BLOCK_GAP: BlockHeight = 100;
 /// When polling parent view, if the number of top down messages exceeds this limit,
 /// the polling will stop for this iteration and commit the result to cache.
 const TOPDOWN_MSG_LEN_THRESHOLD: usize = 500;
+/// The null round error message
+const NULL_ROUND_ERR_MSG: &str = "(code: 1, message: requested epoch was a null round, data: None)";
+
+type GetParentViewPayload = Vec<(
+    BlockHeight,
+    BlockHash,
+    Vec<StakingChangeRequest>,
+    Vec<CrossMsg>,
+)>;
 
 /// Query the parent finality from the block chain state
 pub trait ParentFinalityStateQuery {
@@ -201,19 +210,19 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     let ending_height = min(ending_height, MAX_PARENT_VIEW_BLOCK_GAP + starting_height);
     tracing::debug!("parent view range: {starting_height}-{ending_height}");
 
-    let new_parent_views = match get_new_parent_views(
+    let maybe_error = get_new_parent_views(
         parent_proxy,
         last_height_hash,
         starting_height,
         ending_height,
     )
-    .await
-    {
+    .await;
+    let new_parent_views = match error_handling(maybe_error) {
         Ok(views) => views,
         Err(Error::ParentChainReorgDetected) => {
             return reset_cache(parent_proxy, provider, query).await;
         }
-        Err(Error::CannotQueryParent(e)) => return Err(anyhow!(e)),
+        Err(Error::CannotQueryParent(e, _)) => return Err(anyhow!(e)),
         _ => unreachable!(),
     };
     tracing::debug!("new parent views: {new_parent_views:?}");
@@ -229,6 +238,29 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     tracing::debug!("updated new parent views till height: {ending_height}");
 
     Ok(())
+}
+
+fn error_handling(
+    maybe_error: Result<GetParentViewPayload, Error>,
+) -> Result<GetParentViewPayload, Error> {
+    match maybe_error {
+        Ok(views) => Ok(views),
+        Err(Error::CannotQueryParent(e, height)) => {
+            // This is the error that we see when there is a null round:
+            // https://github.com/filecoin-project/lotus/blob/7bb1f98ac6f5a6da2cc79afc26d8cd9fe323eb30/node/impl/full/eth.go#L164
+            // This happens when we request the block for a round without blocks in the tipset.
+            // A null round will never have a block, which means that we can advance to the next height
+            // without proposing any proof of finality in the subnet (null rounds do not execute or commit any messages).
+            // We just need to return empty vec as it does not contain any information.
+            if e == NULL_ROUND_ERR_MSG {
+                tracing::warn!("null round detected at height: {height}. Skip.");
+                Ok(vec![])
+            } else {
+                Err(Error::CannotQueryParent(e, height))
+            }
+        }
+        e => e,
+    }
 }
 
 /// Reset the cache in the face of a reorg
@@ -267,15 +299,7 @@ async fn get_new_parent_views(
     mut previous_hash: BlockHash,
     start_height: BlockHeight,
     end_height: BlockHeight,
-) -> Result<
-    Vec<(
-        BlockHeight,
-        BlockHash,
-        Vec<StakingChangeRequest>,
-        Vec<CrossMsg>,
-    )>,
-    Error,
-> {
+) -> Result<GetParentViewPayload, Error> {
     let mut block_height_to_update = vec![];
     let mut total_top_down_msgs = 0;
 
@@ -283,7 +307,7 @@ async fn get_new_parent_views(
         let block_hash_res = parent_proxy
             .get_block_hash(h)
             .await
-            .map_err(|e| Error::CannotQueryParent(e.to_string()))?;
+            .map_err(|e| Error::CannotQueryParent(e.to_string(), h))?;
         if block_hash_res.parent_block_hash != previous_hash {
             tracing::warn!(
                 "parent block hash at {h} is {:02x?} diff than previous hash: {previous_hash:02x?}",
@@ -295,7 +319,7 @@ async fn get_new_parent_views(
         let changes_res = parent_proxy
             .get_validator_changes(h)
             .await
-            .map_err(|e| Error::CannotQueryParent(e.to_string()))?;
+            .map_err(|e| Error::CannotQueryParent(e.to_string(), h))?;
         if changes_res.block_hash != block_hash_res.block_hash {
             tracing::warn!(
                 "change set block hash at {h} is {:02x?} diff than hash: {:02x?}",
@@ -311,7 +335,7 @@ async fn get_new_parent_views(
         let next_hash = parent_proxy
             .get_block_hash(h + 1)
             .await
-            .map_err(|e| Error::CannotQueryParent(e.to_string()))?;
+            .map_err(|e| Error::CannotQueryParent(e.to_string(), h))?;
         if next_hash.parent_block_hash != block_hash_res.block_hash {
             tracing::warn!(
                 "next block hash at {} is {:02x?} diff than hash: {:02x?}",
@@ -324,7 +348,7 @@ async fn get_new_parent_views(
         let top_down_msgs_res = parent_proxy
             .get_top_down_msgs_with_hash(h, &next_hash.block_hash)
             .await
-            .map_err(|e| Error::CannotQueryParent(e.to_string()))?;
+            .map_err(|e| Error::CannotQueryParent(e.to_string(), h))?;
 
         total_top_down_msgs += top_down_msgs_res.len();
 
