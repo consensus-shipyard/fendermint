@@ -42,14 +42,13 @@ impl SnapshotClient {
 }
 
 /// Create snapshots at regular block intervals.
-pub struct SnapshotManager<BS> {
+pub struct SnapshotManager<BS, C> {
+    /// Blockstore
     store: BS,
+    /// CometBFT client.
+    client: C,
     /// Location to store completed snapshots.
     snapshot_dir: PathBuf,
-    /// Snapshotted heights are a multiple of the interval.
-    ///
-    /// The manager is free to skip heights if it's busy.
-    snapshot_interval: BlockHeight,
     /// Shared state of snapshots.
     snapshot_state: SnapshotState,
     /// How often to check CometBFT whether it has finished syncing.
@@ -59,21 +58,23 @@ pub struct SnapshotManager<BS> {
     is_syncing: TVar<bool>,
 }
 
-impl<BS> SnapshotManager<BS>
+impl<BS, C> SnapshotManager<BS, C>
 where
     BS: Blockstore + Clone + Send + Sync + 'static,
+    C: Client + Clone + Send + Sync + 'static,
 {
     /// Create a new manager.
     pub fn new(
         store: BS,
+        client: C,
         snapshot_interval: BlockHeight,
         snapshot_dir: PathBuf,
         sync_poll_interval: Duration,
-    ) -> Self {
-        Self {
+    ) -> (Self, SnapshotClient) {
+        let manager = Self {
+            client,
             store,
             snapshot_dir,
-            snapshot_interval,
             snapshot_state: SnapshotState {
                 // Start with nothing to snapshot until we are notified about a new height.
                 // We could also look back to find the latest height we should have snapshotted.
@@ -82,26 +83,21 @@ where
             sync_poll_interval,
             // Assume we are syncing until we can determine otherwise.
             is_syncing: TVar::new(true),
-        }
-    }
-
-    /// Create a client to talk to this manager.
-    pub fn snapshot_client(&self) -> SnapshotClient {
-        SnapshotClient {
-            snapshot_interval: self.snapshot_interval,
-            snapshot_state: self.snapshot_state.clone(),
-        }
+        };
+        let client = SnapshotClient {
+            snapshot_interval,
+            snapshot_state: manager.snapshot_state.clone(),
+        };
+        (manager, client)
     }
 
     /// Produce snapshots.
-    pub async fn run<C>(self, client: C)
-    where
-        C: Client + Send + Sync + 'static,
-    {
+    pub async fn run(self) {
         // Start a background poll to CometBFT.
         // We could just do this once and await here, but this way ostensibly CometBFT could be
         // restarted without Fendermint and go through another catch up.
         {
+            let client = self.client.clone();
             let is_syncing = self.is_syncing.clone();
             let poll_interval = self.sync_poll_interval;
             tokio::spawn(async move {
