@@ -50,7 +50,8 @@ cmd! {
         let pk = sk.public_key();
 
         export(&self.out_dir, &self.name, "sk", &hex::encode(sk.serialize()))?;
-        export(&self.out_dir, &self.name, "pk", &hex::encode(EthAddress::from(pk).0))?;
+        export(&self.out_dir, &self.name, "pk", &hex::encode(pk.serialize()))?;
+        export(&self.out_dir, &self.name, "addr", &hex::encode(EthAddress::from(pk).0))?;
 
         Ok(())
     }

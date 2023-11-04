@@ -18,7 +18,7 @@ pub enum KeyCommands {
     /// Converts a hex encoded Ethereum private key into a Base64 encoded Fendermint keypair.
     #[clap(alias = "eth-to-fendermint")]
     FromEth(KeyFromEthArgs),
-    /// Converts a Base64 encoded Fendermint private key in a hex encoded Ethereum secret key and address.
+    /// Converts a Base64 encoded Fendermint private key into a hex encoded Ethereum secret key, public key and address (20 bytes).
     IntoEth(KeyIntoEthArgs),
 }
 
