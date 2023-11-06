@@ -154,7 +154,8 @@ impl ParentQueryProxy for IPCProviderProxy {
         self.handle_null_round(r, || async {
             tracing::warn!("null round detected at height: {height} to get top down messages.");
             Ok(vec![])
-        }).await
+        })
+        .await
     }
 
     /// Get the validator set at the specified height.
