@@ -9,10 +9,10 @@ use thiserror::Error;
 pub enum Error {
     #[error("Incoming items are not order sequentially")]
     NotSequential,
-    #[error("The parent view update with block height is not sequential")]
+    #[error("The parent view update with block height is not sequential: {0:?}")]
     NonSequentialParentViewInsert(SequentialAppendError),
     #[error("Parent chain reorg detected")]
     ParentChainReorgDetected,
-    #[error("Cannot query parent")]
+    #[error("Cannot query parent at height {1}: {0}")]
     CannotQueryParent(String, BlockHeight),
 }
