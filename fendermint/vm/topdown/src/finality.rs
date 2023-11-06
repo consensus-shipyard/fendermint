@@ -12,7 +12,7 @@ use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::staking::StakingChangeRequest;
 use std::sync::Arc;
 
-type ParentViewPayload = (BlockHash, Vec<StakingChangeRequest>, Vec<CrossMsg>);
+pub(crate) type ParentViewPayload = (BlockHash, Vec<StakingChangeRequest>, Vec<CrossMsg>);
 
 /// The default parent finality provider
 #[derive(Clone)]
@@ -31,7 +31,7 @@ pub struct CachedFinalityProvider<T> {
 /// Tracks the data from the parent
 #[derive(Clone)]
 struct CachedData {
-    height_data: TVar<SequentialKeyCache<BlockHeight, ParentViewPayload>>,
+    height_data: TVar<SequentialKeyCache<BlockHeight, Option<ParentViewPayload>>>,
 }
 
 /// Exponential backoff for futures
@@ -154,7 +154,12 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentFinalityProvider
         };
 
         // safe to unwrap as latest height exists
-        let block_hash = self.cached_data.block_hash(height)?.unwrap();
+        let block_hash = if let Some(h) = self.cached_data.block_hash(height)? {
+            h
+        } else {
+            // Oops, we have a null round in parent, skip this proposal and wait for future blocks.
+            return Ok(None);
+        };
 
         let proposal = IPCParentFinality { height, block_hash };
         tracing::debug!("new proposal: {proposal:?}");
@@ -217,13 +222,31 @@ impl<T> CachedFinalityProvider<T> {
         }
     }
 
-    pub fn latest_height_hash(&self) -> Stm<Option<(BlockHeight, BlockHash)>> {
-        if let Some(height) = self.cached_data.latest_height()? {
-            let maybe_hash = self.cached_data.block_hash(height)?;
-            Ok(maybe_hash.map(|hash| (height, hash)))
+    pub fn block_hash(&self, height: BlockHeight) -> Stm<Option<BlockHash>> {
+        self.cached_data.block_hash(height)
+    }
+
+    pub fn first_non_null_parent_hash(&self, height: BlockHeight) -> Stm<Option<BlockHash>> {
+        let cache = self.cached_data.height_data.read()?;
+        if let Some(lower_bound) = cache.lower_bound() {
+            for h in (lower_bound..height).rev() {
+                if let Some(Some(p)) = cache.get_value(h) {
+                    return Ok(Some(p.0.clone()));
+                }
+            }
+        }
+
+        // nothing is found in cache, check the last committed finality
+        let last_committed_finality = self.last_committed_finality.read_clone()?;
+        if let Some(f) = last_committed_finality {
+            Ok(Some(f.block_hash))
         } else {
             Ok(None)
         }
+    }
+
+    pub fn latest_height(&self) -> Stm<Option<BlockHeight>> {
+        self.cached_data.latest_height()
     }
 
     pub fn last_committed_finality(&self) -> Stm<Option<IPCParentFinality>> {
@@ -239,6 +262,18 @@ impl<T> CachedFinalityProvider<T> {
     }
 
     pub fn new_parent_view(
+        &self,
+        height: BlockHeight,
+        maybe_payload: Option<ParentViewPayload>,
+    ) -> StmResult<(), Error> {
+        if let Some((block_hash, validator_changes, top_down_msgs)) = maybe_payload {
+            self.parent_block_filled(height, block_hash, validator_changes, top_down_msgs)
+        } else {
+            self.parent_null_round(height)
+        }
+    }
+
+    fn parent_block_filled(
         &self,
         height: BlockHeight,
         block_hash: BlockHash,
@@ -257,7 +292,23 @@ impl<T> CachedFinalityProvider<T> {
 
         let r = self.cached_data.height_data.modify(|mut cache| {
             let r = cache
-                .append(height, (block_hash, validator_changes, top_down_msgs))
+                .append(height, Some((block_hash, validator_changes, top_down_msgs)))
+                .map_err(Error::NonSequentialParentViewInsert);
+            (cache, r)
+        })?;
+
+        if let Err(e) = r {
+            return abort(e);
+        }
+
+        Ok(())
+    }
+
+    /// When there is a new parent view, but it is actually a null round, call this function.
+    fn parent_null_round(&self, height: BlockHeight) -> StmResult<(), Error> {
+        let r = self.cached_data.height_data.modify(|mut cache| {
+            let r = cache
+                .append(height, None)
                 .map_err(Error::NonSequentialParentViewInsert);
             (cache, r)
         })?;
@@ -311,18 +362,28 @@ impl CachedData {
     }
 
     fn block_hash(&self, height: BlockHeight) -> Stm<Option<BlockHash>> {
-        let cache = self.height_data.read()?;
-        Ok(cache.get_value(height).map(|i| i.0.clone()))
+        self.get_at_height(height, |i| i.0.clone())
     }
 
     fn validator_changes(&self, height: BlockHeight) -> Stm<Option<Vec<StakingChangeRequest>>> {
-        let cache = self.height_data.read()?;
-        Ok(cache.get_value(height).map(|i| i.1.clone()))
+        self.get_at_height(height, |i| i.1.clone())
     }
 
     fn top_down_msgs_at_height(&self, height: BlockHeight) -> Stm<Option<Vec<CrossMsg>>> {
+        self.get_at_height(height, |i| i.2.clone())
+    }
+
+    fn get_at_height<T, F: Fn(&ParentViewPayload) -> T>(
+        &self,
+        height: BlockHeight,
+        f: F,
+    ) -> Stm<Option<T>> {
         let cache = self.height_data.read()?;
-        Ok(cache.get_value(height).map(|i| i.2.clone()))
+        Ok(if let Some(Some(v)) = cache.get_value(height) {
+            Some(f(v))
+        } else {
+            None
+        })
     }
 }
 
