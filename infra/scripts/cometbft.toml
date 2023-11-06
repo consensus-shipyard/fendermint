@@ -149,6 +149,12 @@ end
 '''
 
 [tasks.cometbft-node-id]
+script = """
+id=`docker exec ${CMT_CONTAINER_NAME} cometbft show-node-id`
+echo $id
+"""
+
+[tasks.cometbft-seed]
 dependencies = ["get-external-ip"]
 script = """
 id=`docker exec ${CMT_CONTAINER_NAME} cometbft show-node-id`

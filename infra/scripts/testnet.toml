@@ -54,9 +54,9 @@ for i in ${nodes}
     NUMBER = set ${i}
     NODE_NAME = set "node${NUMBER}"
 
-    mkdir -p ${BASE_DIR}/${NODE_NAME}
-    mkdir -p ${BASE_DIR}/${NODE_NAME}/fendermint
-    mkdir -p ${BASE_DIR}/${NODE_NAME}/cometbft
+    mkdir ${BASE_DIR}/${NODE_NAME}
+    mkdir ${BASE_DIR}/${NODE_NAME}/fendermint
+    mkdir ${BASE_DIR}/${NODE_NAME}/cometbft
 
     set_env NODE_NAME ${NODE_NAME}
     set_env NUMBER ${NUMBER}
@@ -107,7 +107,7 @@ export CMT_PERSISTENT_PEERS=`cat $BASE_DIR/peers`
 echo Persistent peers: $CMT_PERSISTENT_PEERS
 
 for i in $(seq 0 3); do
-    sed -i'' -e "s/persistent_peers = \\"\\"/persistent_peers = \\"$CMT_PERSISTENT_PEERS\\"/" $BASE_DIR/node${i}/cometbft/config/config.toml
+    sed -i'' -e "s|persistent_peers = \\"\\"|persistent_peers = \\"$CMT_PERSISTENT_PEERS\\"|" $BASE_DIR/node${i}/cometbft/config/config.toml
 done
 """
 
