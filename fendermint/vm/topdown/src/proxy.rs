@@ -10,6 +10,12 @@ use ipc_provider::IpcProvider;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::staking::StakingChangeRequest;
 use ipc_sdk::subnet_id::SubnetID;
+use std::future::Future;
+
+/// The null round error message
+const NULL_ROUND_ERR_MSG: &str = "requested epoch was a null round";
+/// The default block hash for null round
+const NULL_BLOCK_HASH: Vec<u8> = vec![];
 
 /// The interface to querying state of the parent
 #[async_trait]
@@ -59,6 +65,31 @@ impl IPCProviderProxy {
             child_subnet: target_subnet,
         })
     }
+
+    /// Handles lotus null round error. If `res` is indeed a null round error, f will be called to
+    /// generate the default value.
+    ///
+    /// This is the error that we see when there is a null round:
+    /// https://github.com/filecoin-project/lotus/blob/7bb1f98ac6f5a6da2cc79afc26d8cd9fe323eb30/node/impl/full/eth.go#L164
+    /// This happens when we request the block for a round without blocks in the tipset.
+    /// A null round will never have a block, which means that we can advance to the next height.
+    async fn handle_null_round<T, Fut, F>(&self, res: anyhow::Result<T>, f: F) -> anyhow::Result<T>
+    where
+        Fut: Future<Output = anyhow::Result<T>> + Send,
+        F: Fn() -> Fut,
+    {
+        match res {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                let err_msg = e.to_string();
+                if err_msg.contains(NULL_ROUND_ERR_MSG) {
+                    f().await
+                } else {
+                    Err(e)
+                }
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -77,9 +108,37 @@ impl ParentQueryProxy for IPCProviderProxy {
 
     /// Getting the block hash at the target height.
     async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<GetBlockHashResult> {
-        self.ipc_provider
+        let r = self
+            .ipc_provider
             .get_block_hash(&self.parent_subnet, height as ChainEpoch)
-            .await
+            .await;
+
+        self.handle_null_round(r, || async {
+            tracing::warn!("null round detected at height: {height} to get block hash.");
+
+            // Height 1 is null round, we cannot query its parent block anymore, just return
+            if height == 1 {
+                return Ok(GetBlockHashResult {
+                    parent_block_hash: NULL_BLOCK_HASH,
+                    block_hash: NULL_BLOCK_HASH,
+                });
+            }
+
+            let prev_r = self
+                .ipc_provider
+                .get_block_hash(&self.parent_subnet, height as ChainEpoch - 1)
+                .await
+                .map(|v| v.block_hash);
+            let parent_block_hash = self
+                .handle_null_round(prev_r, || async { Ok(NULL_BLOCK_HASH) })
+                .await?;
+
+            Ok(GetBlockHashResult {
+                parent_block_hash,
+                block_hash: NULL_BLOCK_HASH,
+            })
+        })
+        .await
     }
 
     /// Get the top down messages from the starting to the ending height.
@@ -88,9 +147,14 @@ impl ParentQueryProxy for IPCProviderProxy {
         height: BlockHeight,
         block_hash: &BlockHash,
     ) -> anyhow::Result<Vec<CrossMsg>> {
-        self.ipc_provider
+        let r = self
+            .ipc_provider
             .get_top_down_msgs(&self.child_subnet, height as ChainEpoch, block_hash)
-            .await
+            .await;
+        self.handle_null_round(r, || async {
+            tracing::warn!("null round detected at height: {height} to get top down messages.");
+            Ok(vec![])
+        }).await
     }
 
     /// Get the validator set at the specified height.
@@ -98,15 +162,24 @@ impl ParentQueryProxy for IPCProviderProxy {
         &self,
         height: BlockHeight,
     ) -> anyhow::Result<TopDownQueryPayload<Vec<StakingChangeRequest>>> {
-        let mut v = self
+        let r = self
             .ipc_provider
             .get_validator_changeset(&self.child_subnet, height as ChainEpoch)
-            .await?;
+            .await
+            .map(|mut v| {
+                // sort ascending, we dont assume the changes are ordered
+                v.value
+                    .sort_by(|a, b| a.configuration_number.cmp(&b.configuration_number));
+                v
+            });
 
-        // sort ascending, we dont assume the changes are ordered
-        v.value
-            .sort_by(|a, b| a.configuration_number.cmp(&b.configuration_number));
-
-        Ok(v)
+        self.handle_null_round(r, || async {
+            tracing::warn!("null round detected at height: {height} to get validator changes.");
+            Ok(TopDownQueryPayload {
+                value: vec![],
+                block_hash: NULL_BLOCK_HASH,
+            })
+        })
+        .await
     }
 }

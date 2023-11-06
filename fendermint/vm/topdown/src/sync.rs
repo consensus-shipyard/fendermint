@@ -22,15 +22,14 @@ const MAX_PARENT_VIEW_BLOCK_GAP: BlockHeight = 100;
 /// When polling parent view, if the number of top down messages exceeds this limit,
 /// the polling will stop for this iteration and commit the result to cache.
 const TOPDOWN_MSG_LEN_THRESHOLD: usize = 500;
-/// The null round error message
-const NULL_ROUND_ERR_MSG: &str = "requested epoch was a null round";
 
-type GetParentViewPayload = Vec<(
+type ParentViewPayload = (
     BlockHeight,
     BlockHash,
     Vec<StakingChangeRequest>,
     Vec<CrossMsg>,
-)>;
+);
+type GetParentViewPayload = Vec<ParentViewPayload>;
 
 /// Query the parent finality from the block chain state
 pub trait ParentFinalityStateQuery {
@@ -210,21 +209,13 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     let ending_height = min(ending_height, MAX_PARENT_VIEW_BLOCK_GAP + starting_height);
     tracing::debug!("parent view range: {starting_height}-{ending_height}");
 
-    let maybe_error = get_new_parent_views(
+    let new_parent_views = parent_views_in_block_range(
         parent_proxy,
         last_height_hash,
         starting_height,
         ending_height,
     )
-    .await;
-    let new_parent_views = match handle_parent_view_error(maybe_error) {
-        Ok(views) => views,
-        Err(Error::ParentChainReorgDetected) => {
-            return reset_cache(parent_proxy, provider, query).await;
-        }
-        Err(Error::CannotQueryParent(e, _)) => return Err(anyhow!(e)),
-        _ => unreachable!(),
-    };
+    .await?;
     tracing::debug!("new parent views: {new_parent_views:?}");
 
     atomically_or_err::<_, Error, _>(move || {
@@ -238,29 +229,6 @@ async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
     tracing::debug!("updated new parent views till height: {ending_height}");
 
     Ok(())
-}
-
-fn handle_parent_view_error(
-    maybe_error: Result<GetParentViewPayload, Error>,
-) -> Result<GetParentViewPayload, Error> {
-    match maybe_error {
-        Ok(views) => Ok(views),
-        Err(Error::CannotQueryParent(e, height)) => {
-            // This is the error that we see when there is a null round:
-            // https://github.com/filecoin-project/lotus/blob/7bb1f98ac6f5a6da2cc79afc26d8cd9fe323eb30/node/impl/full/eth.go#L164
-            // This happens when we request the block for a round without blocks in the tipset.
-            // A null round will never have a block, which means that we can advance to the next height
-            // without proposing any proof of finality in the subnet (null rounds do not execute or commit any messages).
-            // We just need to return empty vec as it does not contain any information.
-            if e.contains(NULL_ROUND_ERR_MSG) {
-                tracing::warn!("null round detected at height: {height}. Skip.");
-                Ok(vec![])
-            } else {
-                Err(Error::CannotQueryParent(e, height))
-            }
-        }
-        e => e,
-    }
 }
 
 /// Reset the cache in the face of a reorg
@@ -294,7 +262,7 @@ async fn last_recorded_height(
 }
 
 /// Obtain the new parent views for the input block height range
-async fn get_new_parent_views(
+async fn parent_views_in_block_range(
     parent_proxy: &Arc<IPCProviderProxy>,
     mut previous_hash: BlockHash,
     start_height: BlockHeight,
