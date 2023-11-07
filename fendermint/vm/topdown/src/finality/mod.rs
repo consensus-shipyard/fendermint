@@ -11,7 +11,7 @@ use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::staking::StakingChangeRequest;
 
 pub use fetch::CachedFinalityProvider;
-pub use null::NullOk;
+pub use null::FinalityWithNull;
 
 pub(crate) type ParentViewPayload = (BlockHash, Vec<StakingChangeRequest>, Vec<CrossMsg>);
 
@@ -162,6 +162,51 @@ mod tests {
 
             assert_eq!(provider.latest_height()?.unwrap(), 100);
 
+            Ok(())
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_next_proposal_null_round_works() {
+        let provider = new_provider();
+
+        atomically_or_err(|| {
+            let r = provider.next_proposal()?;
+            assert!(r.is_none());
+
+            provider.new_parent_view(10, Some((vec![1u8; 32], vec![], vec![])))?;
+
+            // inject data
+            for i in 11..=100 {
+                provider.new_parent_view(i, None)?;
+            }
+            // no proposal
+            assert_eq!(provider.next_proposal()?, None);
+
+            let first_non_null_parent_hash = provider.first_non_null_parent_hash(100)?;
+            assert_eq!(first_non_null_parent_hash, Some(vec![1u8; 32]));
+            assert_eq!(provider.latest_height()?.unwrap(), 100);
+
+            provider.new_parent_view(101, Some((vec![2u8; 32], vec![], vec![])))?;
+            let f = provider.next_proposal()?.unwrap();
+            assert_eq!(f.block_hash, vec![2u8; 32]);
+            assert_eq!(f.height, 101);
+
+            provider.set_new_finality(
+                IPCParentFinality {
+                    height: 101,
+                    block_hash: vec![2u8; 32],
+                },
+                Some(genesis_finality()),
+            )?;
+
+            for i in 102..=110 {
+                provider.new_parent_view(i, None)?;
+            }
+            let first_non_null_parent_hash = provider.first_non_null_parent_hash(100)?;
+            assert_eq!(first_non_null_parent_hash, Some(vec![2u8; 32]));
             Ok(())
         })
         .await

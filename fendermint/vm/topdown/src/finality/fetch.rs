@@ -1,7 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use crate::finality::null::NullOk;
+use crate::finality::null::FinalityWithNull;
 use crate::finality::ParentViewPayload;
 use crate::proxy::ParentQueryProxy;
 use crate::{
@@ -16,7 +16,7 @@ use std::sync::Arc;
 /// The finality provider that performs io to the parent if not found in cache
 #[derive(Clone)]
 pub struct CachedFinalityProvider<T> {
-    inner: NullOk,
+    inner: FinalityWithNull,
     config: Config,
     /// The ipc client proxy that works as a back up if cache miss
     parent_client: Arc<T>,
@@ -173,7 +173,7 @@ impl<T> CachedFinalityProvider<T> {
         committed_finality: Option<IPCParentFinality>,
         parent_client: Arc<T>,
     ) -> Self {
-        let inner = NullOk::new(genesis_epoch, committed_finality);
+        let inner = FinalityWithNull::new(genesis_epoch, committed_finality);
         Self {
             inner,
             config,

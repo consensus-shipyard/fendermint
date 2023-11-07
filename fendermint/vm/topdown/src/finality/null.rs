@@ -11,7 +11,7 @@ use ipc_sdk::staking::StakingChangeRequest;
 
 /// Finality provider that can handle null blocks
 #[derive(Clone)]
-pub struct NullOk {
+pub struct FinalityWithNull {
     genesis_epoch: BlockHeight,
     /// Cached data that always syncs with the latest parent chain proactively
     cached_data: TVar<SequentialKeyCache<BlockHeight, Option<ParentViewPayload>>>,
@@ -20,7 +20,7 @@ pub struct NullOk {
     last_committed_finality: TVar<Option<IPCParentFinality>>,
 }
 
-impl NullOk {
+impl FinalityWithNull {
     pub fn new(genesis_epoch: BlockHeight, committed_finality: Option<IPCParentFinality>) -> Self {
         Self {
             genesis_epoch,
@@ -136,7 +136,7 @@ impl NullOk {
     }
 }
 
-impl NullOk {
+impl FinalityWithNull {
     pub(crate) fn block_hash_at_height(&self, height: BlockHeight) -> Stm<Option<BlockHash>> {
         self.get_at_height(height, |i| i.0.clone())
     }
@@ -148,7 +148,7 @@ impl NullOk {
 }
 
 /// All the private functions
-impl NullOk {
+impl FinalityWithNull {
     fn handle_null_block<T, F: Fn(&ParentViewPayload) -> T, D: Fn() -> T>(
         &self,
         height: BlockHeight,
