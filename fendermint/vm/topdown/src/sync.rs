@@ -16,7 +16,7 @@ use ipc_provider::manager::GetBlockHashResult;
 use anyhow::{anyhow, Context};
 
 use ethers::utils::hex;
-use std::cmp::min;
+use std::cmp::{max, min};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -487,8 +487,11 @@ async fn parent_views_at_height(
 async fn next_block_hash(
     parent_proxy: &Arc<IPCProviderProxy>,
     height: BlockHeight,
-    look_ahead_limit: BlockHeight,
+    mut look_ahead_limit: BlockHeight,
 ) -> Result<GetBlockHashResult, Error> {
+    // at least we run for height
+    look_ahead_limit = max(height, look_ahead_limit);
+
     for h in height..=look_ahead_limit {
         match parent_proxy.get_block_hash(h).await {
             Ok(h) => return Ok(h),
