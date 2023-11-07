@@ -91,7 +91,19 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
         &self,
         height: BlockHeight,
     ) -> anyhow::Result<Vec<StakingChangeRequest>> {
-        let r = atomically(|| self.cached_data.validator_changes(height)).await;
+        let r = atomically(|| {
+            let changes = self.cached_data.validator_changes(height)?;
+            Ok(if changes.is_some() {
+                changes
+            } else if self.cached_data.contains(height)? {
+                // we have a lotus null block
+                Some(vec![])
+            } else {
+                None
+            })
+        })
+        .await;
+
         if let Some(v) = r {
             return Ok(v);
         }
@@ -113,7 +125,19 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
         height: BlockHeight,
         block_hash: &BlockHash,
     ) -> anyhow::Result<Vec<CrossMsg>> {
-        let r = atomically(|| self.cached_data.top_down_msgs_at_height(height)).await;
+        let r = atomically(|| {
+            let changes = self.cached_data.top_down_msgs_at_height(height)?;
+            Ok(if changes.is_some() {
+                changes
+            } else if self.cached_data.contains(height)? {
+                // we have a lotus null block
+                Some(vec![])
+            } else {
+                None
+            })
+        })
+        .await;
+
         if let Some(v) = r {
             return Ok(v);
         }
@@ -356,6 +380,12 @@ impl<T> CachedFinalityProvider<T> {
 }
 
 impl CachedData {
+    /// Checks if the cache contain the block height's data
+    fn contains(&self, height: BlockHeight) -> Stm<bool> {
+        let cache = self.height_data.read()?;
+        Ok(cache.get_value(height).is_none())
+    }
+
     fn latest_height(&self) -> Stm<Option<BlockHeight>> {
         let cache = self.height_data.read()?;
         Ok(cache.upper_bound())
