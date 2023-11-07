@@ -56,6 +56,5 @@ sed -i'' -e "s|seed_mode = false|seed_mode = true|" ${CMT_DIR}/config/config.tom
 
 [tasks.set-seeds]
 script="""
-sed -i'' -e 's|seeds = ""|seeds = "${BOOTSTRAPS}"|g' ${CMT_DIR}/config/config.toml
-envsubst < ${CMT_DIR}/config/config.toml > ${CMT_DIR}/config/config.toml && mv ${CMT_DIR}/config/config.toml ${CMT_DIR}/config/config.toml
+sed -i "s|seeds = \"\"|seeds = \"$BOOTSTRAPS\"|g" ${CMT_DIR}/config/config.toml
 """
