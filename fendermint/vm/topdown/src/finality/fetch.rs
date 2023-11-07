@@ -128,6 +128,7 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
         let mut v = vec![];
         for h in from..=to {
             let mut r = self.top_down_msgs(h, block_hash).await?;
+            tracing::info!("obtained topdown messages (len {}) at height {h}", r.len());
             v.append(&mut r);
         }
         Ok(v)
