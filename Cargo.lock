@@ -3222,6 +3222,7 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_ipld_car",
  "fvm_ipld_encoding 0.3.3",
+ "integer-encoding",
  "multihash 0.16.3",
  "sha2 0.10.8",
  "tempfile",

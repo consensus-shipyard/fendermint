@@ -388,15 +388,33 @@ mod tests {
                 let next_block = reader.next_block();
 
                 // 1. Try with `pin!`
-                //std::pin::pin!(next_block).poll(cx)
+                std::pin::pin!(next_block).poll(cx)
 
                 // 2. Try with `Box::pin`
                 //let mut next_block = Box::pin(next_block);
                 //next_block.as_mut().poll(cx)
 
                 // 3. Try with `tokio::pin!`
-                tokio::pin!(next_block);
-                next_block.poll(cx)
+                // tokio::pin!(next_block);
+                // next_block.poll(cx)
+            });
+            if poll.await.expect("should be ok").is_none() {
+                break;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn poll_read_node_from_file() {
+        let bundle_file = bundle_file().await;
+        let mut reader = CarReader::new_unchecked(bundle_file.compat())
+            .await
+            .unwrap();
+
+        loop {
+            let poll = futures::future::poll_fn(|cx| {
+                let next_block = util::read_node(&mut reader.reader);
+                std::pin::pin!(next_block).poll(cx)
             });
             if poll.await.expect("should be ok").is_none() {
                 break;
@@ -427,5 +445,59 @@ mod tests {
             target_count,
             chunks_count
         );
+    }
+
+    /// Copied functions from `fvm_ipld_car::util` for testing.
+    mod util {
+        use cid::Cid;
+        use futures::{AsyncRead, AsyncReadExt};
+        use fvm_ipld_car::Error;
+        use integer_encoding::VarIntAsyncReader;
+
+        pub async fn ld_read<R>(mut reader: &mut R) -> Result<Option<Vec<u8>>, Error>
+        where
+            R: AsyncRead + Send + Unpin,
+        {
+            const MAX_ALLOC: usize = 1 << 20;
+            let l: usize = match VarIntAsyncReader::read_varint_async(&mut reader).await {
+                Ok(len) => len,
+                Err(e) => {
+                    if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                        return Ok(None);
+                    }
+                    return Err(Error::Other(e.to_string()));
+                }
+            };
+            let mut buf = Vec::with_capacity(std::cmp::min(l as usize, MAX_ALLOC));
+            let bytes_read = reader
+                .take(l as u64)
+                .read_to_end(&mut buf)
+                .await
+                .map_err(|e| Error::Other(e.to_string()))?;
+            if bytes_read != l {
+                return Err(Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    format!(
+                        "expected to read at least {} bytes, but read {}",
+                        l, bytes_read
+                    ),
+                )));
+            }
+            Ok(Some(buf))
+        }
+
+        pub async fn read_node<R>(buf_reader: &mut R) -> Result<Option<(Cid, Vec<u8>)>, Error>
+        where
+            R: AsyncRead + Send + Unpin,
+        {
+            match ld_read(buf_reader).await? {
+                Some(buf) => {
+                    let mut cursor = std::io::Cursor::new(&buf);
+                    let cid = Cid::read_bytes(&mut cursor)?;
+                    Ok(Some((cid, buf[cursor.position() as usize..].to_vec())))
+                }
+                None => Ok(None),
+            }
+        }
     }
 }
