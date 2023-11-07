@@ -7,7 +7,7 @@ use crate::finality::ParentViewPayload;
 use crate::proxy::{IPCProviderProxy, ParentQueryProxy};
 use crate::{
     BlockHash, BlockHeight, CachedFinalityProvider, Config, IPCParentFinality,
-    ParentFinalityProvider, Toggle,
+    ParentFinalityProvider, Toggle, NULL_ROUND_ERR_MSG,
 };
 
 use async_stm::{atomically, atomically_or_err, Stm};
@@ -26,8 +26,6 @@ const MAX_PARENT_VIEW_BLOCK_GAP: BlockHeight = 100;
 /// When polling parent view, if the number of top down messages exceeds this limit,
 /// the polling will stop for this iteration and commit the result to cache.
 const TOPDOWN_MSG_LEN_THRESHOLD: usize = 500;
-/// The null round error message
-const NULL_ROUND_ERR_MSG: &str = "requested epoch was a null round";
 
 type GetParentViewPayload = Vec<(BlockHeight, Option<ParentViewPayload>)>;
 

@@ -29,6 +29,9 @@ pub type BlockHeight = u64;
 pub type Bytes = Vec<u8>;
 pub type BlockHash = Bytes;
 
+/// The null round error message
+pub(crate) const NULL_ROUND_ERR_MSG: &str = "requested epoch was a null round";
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     /// The number of blocks to delay before reporting a height as final on the parent chain.
@@ -114,4 +117,25 @@ pub trait ParentFinalityProvider: ParentViewProvider {
         finality: IPCParentFinality,
         previous_finality: Option<IPCParentFinality>,
     ) -> Stm<()>;
+}
+
+/// If res is null round error, returns the default value from f()
+pub(crate) fn handle_null_round<T, F: FnOnce() -> T>(
+    res: anyhow::Result<T>,
+    f: F,
+) -> anyhow::Result<T> {
+    match res {
+        Ok(t) => Ok(t),
+        Err(e) => {
+            if is_null_round_error(&e) {
+                Ok(f())
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+pub(crate) fn is_null_round_error(err: &anyhow::Error) -> bool {
+    err.to_string().contains(NULL_ROUND_ERR_MSG)
 }
