@@ -13,7 +13,7 @@ dependencies = [
     "node-init",
     "docker-network-create",
     "cometbft-init",
-    "set-seed",
+    "set-seeds",
     "fendermint-deps",
     "subnet-config",
     "fendermint-start-ipc",
