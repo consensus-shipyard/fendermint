@@ -535,14 +535,14 @@ mod tests {
             let r = provider.next_proposal()?;
             assert!(r.is_none());
 
-            provider.new_parent_view(10, vec![1u8; 32], vec![], vec![])?;
+            provider.new_parent_view(10, Some((vec![1u8; 32], vec![], vec![])))?;
 
             let r = provider.next_proposal()?;
             assert!(r.is_some());
 
             // inject data
             for i in 11..=100 {
-                provider.new_parent_view(i, vec![1u8; 32], vec![], vec![])?;
+                provider.new_parent_view(i, Some((vec![1u8; 32], vec![], vec![])))?;
             }
 
             let proposal = provider.next_proposal()?.unwrap();
@@ -555,7 +555,7 @@ mod tests {
                 }
             );
 
-            assert_eq!(provider.latest_height_hash()?.unwrap().0, 100);
+            assert_eq!(provider.latest_height()?.unwrap(), 100);
 
             Ok(())
         })
@@ -570,7 +570,7 @@ mod tests {
         atomically_or_err(|| {
             // inject data
             for i in 10..=100 {
-                provider.new_parent_view(i, vec![1u8; 32], vec![], vec![])?;
+                provider.new_parent_view(i, Some((vec![1u8; 32], vec![], vec![])))?;
             }
 
             let target_block = 120;
@@ -601,7 +601,7 @@ mod tests {
             let target_block = 100;
 
             // inject data
-            provider.new_parent_view(target_block, vec![1u8; 32], vec![], vec![])?;
+            provider.new_parent_view(target_block, Some((vec![1u8; 32], vec![], vec![])))?;
             provider.set_new_finality(
                 IPCParentFinality {
                     height: target_block - 1,
@@ -646,12 +646,24 @@ mod tests {
         let cross_msgs_batch4 = vec![new_cross_msg(9), new_cross_msg(10), new_cross_msg(11)];
 
         atomically_or_err(|| {
-            provider.new_parent_view(100, vec![1u8; 32], vec![], cross_msgs_batch1.clone())?;
+            provider.new_parent_view(
+                100,
+                Some((vec![1u8; 32], vec![], cross_msgs_batch1.clone())),
+            )?;
 
-            provider.new_parent_view(101, vec![1u8; 32], vec![], cross_msgs_batch2.clone())?;
+            provider.new_parent_view(
+                101,
+                Some((vec![1u8; 32], vec![], cross_msgs_batch2.clone())),
+            )?;
 
-            provider.new_parent_view(102, vec![1u8; 32], vec![], cross_msgs_batch3.clone())?;
-            provider.new_parent_view(103, vec![1u8; 32], vec![], cross_msgs_batch4.clone())?;
+            provider.new_parent_view(
+                102,
+                Some((vec![1u8; 32], vec![], cross_msgs_batch3.clone())),
+            )?;
+            provider.new_parent_view(
+                103,
+                Some((vec![1u8; 32], vec![], cross_msgs_batch4.clone())),
+            )?;
 
             let mut v1 = cross_msgs_batch1.clone();
             let v2 = cross_msgs_batch2.clone();

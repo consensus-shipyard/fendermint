@@ -397,8 +397,7 @@ async fn parent_views_in_block_range(
                     break;
                 }
             }
-            // Handles lotus null round error. If `res` is indeed a null round error, f will be called to
-            // generate the default value.
+            // Handles lotus null round error.
             //
             // This is the error that we see when there is a null round:
             // https://github.com/filecoin-project/lotus/blob/7bb1f98ac6f5a6da2cc79afc26d8cd9fe323eb30/node/impl/full/eth.go#L164
@@ -480,7 +479,8 @@ async fn parent_views_at_height(
     ))
 }
 
-/// Get the next non-null block hash
+/// Get the next non-null block hash. If height is a null round, then we need to look further util we
+/// find one that is not null round.
 async fn next_block_hash(
     parent_proxy: &Arc<IPCProviderProxy>,
     height: BlockHeight,
@@ -507,7 +507,7 @@ async fn next_block_hash(
     }
     Err(Error::CannotQueryParent(
         format!(
-            "cannot get next block hash in range {}-{}, check your parent chain, is it faulty?",
+            "cannot get next block hash in range {}-{}, check your parent chain",
             height, look_ahead_limit
         ),
         look_ahead_limit,
