@@ -156,9 +156,14 @@ impl NullOk {
         d: D,
     ) -> Stm<Option<T>> {
         let cache = self.cached_data.read()?;
-        Ok(cache
-            .get_value(height)
-            .map(|v| v.as_ref().map(f).unwrap_or_else(d)))
+        Ok(cache.get_value(height).map(|v| {
+            if let Some(i) = v.as_ref() {
+                f(i)
+            } else {
+                tracing::debug!("height: {height} is a null round, return default");
+                d()
+            }
+        }))
     }
 
     fn get_at_height<T, F: Fn(&ParentViewPayload) -> T>(
