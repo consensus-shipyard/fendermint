@@ -266,7 +266,7 @@ where
                         .top_down_msgs_from(prev_height + 1, p.height as u64, &finality.block_hash)
                         .await
                         .context("failed to fetch top down messages")?;
-                    tracing::info!(
+                    tracing::debug!(
                         "total topdown msgs: {} from {} to {}",
                         msgs.len(),
                         prev_height + 1,

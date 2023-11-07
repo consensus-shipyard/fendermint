@@ -160,7 +160,7 @@ impl NullOk {
             if let Some(i) = v.as_ref() {
                 f(i)
             } else {
-                tracing::info!("height: {height} is a null round, return default");
+                tracing::debug!("height: {height} is a null round, return default");
                 d()
             }
         }))
