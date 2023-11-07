@@ -9,9 +9,12 @@ use crate::{
     BlockHash, BlockHeight, CachedFinalityProvider, Config, IPCParentFinality,
     ParentFinalityProvider, Toggle,
 };
-use anyhow::anyhow;
+
 use async_stm::{atomically, atomically_or_err, Stm};
 use ipc_provider::manager::GetBlockHashResult;
+
+use anyhow::{anyhow, Context};
+
 use std::cmp::min;
 use std::sync::Arc;
 use std::time::Duration;
@@ -36,11 +39,12 @@ pub trait ParentFinalityStateQuery {
 }
 
 /// Constantly syncing with parent through polling
-struct PollingParentSyncer<T> {
+struct PollingParentSyncer<T, C> {
     config: Config,
     parent_view_provider: Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
     parent_client: Arc<IPCProviderProxy>,
     committed_state_query: Arc<T>,
+    tendermint_client: C,
 }
 
 /// Queries the starting finality for polling. First checks the committed finality, if none, that
@@ -87,12 +91,17 @@ async fn query_starting_finality<T: ParentFinalityStateQuery + Send + Sync + 'st
 }
 
 /// Start the polling parent syncer in the background
-pub async fn launch_polling_syncer<T: ParentFinalityStateQuery + Send + Sync + 'static>(
+pub async fn launch_polling_syncer<T, C>(
     query: T,
     config: Config,
     view_provider: Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
     parent_client: Arc<IPCProviderProxy>,
-) -> anyhow::Result<()> {
+    tendermint_client: C,
+) -> anyhow::Result<()>
+where
+    T: ParentFinalityStateQuery + Send + Sync + 'static,
+    C: tendermint_rpc::Client + Send + Sync + 'static,
+{
     if !view_provider.is_enabled() {
         return Err(anyhow!("provider not enabled, enable to run syncer"));
     }
@@ -104,35 +113,48 @@ pub async fn launch_polling_syncer<T: ParentFinalityStateQuery + Send + Sync + '
     atomically(|| view_provider.set_new_finality(finality.clone(), None)).await;
     tracing::info!("obtained last committed finality: {finality:?}");
 
-    let poll = PollingParentSyncer::new(config, view_provider, parent_client, query);
+    let poll = PollingParentSyncer::new(
+        config,
+        view_provider,
+        parent_client,
+        query,
+        tendermint_client,
+    );
     poll.start();
 
     Ok(())
 }
 
-impl<T> PollingParentSyncer<T> {
+impl<T, C> PollingParentSyncer<T, C> {
     pub fn new(
         config: Config,
         parent_view_provider: Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
         parent_client: Arc<IPCProviderProxy>,
         query: Arc<T>,
+        tendermint_client: C,
     ) -> Self {
         Self {
             config,
             parent_view_provider,
             parent_client,
             committed_state_query: query,
+            tendermint_client,
         }
     }
 }
 
-impl<T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T> {
+impl<T, C> PollingParentSyncer<T, C>
+where
+    T: ParentFinalityStateQuery + Send + Sync + 'static,
+    C: tendermint_rpc::Client + Send + Sync + 'static,
+{
     /// Start the parent finality listener in the background
     pub fn start(self) {
         let config = self.config;
         let provider = self.parent_view_provider;
         let parent_client = self.parent_client;
         let query = self.committed_state_query;
+        let tendermint_client = self.tendermint_client;
 
         let mut interval = tokio::time::interval(config.polling_interval);
 
@@ -140,7 +162,15 @@ impl<T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T>
             loop {
                 interval.tick().await;
 
-                if let Err(e) = sync_with_parent(&config, &parent_client, &provider, &query).await {
+                if let Err(e) = sync_with_parent(
+                    &config,
+                    &parent_client,
+                    &provider,
+                    &query,
+                    &tendermint_client,
+                )
+                .await
+                {
                     tracing::error!("sync with parent encountered error: {e}");
                 }
             }
@@ -154,12 +184,27 @@ impl<T: ParentFinalityStateQuery + Send + Sync + 'static> PollingParentSyncer<T>
 /// 2. Get the latest chain head height deduct away N blocks as the ending height
 /// 3. Fetches the data between starting and ending height
 /// 4. Update the data into cache
-async fn sync_with_parent<T: ParentFinalityStateQuery + Send + Sync + 'static>(
+async fn sync_with_parent<T, C>(
     config: &Config,
     parent_proxy: &Arc<IPCProviderProxy>,
     provider: &Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
     query: &Arc<T>,
-) -> anyhow::Result<()> {
+    tendermint_client: &C,
+) -> anyhow::Result<()>
+where
+    T: ParentFinalityStateQuery + Send + Sync + 'static,
+    C: tendermint_rpc::Client + Send + Sync + 'static,
+{
+    let status: tendermint_rpc::endpoint::status::Response = tendermint_client
+        .status()
+        .await
+        .context("failed to get Tendermint status")?;
+
+    if status.sync_info.catching_up {
+        tracing::debug!("syncing with peer, skip parent finality syncing this round");
+        return Ok(());
+    }
+
     let (last_recorded_height, last_height_hash) =
         if let Some(h) = last_recorded_data(provider).await? {
             h
@@ -296,9 +341,9 @@ async fn last_recorded_data(
             match atomically(|| provider.first_non_null_parent_hash(height)).await {
                 None => unreachable!("should have last committed finality at this point"),
                 Some(hash) => {
-                    tracing::info!("First non null parent hash: {hash:02x?} at height: {height}")
+                    tracing::info!("First non null parent hash: {hash:02x?} at height: {height}");
                     Ok(Some((height, hash)))
-                },
+                }
             }
         }
     }
