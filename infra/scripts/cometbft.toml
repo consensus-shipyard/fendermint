@@ -31,6 +31,30 @@ docker run \
 """
 dependencies = ["cometbft-pull", "docker-network-create"]
 
+[tasks.cometbft-run-bootstrap]
+script = """
+docker run \
+  ${FLAGS} \
+  --name ${CMT_CONTAINER_NAME} \
+  --user $(id -u) \
+  --network ${NETWORK_NAME} \
+  --publish ${CMT_RPC_HOST_PORT}:26657 \
+  --publish ${CMT_P2P_HOST_PORT}:26656 \
+  --volume ${CMT_DIR}:/cometbft \
+  --env CMT_PEX=true \
+  ${CMT_DOCKER_IMAGE} \
+  ${CMD}
+"""
+dependencies = ["cometbft-pull", "docker-network-create"]
+
+[tasks.cometbft-bootstrap-init]
+extend = "cometbft-run-bootstrap"
+env = { "CMD" = "init", "FLAGS" = "-a STDOUT -a STDERR --rm" }
+
+[tasks.cometbft-bootstrap-start]
+extend = "cometbft-run-bootstrap"
+env = { "CMD" = "start", "FLAGS" = "-d" }
+
 [tasks.get-external-ip]
 script_runner = "@rust"
 description = "This script resolve the external IP and sets NODE_EXTERNAL_IP variable using rust-env plugin"

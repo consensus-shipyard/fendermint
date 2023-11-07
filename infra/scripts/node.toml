@@ -8,15 +8,14 @@ dependencies = [
     "cometbft-rm"
 ]
 
-
 [tasks.new-node]
 dependencies = [
     "node-down",
     "bootstrap-mkdir",
-    "cometbft-init",
+    "cometbft-bootstrap-init",
     "seed-enable",
     "set-seeds",
-    "cometbft-start",
+    "cometbft-bootstrap-start",
     "cometbft-wait",
     "cometbft-node-id",
 ]
@@ -56,5 +55,5 @@ sed -i'' -e "s|seed_mode = false|seed_mode = true|" ${CMT_DIR}/config/config.tom
 
 [tasks.set-seeds]
 script = """
-sed -i'' -e 's|seeds = ""|seeds = "${BOOTSTRAPS}"|g' ${CMT_DIR}/config/config.toml
+sed -i'' -e "s|seeds = \"\"|seeds = \"${BOOTSTRAPS}\"|g" ${CMT_DIR}/config/config.toml
 """
