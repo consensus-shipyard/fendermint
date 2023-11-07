@@ -271,6 +271,8 @@ async fn last_recorded_data(
         LastRecordedBlock::Empty => Ok(None),
         LastRecordedBlock::FilledBlock { height, hash } => Ok(Some((height, hash))),
         LastRecordedBlock::NullBlock(height) => {
+            tracing::info!("last recorded height {height} is a null block");
+
             // Imaging the list of blocks as follows:
             //
             // F0  B0  B1  N0  N1  B2  B3  B4
@@ -293,7 +295,10 @@ async fn last_recorded_data(
             // that block hash as previous block hash in following steps.
             match atomically(|| provider.first_non_null_parent_hash(height)).await {
                 None => unreachable!("should have last committed finality at this point"),
-                Some(hash) => Ok(Some((height, hash))),
+                Some(hash) => {
+                    tracing::info!("First non null parent hash: {hash:02x?} at height: {height}")
+                    Ok(Some((height, hash)))
+                },
             }
         }
     }
