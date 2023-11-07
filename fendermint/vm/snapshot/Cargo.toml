@@ -31,4 +31,3 @@ fendermint_vm_interpreter = { path = "../interpreter" }
 
 [dev-dependencies]
 fendermint_vm_interpreter = { path = "../interpreter", features = ["bundle"] }
-integer-encoding = "3.0"

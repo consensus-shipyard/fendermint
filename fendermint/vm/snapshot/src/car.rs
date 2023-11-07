@@ -13,7 +13,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-use fvm_ipld_car::{Block, Error as CarError};
+use fvm_ipld_car::Error as CarError;
 use fvm_ipld_car::{CarHeader, CarReader};
 
 /// Take an existing CAR file and split it up into an output directory by creating
@@ -342,7 +342,7 @@ impl AsyncWrite for ChunkWriter {
 mod tests {
 
     use fendermint_vm_interpreter::fvm::bundle::bundle_path;
-    use futures::{AsyncRead, Future, StreamExt};
+    use futures::{AsyncRead, StreamExt};
     use fvm_ipld_blockstore::MemoryBlockstore;
     use fvm_ipld_car::{load_car, CarReader};
     use tempfile::tempdir;
@@ -350,14 +350,9 @@ mod tests {
 
     use super::{split, BlockStreamer};
 
-    fn bundle_bytes() -> Vec<u8> {
+    async fn bundle_file() -> tokio_util::compat::Compat<tokio::fs::File> {
         let bundle_path = bundle_path();
-        std::fs::read(bundle_path).unwrap()
-    }
-
-    async fn bundle_file() -> tokio::fs::File {
-        let bundle_path = bundle_path();
-        tokio::fs::File::open(bundle_path).await.unwrap()
+        tokio::fs::File::open(bundle_path).await.unwrap().compat()
     }
 
     /// Check that a CAR file can be loaded from a byte reader.
@@ -387,173 +382,64 @@ mod tests {
             .await;
     }
 
-    /// Sanity check that the test bundle can be loaded with the normal facilities from memory.
-    #[tokio::test]
-    async fn load_bundle_from_memory() {
-        let bundle_bytes = bundle_bytes();
-        check_load_car(bundle_bytes.as_slice()).await;
-    }
-
     /// Sanity check that the test bundle can be loaded with the normal facilities from a file.
     #[tokio::test]
     async fn load_bundle_from_file() {
         let bundle_file = bundle_file().await;
-        check_load_car(bundle_file.compat()).await;
+        check_load_car(bundle_file).await;
     }
 
     #[tokio::test]
     async fn block_streamer_from_file() {
         let bundle_file = bundle_file().await;
-        check_block_streamer(bundle_file.compat()).await;
+        check_block_streamer(bundle_file).await;
     }
-
-    /// Sanity check that a reader can go through the bundle file.
-    #[tokio::test]
-    async fn next_block_from_file() {
-        let bundle_file = bundle_file().await;
-        let mut reader = CarReader::new_unchecked(bundle_file.compat())
-            .await
-            .unwrap();
-        while reader.next_block().await.expect("should be ok").is_some() {}
-    }
-
-    #[tokio::test]
-    async fn poll_next_block_from_file() {
-        let bundle_file = bundle_file().await;
-        let mut reader = CarReader::new_unchecked(bundle_file.compat())
-            .await
-            .unwrap();
-
-        loop {
-            let poll = futures::future::poll_fn(|cx| {
-                let next_block = reader.next_block();
-
-                // 1. Try with `pin!`
-                std::pin::pin!(next_block).poll(cx)
-
-                // 2. Try with `Box::pin`
-                //let mut next_block = Box::pin(next_block);
-                //next_block.as_mut().poll(cx)
-
-                // 3. Try with `tokio::pin!`
-                // tokio::pin!(next_block);
-                // next_block.poll(cx)
-            });
-            if poll.await.expect("should be ok").is_none() {
-                break;
-            }
-        }
-    }
-
-    // #[tokio::test]
-    // async fn poll_read_node_from_file() {
-    //     let bundle_file = bundle_file().await;
-    //     let mut reader = CarReader::new_unchecked(bundle_file.compat())
-    //         .await
-    //         .unwrap();
-
-    //     let mut fut = None;
-
-    //     loop {
-    //         let poll = futures::future::poll_fn(|cx| {
-    //             let next_block = fut
-    //                 .take()
-    //                 .unwrap_or_else(|| Box::pin(util::read_node(&mut reader.reader)));
-    //             let poll = next_block.as_mut().poll(cx);
-    //             if poll.is_pending() {
-    //                 fut = Some(next_block);
-    //             }
-    //             eprintln!("poll ready = {}", poll.is_ready());
-    //             poll
-    //         });
-    //         if poll.await.expect("should be ok").is_none() {
-    //             break;
-    //         }
-    //     }
-    // }
 
     /// Load the actor bundle CAR file, split it into chunks, then restore and compare to the original.
     #[tokio::test]
     async fn split_bundle_car() {
         let bundle_path = bundle_path();
-        let bundle_size = std::fs::metadata(&bundle_path).unwrap().len() as usize;
+        let bundle_bytes = std::fs::read(&bundle_path).unwrap();
 
         let tmp = tempdir().unwrap();
         let target_count = 10;
-        let max_size = bundle_size / target_count;
+        let max_size = bundle_bytes.len() / target_count;
 
         split(&bundle_path, tmp.path(), max_size)
             .await
             .expect("failed to split CAR file");
 
-        let chunks = std::fs::read_dir(tmp.path()).unwrap();
-        let chunks_count = chunks.count();
+        let mut chunks = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+
+        chunks.sort_unstable_by_key(|c| c.path().to_string_lossy().to_string());
+
+        let chunks = chunks
+            .into_iter()
+            .map(|c| {
+                let chunk_size = std::fs::metadata(&c.path()).unwrap().len() as usize;
+                (c, chunk_size)
+            })
+            .collect::<Vec<_>>();
+
+        let chunks_bytes = chunks.iter().fold(Vec::new(), |mut acc, (c, _)| {
+            let bz = std::fs::read(c.path()).unwrap();
+            acc.extend(bz);
+            acc
+        });
 
         assert!(
-            1 + target_count <= chunks_count && chunks_count <= 1 + target_count + 1,
-            "expected 1 header and {} chunks, got {}",
+            1 < chunks.len() && chunks.len() <= 1 + target_count,
+            "expected 1 header and max {} chunks, got {}",
             target_count,
-            chunks_count
+            chunks.len()
         );
-    }
 
-    /// Copied functions from `fvm_ipld_car::util` for testing.
-    mod util {
-        use cid::Cid;
-        use futures::{AsyncRead, AsyncReadExt};
-        use fvm_ipld_car::Error;
-        use integer_encoding::VarIntAsyncReader;
-
-        pub async fn ld_read<R>(mut reader: &mut R) -> Result<Option<Vec<u8>>, Error>
-        where
-            R: AsyncRead + Send + Unpin,
-        {
-            eprintln!("ld_read");
-            const MAX_ALLOC: usize = 1 << 20;
-            let l: usize = match VarIntAsyncReader::read_varint_async(&mut reader).await {
-                Ok(len) => len,
-                Err(e) => {
-                    if e.kind() == std::io::ErrorKind::UnexpectedEof {
-                        return Ok(None);
-                    }
-                    return Err(Error::Other(e.to_string()));
-                }
-            };
-            let mut buf = Vec::with_capacity(std::cmp::min(l as usize, MAX_ALLOC));
-            eprintln!("taking limit={l}");
-            let bytes_read = reader
-                .take(l as u64)
-                .read_to_end(&mut buf)
-                .await
-                .map_err(|e| Error::Other(e.to_string()));
-
-            eprintln!("bytes read: {bytes_read:?}");
-            let bytes_read = bytes_read?;
-
-            if bytes_read != l {
-                return Err(Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::UnexpectedEof,
-                    format!(
-                        "expected to read at least {} bytes, but read {}",
-                        l, bytes_read
-                    ),
-                )));
-            }
-            Ok(Some(buf))
-        }
-
-        pub async fn read_node<R>(buf_reader: &mut R) -> Result<Option<(Cid, Vec<u8>)>, Error>
-        where
-            R: AsyncRead + Send + Unpin,
-        {
-            match ld_read(buf_reader).await? {
-                Some(buf) => {
-                    let mut cursor = std::io::Cursor::new(&buf);
-                    let cid = Cid::read_bytes(&mut cursor)?;
-                    Ok(Some((cid, buf[cursor.position() as usize..].to_vec())))
-                }
-                None => Ok(None),
-            }
-        }
+        assert!(chunks[0].1 < 100, "header is small");
+        assert_eq!(chunks_bytes.len(), bundle_bytes.len());
+        assert_eq!(chunks_bytes[0..100], bundle_bytes[0..100]);
     }
 }
