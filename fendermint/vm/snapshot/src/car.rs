@@ -10,7 +10,7 @@ use futures::{future, AsyncRead, AsyncWrite, Future, FutureExt, Stream, StreamEx
 use std::io::{Error as IoError, Result as IoResult};
 use std::path::PathBuf;
 use std::pin::{pin, Pin};
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use fvm_ipld_car::Error as CarError;
@@ -33,17 +33,8 @@ pub async fn split(
         .await
         .context("failed to open CAR reader")?;
 
-    let mut idx = 0;
-    let mut next_output = || {
-        let out = output_dir.join(idx.to_string());
-        idx += 1;
-        tokio::fs::File::create(out)
-    };
-
-    // TODO: Create a Writer that opens new files when the maximum is reached.
-    let out = next_output().await.context("failed to create output")?;
-    let mut out = out.compat_write();
-    let mut out = Pin::new(&mut out);
+    // Create a Writer that opens new files when the maximum is reached.
+    let mut writer = ChunkWriter::new(output_dir, max_size_bytes);
 
     let header = CarHeader::new(reader.header.roots.clone(), reader.header.version);
 
@@ -60,7 +51,7 @@ pub async fn split(
 
     // Copy the input CAR into an output CAR.
     header
-        .write_stream_async(&mut out, &mut block_streamer)
+        .write_stream_async(&mut writer, &mut block_streamer)
         .await
         .context("failed to write CAR file")?;
 
@@ -95,7 +86,7 @@ where
     }
 }
 
-type BoxedFutureFile = Pin<Box<dyn Future<Output = IoResult<tokio::fs::File>>>>;
+type BoxedFutureFile = Pin<Box<dyn Future<Output = IoResult<tokio::fs::File>> + Send + 'static>>;
 type BoxedFile = Pin<Box<tokio_util::compat::Compat<tokio::fs::File>>>;
 type StatePoll<T> = (ChunkWriterState, Poll<IoResult<T>>);
 
@@ -131,6 +122,15 @@ struct ChunkWriter {
 }
 
 impl ChunkWriter {
+    pub fn new(output_dir: PathBuf, max_size: usize) -> Self {
+        Self {
+            output_dir,
+            max_size,
+            next_idx: 0,
+            state: ChunkWriterState::Idle,
+        }
+    }
+
     fn take_state(&mut self) -> ChunkWriterState {
         let mut state = ChunkWriterState::Idle;
         std::mem::swap(&mut self.state, &mut state);
