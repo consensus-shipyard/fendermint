@@ -28,8 +28,6 @@ const MAX_PARENT_VIEW_BLOCK_GAP: BlockHeight = 100;
 const TOPDOWN_MSG_LEN_THRESHOLD: usize = 500;
 /// The null round error message
 const NULL_ROUND_ERR_MSG: &str = "requested epoch was a null round";
-const EXCEED_LOOK_AHEAD_MSG: &str =
-    "cannot get next block hash in range, check your parent chain, is it faulty?";
 
 type GetParentViewPayload = Vec<(BlockHeight, Option<ParentViewPayload>)>;
 
@@ -110,12 +108,11 @@ where
         return Err(anyhow!("provider not enabled, enable to run syncer"));
     }
 
-    tracing::info!("launching polling syncer");
-
     let query = Arc::new(query);
     let finality = query_starting_finality(&query, &parent_client).await?;
     atomically(|| view_provider.set_new_finality(finality.clone(), None)).await;
-    tracing::info!("obtained last committed finality: {finality:?}");
+
+    tracing::info!("launching parent syncer with last committed finality: {finality}");
 
     let poll = PollingParentSyncer::new(
         config,
@@ -509,7 +506,10 @@ async fn next_block_hash(
         }
     }
     Err(Error::CannotQueryParent(
-        EXCEED_LOOK_AHEAD_MSG.to_string(),
+        format!(
+            "cannot get next block hash in range {}-{}, check your parent chain, is it faulty?",
+            height, look_ahead_limit
+        ),
         look_ahead_limit,
     ))
 }
