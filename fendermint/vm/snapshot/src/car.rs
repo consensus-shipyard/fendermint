@@ -8,7 +8,7 @@ use anyhow::{self, Context as AnyhowContext};
 use cid::Cid;
 use futures::{future, AsyncRead, AsyncWrite, Future, FutureExt, Stream, StreamExt};
 use std::io::{Error as IoError, Result as IoResult};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::pin::{pin, Pin};
 use std::task::{Context, Poll};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
@@ -20,12 +20,8 @@ use fvm_ipld_car::{CarHeader, CarReader};
 /// files with a limited size for each file.
 ///
 /// The first (0th) file will be just the header, with the rest containing the "content" blocks.
-pub async fn split(
-    input_file: PathBuf,
-    output_dir: PathBuf,
-    max_size_bytes: usize,
-) -> anyhow::Result<()> {
-    let file = tokio::fs::File::open(input_file.clone())
+pub async fn split(input_file: &Path, output_dir: &Path, max_size: usize) -> anyhow::Result<()> {
+    let file = tokio::fs::File::open(input_file)
         .await
         .with_context(|| format!("failed to open CAR file: {}", input_file.to_string_lossy()))?;
 
@@ -34,7 +30,7 @@ pub async fn split(
         .context("failed to open CAR reader")?;
 
     // Create a Writer that opens new files when the maximum is reached.
-    let mut writer = ChunkWriter::new(output_dir, max_size_bytes);
+    let mut writer = ChunkWriter::new(output_dir.into(), max_size);
 
     let header = CarHeader::new(reader.header.roots.clone(), reader.header.version);
 
@@ -44,7 +40,12 @@ pub async fn split(
     let mut block_streamer = block_streamer.filter_map(|res| match res {
         Ok(b) => future::ready(Some(b)),
         Err(e) => {
-            tracing::warn!(error = e.to_string(), "CAR block failure");
+            // TODO: It would be better to stop if there are errors.
+            tracing::warn!(
+                error = e.to_string(),
+                file = input_file.to_string_lossy().to_string(),
+                "CAR block failure"
+            );
             future::ready(None)
         }
     });
@@ -228,6 +229,7 @@ impl AsyncWrite for ChunkWriter {
         buf: &[u8],
     ) -> Poll<IoResult<usize>> {
         use ChunkWriterState::*;
+
         self.poll_state(|this, state| match state {
             Idle => Self::state_poll_open_write(cx, buf, this.next_file()),
             Opening { out } => Self::state_poll_open_write(cx, buf, out),
@@ -264,7 +266,6 @@ impl AsyncWrite for ChunkWriter {
                     // The flush is ensured by `fvm_ipld_car::util::ld_write` called by `CarHeader::write_stream_async` with the header.
                     // The file is closed here not in `poll_write` so we don't have torn writes where the varint showing the size is split from the data.
                     let close = this.next_idx == 1 || written >= this.max_size && this.max_size > 0;
-
                     if close {
                         Self::state_poll_close(cx, out)
                     } else {
@@ -287,5 +288,144 @@ impl AsyncWrite for ChunkWriter {
             Open { out, .. } => Self::state_poll_close(cx, out),
             Closing { out } => Self::state_poll_close(cx, out),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use fendermint_vm_interpreter::fvm::bundle::bundle_path;
+    use futures::{AsyncRead, Future, StreamExt};
+    use fvm_ipld_blockstore::MemoryBlockstore;
+    use fvm_ipld_car::{load_car, CarReader};
+    use tempfile::tempdir;
+    use tokio_util::compat::TokioAsyncReadCompatExt;
+
+    use super::{split, BlockStreamer};
+
+    fn bundle_bytes() -> Vec<u8> {
+        let bundle_path = bundle_path();
+        std::fs::read(bundle_path).unwrap()
+    }
+
+    async fn bundle_file() -> tokio::fs::File {
+        let bundle_path = bundle_path();
+        tokio::fs::File::open(bundle_path).await.unwrap()
+    }
+
+    /// Check that a CAR file can be loaded from a byte reader.
+    async fn check_load_car<R>(reader: R)
+    where
+        R: AsyncRead + Send + Unpin,
+    {
+        let store = MemoryBlockstore::new();
+        load_car(&store, reader).await.expect("failed to load CAR");
+    }
+
+    /// Check that a CAR file can be streamed without errors.
+    async fn check_block_streamer<R>(reader: R)
+    where
+        R: AsyncRead + Send + Unpin,
+    {
+        let mut reader = CarReader::new_unchecked(reader)
+            .await
+            .expect("failed to open CAR reader");
+
+        let streamer = BlockStreamer::new(&mut reader);
+
+        streamer
+            .for_each(|r| async move {
+                r.expect("should be ok");
+            })
+            .await;
+    }
+
+    /// Sanity check that the test bundle can be loaded with the normal facilities from memory.
+    #[tokio::test]
+    async fn load_bundle_from_memory() {
+        let bundle_bytes = bundle_bytes();
+        check_load_car(bundle_bytes.as_slice()).await;
+    }
+
+    /// Sanity check that the test bundle can be loaded with the normal facilities from a file.
+    #[tokio::test]
+    async fn load_bundle_from_file() {
+        let bundle_file = bundle_file().await;
+        check_load_car(bundle_file.compat()).await;
+    }
+
+    #[tokio::test]
+    async fn block_streamer_from_memory() {
+        let bundle_bytes = bundle_bytes();
+        check_block_streamer(bundle_bytes.as_slice()).await;
+    }
+
+    #[tokio::test]
+    async fn block_streamer_from_file() {
+        let bundle_file = bundle_file().await;
+        check_block_streamer(bundle_file.compat()).await;
+    }
+
+    /// Sanity check that a reader can go through the bundle file.
+    #[tokio::test]
+    async fn next_block_from_file() {
+        let bundle_file = bundle_file().await;
+        let mut reader = CarReader::new_unchecked(bundle_file.compat())
+            .await
+            .unwrap();
+        while reader.next_block().await.expect("should be ok").is_some() {}
+    }
+
+    #[tokio::test]
+    async fn poll_next_block_from_file() {
+        let bundle_file = bundle_file().await;
+        let mut reader = CarReader::new_unchecked(bundle_file.compat())
+            .await
+            .unwrap();
+
+        loop {
+            let poll = futures::future::poll_fn(|cx| {
+                let next_block = reader.next_block();
+
+                // 1. Try with `pin!`
+                //std::pin::pin!(next_block).poll(cx)
+
+                // 2. Try with `Box::pin`
+                //let mut next_block = Box::pin(next_block);
+                //next_block.as_mut().poll(cx)
+
+                // 3. Try with `tokio::pin!`
+                tokio::pin!(next_block);
+                next_block.poll(cx)
+            });
+            if poll.await.expect("should be ok").is_none() {
+                break;
+            }
+        }
+    }
+
+    /// Load the actor bundle CAR file, split it into chunks, then restore and compare to the original.
+    #[tokio::test]
+    async fn split_bundle_car() {
+        let bundle_path = bundle_path();
+        let bundle_size = std::fs::metadata(&bundle_path).unwrap().len() as usize;
+
+        let tmp = tempdir().unwrap();
+        let target_count = 10;
+        let max_size = bundle_size / target_count;
+
+        split(&bundle_path, tmp.path(), max_size)
+            .await
+            .expect("failed to split CAR file");
+
+        let chunks = std::fs::read_dir(tmp.path()).unwrap();
+        let chunks_count = chunks.count();
+
+        assert!(
+            1 + target_count <= chunks_count && chunks_count <= 1 + target_count + 1,
+            "expected 1 header and {} chunks, got {}",
+            target_count,
+            chunks_count
+        );
     }
 }
