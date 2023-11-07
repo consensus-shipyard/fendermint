@@ -15,6 +15,7 @@ use ipc_provider::manager::GetBlockHashResult;
 
 use anyhow::{anyhow, Context};
 
+use ethers::utils::hex;
 use std::cmp::min;
 use std::sync::Arc;
 use std::time::Duration;
@@ -67,22 +68,25 @@ async fn query_starting_finality<T: ParentFinalityStateQuery + Send + Sync + 'st
                 continue;
             }
         };
-        tracing::info!("latest finality committed: {finality:?}");
+        tracing::info!("latest finality committed: {finality}");
 
         // this means there are no previous committed finality yet, we fetch from parent to get
         // the genesis epoch of the current subnet and its corresponding block hash.
         if finality.height == 0 {
             let genesis_epoch = parent_client.get_genesis_epoch().await?;
-            tracing::debug!("obtained genesis epoch: {genesis_epoch:?}");
+            tracing::debug!("obtained genesis epoch: {genesis_epoch}");
             let r = parent_client.get_block_hash(genesis_epoch).await?;
-            tracing::debug!("obtained genesis block hash: {:?}", r.block_hash);
+            tracing::debug!(
+                "obtained genesis block hash: {:?}",
+                hex::encode(&r.block_hash)
+            );
 
             finality = IPCParentFinality {
                 height: genesis_epoch,
                 block_hash: r.block_hash,
             };
             tracing::info!(
-                "no previous finality committed, fetched from genesis epoch: {finality:?}"
+                "no previous finality committed, fetched from genesis epoch: {finality}"
             );
         }
 
@@ -491,6 +495,9 @@ async fn next_block_hash(
             Err(e) => {
                 let msg = e.to_string();
                 if msg.contains(NULL_ROUND_ERR_MSG) {
+                    tracing::warn!(
+                        "look ahead encountered error: height {h} is a null round, message: {e}"
+                    );
                     continue;
                 } else {
                     return Err(Error::CannotQueryParent(msg, h));

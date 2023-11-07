@@ -12,10 +12,12 @@ mod toggle;
 
 use async_stm::Stm;
 use async_trait::async_trait;
+use ethers::utils::hex;
 use fvm_shared::clock::ChainEpoch;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::staking::StakingChangeRequest;
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 use std::time::Duration;
 
 pub use crate::cache::{SequentialAppendError, SequentialKeyCache, ValueIter};
@@ -61,6 +63,16 @@ impl IPCParentFinality {
     }
 }
 
+impl Display for IPCParentFinality {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "IPCParentFinality(height: {}, block_hash: {})",
+            self.height,
+            hex::encode(&self.block_hash)
+        )
+    }
+}
 #[async_trait]
 pub trait ParentViewProvider {
     /// Obtain the genesis epoch of the current subnet in the parent
