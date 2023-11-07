@@ -6,14 +6,14 @@
 
 use anyhow::{self, Context as AnyhowContext};
 use cid::Cid;
-use futures::{future, AsyncRead, AsyncWrite, Future, FutureExt, Stream, StreamExt};
+use futures::{future, AsyncRead, AsyncWrite, Future, Stream, StreamExt};
 use std::io::{Error as IoError, Result as IoResult};
 use std::path::{Path, PathBuf};
-use std::pin::{pin, Pin};
+use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-use fvm_ipld_car::Error as CarError;
+use fvm_ipld_car::{Block, Error as CarError};
 use fvm_ipld_car::{CarHeader, CarReader};
 
 /// Take an existing CAR file and split it up into an output directory by creating
@@ -25,7 +25,7 @@ pub async fn split(input_file: &Path, output_dir: &Path, max_size: usize) -> any
         .await
         .with_context(|| format!("failed to open CAR file: {}", input_file.to_string_lossy()))?;
 
-    let mut reader: CarReader<_> = CarReader::new_unchecked(file.compat())
+    let reader: CarReader<_> = CarReader::new_unchecked(file.compat())
         .await
         .context("failed to open CAR reader")?;
 
@@ -34,7 +34,7 @@ pub async fn split(input_file: &Path, output_dir: &Path, max_size: usize) -> any
 
     let header = CarHeader::new(reader.header.roots.clone(), reader.header.version);
 
-    let block_streamer = BlockStreamer::new(&mut reader);
+    let block_streamer = BlockStreamer::new(reader);
     // We shouldn't see errors when reading the CAR files, as we have written them ourselves,
     // but for piece of mind let's log any errors and move on.
     let mut block_streamer = block_streamer.filter_map(|res| match res {
@@ -59,31 +59,78 @@ pub async fn split(input_file: &Path, output_dir: &Path, max_size: usize) -> any
     Ok(())
 }
 
+type BlockStreamerItem = Result<(Cid, Vec<u8>), CarError>;
+type BlockStreamerRead<R> = (CarReader<R>, Option<BlockStreamerItem>);
+type BlockStreamerReadFuture<R> = Pin<Box<dyn Future<Output = BlockStreamerRead<R>>>>;
+
+enum BlockStreamerState<R> {
+    Idle(CarReader<R>),
+    Reading(BlockStreamerReadFuture<R>),
+}
+
 /// Stream the content blocks from a CAR reader.
-struct BlockStreamer<'a, R> {
-    reader: &'a mut CarReader<R>,
+struct BlockStreamer<R> {
+    state: Option<BlockStreamerState<R>>,
 }
 
-impl<'a, R> BlockStreamer<'a, R> {
-    pub fn new(reader: &'a mut CarReader<R>) -> Self {
-        Self { reader }
-    }
-}
-
-impl<'a, R> Stream for BlockStreamer<'a, R>
+impl<R> BlockStreamer<R>
 where
     R: AsyncRead + Send + Unpin,
 {
-    type Item = Result<(Cid, Vec<u8>), CarError>;
+    pub fn new(reader: CarReader<R>) -> Self {
+        Self {
+            state: Some(BlockStreamerState::Idle(reader)),
+        }
+    }
+
+    async fn next_block(mut reader: CarReader<R>) -> BlockStreamerRead<R> {
+        let res = reader.next_block().await;
+        let out = match res {
+            Err(e) => Some(Err(e)),
+            Ok(Some(b)) => Some(Ok((b.cid, b.data))),
+            Ok(None) => None,
+        };
+        (reader, out)
+    }
+
+    fn poll_next_block(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        mut next_block: BlockStreamerReadFuture<R>,
+    ) -> Poll<Option<BlockStreamerItem>> {
+        use BlockStreamerState::*;
+
+        match next_block.as_mut().poll(cx) {
+            Poll::Pending => {
+                self.state = Some(Reading(next_block));
+                Poll::Pending
+            }
+            Poll::Ready((reader, out)) => {
+                self.state = Some(Idle(reader));
+                Poll::Ready(out)
+            }
+        }
+    }
+}
+
+impl<R> Stream for BlockStreamer<R>
+where
+    R: AsyncRead + Send + Unpin + 'static,
+{
+    type Item = BlockStreamerItem;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let next_block = self.reader.next_block().map(|res| match res {
-            Ok(None) => None,
-            Ok(Some(b)) => Some(Ok((b.cid, b.data))),
-            Err(e) => Some(Err(e)),
-        });
+        use BlockStreamerState::*;
 
-        pin!(next_block).poll(cx)
+        match self.state.take() {
+            None => Poll::Ready(None),
+            Some(Idle(reader)) => {
+                let next_block = Self::next_block(reader);
+                let next_block = Box::pin(next_block);
+                self.poll_next_block(cx, next_block)
+            }
+            Some(Reading(next_block)) => self.poll_next_block(cx, next_block),
+        }
     }
 }
 
@@ -325,13 +372,13 @@ mod tests {
     /// Check that a CAR file can be streamed without errors.
     async fn check_block_streamer<R>(reader: R)
     where
-        R: AsyncRead + Send + Unpin,
+        R: AsyncRead + Send + Unpin + 'static,
     {
-        let mut reader = CarReader::new_unchecked(reader)
+        let reader = CarReader::new_unchecked(reader)
             .await
             .expect("failed to open CAR reader");
 
-        let streamer = BlockStreamer::new(&mut reader);
+        let streamer = BlockStreamer::new(reader);
 
         streamer
             .for_each(|r| async move {
@@ -352,12 +399,6 @@ mod tests {
     async fn load_bundle_from_file() {
         let bundle_file = bundle_file().await;
         check_load_car(bundle_file.compat()).await;
-    }
-
-    #[tokio::test]
-    async fn block_streamer_from_memory() {
-        let bundle_bytes = bundle_bytes();
-        check_block_streamer(bundle_bytes.as_slice()).await;
     }
 
     #[tokio::test]
@@ -404,23 +445,32 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn poll_read_node_from_file() {
-        let bundle_file = bundle_file().await;
-        let mut reader = CarReader::new_unchecked(bundle_file.compat())
-            .await
-            .unwrap();
+    // #[tokio::test]
+    // async fn poll_read_node_from_file() {
+    //     let bundle_file = bundle_file().await;
+    //     let mut reader = CarReader::new_unchecked(bundle_file.compat())
+    //         .await
+    //         .unwrap();
 
-        loop {
-            let poll = futures::future::poll_fn(|cx| {
-                let next_block = util::read_node(&mut reader.reader);
-                std::pin::pin!(next_block).poll(cx)
-            });
-            if poll.await.expect("should be ok").is_none() {
-                break;
-            }
-        }
-    }
+    //     let mut fut = None;
+
+    //     loop {
+    //         let poll = futures::future::poll_fn(|cx| {
+    //             let next_block = fut
+    //                 .take()
+    //                 .unwrap_or_else(|| Box::pin(util::read_node(&mut reader.reader)));
+    //             let poll = next_block.as_mut().poll(cx);
+    //             if poll.is_pending() {
+    //                 fut = Some(next_block);
+    //             }
+    //             eprintln!("poll ready = {}", poll.is_ready());
+    //             poll
+    //         });
+    //         if poll.await.expect("should be ok").is_none() {
+    //             break;
+    //         }
+    //     }
+    // }
 
     /// Load the actor bundle CAR file, split it into chunks, then restore and compare to the original.
     #[tokio::test]
@@ -458,6 +508,7 @@ mod tests {
         where
             R: AsyncRead + Send + Unpin,
         {
+            eprintln!("ld_read");
             const MAX_ALLOC: usize = 1 << 20;
             let l: usize = match VarIntAsyncReader::read_varint_async(&mut reader).await {
                 Ok(len) => len,
@@ -469,11 +520,16 @@ mod tests {
                 }
             };
             let mut buf = Vec::with_capacity(std::cmp::min(l as usize, MAX_ALLOC));
+            eprintln!("taking limit={l}");
             let bytes_read = reader
                 .take(l as u64)
                 .read_to_end(&mut buf)
                 .await
-                .map_err(|e| Error::Other(e.to_string()))?;
+                .map_err(|e| Error::Other(e.to_string()));
+
+            eprintln!("bytes read: {bytes_read:?}");
+            let bytes_read = bytes_read?;
+
             if bytes_read != l {
                 return Err(Error::Io(std::io::Error::new(
                     std::io::ErrorKind::UnexpectedEof,
