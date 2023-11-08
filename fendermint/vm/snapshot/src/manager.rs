@@ -142,22 +142,32 @@ where
             .context("failed to create snapshot")?;
 
         let file_name = format!("snapshot-{height}.car");
-        let file_path = self.snapshot_dir.join(file_name.clone());
+        let file_path = self.snapshot_dir.join(&file_name);
         let temp_dir = tempfile::tempdir().context("failed to create temp dir for snapshot")?;
-        let temp_path = temp_dir.path().join(file_name);
+        let snapshot_path = temp_dir.path().join(&file_name);
 
         // TODO: See if we can reuse the contents of an existing CAR file.
 
         tracing::debug!(
             height,
-            path = temp_path.to_string_lossy().to_string(),
+            path = snapshot_path.to_string_lossy().to_string(),
             "exporting snapshot..."
         );
 
+        // Export the state to a CAR file.
         snapshot
-            .write_car(temp_path.clone())
+            .write_car(&snapshot_path)
             .await
             .context("failed to write CAR file")?;
+
+        // Create a checksum over the CAR file.
+        let checksum_path = temp_dir.path().join(format!("{file_name}.sha256"));
+        let checksum_bytes = checksum(&snapshot_path).context("failed to compute checksum")?;
+        std::fs::write(&checksum_path, checksum_bytes).context("failed to write checkcum file")?;
+
+        // Create a directory for the parts.
+        let parts_path = temp_dir.path().join("snapshot-{height}-parts");
+        std::fs::create_dir(parts_path).context("failed to create parts dir")?;
 
         std::fs::rename(temp_path, file_path.clone()).context("failed to move snapshot file")?;
 
