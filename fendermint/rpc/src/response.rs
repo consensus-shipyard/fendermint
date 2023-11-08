@@ -52,5 +52,5 @@ pub fn decode_fevm_invoke(deliver_tx: &DeliverTx) -> anyhow::Result<Vec<u8>> {
     // that is, it's as if it was returning `CreateReturn`, it's returning `RawBytes` encoded as IPLD.
     fvm_ipld_encoding::from_slice::<BytesDe>(&data)
         .map(|bz| bz.0)
-        .map_err(|e| anyhow!("failed to deserialize bytes returned by FEVM: {e}"))
+        .map_err(|e| anyhow!("failed to deserialize bytes returned by FEVM method invocation: {e}"))
 }
