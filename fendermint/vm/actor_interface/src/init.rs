@@ -117,7 +117,7 @@ impl State {
         // so the system actor can be identified by 0xff00..00 as well as 0x00..00
         address_map
             .set(
-                Address::from(EthAddress::default()).to_bytes().into(),
+                system::SYSTEM_ACTOR_ETH_ADDR.to_bytes().into(),
                 system::SYSTEM_ACTOR_ID,
             )
             .context("cannot set ID of null eth address")?;

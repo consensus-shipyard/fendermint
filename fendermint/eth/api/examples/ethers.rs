@@ -490,8 +490,7 @@ where
     // Calling with 0 nonce so the node figures out the latest value.
     let mut probe_tx = transfer.clone();
     probe_tx.set_nonce(0);
-    // Calling with 0x00..00 address so we see if it world work for calls by clients that set nothing.
-    probe_tx.set_from(Address::default());
+
     let probe_height = BlockId::Number(BlockNumber::Number(bn));
 
     request(
@@ -510,6 +509,15 @@ where
         "eth_estimateGas w/o height",
         provider.estimate_gas(&probe_tx, None).await,
         |gas: &U256| !gas.is_zero(),
+    )?;
+
+    // Calling with 0x00..00 address so we see if it world work for calls by clients that set nothing.
+    probe_tx.set_from(Address::default());
+
+    request(
+        "eth_call (from 0x00..00)",
+        provider.call(&probe_tx, None).await,
+        |_| true,
     )?;
 
     request(
