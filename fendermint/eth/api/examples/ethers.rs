@@ -511,15 +511,6 @@ where
         |gas: &U256| !gas.is_zero(),
     )?;
 
-    // Calling with 0x00..00 address so we see if it world work for calls by clients that set nothing.
-    probe_tx.set_from(Address::default());
-
-    request(
-        "eth_call (from 0x00..00)",
-        provider.call(&probe_tx, None).await,
-        |_| true,
-    )?;
-
     request(
         "eth_maxPriorityFeePerGas",
         provider.request("eth_maxPriorityFeePerGas", ()).await,
@@ -567,6 +558,15 @@ where
     request("eth_call", coin_balance.call().await, |coin_balance| {
         *coin_balance == U256::from(10000)
     })?;
+
+    // Calling with 0x00..00 address so we see if it world work for calls by clients that set nothing.
+    let coin_balance = coin_balance.from(Address::default());
+
+    request(
+        "eth_call w/ 0x00..00",
+        coin_balance.call().await,
+        |coin_balance| *coin_balance == U256::from(10000),
+    )?;
 
     // We could calculate the storage location of the balance of the owner of the contract,
     // but let's just see what it returns with at slot 0. See an example at
