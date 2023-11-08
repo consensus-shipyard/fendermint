@@ -20,7 +20,17 @@ mod streamer;
 /// files with a limited size for each file.
 ///
 /// The first (0th) file will be just the header, with the rest containing the "content" blocks.
-pub async fn split(input_file: &Path, output_dir: &Path, max_size: usize) -> anyhow::Result<()> {
+///
+/// Returns the number of chunks created.
+pub async fn split<F>(
+    input_file: &Path,
+    output_dir: &Path,
+    max_size: usize,
+    file_name: F,
+) -> anyhow::Result<usize>
+where
+    F: Fn(usize) -> String + Send + Sync + 'static,
+{
     let file = tokio::fs::File::open(input_file)
         .await
         .with_context(|| format!("failed to open CAR file: {}", input_file.to_string_lossy()))?;
@@ -30,7 +40,7 @@ pub async fn split(input_file: &Path, output_dir: &Path, max_size: usize) -> any
         .context("failed to open CAR reader")?;
 
     // Create a Writer that opens new files when the maximum is reached.
-    let mut writer = ChunkWriter::new(output_dir.into(), max_size);
+    let mut writer = ChunkWriter::new(output_dir.into(), max_size, file_name);
 
     let header = CarHeader::new(reader.header.roots.clone(), reader.header.version);
 
@@ -56,7 +66,7 @@ pub async fn split(input_file: &Path, output_dir: &Path, max_size: usize) -> any
         .await
         .context("failed to write CAR file")?;
 
-    Ok(())
+    Ok(writer.chunk_created())
 }
 
 #[cfg(test)]
@@ -77,13 +87,12 @@ mod tests {
         let target_count = 10;
         let max_size = bundle_bytes.len() / target_count;
 
-        split(&bundle_path, tmp.path(), max_size)
+        let chunks_count = split(&bundle_path, tmp.path(), max_size, |idx| idx.to_string())
             .await
             .expect("failed to split CAR file");
 
         let mut chunks = std::fs::read_dir(tmp.path())
             .unwrap()
-            .into_iter()
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
 
@@ -92,7 +101,7 @@ mod tests {
         let chunks = chunks
             .into_iter()
             .map(|c| {
-                let chunk_size = std::fs::metadata(&c.path()).unwrap().len() as usize;
+                let chunk_size = std::fs::metadata(c.path()).unwrap().len() as usize;
                 (c, chunk_size)
             })
             .collect::<Vec<_>>();
@@ -102,6 +111,8 @@ mod tests {
             acc.extend(bz);
             acc
         });
+
+        assert_eq!(chunks_count, chunks.len());
 
         assert!(
             1 < chunks.len() && chunks.len() <= 1 + target_count,

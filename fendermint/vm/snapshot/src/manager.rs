@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use crate::car;
 use anyhow::Context;
 use async_stm::{atomically, retry, TVar};
 use fendermint_vm_interpreter::fvm::state::snapshot::{BlockHeight, BlockStateParams, Snapshot};
@@ -50,6 +51,8 @@ pub struct SnapshotManager<BS, C> {
     client: C,
     /// Location to store completed snapshots.
     snapshot_dir: PathBuf,
+    /// Target size in bytes for snapshot chunks.
+    snapshot_chunk_size: usize,
     /// Shared state of snapshots.
     snapshot_state: SnapshotState,
     /// How often to check CometBFT whether it has finished syncing.
@@ -70,12 +73,14 @@ where
         client: C,
         snapshot_interval: BlockHeight,
         snapshot_dir: PathBuf,
+        snapshot_chunk_size: usize,
         sync_poll_interval: Duration,
     ) -> (Self, SnapshotClient) {
         let manager = Self {
             client,
             store,
             snapshot_dir,
+            snapshot_chunk_size,
             snapshot_state: SnapshotState {
                 // Start with nothing to snapshot until we are notified about a new height.
                 // We could also look back to find the latest height we should have snapshotted.
@@ -141,10 +146,15 @@ where
         let snapshot = Snapshot::new(self.store.clone(), params, height)
             .context("failed to create snapshot")?;
 
-        let file_name = format!("snapshot-{height}.car");
-        let file_path = self.snapshot_dir.join(&file_name);
-        let temp_dir = tempfile::tempdir().context("failed to create temp dir for snapshot")?;
-        let snapshot_path = temp_dir.path().join(&file_name);
+        let snapshot_name = format!("snapshot-{height}");
+        let temp_dir = tempfile::Builder::new()
+            .prefix(&snapshot_name)
+            .tempdir()
+            .context("failed to create temp dir for snapshot")?;
+
+        let snapshot_path = temp_dir.path().join("snapshot.car");
+        let checksum_path = temp_dir.path().join("parts.sha256");
+        let parts_path = temp_dir.path().join("parts");
 
         // TODO: See if we can reuse the contents of an existing CAR file.
 
@@ -160,20 +170,45 @@ where
             .await
             .context("failed to write CAR file")?;
 
+        let snapshot_size = std::fs::metadata(&snapshot_path)
+            .context("failed to get snapshot metadata")?
+            .len() as usize;
+
         // Create a checksum over the CAR file.
-        let checksum_path = temp_dir.path().join(format!("{file_name}.sha256"));
         let checksum_bytes = checksum(&snapshot_path).context("failed to compute checksum")?;
-        std::fs::write(&checksum_path, checksum_bytes).context("failed to write checkcum file")?;
+        std::fs::write(&checksum_path, checksum_bytes).context("failed to write checksum file")?;
 
         // Create a directory for the parts.
-        let parts_path = temp_dir.path().join("snapshot-{height}-parts");
-        std::fs::create_dir(parts_path).context("failed to create parts dir")?;
+        std::fs::create_dir(&parts_path).context("failed to create parts dir")?;
 
-        std::fs::rename(temp_path, file_path.clone()).context("failed to move snapshot file")?;
+        // Split the CAR file into chunks.
+        // They can be listed in the right order with e.g. `ls | sort -n`
+        // Alternatively we could pad them with zeroes based on the original file size and the chunk size,
+        // but this way it will be easier to return them based on a numeric index.
+        let chunks_count = car::split(
+            &snapshot_path,
+            &parts_path,
+            self.snapshot_chunk_size,
+            |idx| format!("{idx}.part"),
+        )
+        .await
+        .context("failed to split CAR into chunks")?;
+
+        // TODO: Create an export a manifest that we can easily look up.
+
+        // Move snapshot to final location - doing it in one step so there's less room for error.
+        let snapshot_dir = self.snapshot_dir.join(&snapshot_name);
+        std::fs::rename(temp_dir.path(), &snapshot_dir).context("failed to move snapshot")?;
+
+        // Delete the big CAR file - keep the parts only.
+        std::fs::remove_file(snapshot_dir.join("snapshot.car"))
+            .context("failed to remove CAR file")?;
 
         tracing::info!(
+            snapshot = snapshot_dir.to_string_lossy().to_string(),
             height,
-            path = file_path.to_string_lossy().to_string(),
+            chunks_count,
+            snapshot_size,
             "exported snapshot"
         );
 

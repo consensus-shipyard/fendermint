@@ -39,18 +39,28 @@ impl ChunkWriterState {
 pub struct ChunkWriter {
     output_dir: PathBuf,
     max_size: usize,
+    file_name: Box<dyn Fn(usize) -> String + Send + Sync>,
     next_idx: usize,
     state: ChunkWriterState,
 }
 
 impl ChunkWriter {
-    pub fn new(output_dir: PathBuf, max_size: usize) -> Self {
+    pub fn new<F>(output_dir: PathBuf, max_size: usize, file_name: F) -> Self
+    where
+        F: Fn(usize) -> String + Send + Sync + 'static,
+    {
         Self {
             output_dir,
             max_size,
+            file_name: Box::new(file_name),
             next_idx: 0,
             state: ChunkWriterState::Idle,
         }
+    }
+
+    /// Number of chunks created so far.
+    pub fn chunk_created(&self) -> usize {
+        self.next_idx
     }
 
     fn take_state(&mut self) -> ChunkWriterState {
@@ -137,7 +147,8 @@ impl ChunkWriter {
 
     /// Open the next file, then increment the index.
     fn next_file(&mut self) -> BoxedFutureFile {
-        let out = self.output_dir.join(self.next_idx.to_string());
+        let name = (self.file_name)(self.next_idx);
+        let out = self.output_dir.join(name);
         self.next_idx += 1;
         Box::pin(tokio::fs::File::create(out))
     }
@@ -203,9 +214,7 @@ impl AsyncWrite for ChunkWriter {
 
         self.poll_state(|_, state| match state {
             Idle => state.ok(()),
-            Opening { out } => {
-                Self::state_poll_open(cx, out, |cx, out| Self::state_poll_close(cx, out))
-            }
+            Opening { out } => Self::state_poll_open(cx, out, Self::state_poll_close),
             Open { out, .. } => Self::state_poll_close(cx, out),
             Closing { out } => Self::state_poll_close(cx, out),
         })
