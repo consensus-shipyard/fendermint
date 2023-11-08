@@ -31,30 +31,6 @@ docker run \
 """
 dependencies = ["cometbft-pull", "docker-network-create"]
 
-[tasks.cometbft-run-bootstrap]
-script = """
-docker run \
-  ${FLAGS} \
-  --name ${CMT_CONTAINER_NAME} \
-  --user $(id -u) \
-  --network ${NETWORK_NAME} \
-  --publish ${CMT_RPC_HOST_PORT}:26657 \
-  --publish ${CMT_P2P_HOST_PORT}:26656 \
-  --volume ${CMT_DIR}:/cometbft \
-  --env CMT_PEX=true \
-  ${CMT_DOCKER_IMAGE} \
-  ${CMD}
-"""
-dependencies = ["cometbft-pull", "docker-network-create"]
-
-[tasks.cometbft-bootstrap-init]
-extend = "cometbft-run-bootstrap"
-env = { "CMD" = "init", "FLAGS" = "-a STDOUT -a STDERR --rm" }
-
-[tasks.cometbft-bootstrap-start]
-extend = "cometbft-run-bootstrap"
-env = { "CMD" = "start", "FLAGS" = "-d" }
-
 [tasks.get-external-ip]
 script_runner = "@rust"
 description = "This script resolve the external IP and sets NODE_EXTERNAL_IP variable using rust-env plugin"
@@ -196,3 +172,33 @@ env = { "CONTAINER_NAME" = "${CMT_CONTAINER_NAME}" }
 [tasks.cometbft-logs]
 extend = "docker-logs"
 env = { "CONTAINER_NAME" = "${CMT_CONTAINER_NAME}" }
+
+[tasks.seed-enable]
+script="""
+sed -i'' -e "s|seed_mode = false|seed_mode = true|" ${CMT_DIR}/config/config.toml
+"""
+
+[tasks.addr-book-enable]
+script="""
+sed -i'' -e "s|addr_book_strict = false|addr_book_strict = true|" ${CMT_DIR}/config/config.toml
+"""
+
+[tasks.set-seeds]
+script = """
+sed -i'' -e 's|^seeds = ""$|seeds = "{{PLACEHOLDER}}"|g' ${CMT_DIR}/config/config.toml
+sed -i "s/{{PLACEHOLDER}}/$BOOTSTRAPS/g" ${CMT_DIR}/config/config.toml
+"""
+
+[tasks.set-external-addr]
+script = """
+sed -i'' -e 's|^external_address = ""$|external_address = "{{PLACEHOLDER}}"|g' ${CMT_DIR}/config/config.toml
+sed -i "s/{{PLACEHOLDER}}/$CMT_EXTERNAL_ADDR/g" ${CMT_DIR}/config/config.toml
+"""
+
+[tasks.cometbft-config]
+dependencies = [
+    "cometbft-init",
+    "set-seeds",
+    "addr-book-enable",
+    "set-external-addr",
+]
