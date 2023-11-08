@@ -174,7 +174,7 @@ pub fn to_eth_transaction(
         v: et::U64::from(sig.v),
         r: sig.r,
         s: sig.s,
-        transaction_type: None,
+        transaction_type: Some(2u64.into()),
         access_list: None,
         other: Default::default(),
     };
