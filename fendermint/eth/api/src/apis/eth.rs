@@ -635,16 +635,14 @@ where
     // Based on Lotus, we should return the data from the receipt.
     if deliver_tx.code.is_err() {
         // There might be some revert data encoded as ABI in the response.
-        let revert_data_hex = decode_fevm_invoke(&deliver_tx)
-            .ok()
-            .map(hex::encode)
-            .unwrap_or_default();
-
-        error_with_data(
-            ExitCode::new(deliver_tx.code.value()),
-            deliver_tx.info,
-            revert_data_hex,
-        )
+        let (msg, data) = match decode_fevm_invoke(&deliver_tx).map(hex::encode) {
+            Ok(h) => (deliver_tx.info, h),
+            Err(e) => (
+                format!("{}\nfailed to decode return data: {:#}", deliver_tx.info, e),
+                "".to_string(),
+            ),
+        };
+        error_with_data(ExitCode::new(deliver_tx.code.value()), msg, data)
     } else {
         let return_data = decode_fevm_invoke(&deliver_tx)
             .context("error decoding data from deliver_tx in query")?;
@@ -686,18 +684,18 @@ where
 
     if !estimate.exit_code.is_success() {
         // There might be some revert data encoded as ABI in the response.
-        let revert_data_hex = estimate
+        let msg = format!("failed to estimate gas: {}", estimate.info);
+        let (msg, data) = match estimate
             .return_data
             .deserialize::<fvm_ipld_encoding::BytesDe>()
             .map(|bz| bz.into_vec())
             .map(hex::encode)
-            .unwrap_or_default();
+        {
+            Ok(h) => (msg, h),
+            Err(e) => (format!("{msg}\n{e:#}"), "".to_string()),
+        };
 
-        error_with_data(
-            estimate.exit_code,
-            format!("failed to estimate gas: {}", estimate.info),
-            revert_data_hex,
-        )
+        error_with_data(estimate.exit_code, msg, data)
     } else {
         Ok(estimate.gas_limit.into())
     }
