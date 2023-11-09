@@ -14,7 +14,7 @@ use ethers_core::types::transaction::eip2718::TypedTransaction;
 use ethers_core::utils::rlp;
 use fendermint_rpc::message::MessageFactory;
 use fendermint_rpc::query::QueryClient;
-use fendermint_rpc::response::decode_fevm_invoke;
+use fendermint_rpc::response::{decode_fevm_invoke, decode_fevm_return_data};
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_actor_interface::evm;
 use fendermint_vm_message::chain::ChainMessage;
@@ -685,12 +685,7 @@ where
     if !estimate.exit_code.is_success() {
         // There might be some revert data encoded as ABI in the response.
         let msg = format!("failed to estimate gas: {}", estimate.info);
-        let (msg, data) = match estimate
-            .return_data
-            .deserialize::<fvm_ipld_encoding::BytesDe>()
-            .map(|bz| bz.into_vec())
-            .map(hex::encode)
-        {
+        let (msg, data) = match decode_fevm_return_data(estimate.return_data).map(hex::encode) {
             Ok(h) => (msg, h),
             Err(e) => (format!("{msg}\n{e:#}"), "".to_string()),
         };
