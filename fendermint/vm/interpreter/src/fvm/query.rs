@@ -86,6 +86,11 @@ where
                     method_num,
                     exit_code = apply_ret.msg_receipt.exit_code.value(),
                     data = hex::encode(apply_ret.msg_receipt.return_data.bytes()),
+                    info = apply_ret
+                        .failure_info
+                        .as_ref()
+                        .map(|i| i.to_string())
+                        .unwrap_or_default(),
                     "query call"
                 );
 
