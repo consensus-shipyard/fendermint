@@ -78,6 +78,9 @@ where
         mut state: Self::State,
         genesis: Self::Genesis,
     ) -> anyhow::Result<(Self::State, Self::Output)> {
+        // Log the genesis in JSON format, hopefully it's not enormous.
+        tracing::debug!(genesis = serde_json::to_string(&genesis)?, "init");
+
         // NOTE: We could consider adding the chain ID to the interpreter
         //       and rejecting genesis if it doesn't match the expectation,
         //       but the Tendermint genesis file also has this field, and
@@ -517,7 +520,6 @@ mod tests {
         let _state_root = state.commit().expect("failed to commit");
     }
 
-    // Unfortunately this test doesn't seem to catch non-determinism that happens between different processes.
     #[tokio::test]
     async fn load_genesis_deterministic() {
         let genesis = make_genesis();
@@ -569,7 +571,7 @@ mod tests {
         let state_root_hash = state.commit().expect("failed to commit");
 
         let expected_root_hash =
-            Cid::from_str("bafy2bzacec3lqjrqfqrqu52uzg5ffhk34ladsxmssqodhk6glpqx5b5fn2rxw")
+            Cid::from_str("bafy2bzacea3ofxvkazubkc5jjhz72anznt4ey2isvnoph7rwfushd4fuhzhli")
                 .unwrap();
 
         assert_eq!(state_root_hash, expected_root_hash);
@@ -594,61 +596,5 @@ mod tests {
         std::fs::read(bundle_path()).expect("failed to read bundle")
     }
 
-    const GENESIS_JSON: &str = "{
-        \"chain_name\": \"/r314159/f410fnfmitm2ww7oehhtbokf6wulhrr62sgq3sgqmenq\",
-        \"timestamp\": 1073250,
-        \"network_version\": 18,
-        \"base_fee\": \"1000\",
-        \"power_scale\": 3,
-        \"validators\": [
-            {
-            \"public_key\": \"BLX9ojqB+8Z26aMmKoCRb3Te6AnSU6zY8hPcf1X5Q69XCNaHVcRxzYO2xx7o/2vgdS7nkDTMRRbkDGzy+FYdAFc=\",
-            \"power\": \"1000000000000000000\"
-            },
-            {
-            \"public_key\": \"BFcOveVieknZiscWsfXa06aGbBkKeucBycd/w0N1QHlaZfa/5dJcH7D0hvcdfv3B2Rv1OPuxo1PkgsEbWegWKcA=\",
-            \"power\": \"1000000000000000000\"
-            },
-            {
-            \"public_key\": \"BEP30ykovfrQp3zo+JVRvDVL2emC+Ju1Kpox3zMVYZyFKvYt64qyN/HOVjridDrkEsnQU8BVen4Aegja4fBZ+LU=\",
-            \"power\": \"1000000000000000000\"
-            }
-        ],
-        \"accounts\": [
-            {
-            \"meta\": {
-                \"Account\": {
-                \"owner\": \"f410frbdnwklaitcjsqe7swjwp5naple6vthq4woyfry\"
-                }
-            },
-            \"balance\": \"2000000000000000000\"
-            },
-            {
-            \"meta\": {
-                \"Account\": {
-                \"owner\": \"f410fxo4lih4n2acr3oadalidwqjgoqkzhp5dw3zwkvy\"
-                }
-            },
-            \"balance\": \"1000000000000000000\"
-            },
-            {
-            \"meta\": {
-                \"Account\": {
-                \"owner\": \"f410fggjevhgketpz6gw6ordusynlgcd5piyug4aomuq\"
-                }
-            },
-            \"balance\": \"1000000000000000000\"
-            }
-        ],
-        \"ipc\": {
-            \"gateway\": {
-            \"subnet_id\": \"/r314159/f410fnfmitm2ww7oehhtbokf6wulhrr62sgq3sgqmenq\",
-            \"bottom_up_check_period\": 30,
-            \"msg_fee\": \"1000000000000\",
-            \"majority_percentage\": 60,
-            \"min_collateral\": \"1000000000000000000\",
-            \"active_validators_limit\": 100
-            }
-        }
-    }";
+    const GENESIS_JSON: &str = "{\"chain_name\":\"/r314159/t410fnfmitm2ww7oehhtbokf6wulhrr62sgq3sgqmenq\",\"timestamp\":1073250,\"network_version\":18,\"base_fee\":\"1000\",\"power_scale\":3,\"validators\":[{\"public_key\":\"BLX9ojqB+8Z26aMmKoCRb3Te6AnSU6zY8hPcf1X5Q69XCNaHVcRxzYO2xx7o/2vgdS7nkDTMRRbkDGzy+FYdAFc=\",\"power\":\"1000000000000000000\"},{\"public_key\":\"BFcOveVieknZiscWsfXa06aGbBkKeucBycd/w0N1QHlaZfa/5dJcH7D0hvcdfv3B2Rv1OPuxo1PkgsEbWegWKcA=\",\"power\":\"1000000000000000000\"},{\"public_key\":\"BEP30ykovfrQp3zo+JVRvDVL2emC+Ju1Kpox3zMVYZyFKvYt64qyN/HOVjridDrkEsnQU8BVen4Aegja4fBZ+LU=\",\"power\":\"1000000000000000000\"}],\"accounts\":[{\"meta\":{\"Account\":{\"owner\":\"t410fggjevhgketpz6gw6ordusynlgcd5piyug4aomuq\"}},\"balance\":\"1000000000000000000\"},{\"meta\":{\"Account\":{\"owner\":\"t410frbdnwklaitcjsqe7swjwp5naple6vthq4woyfry\"}},\"balance\":\"2000000000000000000\"},{\"meta\":{\"Account\":{\"owner\":\"t410fxo4lih4n2acr3oadalidwqjgoqkzhp5dw3zwkvy\"}},\"balance\":\"1000000000000000000\"}],\"ipc\":{\"gateway\":{\"subnet_id\":\"/r314159/t410fnfmitm2ww7oehhtbokf6wulhrr62sgq3sgqmenq\",\"bottom_up_check_period\":30,\"msg_fee\":\"1000000000000\",\"majority_percentage\":60,\"min_collateral\":\"1000000000000000000\",\"active_validators_limit\":100}}}";
 }

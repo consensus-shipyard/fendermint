@@ -67,7 +67,7 @@ impl State {
         let mut address_map = Hamt::<&BS, ActorID>::new_with_bit_width(store, HAMT_BIT_WIDTH);
 
         let mut set_address = |addr: Address, id: ActorID| {
-            tracing::info!(
+            tracing::debug!(
                 addr = addr.to_string(),
                 actor_id = id,
                 "setting init address"
@@ -127,7 +127,7 @@ impl State {
             installed_actors,
         };
 
-        tracing::info!(?state, "init actor state");
+        tracing::debug!(?state, "init actor state");
 
         Ok((state, allocated_ids))
     }
