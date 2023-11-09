@@ -118,12 +118,8 @@ impl State {
 
         // Insert the null-Ethereum address to equal the system actor,
         // so the system actor can be identified by 0xff00..00 as well as 0x00..00
-        address_map
-            .set(
-                system::SYSTEM_ACTOR_ETH_ADDR.to_bytes().into(),
-                system::SYSTEM_ACTOR_ID,
-            )
-            .context("cannot set ID of null eth address")?;
+        set_address(system::SYSTEM_ACTOR_ETH_ADDR, system::SYSTEM_ACTOR_ID)
+            .context("cannot set ID of system eth address")?;
 
         #[cfg(feature = "m2-native")]
         let installed_actors = store.put_cbor(&Vec::<Cid>::new(), Code::Blake2b256)?;
