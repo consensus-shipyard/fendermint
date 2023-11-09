@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
@@ -18,7 +18,7 @@ pub const FIRST_NON_SINGLETON_ADDR: ActorID = 100;
 
 define_singleton!(INIT { id: 1, code_id: 2 });
 
-pub type AddressMap = HashMap<Address, ActorID>;
+pub type AddressMap = BTreeMap<Address, ActorID>;
 
 /// Delegated address of an Ethereum built-in actor.
 ///
@@ -57,7 +57,7 @@ impl State {
         // Accounts from the Genesis file.
         accounts: &[Actor],
         // Pre-defined IDs for top-level EVM contracts.
-        eth_builtin_ids: &HashSet<ActorID>,
+        eth_builtin_ids: &BTreeSet<ActorID>,
         // Number of dynamically deployed EVM library contracts.
         eth_library_count: u64,
     ) -> anyhow::Result<(Self, AddressMap)> {

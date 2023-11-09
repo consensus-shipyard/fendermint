@@ -1,7 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
@@ -108,7 +108,7 @@ where
         // STAGE 0: Declare the built-in EVM contracts we'll have to deploy.
 
         // Pre-defined IDs for top-level Ethereum contracts.
-        let mut eth_builtin_ids = HashSet::new();
+        let mut eth_builtin_ids = BTreeSet::new();
         let mut eth_root_contracts = Vec::new();
         let mut eth_contracts = EthContractMap::default();
 
