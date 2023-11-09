@@ -35,7 +35,7 @@ cargo make --makefile infra/Makefile.toml \
     -e PARENT_REGISTRY=<PARENT_REGISTRY_CONTRACT_ADDR> \
     -e PARENT_GATEWAY=<GATEWAY_REGISTRY_CONTRACT_ADDR> \
     -e BOOTSTRAPS=<BOOTSTRAP_ENDPOINT> \
-    bootstrap-id
+    bootstrap-node-id
 ```
 
 `cargo-make bootstrap` supports the following environment variables to customize the deployment:

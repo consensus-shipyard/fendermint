@@ -2,16 +2,11 @@
 # Node helpers
 ########################################################################################################################
 
-[tasks.node-down]
+[tasks.new-bootstrap]
 dependencies = [
-    "cometbft-stop",
-    "cometbft-rm"
-]
-
-[tasks.new-node]
-dependencies = [
-    "node-down",
-    "bootstrap-mkdir",
+    "bootstrap-down",
+    "fendermint-pull",
+    "node-init",
     "docker-network-create",
     "cometbft-config",
     "seed-enable",
@@ -34,13 +29,6 @@ dependencies = [
 script="""
 echo clearing all IPC data
 rm -rf ${BASE_DIR}
-"""
-
-[tasks.bootstrap-mkdir]
-script="""
-echo creating directories: $BASE_DIR $CMT_DIR
-mkdir -p $BASE_DIR
-mkdir -p $CMT_DIR
 """
 
 [tasks.node-mkdir]
