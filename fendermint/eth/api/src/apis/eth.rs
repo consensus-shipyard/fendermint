@@ -684,11 +684,19 @@ where
 
     let estimate = response.value;
 
-    // Based on Lotus, we should return the data from the receipt.
     if !estimate.exit_code.is_success() {
-        error(
+        // There might be some revert data encoded as ABI in the response.
+        let revert_data_hex = estimate
+            .return_data
+            .deserialize::<fvm_ipld_encoding::BytesDe>()
+            .map(|bz| bz.into_vec())
+            .map(hex::encode)
+            .unwrap_or_default();
+
+        error_with_data(
             estimate.exit_code,
             format!("failed to estimate gas: {}", estimate.info),
+            revert_data_hex,
         )
     } else {
         Ok(estimate.gas_limit.into())
