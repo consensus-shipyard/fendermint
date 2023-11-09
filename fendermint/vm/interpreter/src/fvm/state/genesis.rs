@@ -191,7 +191,7 @@ where
 
         {
             let cid = self.with_state_tree(|s| s.flush(), |s| s.flush())?;
-            tracing::debug!(
+            tracing::info!(
                 state_root = cid.to_string(),
                 actor_id = id,
                 "interim state root after actor creation"
@@ -342,7 +342,7 @@ where
 
         {
             let cid = self.with_state_tree(|s| s.flush(), |s| s.flush())?;
-            tracing::debug!(
+            tracing::info!(
                 state_root = cid.to_string(),
                 actor_id = id,
                 "interim state root after EVM actor initialisation"

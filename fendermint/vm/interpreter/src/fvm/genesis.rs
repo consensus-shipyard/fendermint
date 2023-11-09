@@ -464,8 +464,9 @@ fn circ_supply(g: &Genesis) -> TokenAmount {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{str::FromStr, sync::Arc};
 
+    use cid::Cid;
     use fendermint_vm_genesis::{ipc::IpcParams, Genesis};
     use fvm::engine::MultiEngine;
     use quickcheck::Arbitrary;
@@ -488,8 +489,6 @@ mod tests {
         let genesis = make_genesis();
         let bundle = read_bundle();
         let interpreter = make_interpreter();
-
-        eprintln!("genesis = {genesis:?}");
 
         let multi_engine = Arc::new(MultiEngine::default());
         let store = MemoryBlockstore::new();
@@ -548,6 +547,34 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn load_genesis_known() {
+        let genesis: Genesis =
+            serde_json::from_str(&GENESIS_JSON).expect("failed to parse genesis");
+
+        let bundle = read_bundle();
+        let interpreter = make_interpreter();
+        let multi_engine = Arc::new(MultiEngine::default());
+
+        let store = MemoryBlockstore::new();
+        let state = FvmGenesisState::new(store, multi_engine.clone(), &bundle)
+            .await
+            .expect("failed to create state");
+
+        let (state, _) = interpreter
+            .init(state, genesis.clone())
+            .await
+            .expect("failed to create actors");
+
+        let state_root_hash = state.commit().expect("failed to commit");
+
+        let expected_root_hash =
+            Cid::from_str("bafy2bzacec3lqjrqfqrqu52uzg5ffhk34ladsxmssqodhk6glpqx5b5fn2rxw")
+                .unwrap();
+
+        assert_eq!(state_root_hash, expected_root_hash);
+    }
+
     fn make_genesis() -> Genesis {
         let mut g = quickcheck::Gen::new(5);
         let mut genesis = Genesis::arbitrary(&mut g);
@@ -566,4 +593,62 @@ mod tests {
     fn read_bundle() -> Vec<u8> {
         std::fs::read(bundle_path()).expect("failed to read bundle")
     }
+
+    const GENESIS_JSON: &str = "{
+        \"chain_name\": \"/r314159/f410fnfmitm2ww7oehhtbokf6wulhrr62sgq3sgqmenq\",
+        \"timestamp\": 1073250,
+        \"network_version\": 18,
+        \"base_fee\": \"1000\",
+        \"power_scale\": 3,
+        \"validators\": [
+            {
+            \"public_key\": \"BLX9ojqB+8Z26aMmKoCRb3Te6AnSU6zY8hPcf1X5Q69XCNaHVcRxzYO2xx7o/2vgdS7nkDTMRRbkDGzy+FYdAFc=\",
+            \"power\": \"1000000000000000000\"
+            },
+            {
+            \"public_key\": \"BFcOveVieknZiscWsfXa06aGbBkKeucBycd/w0N1QHlaZfa/5dJcH7D0hvcdfv3B2Rv1OPuxo1PkgsEbWegWKcA=\",
+            \"power\": \"1000000000000000000\"
+            },
+            {
+            \"public_key\": \"BEP30ykovfrQp3zo+JVRvDVL2emC+Ju1Kpox3zMVYZyFKvYt64qyN/HOVjridDrkEsnQU8BVen4Aegja4fBZ+LU=\",
+            \"power\": \"1000000000000000000\"
+            }
+        ],
+        \"accounts\": [
+            {
+            \"meta\": {
+                \"Account\": {
+                \"owner\": \"f410frbdnwklaitcjsqe7swjwp5naple6vthq4woyfry\"
+                }
+            },
+            \"balance\": \"2000000000000000000\"
+            },
+            {
+            \"meta\": {
+                \"Account\": {
+                \"owner\": \"f410fxo4lih4n2acr3oadalidwqjgoqkzhp5dw3zwkvy\"
+                }
+            },
+            \"balance\": \"1000000000000000000\"
+            },
+            {
+            \"meta\": {
+                \"Account\": {
+                \"owner\": \"f410fggjevhgketpz6gw6ordusynlgcd5piyug4aomuq\"
+                }
+            },
+            \"balance\": \"1000000000000000000\"
+            }
+        ],
+        \"ipc\": {
+            \"gateway\": {
+            \"subnet_id\": \"/r314159/f410fnfmitm2ww7oehhtbokf6wulhrr62sgq3sgqmenq\",
+            \"bottom_up_check_period\": 30,
+            \"msg_fee\": \"1000000000000\",
+            \"majority_percentage\": 60,
+            \"min_collateral\": \"1000000000000000000\",
+            \"active_validators_limit\": 100
+            }
+        }
+    }";
 }
