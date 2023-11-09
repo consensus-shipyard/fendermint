@@ -50,7 +50,7 @@ dependencies = [
     "cometbft-config",
     "fendermint-deps",
     "subnet-config",
-    "fendermint-start",
+    "fendermint-start-subnet",
     "cometbft-start",
     "cometbft-wait",
     "ethapi-start",

@@ -12,7 +12,7 @@ dependencies = [
     "seed-enable",
     "fendermint-deps",
     "subnet-config",
-    "fendermint-start",
+    "fendermint-start-subnet",
     "cometbft-start",
     "cometbft-wait",
     "cometbft-node-id",
