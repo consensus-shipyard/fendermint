@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 use std::future::Future;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
@@ -165,7 +165,7 @@ where
     /// The parent finality provider for top down checkpoint
     parent_finality_provider: TopDownFinalityProvider,
     /// State accumulating changes during block execution.
-    exec_state: Arc<Mutex<Option<FvmExecState<SS>>>>,
+    exec_state: Arc<tokio::sync::Mutex<Option<FvmExecState<SS>>>>,
     /// Projected (partial) state accumulating during transaction checks.
     check_state: CheckStateRef<SS>,
     /// How much history to keep.
@@ -203,7 +203,7 @@ where
             interpreter: Arc::new(interpreter),
             resolve_pool,
             parent_finality_provider,
-            exec_state: Arc::new(Mutex::new(None)),
+            exec_state: Arc::new(tokio::sync::Mutex::new(None)),
             check_state: Arc::new(tokio::sync::Mutex::new(None)),
         };
         app.init_committed_state()?;
@@ -292,25 +292,16 @@ where
     }
 
     /// Put the execution state during block execution. Has to be empty.
-    fn put_exec_state(&self, state: FvmExecState<SS>) {
-        let mut guard = self.exec_state.lock().expect("mutex poisoned");
+    async fn put_exec_state(&self, state: FvmExecState<SS>) {
+        let mut guard = self.exec_state.lock().await;
         assert!(guard.is_none(), "exec state not empty");
         *guard = Some(state);
     }
 
     /// Take the execution state during block execution. Has to be non-empty.
-    fn take_exec_state(&self) -> FvmExecState<SS> {
-        let mut guard = self.exec_state.lock().expect("mutex poisoned");
+    async fn take_exec_state(&self) -> FvmExecState<SS> {
+        let mut guard = self.exec_state.lock().await;
         guard.take().expect("exec state empty")
-    }
-
-    /// Apply a function on the state, if it exists.
-    fn map_exec_state<T, F>(&self, f: F) -> Option<T>
-    where
-        F: FnOnce(&FvmExecState<SS>) -> T,
-    {
-        let guard = self.exec_state.lock().expect("mutex poisoned");
-        guard.as_ref().map(f)
     }
 
     /// Take the execution state, update it, put it back, return the output.
@@ -324,14 +315,18 @@ where
             )>,
         >,
     {
-        let state = self.take_exec_state();
+        let mut guard = self.exec_state.lock().await;
+        let state = guard.take().expect("exec state empty");
+
         let ((_pool, _provider, state), ret) = f((
             self.resolve_pool.clone(),
             self.parent_finality_provider.clone(),
             state,
         ))
         .await?;
-        self.put_exec_state(state);
+
+        *guard = Some(state);
+
         Ok(ret)
     }
 
@@ -682,7 +677,7 @@ where
 
         tracing::debug!("initialized exec state");
 
-        self.put_exec_state(state);
+        self.put_exec_state(state).await;
 
         let ret = self
             .modify_exec_state(|s| self.interpreter.begin(s))
@@ -694,19 +689,19 @@ where
 
     /// Apply a transaction to the application's state.
     async fn deliver_tx(&self, request: request::DeliverTx) -> AbciResult<response::DeliverTx> {
+        tracing::info!("deliver_tx");
         let msg = request.tx.to_vec();
-        let result = self
+        let (result, block_hash) = self
             .modify_exec_state(|s| async {
-                let res = self.interpreter.deliver(s, msg).await;
+                let ((pool, provider, state), res) = self.interpreter.deliver(s, msg).await?;
+                let block_hash = state.block_hash();
                 tracing::info!("sleeping...");
                 tokio::time::sleep(Duration::from_secs(60)).await;
                 tracing::info!("sleep over");
-                res
+                Ok(((pool, provider, state), (res, block_hash)))
             })
             .await
             .context("deliver failed")?;
-
-        let block_hash = self.map_exec_state(|s| s.block_hash()).flatten();
 
         let response = match result {
             Err(e) => invalid_deliver_tx(AppError::InvalidEncoding, e.description),
@@ -734,7 +729,7 @@ where
 
     /// Signals the end of a block.
     async fn end_block(&self, request: request::EndBlock) -> AbciResult<response::EndBlock> {
-        tracing::debug!(height = request.height, "end block");
+        tracing::info!(height = request.height, "end block");
 
         // TODO: Return events from epoch transitions.
         let ret = self
@@ -747,7 +742,7 @@ where
 
     /// Commit the current state at the current height.
     async fn commit(&self) -> AbciResult<response::Commit> {
-        let exec_state = self.take_exec_state();
+        let exec_state = self.take_exec_state().await;
 
         // Commit the execution state to the datastore.
         let mut state = self.committed_state()?;
