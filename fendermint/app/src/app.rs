@@ -238,7 +238,7 @@ where
                 state_params: FvmStateParams {
                     timestamp: Timestamp(0),
                     state_root,
-                    network_version: NetworkVersion::MAX,
+                    network_version: NetworkVersion::V0,
                     base_fee: TokenAmount::zero(),
                     circ_supply: TokenAmount::zero(),
                     chain_id: 0,
@@ -346,7 +346,7 @@ where
             let state_params = app_state.state_params;
 
             // wait for block production
-            if block_height == 0 {
+            if !Self::can_query_state(block_height, &state_params) {
                 return Ok(None);
             }
 
@@ -389,6 +389,14 @@ where
         }
         let state = self.committed_state()?;
         Ok((state.state_params, state.block_height))
+    }
+
+    /// Check whether the state has been initialized by genesis.
+    ///
+    /// We can't run queries on the initial empty state becase the actors haven't been inserted yet.
+    fn can_query_state(height: BlockHeight, params: &FvmStateParams) -> bool {
+        // It's really the empty state tree that would be the best indicator.
+        !(height == 0 && params.timestamp.0 == 0 && params.network_version == NetworkVersion::V0)
     }
 }
 
@@ -503,8 +511,11 @@ where
         };
 
         tracing::info!(
+            height,
             state_root = app_state.state_root().to_string(),
             app_hash = app_state.app_hash().to_string(),
+            timestamp = app_state.state_params.timestamp.0,
+            chain_id = app_state.state_params.chain_id,
             "init chain"
         );
 
@@ -519,7 +530,7 @@ where
         let height = FvmQueryHeight::from(request.height.value());
         let (state_params, block_height) = self.state_params_at_height(height)?;
 
-        tracing::info!(
+        tracing::debug!(
             query_height = request.height.value(),
             block_height,
             state_root = state_params.state_root.to_string(),
@@ -527,7 +538,7 @@ where
         );
 
         // Don't run queries on the empty state, they won't work.
-        if block_height == 0 {
+        if !Self::can_query_state(block_height, &state_params) {
             return Ok(invalid_query(
                 AppError::NotInitialized,
                 "The app hasn't been initialized yet.".to_owned(),
@@ -762,7 +773,8 @@ where
 
         let app_hash = state.app_hash();
 
-        tracing::debug!(
+        tracing::info!(
+            height = state.block_height,
             state_root = state_root.to_string(),
             app_hash = app_hash.to_string(),
             timestamp = state.state_params.timestamp.0,
