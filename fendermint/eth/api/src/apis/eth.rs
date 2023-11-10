@@ -331,11 +331,16 @@ where
 /// Returns information about a block by block number.
 pub async fn get_block_by_number<C>(
     data: JsonRpcData<C>,
-    Params((block_number, full_tx)): Params<(et::BlockNumber, bool)>,
+    Params((mut block_number, full_tx)): Params<(et::BlockNumber, bool)>,
 ) -> JsonRpcResult<Option<et::Block<serde_json::Value>>>
 where
     C: Client + Sync + Send,
 {
+    if let et::BlockNumber::Number(num) = block_number {
+        if num.is_zero() {
+            block_number = et::BlockNumber::Number(et::U64::from(1));
+        }
+    }
     match data.block_by_height(block_number).await? {
         block if block.header().height.value() > 0 => {
             data.enrich_block(block, full_tx).await.map(Some)
