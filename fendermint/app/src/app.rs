@@ -709,7 +709,11 @@ where
             tendermint::Hash::None => return Err(anyhow!("empty block hash").into()),
         };
 
-        tracing::debug!(block_height, "begin block");
+        tracing::debug!(
+            height = block_height,
+            app_hash = request.header.app_hash.to_string(),
+            "begin block"
+        );
 
         let db = self.state_store_clone();
         let state = self.committed_state()?;
