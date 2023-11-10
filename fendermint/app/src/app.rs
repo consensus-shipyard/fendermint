@@ -3,6 +3,7 @@
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -695,7 +696,13 @@ where
     async fn deliver_tx(&self, request: request::DeliverTx) -> AbciResult<response::DeliverTx> {
         let msg = request.tx.to_vec();
         let result = self
-            .modify_exec_state(|s| self.interpreter.deliver(s, msg))
+            .modify_exec_state(|s| async {
+                let res = self.interpreter.deliver(s, msg).await;
+                tracing::info!("sleeping...");
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                tracing::info!("sleep over");
+                res
+            })
             .await
             .context("deliver failed")?;
 
