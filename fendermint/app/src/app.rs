@@ -108,6 +108,12 @@ impl AppState {
 
         tendermint::hash::AppHash::try_from(state_params_hash).expect("hash can be wrapped")
     }
+
+    /// The state is effective at the *next* block, that is, the effects of block N are visible in the header of block N+1,
+    /// so the height of the state itself as a "post-state" is one higher than the block which we executed to create it.
+    pub fn state_height(&self) -> BlockHeight {
+        self.block_height + 1
+    }
 }
 
 pub struct AppConfig<S: KVStore> {
@@ -269,13 +275,16 @@ where
     fn set_committed_state(&self, mut state: AppState) -> Result<()> {
         self.db
             .with_write(|tx| {
-                // Insert latest state history point.
+                // Insert latest state history point at the `block_height + 1`,
+                // to be consistent with how CometBFT queries are supposed to work.
+                let state_height = state.state_height();
+
                 self.state_hist
-                    .put(tx, &state.block_height, &state.state_params)?;
+                    .put(tx, &state_height, &state.state_params)?;
 
                 // Prune state history.
-                if self.state_hist_size > 0 && state.block_height >= self.state_hist_size {
-                    let prune_height = state.block_height.saturating_sub(self.state_hist_size);
+                if self.state_hist_size > 0 && state_height >= self.state_hist_size {
+                    let prune_height = state_height.saturating_sub(self.state_hist_size);
                     while state.oldest_state_height <= prune_height {
                         self.state_hist.delete(tx, &state.oldest_state_height)?;
                         state.oldest_state_height += 1;
@@ -486,9 +495,20 @@ where
             .context("failed to init from genesis")?;
 
         let state_root = state.commit().context("failed to commit genesis state")?;
-        let height = request.initial_height.into();
         let validators =
             to_validator_updates(out.validators).context("failed to convert validators")?;
+
+        // Let's pretend that the genesis state is that of a fictive block at height 0.
+        // The record will be stored under height 1, and the record after the application
+        // of the actual block 1 will be at height 2, so they are distinct records.
+        // That is despite the fact that block 1 will share the timestamp with genesis,
+        // however it seems like it goes through a `prepare_proposal` phase too, which
+        // suggests it could have additional transactions affecting the state hash.
+        // By keeping them separate we can actually run queries at height=1 as well as height=2,
+        // to see the difference between `genesis.json` only and whatever else is in block 1.
+        let height: u64 = request.initial_height.into();
+        // Note that setting the `initial_height` to 0 doesn't seem to have an effect.
+        let height = height - 1;
 
         let app_state = AppState {
             block_height: height,
