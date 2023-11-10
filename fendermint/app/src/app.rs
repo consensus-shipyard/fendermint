@@ -3,7 +3,6 @@
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -695,9 +694,6 @@ where
             .modify_exec_state(|s| async {
                 let ((pool, provider, state), res) = self.interpreter.deliver(s, msg).await?;
                 let block_hash = state.block_hash();
-                tracing::info!("sleeping...");
-                tokio::time::sleep(Duration::from_secs(60)).await;
-                tracing::info!("sleep over");
                 Ok(((pool, provider, state), (res, block_hash)))
             })
             .await
@@ -729,7 +725,7 @@ where
 
     /// Signals the end of a block.
     async fn end_block(&self, request: request::EndBlock) -> AbciResult<response::EndBlock> {
-        tracing::info!(height = request.height, "end block");
+        tracing::debug!(height = request.height, "end block");
 
         // TODO: Return events from epoch transitions.
         let ret = self
