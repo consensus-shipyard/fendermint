@@ -625,6 +625,11 @@ where
         &self,
         request: request::PrepareProposal,
     ) -> AbciResult<response::PrepareProposal> {
+        tracing::debug!(
+            height = request.height.value(),
+            time = request.time.to_string(),
+            "prepare proposal"
+        );
         let txs = request.txs.into_iter().map(|tx| tx.to_vec()).collect();
 
         let txs = self
@@ -650,6 +655,11 @@ where
         &self,
         request: request::ProcessProposal,
     ) -> AbciResult<response::ProcessProposal> {
+        tracing::debug!(
+            height = request.height.value(),
+            time = request.time.to_string(),
+            "process proposal"
+        );
         let txs = request.txs.into_iter().map(|tx| tx.to_vec()).collect();
 
         let accept = self
