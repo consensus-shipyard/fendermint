@@ -71,6 +71,8 @@ CARGO_MAKE_WAIT_MILLISECONDS = 5000
 CMT_WAIT_MILLIS = 20000
 # Keep example logs to a minimum.
 VERBOSITY = ""
+# supports info, error, debug, etc.
+LOG_LEVEL= "info"
 
 [tasks.info]
 script="""
