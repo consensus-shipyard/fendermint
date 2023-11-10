@@ -773,7 +773,7 @@ where
 
         let app_hash = state.app_hash();
 
-        tracing::info!(
+        tracing::debug!(
             height = state.block_height,
             state_root = state_root.to_string(),
             app_hash = app_hash.to_string(),
