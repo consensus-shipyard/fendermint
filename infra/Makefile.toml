@@ -8,7 +8,6 @@ extend = [
   { path = "scripts/testnet.toml" },
   { path = "scripts/testnode.toml" },
   { path = "scripts/subnet.toml" },
-  { path = "scripts/bootstrap.toml" },
 ]
 
 [config]

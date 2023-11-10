@@ -2,23 +2,6 @@
 # Node helpers
 ########################################################################################################################
 
-[tasks.new-bootstrap]
-dependencies = [
-    "bootstrap-down",
-    "fendermint-pull",
-    "node-init",
-    "docker-network-create",
-    "cometbft-config",
-    "seed-enable",
-    "fendermint-deps",
-    "subnet-config",
-    "fendermint-start-subnet",
-    "cometbft-start",
-    "cometbft-wait",
-    "cometbft-node-id",
-    "node-report",
-]
-
 [tasks.node-init]
 dependencies = [
     "node-clear",

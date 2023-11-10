@@ -53,6 +53,10 @@ Finally, to remove the bootstrap you can run:
 ```bash
 cargo make --makefile infra/Makefile.toml bootstrap-down
 ```
+And to restart it:
+```
+cargo make --makefile infra/Makefile.toml bootstrap-restart
+```
 
 
 ## Deploy child subnet validator
@@ -91,3 +95,28 @@ Finally, to remove the bootstrap you can run:
 ```
 cargo make --makefile infra/Makefile.toml child-validator-down
 ```
+And to restart it:
+```
+cargo make --makefile infra/Makefile.toml child-validator-restart
+```
+
+## Deploy subnet full-node
+To deploy a full node (i.e. a node that validates and keeps all the state of a subnet but doesn't participate in the proposal of new blocks), the following command can be used:
+```bash
+cargo make --makefile infra/Makefile.toml \
+    -e SUBNET_ID=<SUBNET_ID> \
+    -e CMT_P2P_HOST_PORT=<COMETBFT_P2P_PORT> \
+    -e CMT_RPC_HOST_PORT=<COMETBFT_RPC_PORT> \
+    -e ETHAPI_HOST_PORT=<ETH_RPC_PORT> \
+    -e BOOTSTRAPS=<BOOTSTRAP_ENDPOINT>
+    -e PARENT_REGISTRY=<PARENT_REGISTRY_CONTRACT_ADDR> \
+    -e PARENT_GATEWAY=<GATEWAY_REGISTRY_CONTRACT_ADDR> \
+    -e CMT_EXTERNAL_ADDR=<COMETBFT_EXTERNAL_ENDPOINT> \
+    child-fullnode
+```
+The full node also has its corresponding commands to kill and restart the node:
+```
+cargo make --makefile infra/Makefile.toml child-fullnode-down
+cargo make --makefile infra/Makefile.toml child-fullnode-restart
+```
+
