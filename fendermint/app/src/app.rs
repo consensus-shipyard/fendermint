@@ -688,7 +688,6 @@ where
 
     /// Apply a transaction to the application's state.
     async fn deliver_tx(&self, request: request::DeliverTx) -> AbciResult<response::DeliverTx> {
-        tracing::info!("deliver_tx");
         let msg = request.tx.to_vec();
         let (result, block_hash) = self
             .modify_exec_state(|s| async {
