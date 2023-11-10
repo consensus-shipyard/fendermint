@@ -7,7 +7,7 @@
 // * https://github.com/filecoin-project/lotus/blob/v1.23.1-rc2/node/impl/full/eth.go
 
 use std::collections::HashSet;
-use std::ops::{Add, Sub};
+use std::ops::Add;
 
 use anyhow::Context;
 use ethers_core::types as et;
@@ -338,7 +338,9 @@ where
     C: Client + Sync + Send,
 {
     if let et::BlockNumber::Number(num) = block_number {
-        block_number = et::BlockNumber::Number(num.add(1));
+        if num.is_zero() {
+            block_number = et::BlockNumber::Number(num.add(1));
+        }
     }
     match data.block_by_height(block_number).await? {
         block if block.header().height.value() > 0 => {
