@@ -16,7 +16,6 @@ use fendermint_vm_message::query::FvmQueryHeight;
 use fendermint_vm_message::signed::DomainHash;
 use fendermint_vm_message::{chain::ChainMessage, conv::from_eth::to_fvm_address};
 use fvm_ipld_encoding::{de::DeserializeOwned, RawBytes};
-use fvm_shared::bigint::Zero;
 use fvm_shared::{chainid::ChainID, econ::TokenAmount, error::ExitCode, message::Message};
 use rand::Rng;
 use tendermint::block::Height;
@@ -273,29 +272,6 @@ where
                 .context("failed to convert hash to JSON")?
         };
 
-        Ok(block)
-    }
-
-    /// Artificial block-zero.
-    pub fn zero_block(
-        &self,
-        block: tendermint::Block,
-    ) -> JsonRpcResult<et::Block<serde_json::Value>>
-    where
-        C: Client + Sync + Send,
-    {
-        let block_results = tendermint_rpc::endpoint::block_results::Response {
-            height: block.header.height,
-            txs_results: None,
-            begin_block_events: None,
-            end_block_events: None,
-            validator_updates: Vec::new(),
-            consensus_param_updates: None,
-        };
-        let block = to_eth_block(block, block_results, TokenAmount::zero(), ChainID::from(0))
-            .context("failed to map block zero to eth")?;
-        let block =
-            map_rpc_block_txs(block, serde_json::to_value).context("failed to convert to JSON")?;
         Ok(block)
     }
 

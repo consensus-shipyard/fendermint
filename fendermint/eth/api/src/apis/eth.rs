@@ -35,7 +35,7 @@ use tendermint_rpc::{
 };
 
 use crate::conv::from_eth::to_fvm_message;
-use crate::conv::from_tm::{self, msg_hash, to_chain_message, to_cumulative};
+use crate::conv::from_tm::{self, msg_hash, to_chain_message, to_cumulative, to_eth_block_zero};
 use crate::error::error_with_data;
 use crate::filters::{matches_topics, FilterId, FilterKind, FilterRecords};
 use crate::{
@@ -323,7 +323,7 @@ where
     C: Client + Sync + Send,
 {
     match data.block_by_hash_opt(block_hash).await? {
-        Some(block) if from_tm::is_block_zero(&block) => Ok(Some(data.zero_block(block)?)),
+        Some(block) if from_tm::is_block_zero(&block) => Ok(Some(to_eth_block_zero(block)?)),
         Some(block) => data.enrich_block(block, full_tx).await.map(Some),
         None => Ok(None),
     }
@@ -341,7 +341,7 @@ where
         block if block.header().height.value() > 0 => {
             data.enrich_block(block, full_tx).await.map(Some)
         }
-        block if from_tm::is_block_zero(&block) => Ok(Some(data.zero_block(block)?)),
+        block if from_tm::is_block_zero(&block) => Ok(Some(to_eth_block_zero(block)?)),
         _ => Ok(None),
     }
 }

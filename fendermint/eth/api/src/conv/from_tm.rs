@@ -11,6 +11,7 @@ use ethers_core::types::{self as et};
 use fendermint_vm_actor_interface::eam::EthAddress;
 use fendermint_vm_message::{chain::ChainMessage, signed::SignedMessage};
 use fvm_shared::address::Address;
+use fvm_shared::bigint::Zero;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::{bigint::BigInt, econ::TokenAmount};
 use lazy_static::lazy_static;
@@ -63,6 +64,8 @@ fn block_zero() -> tendermint::Block {
         signatures: Vec::new(),
     };
 
+    let empty_cid = fendermint_vm_message::cid(&[0u8; 0]).unwrap();
+
     let header = tendermint::block::Header {
         version: tendermint::block::header::Version { block: 0, app: 0 },
         chain_id: tendermint::chain::Id::try_from("UNSPECIFIED").expect("invalid chainid"),
@@ -74,7 +77,7 @@ fn block_zero() -> tendermint::Block {
         validators_hash: tendermint::Hash::None,
         next_validators_hash: tendermint::Hash::None,
         consensus_hash: tendermint::Hash::None,
-        app_hash: tendermint::AppHash::try_from(Vec::new()).unwrap(),
+        app_hash: tendermint::AppHash::try_from(empty_cid.to_bytes()).unwrap(),
         last_results_hash: None,
         evidence_hash: None,
         proposer_address: tendermint::account::Id::new([0u8; 20]),
@@ -395,9 +398,14 @@ where
 
 fn app_hash_to_root(app_hash: &tendermint::AppHash) -> anyhow::Result<et::H256> {
     // Out app hash is a CID. We only need the hash part.
-    let state_root = cid::Cid::try_from(app_hash.as_bytes())?;
-    let state_root = et::H256::from_slice(state_root.hash().digest());
-    Ok(state_root)
+    // Actually it's not the state root of the actors, but it's still a CID.
+    let state_root = cid::Cid::try_from(app_hash.as_bytes()).context("app hash is not a CID")?;
+    // Just in case we returned `Cid::default()`
+    if state_root.hash().digest().is_empty() {
+        Ok(et::H256::default())
+    } else {
+        Ok(et::H256::from_slice(state_root.hash().digest()))
+    }
 }
 
 fn maybe_contract_address(deliver_tx: &DeliverTx) -> Option<EthAddress> {
@@ -413,6 +421,23 @@ fn maybe_contract_address(deliver_tx: &DeliverTx) -> Option<EthAddress> {
             // EthAddress::from_id(cr.actor_id)
             cr.eth_address
         })
+}
+
+/// Artificial block-zero.
+pub fn to_eth_block_zero(block: tendermint::Block) -> anyhow::Result<et::Block<serde_json::Value>> {
+    let block_results = tendermint_rpc::endpoint::block_results::Response {
+        height: block.header.height,
+        txs_results: None,
+        begin_block_events: None,
+        end_block_events: None,
+        validator_updates: Vec::new(),
+        consensus_param_updates: None,
+    };
+    let block = to_eth_block(block, block_results, TokenAmount::zero(), ChainID::from(0))
+        .context("failed to map block zero to eth")?;
+    let block =
+        map_rpc_block_txs(block, serde_json::to_value).context("failed to convert to JSON")?;
+    Ok(block)
 }
 
 /// Turn Events into Ethereum logs.
@@ -569,10 +594,15 @@ pub fn collect_emitters(events: &[abci::Event]) -> HashSet<Address> {
 mod tests {
     use crate::conv::from_tm::is_block_zero;
 
-    use super::BLOCK_ZERO;
+    use super::{to_eth_block_zero, BLOCK_ZERO};
 
     #[test]
     fn block_zero_can_be_created() {
         assert!(is_block_zero(&BLOCK_ZERO))
+    }
+
+    #[test]
+    fn block_zero_can_be_turned_into_eth() {
+        let _ = to_eth_block_zero(BLOCK_ZERO.clone()).unwrap();
     }
 }
