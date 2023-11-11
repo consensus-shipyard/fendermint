@@ -65,7 +65,7 @@ fn block_zero() -> tendermint::Block {
 
     let header = tendermint::block::Header {
         version: tendermint::block::header::Version { block: 0, app: 0 },
-        chain_id: tendermint::chain::Id::try_from("n/a").unwrap(),
+        chain_id: tendermint::chain::Id::try_from("UNSPECIFIED").expect("invalid chainid"),
         height: tendermint::block::Height::try_from(0u64).unwrap(),
         time: tendermint::time::Time::unix_epoch(),
         last_block_id: None,
@@ -563,4 +563,16 @@ pub fn collect_emitters(events: &[abci::Event]) -> HashSet<Address> {
         }
     }
     emitters
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::conv::from_tm::is_block_zero;
+
+    use super::BLOCK_ZERO;
+
+    #[test]
+    fn block_zero_can_be_created() {
+        assert!(is_block_zero(&BLOCK_ZERO))
+    }
 }
