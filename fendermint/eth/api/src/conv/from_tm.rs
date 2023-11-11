@@ -45,6 +45,52 @@ lazy_static! {
     static ref FULL_ETH_BLOOM: [u8; 2048/8] = [0xff; 2048/8];
 
     static ref MAX_U256: BigInt = BigInt::from_str(&et::U256::MAX.to_string()).unwrap();
+
+    pub static ref BLOCK_ZERO: tendermint::Block = block_zero();
+    pub static ref BLOCK_ZERO_HASH: [u8; 32] = BLOCK_ZERO.header().hash().as_bytes().try_into().unwrap();
+}
+
+/// A pretend block at height 0 for some tools like The Graph which go there.
+fn block_zero() -> tendermint::Block {
+    let commit = tendermint::block::Commit {
+        height: tendermint::block::Height::try_from(0u64).unwrap(),
+        round: tendermint::block::Round::try_from(0).unwrap(),
+        block_id: tendermint::block::Id {
+            hash: tendermint::Hash::None,
+            part_set_header: tendermint::block::parts::Header::new(0, tendermint::Hash::None)
+                .unwrap(),
+        },
+        signatures: Vec::new(),
+    };
+
+    let header = tendermint::block::Header {
+        version: tendermint::block::header::Version { block: 0, app: 0 },
+        chain_id: tendermint::chain::Id::try_from("n/a").unwrap(),
+        height: tendermint::block::Height::try_from(0u64).unwrap(),
+        time: tendermint::time::Time::unix_epoch(),
+        last_block_id: None,
+        last_commit_hash: None,
+        data_hash: None,
+        validators_hash: tendermint::Hash::None,
+        next_validators_hash: tendermint::Hash::None,
+        consensus_hash: tendermint::Hash::None,
+        app_hash: tendermint::AppHash::try_from(Vec::new()).unwrap(),
+        last_results_hash: None,
+        evidence_hash: None,
+        proposer_address: tendermint::account::Id::new([0u8; 20]),
+    };
+
+    tendermint::Block::new(
+        header,
+        Vec::new(),
+        tendermint::evidence::Data::default(),
+        Some(commit),
+    )
+    .unwrap()
+}
+
+pub fn is_block_zero(block: &tendermint::Block) -> bool {
+    block.header().hash() == tendermint::Hash::Sha256(*BLOCK_ZERO_HASH)
 }
 
 /// Convert a Tendermint block to Ethereum with only the block hashes in the body.
@@ -60,11 +106,16 @@ pub fn to_eth_block(
 
     let hash = et::H256::from_slice(block.header().hash().as_ref());
 
-    let parent_hash = block
-        .header()
-        .last_block_id
-        .map(|id| et::H256::from_slice(id.hash.as_bytes()))
-        .unwrap_or_default();
+    let parent_hash = if block.header.height.value() == 1 {
+        // Just in case the client tool wants to compare hashes.
+        et::H256::from_slice(BLOCK_ZERO_HASH.as_ref())
+    } else {
+        block
+            .header()
+            .last_block_id
+            .map(|id| et::H256::from_slice(id.hash.as_bytes()))
+            .unwrap_or_default()
+    };
 
     let transactions_root = if block.data.is_empty() {
         *EMPTY_ROOT_HASH

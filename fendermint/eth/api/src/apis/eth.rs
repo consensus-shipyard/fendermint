@@ -323,6 +323,7 @@ where
     C: Client + Sync + Send,
 {
     match data.block_by_hash_opt(block_hash).await? {
+        Some(block) if from_tm::is_block_zero(&block) => Ok(Some(data.zero_block(block)?)),
         Some(block) => data.enrich_block(block, full_tx).await.map(Some),
         None => Ok(None),
     }
@@ -340,6 +341,7 @@ where
         block if block.header().height.value() > 0 => {
             data.enrich_block(block, full_tx).await.map(Some)
         }
+        block if from_tm::is_block_zero(&block) => Ok(Some(data.zero_block(block)?)),
         _ => Ok(None),
     }
 }
@@ -500,6 +502,9 @@ where
     C: Client + Sync + Send,
 {
     let block = data.block_by_height(block_number).await?;
+    if from_tm::is_block_zero(&block) {
+        return Ok(Vec::new());
+    }
     let height = block.header.height;
     let state_params = data
         .client

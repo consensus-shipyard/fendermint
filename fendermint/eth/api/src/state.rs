@@ -16,6 +16,7 @@ use fendermint_vm_message::query::FvmQueryHeight;
 use fendermint_vm_message::signed::DomainHash;
 use fendermint_vm_message::{chain::ChainMessage, conv::from_eth::to_fvm_address};
 use fvm_ipld_encoding::{de::DeserializeOwned, RawBytes};
+use fvm_shared::bigint::Zero;
 use fvm_shared::{chainid::ChainID, econ::TokenAmount, error::ExitCode, message::Message};
 use rand::Rng;
 use tendermint::block::Height;
@@ -29,6 +30,7 @@ use tokio::sync::mpsc::{Sender, UnboundedSender};
 use tokio::sync::RwLock;
 
 use crate::cache::AddressCache;
+use crate::conv::from_tm;
 use crate::filters::{
     run_subscription, BlockHash, FilterCommand, FilterDriver, FilterId, FilterKind, FilterMap,
     FilterRecords,
@@ -121,6 +123,9 @@ where
         block_number: et::BlockNumber,
     ) -> JsonRpcResult<tendermint::Block> {
         let block = match block_number {
+            et::BlockNumber::Number(height) if height == et::U64::from(0) => {
+                from_tm::BLOCK_ZERO.clone()
+            }
             et::BlockNumber::Number(height) => {
                 let height =
                     Height::try_from(height.as_u64()).context("failed to convert to height")?;
@@ -153,6 +158,9 @@ where
         block_number: et::BlockNumber,
     ) -> JsonRpcResult<tendermint::block::Header> {
         let header = match block_number {
+            et::BlockNumber::Number(height) if height == et::U64::from(0) => {
+                from_tm::BLOCK_ZERO.header.clone()
+            }
             et::BlockNumber::Number(height) => {
                 let height =
                     Height::try_from(height.as_u64()).context("failed to convert to height")?;
@@ -212,6 +220,9 @@ where
         &self,
         block_hash: et::H256,
     ) -> JsonRpcResult<Option<tendermint::block::Block>> {
+        if block_hash.0 == *from_tm::BLOCK_ZERO_HASH {
+            return Ok(Some(from_tm::BLOCK_ZERO.clone()));
+        }
         let hash = tendermint::Hash::Sha256(*block_hash.as_fixed_bytes());
         let res: block_by_hash::Response = self.tm().block_by_hash(hash).await?;
         Ok(res.block)
@@ -222,6 +233,9 @@ where
         &self,
         block_hash: et::H256,
     ) -> JsonRpcResult<Option<tendermint::block::Header>> {
+        if block_hash.0 == *from_tm::BLOCK_ZERO_HASH {
+            return Ok(Some(from_tm::BLOCK_ZERO.header.clone()));
+        }
         let hash = tendermint::Hash::Sha256(*block_hash.as_fixed_bytes());
         let res: header_by_hash::Response = self.tm().header_by_hash(hash).await?;
         Ok(res.header)
@@ -259,6 +273,29 @@ where
                 .context("failed to convert hash to JSON")?
         };
 
+        Ok(block)
+    }
+
+    /// Artificial block-zero.
+    pub fn zero_block(
+        &self,
+        block: tendermint::Block,
+    ) -> JsonRpcResult<et::Block<serde_json::Value>>
+    where
+        C: Client + Sync + Send,
+    {
+        let block_results = tendermint_rpc::endpoint::block_results::Response {
+            height: block.header.height,
+            txs_results: None,
+            begin_block_events: None,
+            end_block_events: None,
+            validator_updates: Vec::new(),
+            consensus_param_updates: None,
+        };
+        let block = to_eth_block(block, block_results, TokenAmount::zero(), ChainID::from(0))
+            .context("failed to map block zero to eth")?;
+        let block =
+            map_rpc_block_txs(block, serde_json::to_value).context("failed to convert to JSON")?;
         Ok(block)
     }
 
