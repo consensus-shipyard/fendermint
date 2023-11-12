@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 use std::future::Future;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -108,6 +108,12 @@ impl AppState {
 
         tendermint::hash::AppHash::try_from(state_params_hash).expect("hash can be wrapped")
     }
+
+    /// The state is effective at the *next* block, that is, the effects of block N are visible in the header of block N+1,
+    /// so the height of the state itself as a "post-state" is one higher than the block which we executed to create it.
+    pub fn state_height(&self) -> BlockHeight {
+        self.block_height + 1
+    }
 }
 
 pub struct AppConfig<S: KVStore> {
@@ -164,7 +170,7 @@ where
     /// The parent finality provider for top down checkpoint
     parent_finality_provider: TopDownFinalityProvider,
     /// State accumulating changes during block execution.
-    exec_state: Arc<Mutex<Option<FvmExecState<SS>>>>,
+    exec_state: Arc<tokio::sync::Mutex<Option<FvmExecState<SS>>>>,
     /// Projected (partial) state accumulating during transaction checks.
     check_state: CheckStateRef<SS>,
     /// How much history to keep.
@@ -202,7 +208,7 @@ where
             interpreter: Arc::new(interpreter),
             resolve_pool,
             parent_finality_provider,
-            exec_state: Arc::new(Mutex::new(None)),
+            exec_state: Arc::new(tokio::sync::Mutex::new(None)),
             check_state: Arc::new(tokio::sync::Mutex::new(None)),
         };
         app.init_committed_state()?;
@@ -238,7 +244,7 @@ where
                 state_params: FvmStateParams {
                     timestamp: Timestamp(0),
                     state_root,
-                    network_version: NetworkVersion::MAX,
+                    network_version: NetworkVersion::V0,
                     base_fee: TokenAmount::zero(),
                     circ_supply: TokenAmount::zero(),
                     chain_id: 0,
@@ -269,13 +275,16 @@ where
     fn set_committed_state(&self, mut state: AppState) -> Result<()> {
         self.db
             .with_write(|tx| {
-                // Insert latest state history point.
+                // Insert latest state history point at the `block_height + 1`,
+                // to be consistent with how CometBFT queries are supposed to work.
+                let state_height = state.state_height();
+
                 self.state_hist
-                    .put(tx, &state.block_height, &state.state_params)?;
+                    .put(tx, &state_height, &state.state_params)?;
 
                 // Prune state history.
-                if self.state_hist_size > 0 && state.block_height >= self.state_hist_size {
-                    let prune_height = state.block_height.saturating_sub(self.state_hist_size);
+                if self.state_hist_size > 0 && state_height >= self.state_hist_size {
+                    let prune_height = state_height.saturating_sub(self.state_hist_size);
                     while state.oldest_state_height <= prune_height {
                         self.state_hist.delete(tx, &state.oldest_state_height)?;
                         state.oldest_state_height += 1;
@@ -291,25 +300,16 @@ where
     }
 
     /// Put the execution state during block execution. Has to be empty.
-    fn put_exec_state(&self, state: FvmExecState<SS>) {
-        let mut guard = self.exec_state.lock().expect("mutex poisoned");
+    async fn put_exec_state(&self, state: FvmExecState<SS>) {
+        let mut guard = self.exec_state.lock().await;
         assert!(guard.is_none(), "exec state not empty");
         *guard = Some(state);
     }
 
     /// Take the execution state during block execution. Has to be non-empty.
-    fn take_exec_state(&self) -> FvmExecState<SS> {
-        let mut guard = self.exec_state.lock().expect("mutex poisoned");
+    async fn take_exec_state(&self) -> FvmExecState<SS> {
+        let mut guard = self.exec_state.lock().await;
         guard.take().expect("exec state empty")
-    }
-
-    /// Apply a function on the state, if it exists.
-    fn map_exec_state<T, F>(&self, f: F) -> Option<T>
-    where
-        F: FnOnce(&FvmExecState<SS>) -> T,
-    {
-        let guard = self.exec_state.lock().expect("mutex poisoned");
-        guard.as_ref().map(f)
     }
 
     /// Take the execution state, update it, put it back, return the output.
@@ -323,14 +323,18 @@ where
             )>,
         >,
     {
-        let state = self.take_exec_state();
+        let mut guard = self.exec_state.lock().await;
+        let state = guard.take().expect("exec state empty");
+
         let ((_pool, _provider, state), ret) = f((
             self.resolve_pool.clone(),
             self.parent_finality_provider.clone(),
             state,
         ))
         .await?;
-        self.put_exec_state(state);
+
+        *guard = Some(state);
+
         Ok(ret)
     }
 
@@ -346,7 +350,7 @@ where
             let state_params = app_state.state_params;
 
             // wait for block production
-            if block_height == 0 {
+            if !Self::can_query_state(block_height, &state_params) {
                 return Ok(None);
             }
 
@@ -389,6 +393,14 @@ where
         }
         let state = self.committed_state()?;
         Ok((state.state_params, state.block_height))
+    }
+
+    /// Check whether the state has been initialized by genesis.
+    ///
+    /// We can't run queries on the initial empty state becase the actors haven't been inserted yet.
+    fn can_query_state(height: BlockHeight, params: &FvmStateParams) -> bool {
+        // It's really the empty state tree that would be the best indicator.
+        !(height == 0 && params.timestamp.0 == 0 && params.network_version == NetworkVersion::V0)
     }
 }
 
@@ -464,16 +476,34 @@ where
             "pre-genesis state created"
         );
 
+        let genesis_bytes = request.app_state_bytes.to_vec();
+        let genesis_hash =
+            fendermint_vm_message::cid(&genesis_bytes).context("failed to compute genesis CID")?;
+
+        // Make it easy to spot any discrepancies between nodes.
+        tracing::info!(genesis_hash = genesis_hash.to_string(), "genesis");
+
         let (state, out) = self
             .interpreter
-            .init(state, request.app_state_bytes.to_vec())
+            .init(state, genesis_bytes)
             .await
             .context("failed to init from genesis")?;
 
         let state_root = state.commit().context("failed to commit genesis state")?;
-        let height = request.initial_height.into();
         let validators =
             to_validator_updates(out.validators).context("failed to convert validators")?;
+
+        // Let's pretend that the genesis state is that of a fictive block at height 0.
+        // The record will be stored under height 1, and the record after the application
+        // of the actual block 1 will be at height 2, so they are distinct records.
+        // That is despite the fact that block 1 will share the timestamp with genesis,
+        // however it seems like it goes through a `prepare_proposal` phase too, which
+        // suggests it could have additional transactions affecting the state hash.
+        // By keeping them separate we can actually run queries at height=1 as well as height=2,
+        // to see the difference between `genesis.json` only and whatever else is in block 1.
+        let height: u64 = request.initial_height.into();
+        // Note that setting the `initial_height` to 0 doesn't seem to have an effect.
+        let height = height - 1;
 
         let app_state = AppState {
             block_height: height,
@@ -496,8 +526,11 @@ where
         };
 
         tracing::info!(
+            height,
             state_root = app_state.state_root().to_string(),
             app_hash = app_state.app_hash().to_string(),
+            timestamp = app_state.state_params.timestamp.0,
+            chain_id = app_state.state_params.chain_id,
             "init chain"
         );
 
@@ -512,7 +545,7 @@ where
         let height = FvmQueryHeight::from(request.height.value());
         let (state_params, block_height) = self.state_params_at_height(height)?;
 
-        tracing::info!(
+        tracing::debug!(
             query_height = request.height.value(),
             block_height,
             state_root = state_params.state_root.to_string(),
@@ -520,7 +553,7 @@ where
         );
 
         // Don't run queries on the empty state, they won't work.
-        if block_height == 0 {
+        if !Self::can_query_state(block_height, &state_params) {
             return Ok(invalid_query(
                 AppError::NotInitialized,
                 "The app hasn't been initialized yet.".to_owned(),
@@ -607,6 +640,11 @@ where
         &self,
         request: request::PrepareProposal,
     ) -> AbciResult<response::PrepareProposal> {
+        tracing::debug!(
+            height = request.height.value(),
+            time = request.time.to_string(),
+            "prepare proposal"
+        );
         let txs = request.txs.into_iter().map(|tx| tx.to_vec()).collect();
 
         let txs = self
@@ -632,6 +670,11 @@ where
         &self,
         request: request::ProcessProposal,
     ) -> AbciResult<response::ProcessProposal> {
+        tracing::debug!(
+            height = request.height.value(),
+            time = request.time.to_string(),
+            "process proposal"
+        );
         let txs = request.txs.into_iter().map(|tx| tx.to_vec()).collect();
 
         let accept = self
@@ -661,7 +704,11 @@ where
             tendermint::Hash::None => return Err(anyhow!("empty block hash").into()),
         };
 
-        tracing::debug!(block_height, "begin block");
+        tracing::debug!(
+            height = block_height,
+            app_hash = request.header.app_hash.to_string(),
+            "begin block"
+        );
 
         let db = self.state_store_clone();
         let state = self.committed_state()?;
@@ -674,7 +721,7 @@ where
 
         tracing::debug!("initialized exec state");
 
-        self.put_exec_state(state);
+        self.put_exec_state(state).await;
 
         let ret = self
             .modify_exec_state(|s| self.interpreter.begin(s))
@@ -687,12 +734,14 @@ where
     /// Apply a transaction to the application's state.
     async fn deliver_tx(&self, request: request::DeliverTx) -> AbciResult<response::DeliverTx> {
         let msg = request.tx.to_vec();
-        let result = self
-            .modify_exec_state(|s| self.interpreter.deliver(s, msg))
+        let (result, block_hash) = self
+            .modify_exec_state(|s| async {
+                let ((pool, provider, state), res) = self.interpreter.deliver(s, msg).await?;
+                let block_hash = state.block_hash();
+                Ok(((pool, provider, state), (res, block_hash)))
+            })
             .await
             .context("deliver failed")?;
-
-        let block_hash = self.map_exec_state(|s| s.block_hash()).flatten();
 
         let response = match result {
             Err(e) => invalid_deliver_tx(AppError::InvalidEncoding, e.description),
@@ -733,7 +782,7 @@ where
 
     /// Commit the current state at the current height.
     async fn commit(&self) -> AbciResult<response::Commit> {
-        let exec_state = self.take_exec_state();
+        let exec_state = self.take_exec_state().await;
 
         // Commit the execution state to the datastore.
         let mut state = self.committed_state()?;
@@ -756,6 +805,7 @@ where
         let app_hash = state.app_hash();
 
         tracing::debug!(
+            height = state.block_height,
             state_root = state_root.to_string(),
             app_hash = app_hash.to_string(),
             timestamp = state.state_params.timestamp.0,
