@@ -56,6 +56,7 @@ pub struct Broadcaster<C> {
     addr: Address,
     gas_fee_cap: TokenAmount,
     gas_premium: TokenAmount,
+    gas_overestimation_rate: f64,
     max_retries: u8,
     retry_delay: Duration,
 }
@@ -70,6 +71,7 @@ where
         secret_key: SecretKey,
         gas_fee_cap: TokenAmount,
         gas_premium: TokenAmount,
+        gas_overestimation_rate: f64,
     ) -> Self {
         let client = FendermintClient::new(client);
         Self {
@@ -78,6 +80,7 @@ where
             addr,
             gas_fee_cap,
             gas_premium,
+            gas_overestimation_rate,
             max_retries: 0,
             // Set the retry delay to rougly the block creation time.
             retry_delay: Duration::from_secs(1),
@@ -149,7 +152,8 @@ where
                 .context("failed to estimate gas")?;
 
             if gas_estimate.value.exit_code.is_success() {
-                gas_params.gas_limit = gas_estimate.value.gas_limit;
+                gas_params.gas_limit =
+                    (gas_estimate.value.gas_limit as f64 * self.gas_overestimation_rate) as u64;
             } else {
                 bail!(
                     "failed to estimate gas: {} - {}",
