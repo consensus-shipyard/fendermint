@@ -25,25 +25,26 @@ pub struct SnapshotManifest {
 }
 
 /// A snapshot directory and its manifest.
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SnapshotItem {
-    pub manifest: SnapshotManifest,
     /// Directory containing this snapshot, ie. the manifest ane the parts.
     pub snapshot_dir: PathBuf,
+    pub manifest: SnapshotManifest,
 }
 
 /// Save a manifest along with the other snapshot files into a snapshot specific directory.
 pub fn write_manifest(
     snapshot_dir: impl AsRef<Path>,
     manifest: &SnapshotManifest,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<PathBuf> {
     let json =
         serde_json::to_string_pretty(&manifest).context("failed to convert manifest to JSON")?;
 
     let manifest_path = snapshot_dir.as_ref().join(MANIFEST_FILE_NAME);
 
-    std::fs::write(manifest_path, json).context("failed to write manifest file")?;
+    std::fs::write(&manifest_path, json).context("failed to write manifest file")?;
 
-    Ok(())
+    Ok(manifest_path)
 }
 
 /// Collect all the manifests from a directory containing snapshot-directories, e.g.
@@ -82,6 +83,10 @@ pub fn list_manifests(snapshot_dir: impl AsRef<Path>) -> anyhow::Result<Vec<Snap
             }
         }
     }
+
+    // Order by oldest to newest.
+    items.sort_by_key(|i| i.manifest.block_height);
+
     Ok(items)
 }
 

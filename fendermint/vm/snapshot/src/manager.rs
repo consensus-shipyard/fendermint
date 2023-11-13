@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::car;
-use crate::manifest::{write_manifest, SnapshotManifest};
+use crate::manifest::{list_manifests, write_manifest, SnapshotItem, SnapshotManifest};
 use anyhow::Context;
 use async_stm::{atomically, retry, TVar};
 use fendermint_vm_interpreter::fvm::state::snapshot::{BlockHeight, BlockStateParams, Snapshot};
@@ -23,6 +23,7 @@ const SNAPSHOT_FILE_NAME: &str = "snapshot.car";
 struct SnapshotState {
     /// The latest state parameters at a snapshottable height.
     latest_params: TVar<Option<BlockStateParams>>,
+    snapshots: TVar<im::Vector<SnapshotItem>>,
 }
 
 /// Interface to snapshot state for the application.
@@ -79,26 +80,33 @@ where
         snapshot_dir: PathBuf,
         snapshot_chunk_size: usize,
         sync_poll_interval: Duration,
-    ) -> (Self, SnapshotClient) {
+    ) -> anyhow::Result<(Self, SnapshotClient)> {
+        let snapshot_items = list_manifests(&snapshot_dir).context("failed to list manifests")?;
+
+        let snapshot_state = SnapshotState {
+            // Start with nothing to snapshot until we are notified about a new height.
+            // We could also look back to find the latest height we should have snapshotted.
+            latest_params: TVar::new(None),
+            snapshots: TVar::new(snapshot_items.into()),
+        };
+
         let manager = Self {
             client,
             store,
             snapshot_dir,
             snapshot_chunk_size,
-            snapshot_state: SnapshotState {
-                // Start with nothing to snapshot until we are notified about a new height.
-                // We could also look back to find the latest height we should have snapshotted.
-                latest_params: TVar::new(None),
-            },
+            snapshot_state: snapshot_state.clone(),
             sync_poll_interval,
             // Assume we are syncing until we can determine otherwise.
             is_syncing: TVar::new(true),
         };
+
         let client = SnapshotClient {
             snapshot_interval,
-            snapshot_state: manager.snapshot_state.clone(),
+            snapshot_state,
         };
-        (manager, client)
+
+        Ok((manager, client))
     }
 
     /// Produce snapshots.
@@ -117,7 +125,7 @@ where
 
         let mut last_params = None;
         loop {
-            let (params, height) = atomically(|| {
+            let (state_params, block_height) = atomically(|| {
                 // Check the current sync status. We could just query the API, but then we wouldn't
                 // be notified when we finally reach the end, and we'd only snapshot the next height,
                 // not the last one as soon as the chain is caught up.
@@ -133,11 +141,32 @@ where
             })
             .await;
 
-            if let Err(e) = self.create_snapshot(height, params.clone()).await {
-                tracing::warn!(error =? e, height, "failed to create snapshot");
+            match self
+                .create_snapshot(block_height, state_params.clone())
+                .await
+            {
+                Ok(item) => {
+                    tracing::info!(
+                        snapshot = item.snapshot_dir.to_string_lossy().to_string(),
+                        block_height,
+                        chunks_count = item.manifest.chunks,
+                        snapshot_size = item.manifest.size,
+                        "exported snapshot"
+                    );
+                    // Add the snapshot to the in-memory records.
+                    atomically(|| {
+                        self.snapshot_state
+                            .snapshots
+                            .modify_mut(|items| items.push_back(item.clone()))
+                    })
+                    .await;
+                }
+                Err(e) => {
+                    tracing::warn!(error =? e, block_height, "failed to create snapshot");
+                }
             }
 
-            last_params = Some((params, height));
+            last_params = Some((state_params, block_height));
         }
     }
 
@@ -146,7 +175,7 @@ where
         &self,
         block_height: BlockHeight,
         state_params: FvmStateParams,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<SnapshotItem> {
         let snapshot = Snapshot::new(self.store.clone(), state_params.clone(), block_height)
             .context("failed to create snapshot")?;
 
@@ -205,7 +234,7 @@ where
             chunks: chunks_count,
             state_params,
         };
-        write_manifest(temp_dir.path(), &manifest).context("failed to export manifest")?;
+        let _ = write_manifest(temp_dir.path(), &manifest).context("failed to export manifest")?;
 
         // Move snapshot to final location - doing it in one step so there's less room for error.
         let snapshot_dir = self.snapshot_dir.join(&snapshot_name);
@@ -215,15 +244,10 @@ where
         std::fs::remove_file(snapshot_dir.join(SNAPSHOT_FILE_NAME))
             .context("failed to remove CAR file")?;
 
-        tracing::info!(
-            snapshot = snapshot_dir.to_string_lossy().to_string(),
-            block_height,
-            chunks_count,
-            snapshot_size,
-            "exported snapshot"
-        );
-
-        Ok(())
+        Ok(SnapshotItem {
+            snapshot_dir,
+            manifest,
+        })
     }
 }
 

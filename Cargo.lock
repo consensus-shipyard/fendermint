@@ -3229,6 +3229,7 @@ dependencies = [
  "fvm_ipld_car",
  "fvm_ipld_encoding 0.3.3",
  "fvm_shared",
+ "im",
  "multihash 0.16.3",
  "quickcheck 1.0.3",
  "serde",
