@@ -4,7 +4,10 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
-use fendermint_vm_interpreter::fvm::state::{snapshot::BlockHeight, FvmStateParams};
+use fendermint_vm_interpreter::fvm::state::{
+    snapshot::{BlockHeight, SnapshotVersion},
+    FvmStateParams,
+};
 use serde::{Deserialize, Serialize};
 
 /// The file name in snapshot directories that contains the manifest.
@@ -22,6 +25,8 @@ pub struct SnapshotManifest {
     /// which are also in the CAR file, but it might be
     /// useful to see. It is annotated for human readability.
     pub state_params: FvmStateParams,
+    /// Snapshot format version
+    pub version: SnapshotVersion,
 }
 
 /// A snapshot directory and its manifest.
@@ -106,6 +111,7 @@ mod arb {
                 block_height: Arbitrary::arbitrary(g),
                 size: Arbitrary::arbitrary(g),
                 chunks: Arbitrary::arbitrary(g),
+                version: Arbitrary::arbitrary(g),
                 state_params: FvmStateParams {
                     state_root: ArbCid::arbitrary(g).0,
                     timestamp: Timestamp(Arbitrary::arbitrary(g)),

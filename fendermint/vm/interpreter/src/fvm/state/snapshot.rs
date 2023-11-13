@@ -21,6 +21,7 @@ use tokio_stream::StreamExt;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 pub type BlockHeight = u64;
+pub type SnapshotVersion = u32;
 
 /// Taking snapshot of the current blockchain state
 pub enum Snapshot<BS> {
@@ -51,6 +52,12 @@ where
             state_params,
             block_height,
         )?))
+    }
+
+    pub fn version(&self) -> SnapshotVersion {
+        match self {
+            Snapshot::V1(_) => 1,
+        }
     }
 
     /// Read the snapshot from file and load all the data into the store

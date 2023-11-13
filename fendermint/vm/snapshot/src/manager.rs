@@ -46,6 +46,11 @@ impl SnapshotClient {
             .await;
         }
     }
+
+    /// List completed snapshots.
+    pub async fn list_snapshots(&self) -> im::Vector<SnapshotItem> {
+        atomically(|| self.snapshot_state.snapshots.read_clone()).await
+    }
 }
 
 /// Create snapshots at regular block intervals.
@@ -179,6 +184,7 @@ where
         let snapshot = Snapshot::new(self.store.clone(), state_params.clone(), block_height)
             .context("failed to create snapshot")?;
 
+        let snapshot_version = snapshot.version();
         let snapshot_name = format!("snapshot-{block_height}");
         let temp_dir = tempfile::Builder::new()
             .prefix(&snapshot_name)
@@ -233,6 +239,7 @@ where
             size: snapshot_size,
             chunks: chunks_count,
             state_params,
+            version: snapshot_version,
         };
         let _ = write_manifest(temp_dir.path(), &manifest).context("failed to export manifest")?;
 

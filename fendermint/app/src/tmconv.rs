@@ -4,8 +4,12 @@
 use anyhow::{anyhow, Context};
 use fendermint_vm_core::Timestamp;
 use fendermint_vm_genesis::{Power, Validator};
-use fendermint_vm_interpreter::fvm::{state::BlockHash, FvmApplyRet, FvmCheckRet, FvmQueryRet};
+use fendermint_vm_interpreter::fvm::{
+    state::{BlockHash, FvmStateParams},
+    FvmApplyRet, FvmCheckRet, FvmQueryRet,
+};
 use fendermint_vm_message::signed::DomainHash;
+use fendermint_vm_snapshot::manifest::SnapshotItem;
 use fvm_shared::{address::Address, error::ExitCode, event::StampedEvent, ActorID};
 use prost::Message;
 use std::{collections::HashMap, num::NonZeroU32};
@@ -345,6 +349,55 @@ pub fn to_error_msg(exit_code: ExitCode) -> &'static str {
         ExitCode::USR_NOT_PAYABLE => "The method cannot handle a transfer of value.",
         _ => ""
     }
+}
+
+pub fn to_snapshots(
+    snapshots: impl IntoIterator<Item = SnapshotItem>,
+) -> anyhow::Result<response::ListSnapshots> {
+    let snapshots = snapshots
+        .into_iter()
+        .map(to_snapshot)
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(response::ListSnapshots { snapshots })
+}
+
+pub fn to_snapshot(snapshot: SnapshotItem) -> anyhow::Result<tendermint::abci::types::Snapshot> {
+    Ok(tendermint::abci::types::Snapshot {
+        height: snapshot
+            .manifest
+            .block_height
+            .try_into()
+            .expect("height is valid"),
+        format: snapshot.manifest.version,
+        chunks: snapshot.manifest.chunks as u32,
+        hash: to_app_hash(&snapshot.manifest.state_params).into(),
+        metadata: fvm_ipld_encoding::to_vec(&snapshot.manifest.state_params)?.into(),
+    })
+}
+
+/// Produce an appliction hash that is a commitment to all data replicated by consensus,
+/// that is, all nodes participating in the network must agree on this otherwise we have
+/// a consensus failure.
+///
+/// Notably it contains the actor state root _as well as_ some of the metadata maintained
+/// outside the FVM, such as the timestamp and the circulating supply.
+pub fn to_app_hash(state_params: &FvmStateParams) -> tendermint::hash::AppHash {
+    // Create an artifical CID from the FVM state params, which include everything that
+    // deterministically changes under consensus.
+    let state_params_cid =
+        fendermint_vm_message::cid(state_params).expect("state params have a CID");
+
+    // We could reduce it to a hash to ephasize that this is not something that we can return at the moment,
+    // but we could just as easily store the record in the Blockstore to make it retrievable.
+    // It is generally not a goal to serve the entire state over the IPLD Resolver or ABCI queries, though;
+    // for that we should rely on the CometBFT snapshot mechanism.
+    // But to keep our options open, we can return the hash as a CID that nobody can retrieve, and change our mind later.
+
+    // let state_params_hash = state_params_cid.hash();
+    let state_params_hash = state_params_cid.to_bytes();
+
+    tendermint::hash::AppHash::try_from(state_params_hash).expect("hash can be wrapped")
 }
 
 #[cfg(test)]
