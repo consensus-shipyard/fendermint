@@ -43,10 +43,7 @@ use serde::{Deserialize, Serialize};
 use tendermint::abci::request::CheckTxKind;
 use tendermint::abci::{request, response};
 
-use crate::{
-    tmconv::{self, *},
-    VERSION,
-};
+use crate::{tmconv::*, VERSION};
 use crate::{BlockHeight, APP_VERSION};
 
 #[derive(Serialize)]
@@ -89,8 +86,28 @@ impl AppState {
         ChainID::from(self.state_params.chain_id)
     }
 
+    /// Produce an appliction hash that is a commitment to all data replicated by consensus,
+    /// that is, all nodes participating in the network must agree on this otherwise we have
+    /// a consensus failure.
+    ///
+    /// Notably it contains the actor state root _as well as_ some of the metadata maintained
+    /// outside the FVM, such as the timestamp and the circulating supply.
     pub fn app_hash(&self) -> tendermint::hash::AppHash {
-        tmconv::to_app_hash(&self.state_params)
+        // Create an artifical CID from the FVM state params, which include everything that
+        // deterministically changes under consensus.
+        let state_params_cid =
+            fendermint_vm_message::cid(&self.state_params).expect("state params have a CID");
+
+        // We could reduce it to a hash to ephasize that this is not something that we can return at the moment,
+        // but we could just as easily store the record in the Blockstore to make it retrievable.
+        // It is generally not a goal to serve the entire state over the IPLD Resolver or ABCI queries, though;
+        // for that we should rely on the CometBFT snapshot mechanism.
+        // But to keep our options open, we can return the hash as a CID that nobody can retrieve, and change our mind later.
+
+        // let state_params_hash = state_params_cid.hash();
+        let state_params_hash = state_params_cid.to_bytes();
+
+        tendermint::hash::AppHash::try_from(state_params_hash).expect("hash can be wrapped")
     }
 
     /// The state is effective at the *next* block, that is, the effects of block N are visible in the header of block N+1,

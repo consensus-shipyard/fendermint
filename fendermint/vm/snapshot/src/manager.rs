@@ -238,6 +238,7 @@ where
             block_height,
             size: snapshot_size,
             chunks: chunks_count,
+            checksum: checksum_bytes,
             state_params,
             version: snapshot_version,
         };
@@ -259,12 +260,12 @@ where
 }
 
 /// Create a Sha256 checksum of a file.
-fn checksum(path: impl AsRef<Path>) -> anyhow::Result<[u8; 32]> {
+fn checksum(path: impl AsRef<Path>) -> anyhow::Result<tendermint::Hash> {
     let mut file = std::fs::File::open(&path)?;
     let mut hasher = Sha256::new();
     let _ = std::io::copy(&mut file, &mut hasher)?;
     let hash = hasher.finalize().into();
-    Ok(hash)
+    Ok(tendermint::Hash::Sha256(hash))
 }
 
 /// Periodically ask CometBFT if it has caught up with the chain.
@@ -314,6 +315,6 @@ mod tests {
         let content_digest = cid::multihash::Code::Sha2_256.digest(content);
         let content_digest = content_digest.digest();
 
-        assert_eq!(file_digest, content_digest)
+        assert_eq!(file_digest.as_bytes(), content_digest)
     }
 }

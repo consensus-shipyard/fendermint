@@ -21,6 +21,10 @@ pub struct SnapshotManifest {
     pub size: usize,
     /// Number of chunks in the snapshot.
     pub chunks: usize,
+    /// SHA2 hash of the snapshot contents.
+    ///
+    /// Using a [tendermint::Hash] type because it has nice formatting in JSON.
+    pub checksum: tendermint::Hash,
     /// The FVM parameters at the time of the snapshot,
     /// which are also in the CAR file, but it might be
     /// useful to see. It is annotated for human readability.
@@ -107,11 +111,17 @@ mod arb {
 
     impl quickcheck::Arbitrary for SnapshotManifest {
         fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+            let checksum: [u8; 32] = std::array::from_fn(|_| u8::arbitrary(g));
+
             Self {
                 block_height: Arbitrary::arbitrary(g),
                 size: Arbitrary::arbitrary(g),
                 chunks: Arbitrary::arbitrary(g),
-                version: Arbitrary::arbitrary(g),
+                checksum: tendermint::Hash::from_bytes(
+                    tendermint::hash::Algorithm::Sha256,
+                    &checksum,
+                )
+                .unwrap(),
                 state_params: FvmStateParams {
                     state_root: ArbCid::arbitrary(g).0,
                     timestamp: Timestamp(Arbitrary::arbitrary(g)),
@@ -123,6 +133,7 @@ mod arb {
                         .into(),
                     power_scale: *g.choose(&[-1, 0, 3]).unwrap(),
                 },
+                version: Arbitrary::arbitrary(g),
             }
         }
     }
