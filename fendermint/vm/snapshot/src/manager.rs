@@ -14,8 +14,8 @@ use fvm_ipld_blockstore::Blockstore;
 use sha2::{Digest, Sha256};
 use tendermint_rpc::Client;
 
-/// The file name in snapshot directories that contains the manifest.
-const MANIFEST_FILE_NAME: &str = "manifest.json";
+/// The file name to export the CAR to.
+const SNAPSHOT_FILE_NAME: &str = "snapshot.car";
 
 /// State of snapshots, including the list of available completed ones
 /// and the next eligible height.
@@ -156,9 +156,8 @@ where
             .tempdir()
             .context("failed to create temp dir for snapshot")?;
 
-        let snapshot_path = temp_dir.path().join("snapshot.car");
+        let snapshot_path = temp_dir.path().join(SNAPSHOT_FILE_NAME);
         let checksum_path = temp_dir.path().join("parts.sha256");
-        let manifest_path = temp_dir.path().join(MANIFEST_FILE_NAME);
         let parts_path = temp_dir.path().join("parts");
 
         // TODO: See if we can reuse the contents of an existing CAR file.
@@ -206,15 +205,14 @@ where
             chunks: chunks_count,
             state_params,
         };
-
-        write_manifest(manifest_path, &manifest).context("failed to export manifest")?;
+        write_manifest(temp_dir.path(), &manifest).context("failed to export manifest")?;
 
         // Move snapshot to final location - doing it in one step so there's less room for error.
         let snapshot_dir = self.snapshot_dir.join(&snapshot_name);
         std::fs::rename(temp_dir.path(), &snapshot_dir).context("failed to move snapshot")?;
 
         // Delete the big CAR file - keep the parts only.
-        std::fs::remove_file(snapshot_dir.join("snapshot.car"))
+        std::fs::remove_file(snapshot_dir.join(SNAPSHOT_FILE_NAME))
             .context("failed to remove CAR file")?;
 
         tracing::info!(

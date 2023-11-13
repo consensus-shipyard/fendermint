@@ -1,11 +1,14 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use fendermint_vm_interpreter::fvm::state::{snapshot::BlockHeight, FvmStateParams};
 use serde::{Deserialize, Serialize};
+
+/// The file name in snapshot directories that contains the manifest.
+const MANIFEST_FILE_NAME: &str = "manifest.json";
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct SnapshotManifest {
@@ -21,17 +24,65 @@ pub struct SnapshotManifest {
     pub state_params: FvmStateParams,
 }
 
+/// A snapshot directory and its manifest.
+pub struct SnapshotItem {
+    pub manifest: SnapshotManifest,
+    /// Directory containing this snapshot, ie. the manifest ane the parts.
+    pub snapshot_dir: PathBuf,
+}
+
 /// Save a manifest along with the other snapshot files into a snapshot specific directory.
 pub fn write_manifest(
-    manifest_path: impl AsRef<Path>,
+    snapshot_dir: impl AsRef<Path>,
     manifest: &SnapshotManifest,
 ) -> anyhow::Result<()> {
     let json =
         serde_json::to_string_pretty(&manifest).context("failed to convert manifest to JSON")?;
 
+    let manifest_path = snapshot_dir.as_ref().join(MANIFEST_FILE_NAME);
+
     std::fs::write(manifest_path, json).context("failed to write manifest file")?;
 
     Ok(())
+}
+
+/// Collect all the manifests from a directory containing snapshot-directories, e.g.
+/// `snapshots/snapshot-1/manifest.json` etc.
+pub fn list_manifests(snapshot_dir: impl AsRef<Path>) -> anyhow::Result<Vec<SnapshotItem>> {
+    let contents = std::fs::read_dir(snapshot_dir).context("failed to read snapshot directory")?;
+
+    // Collect all manifest file paths.
+    let mut manifests = Vec::new();
+    for entry in contents.filter_map(|r| r.ok()) {
+        if let Ok(metadata) = entry.metadata() {
+            if metadata.is_dir() {
+                let manifest_path = entry.path().join(MANIFEST_FILE_NAME);
+                if manifest_path.exists() {
+                    manifests.push((entry.path(), manifest_path))
+                }
+            }
+        }
+    }
+
+    // Parse manifests
+    let mut items = Vec::new();
+    for (snapshot_dir, manifest) in manifests {
+        let f = std::fs::File::open(&manifest).context("failed to open manifest")?;
+        match serde_json::from_reader(f) {
+            Ok(manifest) => items.push(SnapshotItem {
+                snapshot_dir,
+                manifest,
+            }),
+            Err(e) => {
+                tracing::error!(
+                    manifest = manifest.to_string_lossy().to_string(),
+                    error =? e,
+                    "unable to parse snapshot manifest"
+                );
+            }
+        }
+    }
+    Ok(items)
 }
 
 #[cfg(feature = "arb")]
