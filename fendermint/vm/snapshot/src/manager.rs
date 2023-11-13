@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::car;
+use crate::manifest::{write_manifest, SnapshotManifest};
 use anyhow::Context;
 use async_stm::{atomically, retry, TVar};
 use fendermint_vm_interpreter::fvm::state::snapshot::{BlockHeight, BlockStateParams, Snapshot};
@@ -12,6 +13,9 @@ use fendermint_vm_interpreter::fvm::state::FvmStateParams;
 use fvm_ipld_blockstore::Blockstore;
 use sha2::{Digest, Sha256};
 use tendermint_rpc::Client;
+
+/// The file name in snapshot directories that contains the manifest.
+const MANIFEST_FILE_NAME: &str = "manifest.json";
 
 /// State of snapshots, including the list of available completed ones
 /// and the next eligible height.
@@ -140,13 +144,13 @@ where
     /// Export a snapshot to a temporary file, then copy it to the snapshot directory.
     async fn create_snapshot(
         &self,
-        height: BlockHeight,
-        params: FvmStateParams,
+        block_height: BlockHeight,
+        state_params: FvmStateParams,
     ) -> anyhow::Result<()> {
-        let snapshot = Snapshot::new(self.store.clone(), params, height)
+        let snapshot = Snapshot::new(self.store.clone(), state_params.clone(), block_height)
             .context("failed to create snapshot")?;
 
-        let snapshot_name = format!("snapshot-{height}");
+        let snapshot_name = format!("snapshot-{block_height}");
         let temp_dir = tempfile::Builder::new()
             .prefix(&snapshot_name)
             .tempdir()
@@ -154,12 +158,13 @@ where
 
         let snapshot_path = temp_dir.path().join("snapshot.car");
         let checksum_path = temp_dir.path().join("parts.sha256");
+        let manifest_path = temp_dir.path().join(MANIFEST_FILE_NAME);
         let parts_path = temp_dir.path().join("parts");
 
         // TODO: See if we can reuse the contents of an existing CAR file.
 
         tracing::debug!(
-            height,
+            block_height,
             path = snapshot_path.to_string_lossy().to_string(),
             "exporting snapshot..."
         );
@@ -194,7 +199,15 @@ where
         .await
         .context("failed to split CAR into chunks")?;
 
-        // TODO: Create an export a manifest that we can easily look up.
+        // Create and export a manifest that we can easily look up.
+        let manifest = SnapshotManifest {
+            block_height,
+            size: snapshot_size,
+            chunks: chunks_count,
+            state_params,
+        };
+
+        write_manifest(manifest_path, &manifest).context("failed to export manifest")?;
 
         // Move snapshot to final location - doing it in one step so there's less room for error.
         let snapshot_dir = self.snapshot_dir.join(&snapshot_name);
@@ -206,7 +219,7 @@ where
 
         tracing::info!(
             snapshot = snapshot_dir.to_string_lossy().to_string(),
-            height,
+            block_height,
             chunks_count,
             snapshot_size,
             "exported snapshot"
