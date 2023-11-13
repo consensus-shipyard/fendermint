@@ -399,7 +399,7 @@ mod tests {
         assert_eq!(snapshot.manifest.state_params, state_params);
         assert_eq!(
             snapshot.snapshot_dir.as_path(),
-            temp_dir.path().join(format!("snapshot-0"))
+            temp_dir.path().join("snapshot-0")
         );
 
         let _ = std::fs::File::open(snapshot.snapshot_dir.join("manifest.json"))

@@ -63,13 +63,23 @@ pub fn list_manifests(snapshot_dir: impl AsRef<Path>) -> anyhow::Result<Vec<Snap
 
     // Collect all manifest file paths.
     let mut manifests = Vec::new();
-    for entry in contents.filter_map(|r| r.ok()) {
-        if let Ok(metadata) = entry.metadata() {
-            if metadata.is_dir() {
-                let manifest_path = entry.path().join(MANIFEST_FILE_NAME);
-                if manifest_path.exists() {
-                    manifests.push((entry.path(), manifest_path))
+    for entry in contents {
+        match entry {
+            Ok(entry) => match entry.metadata() {
+                Ok(metadata) => {
+                    if metadata.is_dir() {
+                        let manifest_path = entry.path().join(MANIFEST_FILE_NAME);
+                        if manifest_path.exists() {
+                            manifests.push((entry.path(), manifest_path))
+                        }
+                    }
                 }
+                Err(e) => {
+                    tracing::error!(error =? e, "faulty entry metadata");
+                }
+            },
+            Err(e) => {
+                tracing::error!(error =? e, "faulty snapshot entry");
             }
         }
     }
@@ -77,8 +87,8 @@ pub fn list_manifests(snapshot_dir: impl AsRef<Path>) -> anyhow::Result<Vec<Snap
     // Parse manifests
     let mut items = Vec::new();
     for (snapshot_dir, manifest) in manifests {
-        let f = std::fs::File::open(&manifest).context("failed to open manifest")?;
-        match serde_json::from_reader(f) {
+        let json = std::fs::read_to_string(&manifest).context("failed to open manifest")?;
+        match serde_json::from_str(&json) {
             Ok(manifest) => items.push(SnapshotItem {
                 snapshot_dir,
                 manifest,
