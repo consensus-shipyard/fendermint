@@ -1,0 +1,14 @@
+{
+  "block_height": 16889950772144819387,
+  "size": 1481954638980126735,
+  "chunks": 6637220612862112728,
+  "state_params": {
+    "state_root": "bae5qglni72tae4z6kvesc5qeo2xswtd62udlzvy27t3toaiu2soxyz7b34tdj653hs6va26roh2vfzy",
+    "timestamp": 7618564424627448817,
+    "network_version": 4294967295,
+    "base_fee": "340282366920938463444927863358058659840",
+    "circ_supply": "318946539638120680875980417509740453443",
+    "chain_id": 2423704754314019,
+    "power_scale": 3
+  }
+}

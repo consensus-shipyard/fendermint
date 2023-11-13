@@ -6,7 +6,7 @@ mod json {
     use fendermint_testing::golden_json;
     use fendermint_vm_snapshot::manifest::SnapshotManifest;
     use quickcheck::Arbitrary;
-    golden_json! { "genesis/json", genesis, SnapshotManifest::arbitrary }
+    golden_json! { "manifest/json", manifest, SnapshotManifest::arbitrary }
 }
 
 /// CBOR based test to make sure we can parse data in network format and we also cover the state params.
@@ -14,5 +14,5 @@ mod cbor {
     use fendermint_testing::golden_cbor;
     use fendermint_vm_snapshot::manifest::SnapshotManifest;
     use quickcheck::Arbitrary;
-    golden_cbor! { "genesis/cbor", genesis, SnapshotManifest::arbitrary }
+    golden_cbor! { "manifest/cbor", manifest, SnapshotManifest::arbitrary }
 }
