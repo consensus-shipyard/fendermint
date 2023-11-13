@@ -2806,6 +2806,7 @@ name = "fendermint_app"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-stm",
  "async-trait",
  "base64 0.21.5",
  "bytes",
@@ -3222,9 +3223,11 @@ dependencies = [
  "cid",
  "fendermint_testing",
  "fendermint_vm_core",
+ "fendermint_vm_genesis",
  "fendermint_vm_interpreter",
  "fendermint_vm_snapshot",
  "futures",
+ "fvm",
  "fvm_ipld_blockstore",
  "fvm_ipld_car",
  "fvm_ipld_encoding 0.3.3",

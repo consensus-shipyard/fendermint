@@ -7,7 +7,7 @@ use std::time::Duration;
 use crate::car;
 use crate::manifest::{list_manifests, write_manifest, SnapshotItem, SnapshotManifest};
 use anyhow::Context;
-use async_stm::{atomically, retry, TVar};
+use async_stm::{atomically, retry, Stm, TVar};
 use fendermint_vm_interpreter::fvm::state::snapshot::{BlockHeight, BlockStateParams, Snapshot};
 use fendermint_vm_interpreter::fvm::state::FvmStateParams;
 use fvm_ipld_blockstore::Blockstore;
@@ -36,29 +36,25 @@ pub struct SnapshotClient {
 
 impl SnapshotClient {
     /// Set the latest block state parameters and notify the manager.
-    pub async fn on_commit(&self, block_height: BlockHeight, params: FvmStateParams) {
+    pub fn on_commit(&self, block_height: BlockHeight, params: FvmStateParams) -> Stm<()> {
         if block_height % self.snapshot_interval == 0 {
-            atomically(|| {
-                self.snapshot_state
-                    .latest_params
-                    .write(Some((params.clone(), block_height)))
-            })
-            .await;
+            self.snapshot_state
+                .latest_params
+                .write(Some((params, block_height)))?;
         }
+        Ok(())
     }
 
     /// List completed snapshots.
-    pub async fn list_snapshots(&self) -> im::Vector<SnapshotItem> {
-        atomically(|| self.snapshot_state.snapshots.read_clone()).await
+    pub fn list_snapshots(&self) -> Stm<im::Vector<SnapshotItem>> {
+        self.snapshot_state.snapshots.read_clone()
     }
 }
 
 /// Create snapshots at regular block intervals.
-pub struct SnapshotManager<BS, C> {
+pub struct SnapshotManager<BS> {
     /// Blockstore
     store: BS,
-    /// CometBFT client.
-    client: C,
     /// Location to store completed snapshots.
     snapshot_dir: PathBuf,
     /// Target size in bytes for snapshot chunks.
@@ -72,15 +68,13 @@ pub struct SnapshotManager<BS, C> {
     is_syncing: TVar<bool>,
 }
 
-impl<BS, C> SnapshotManager<BS, C>
+impl<BS> SnapshotManager<BS>
 where
     BS: Blockstore + Clone + Send + Sync + 'static,
-    C: Client + Clone + Send + Sync + 'static,
 {
     /// Create a new manager.
     pub fn new(
         store: BS,
-        client: C,
         snapshot_interval: BlockHeight,
         snapshot_dir: PathBuf,
         snapshot_chunk_size: usize,
@@ -96,7 +90,6 @@ where
         };
 
         let manager = Self {
-            client,
             store,
             snapshot_dir,
             snapshot_chunk_size,
@@ -115,17 +108,23 @@ where
     }
 
     /// Produce snapshots.
-    pub async fn run(self) {
+    pub async fn run<C>(self, client: C)
+    where
+        C: Client + Send + Sync + 'static,
+    {
         // Start a background poll to CometBFT.
         // We could just do this once and await here, but this way ostensibly CometBFT could be
         // restarted without Fendermint and go through another catch up.
         {
-            let client = self.client.clone();
-            let is_syncing = self.is_syncing.clone();
-            let poll_interval = self.sync_poll_interval;
-            tokio::spawn(async move {
-                poll_sync_status(client, is_syncing, poll_interval).await;
-            });
+            if self.sync_poll_interval.is_zero() {
+                atomically(|| self.is_syncing.write(false)).await;
+            } else {
+                let is_syncing = self.is_syncing.clone();
+                let poll_interval = self.sync_poll_interval;
+                tokio::spawn(async move {
+                    poll_sync_status(client, is_syncing, poll_interval).await;
+                });
+            }
         }
 
         let mut last_params = None;
@@ -296,12 +295,27 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
+    use std::{io::Write, sync::Arc, time::Duration};
 
+    use async_stm::{atomically, retry};
     use cid::multihash::MultihashDigest;
+    use fendermint_vm_genesis::Genesis;
+    use fendermint_vm_interpreter::{
+        fvm::{
+            bundle::{bundle_path, contracts_path},
+            state::{snapshot::Snapshot, FvmGenesisState, FvmStateParams},
+            store::memory::MemoryBlockstore,
+            FvmMessageInterpreter,
+        },
+        GenesisInterpreter,
+    };
+    use fvm::engine::MultiEngine;
+    use quickcheck::Arbitrary;
     use tempfile::NamedTempFile;
 
-    use super::checksum;
+    use crate::manifest;
+
+    use super::{checksum, SnapshotManager};
 
     #[test]
     fn file_checksum() {
@@ -316,5 +330,131 @@ mod tests {
         let content_digest = content_digest.digest();
 
         assert_eq!(file_digest.as_bytes(), content_digest)
+    }
+
+    // Initialise genesis and export it directly to see if it works.
+    #[tokio::test]
+    async fn create_snapshot_directly() {
+        let (state_params, store) = init_genesis().await;
+        let snapshot = Snapshot::new(store, state_params, 0).expect("failed to create snapshot");
+        let tmp_path = tempfile::NamedTempFile::new().unwrap().into_temp_path();
+        snapshot
+            .write_car(&tmp_path)
+            .await
+            .expect("failed to write snapshot");
+    }
+
+    // Initialise genesis, create a snapshot manager, export a snapshot, create another manager, list snapshots.
+    // Don't forget to run this with `--release` beause of Wasm.
+    #[tokio::test]
+    async fn create_snapshot_with_manager() {
+        let (state_params, store) = init_genesis().await;
+
+        // Now we have one store initialized with genesis, let's create a manager and snapshot it.
+        let temp_dir = tempfile::tempdir().expect("failed to create tmp dir");
+
+        // Not polling because it's cumbersome to mock it.
+        let never_poll_sync = Duration::ZERO;
+        let never_poll_client = mock_client();
+
+        let (snapshot_manager, snapshot_client) = SnapshotManager::new(
+            store.clone(),
+            1,
+            temp_dir.path().into(),
+            10000,
+            never_poll_sync,
+        )
+        .expect("failed to create snapshot manager");
+
+        // Start the manager in the background
+        tokio::spawn(async move { snapshot_manager.run(never_poll_client).await });
+
+        // Make sure we have no snapshots currently.
+        let snapshots = atomically(|| snapshot_client.list_snapshots()).await;
+        assert!(snapshots.is_empty());
+
+        // Notify about snapshottable height.
+        atomically(|| snapshot_client.on_commit(0, state_params.clone())).await;
+
+        // Wait for the new snapshot to appear in memory.
+        let snapshots = tokio::time::timeout(
+            Duration::from_secs(10),
+            atomically(|| {
+                let snapshots = snapshot_client.list_snapshots()?;
+                if snapshots.is_empty() {
+                    retry()
+                } else {
+                    Ok(snapshots)
+                }
+            }),
+        )
+        .await
+        .expect("failed to export snapshot");
+
+        assert_eq!(snapshots.len(), 1);
+
+        let snapshot = snapshots.into_iter().next().unwrap();
+        assert!(snapshot.manifest.chunks > 1);
+        assert_eq!(snapshot.manifest.block_height, 0);
+        assert_eq!(snapshot.manifest.state_params, state_params);
+        assert_eq!(
+            snapshot.snapshot_dir.as_path(),
+            temp_dir.path().join(format!("snapshot-0"))
+        );
+
+        let _ = std::fs::File::open(snapshot.snapshot_dir.join("manifest.json"))
+            .expect("manifests file exists");
+
+        let snapshots = manifest::list_manifests(temp_dir.path()).unwrap();
+
+        assert_eq!(snapshots.len(), 1, "can list manifests");
+        assert_eq!(snapshots[0], snapshot);
+
+        // Create a new manager instance
+        let (_, new_client) =
+            SnapshotManager::new(store, 1, temp_dir.path().into(), 10000, never_poll_sync)
+                .expect("failed to create snapshot manager");
+
+        let snapshots = atomically(|| new_client.list_snapshots()).await;
+        assert!(!snapshots.is_empty(), "loads manifests on start");
+    }
+
+    async fn init_genesis() -> (FvmStateParams, MemoryBlockstore) {
+        let mut g = quickcheck::Gen::new(5);
+        let genesis = Genesis::arbitrary(&mut g);
+
+        let bundle = std::fs::read(bundle_path()).expect("failed to read bundle");
+        let multi_engine = Arc::new(MultiEngine::default());
+
+        let store = MemoryBlockstore::new();
+        let state = FvmGenesisState::new(store.clone(), multi_engine, &bundle)
+            .await
+            .expect("failed to create state");
+
+        let interpreter =
+            FvmMessageInterpreter::new(mock_client(), None, contracts_path(), 1.05, 1.05, false);
+
+        let (state, out) = interpreter
+            .init(state, genesis)
+            .await
+            .expect("failed to init genesis");
+
+        let state_root = state.commit().expect("failed to commit");
+
+        let state_params = FvmStateParams {
+            state_root,
+            timestamp: out.timestamp,
+            network_version: out.network_version,
+            base_fee: out.base_fee,
+            circ_supply: out.circ_supply,
+            chain_id: out.chain_id.into(),
+            power_scale: out.power_scale,
+        };
+
+        (state_params, store)
+    }
+
+    fn mock_client() -> tendermint_rpc::MockClient<tendermint_rpc::MockRequestMethodMatcher> {
+        tendermint_rpc::MockClient::new(tendermint_rpc::MockRequestMethodMatcher::default()).0
     }
 }
