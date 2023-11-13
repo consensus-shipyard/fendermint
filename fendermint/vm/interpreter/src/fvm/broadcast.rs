@@ -5,6 +5,8 @@ use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context};
 use ethers::types as et;
+use fendermint_rpc::response::decode_fevm_return_data;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{address::Address, chainid::ChainID, econ::TokenAmount, BLOCK_GAS_LIMIT};
 use num_traits::Zero;
@@ -169,12 +171,20 @@ where
             .context("failed to invoke contract")?;
 
             if res.response.code.is_err() {
+                // Not sure what exactly arrives in the data and how it's encoded.
+                // It might need the Base64 decoding or it may not. Let's assume
+                // that it doesn't because unlike `DeliverTx::data`, this response
+                // does have some Base64 lreated annotations.
+                let data = decode_fevm_return_data(RawBytes::new(res.response.data.to_vec()))
+                    .map(hex::encode)
+                    .unwrap_or_else(|_| hex::encode(res.response.data));
+
                 Err((
                     res.response.code,
                     format!(
-                        "broadcasted transaction failed during check: {}; data ={}",
+                        "broadcasted transaction failed during check: {}; data = {}",
                         res.response.code.value(),
-                        hex::encode(res.response.data)
+                        data
                     ),
                 ))
             } else {
