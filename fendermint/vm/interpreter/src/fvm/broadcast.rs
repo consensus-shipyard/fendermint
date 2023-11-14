@@ -103,7 +103,7 @@ where
 
     /// Send a transaction to the chain and return is hash.
     ///
-    /// It currently doesn't wait for the execution only, only that it has successfully been added to the mempool,
+    /// It currently doesn't wait for the execution, only that it has successfully been added to the mempool,
     /// or if not then an error is returned. The reason for not waiting for the commit is that the Tendermint
     /// client seems to time out if the check fails, waiting for the inclusion which will never come, instead of
     /// returning the result with no `deliver_tx` and a failed `check_tx`. We can add our own mechanism to wait
