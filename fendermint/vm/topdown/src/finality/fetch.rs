@@ -5,8 +5,8 @@ use crate::finality::null::FinalityWithNull;
 use crate::finality::ParentViewPayload;
 use crate::proxy::ParentQueryProxy;
 use crate::{
-    handle_null_round, BlockHash, BlockHeight, Config, Error, IPCParentFinality,
-    ParentFinalityProvider, ParentViewProvider,
+    handle_null_round, is_null_round_error, BlockHash, BlockHeight, Config, Error,
+    IPCParentFinality, ParentFinalityProvider, ParentViewProvider,
 };
 use async_stm::{Stm, StmResult};
 use ipc_sdk::cross::CrossMsg;
@@ -34,6 +34,12 @@ macro_rules! retry {
                 tracing::warn!(
                     "cannot query ipc parent_client due to: {e}, retires: {retries}, wait: {wait:?}"
                 );
+
+                // there is no point in retrying if the current block is null round
+                if is_null_round_error(&e) {
+                    break res;
+                }
+
                 if retries > 0 {
                     retries -= 1;
 
