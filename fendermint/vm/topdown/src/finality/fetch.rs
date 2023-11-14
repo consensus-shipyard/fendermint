@@ -31,14 +31,17 @@ macro_rules! retry {
         loop {
             let res = $f;
             if let Err(e) = &res {
+                // there is no point in retrying if the current block is null round
+                if is_null_round_error(&e) {
+                    tracing::warn!(
+                        "cannot query ipc parent_client due to null round, skip retry"
+                    );
+                    break res;
+                }
+
                 tracing::warn!(
                     "cannot query ipc parent_client due to: {e}, retires: {retries}, wait: {wait:?}"
                 );
-
-                // there is no point in retrying if the current block is null round
-                if is_null_round_error(&e) {
-                    break res;
-                }
 
                 if retries > 0 {
                     retries -= 1;
