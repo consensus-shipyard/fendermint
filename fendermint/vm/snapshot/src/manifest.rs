@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::Context;
+use anyhow::{bail, Context};
 use fendermint_vm_interpreter::fvm::state::{
     snapshot::{BlockHeight, SnapshotVersion},
     FvmStateParams,
@@ -39,6 +39,26 @@ pub struct SnapshotItem {
     /// Directory containing this snapshot, ie. the manifest ane the parts.
     pub snapshot_dir: PathBuf,
     pub manifest: SnapshotManifest,
+}
+
+impl SnapshotItem {
+    /// Load the data from disk.
+    ///
+    /// Returns an error if the chunk isn't within range or if the file doesn't exist any more.
+    pub fn load_chunk(&self, chunk: usize) -> anyhow::Result<Vec<u8>> {
+        if chunk >= self.manifest.chunks {
+            bail!(
+                "cannot load chunk {chunk}; only have {} in the snapshot",
+                self.manifest.chunks
+            );
+        }
+        let chunk_file = self.snapshot_dir.join("{chunk}.part");
+
+        let content = std::fs::read(&chunk_file)
+            .with_context(|| format!("failed to read chunk {}", chunk_file.to_string_lossy()))?;
+
+        Ok(content)
+    }
 }
 
 /// Save a manifest along with the other snapshot files into a snapshot specific directory.

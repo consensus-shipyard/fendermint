@@ -8,7 +8,9 @@ use crate::car;
 use crate::manifest::{list_manifests, write_manifest, SnapshotItem, SnapshotManifest};
 use anyhow::Context;
 use async_stm::{atomically, retry, Stm, TVar};
-use fendermint_vm_interpreter::fvm::state::snapshot::{BlockHeight, BlockStateParams, Snapshot};
+use fendermint_vm_interpreter::fvm::state::snapshot::{
+    BlockHeight, BlockStateParams, Snapshot, SnapshotVersion,
+};
 use fendermint_vm_interpreter::fvm::state::FvmStateParams;
 use fvm_ipld_blockstore::Blockstore;
 use sha2::{Digest, Sha256};
@@ -48,6 +50,20 @@ impl SnapshotClient {
     /// List completed snapshots.
     pub fn list_snapshots(&self) -> Stm<im::Vector<SnapshotItem>> {
         self.snapshot_state.snapshots.read_clone()
+    }
+
+    /// Try to find a snapshot, if it still exists.
+    pub fn find_snapshot(
+        &self,
+        block_height: BlockHeight,
+        version: SnapshotVersion,
+    ) -> Stm<Option<SnapshotItem>> {
+        let snapshots = self.snapshot_state.snapshots.read()?;
+        let s = snapshots
+            .iter()
+            .find(|s| s.manifest.block_height == block_height && s.manifest.version == version)
+            .cloned();
+        Ok(s)
     }
 }
 
