@@ -96,10 +96,8 @@ fn create_log(level: tracing::Level, log_dir: Option<&PathBuf>) -> anyhow::Resul
             .appenders
             .insert(AppenderId::from("topdown"), topdown_appender);
 
-        config
-            .loggers
-            // "" matches everything
-            .insert(Target::from(""), debug_logger);
+        config.loggers.insert(Target::from("fendermint_app"), debug_logger.clone());
+        config.loggers.insert(Target::from("fendermint_vm_interpreter"), debug_logger);
         config
             .appenders
             .insert(AppenderId::from("debug"), debug_appender);
