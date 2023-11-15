@@ -98,7 +98,8 @@ fn create_log(level: tracing::Level, log_dir: Option<&PathBuf>) -> anyhow::Resul
 
         config
             .loggers
-            .insert(Target::from("fendermint*"), debug_logger);
+            // "" matches everything
+            .insert(Target::from(""), debug_logger);
         config
             .appenders
             .insert(AppenderId::from("debug"), debug_appender);
