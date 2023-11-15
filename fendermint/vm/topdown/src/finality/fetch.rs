@@ -5,8 +5,8 @@ use crate::finality::null::FinalityWithNull;
 use crate::finality::ParentViewPayload;
 use crate::proxy::ParentQueryProxy;
 use crate::{
-    handle_null_round, is_null_round_error, BlockHash, BlockHeight, Config, Error,
-    IPCParentFinality, ParentFinalityProvider, ParentViewProvider,
+    handle_null_round, BlockHash, BlockHeight, Config, Error, IPCParentFinality,
+    ParentFinalityProvider, ParentViewProvider,
 };
 use async_stm::{Stm, StmResult};
 use ipc_sdk::cross::CrossMsg;
@@ -32,7 +32,7 @@ macro_rules! retry {
             let res = $f;
             if let Err(e) = &res {
                 // there is no point in retrying if the current block is null round
-                if is_null_round_error(&e) {
+                if crate::is_null_round_error(&e) {
                     tracing::warn!(
                         "cannot query ipc parent_client due to null round, skip retry"
                     );
