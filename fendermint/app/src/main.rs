@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::{anyhow, Context};
-use std::path::Path;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use trace4rs::config::{AppenderId, Policy, Target};
@@ -22,7 +22,7 @@ async fn main() {
     let opts = options::parse();
 
     if let Some(level) = opts.tracing_level() {
-        create_log(level, &opts.log_dir).expect("cannot create logging");
+        create_log(level, opts.log_dir.as_ref()).expect("cannot create logging");
     }
 
     if let Err(e) = cmd::exec(&opts).await {
@@ -31,30 +31,8 @@ async fn main() {
     }
 }
 
-fn create_log(level: tracing::Level, log_dir: &Path) -> anyhow::Result<()> {
-    let log_folder = expand_tilde(log_dir)
-        .to_str()
-        .ok_or_else(|| anyhow!("cannot parse log folder"))?
-        .to_string();
-    std::fs::create_dir_all(&log_folder).context("cannot create log folder")?;
-
+fn create_log(level: tracing::Level, log_dir: Option<&PathBuf>) -> anyhow::Result<()> {
     let console_appender = config::Appender::Console;
-    let topdown_appender = config::Appender::RollingFile {
-        path: format!("{log_folder}/topdown.log"),
-        policy: Policy {
-            maximum_file_size: "10mb".to_string(),
-            // we keep the last 5 log files, older files will be deleted
-            max_size_roll_backups: 5,
-            pattern: None,
-        },
-    };
-
-    // debug level logger
-    let topdown_logger = config::Logger {
-        level: config::LevelFilter::DEBUG,
-        appenders: literally::hset! { AppenderId::from("topdown") },
-        format: Format::default(),
-    };
 
     // default logging output info log to console
     let default = config::Logger {
@@ -63,17 +41,69 @@ fn create_log(level: tracing::Level, log_dir: &Path) -> anyhow::Result<()> {
         format: Format::default(),
     };
 
-    let config = Config {
+    let mut config = Config {
         default,
-        loggers: literally::hmap! {
-            Target::from("fendermint_vm_topdown") => topdown_logger.clone(),
-            Target::from("fendermint_vm_interpreter::chain") => topdown_logger,
-        },
-        appenders: literally::hmap! {
-            AppenderId::from("console") => console_appender,
-            AppenderId::from("topdown") => topdown_appender
-        },
+        loggers: literally::hmap! {},
+        appenders: literally::hmap! {AppenderId::from("console") => console_appender},
     };
+
+    if let Some(log_dir) = log_dir {
+        let log_folder = expand_tilde(log_dir)
+            .to_str()
+            .ok_or_else(|| anyhow!("cannot parse log folder"))?
+            .to_string();
+        std::fs::create_dir_all(&log_folder).context("cannot create log folder")?;
+
+        let topdown_appender = config::Appender::RollingFile {
+            path: format!("{log_folder}/topdown.log"),
+            policy: Policy {
+                maximum_file_size: "10mb".to_string(),
+                // we keep the last 5 log files, older files will be deleted
+                max_size_roll_backups: 5,
+                pattern: None,
+            },
+        };
+        let interpreter_appender = config::Appender::RollingFile {
+            path: format!("{log_folder}/interpreter.log"),
+            policy: Policy {
+                maximum_file_size: "10mb".to_string(),
+                // we keep the last 5 log files, older files will be deleted
+                max_size_roll_backups: 5,
+                pattern: None,
+            },
+        };
+
+        let topdown_logger = config::Logger {
+            level: config::LevelFilter::DEBUG,
+            appenders: literally::hset! { AppenderId::from("topdown") },
+            format: Format::default(),
+        };
+        let interpreter_logger = config::Logger {
+            level: config::LevelFilter::DEBUG,
+            appenders: literally::hset! { AppenderId::from("interpreter") },
+            format: Format::default(),
+        };
+
+        config.loggers.insert(
+            Target::from("fendermint_vm_topdown"),
+            topdown_logger.clone(),
+        );
+        config.loggers.insert(
+            Target::from("fendermint_vm_interpreter::chain"),
+            topdown_logger,
+        );
+        config
+            .appenders
+            .insert(AppenderId::from("topdown"), topdown_appender);
+
+        config.loggers.insert(
+            Target::from("fendermint_vm_interpreter"),
+            interpreter_logger,
+        );
+        config
+            .appenders
+            .insert(AppenderId::from("interpreter"), interpreter_appender);
+    }
 
     let handle = Arc::new(Handle::try_from(config).unwrap());
 

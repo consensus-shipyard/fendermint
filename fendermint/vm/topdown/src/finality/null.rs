@@ -106,7 +106,7 @@ impl FinalityWithNull {
         };
 
         let proposal = IPCParentFinality { height, block_hash };
-        tracing::debug!("new proposal: {proposal:?}");
+        tracing::debug!(proposal = proposal.to_string(), "new proposal");
         Ok(Some(proposal))
     }
 
@@ -160,7 +160,7 @@ impl FinalityWithNull {
             if let Some(i) = v.as_ref() {
                 f(i)
             } else {
-                tracing::debug!("height: {height} is a null round, return default");
+                tracing::debug!(height, "a null round detected, return default");
                 d()
             }
         }))
@@ -192,7 +192,7 @@ impl FinalityWithNull {
             ensure_sequential(&top_down_msgs, |msg| msg.msg.nonce)?;
         };
         if !validator_changes.is_empty() {
-            tracing::debug!("validator changes: {validator_changes:?}");
+            tracing::debug!(?validator_changes, "validator changes");
             ensure_sequential(&validator_changes, |change| change.configuration_number)?;
         }
 
