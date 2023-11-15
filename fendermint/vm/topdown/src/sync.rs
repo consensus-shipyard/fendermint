@@ -394,13 +394,13 @@ async fn parent_views_in_block_range(
     mut previous_hash: BlockHash,
     start_height: BlockHeight,
     end_height: BlockHeight,
-    look_ahead_limit: BlockHeight,
+    max_ending_height: BlockHeight,
 ) -> Result<GetParentViewPayload, Error> {
     let mut updates = vec![];
     let mut total_top_down_msgs = 0;
 
     for h in start_height..=end_height {
-        match parent_views_at_height(parent_proxy, &previous_hash, h, look_ahead_limit).await {
+        match parent_views_at_height(parent_proxy, &previous_hash, h, max_ending_height).await {
             Ok((hash, changeset, cross_msgs)) => {
                 total_top_down_msgs += cross_msgs.len();
 
@@ -449,19 +449,19 @@ async fn parent_views_in_block_range(
 
 /// Obtain the new parent views for the target height.
 ///
-/// For `look_ahead_limit`, the explanation is as follows:
+/// For `max_ending_height`, the explanation is as follows:
 /// Say the current height is h and we need to fetch the top down messages. For `lotus`, the state
 /// at height h is only finalized at h + 1. The block hash at height h will return empty top down
 /// messages. In this case, we need to get the block hash at height h + 1 to query the top down messages.
 /// Sadly, the height h + 1 could be null block, we need to continuously look ahead until we found
 /// a height that is not null. But we cannot go all the way to the block head as it's not considered
-/// final yet. So we need to use a `look_ahead_limit` that restricts how far as head we should go.
+/// final yet. So we need to use a `max_ending_height` that restricts how far as head we should go.
 /// If we still cannot find a height that is non-null, maybe we should try later
 async fn parent_views_at_height(
     parent_proxy: &Arc<IPCProviderProxy>,
     previous_hash: &BlockHash,
     height: BlockHeight,
-    look_ahead_limit: BlockHeight,
+    max_ending_height: BlockHeight,
 ) -> Result<ParentViewPayload, Error> {
     let block_hash_res = parent_proxy
         .get_block_hash(height)
@@ -495,7 +495,7 @@ async fn parent_views_at_height(
     // the block hash at height h + 1 to query the top down messages.
     // Sadly, the height h + 1 could be null block, we need to continuously look ahead
     // until we found a height that is not null
-    let next_hash = next_block_hash(parent_proxy, height + 1, look_ahead_limit).await?;
+    let next_hash = first_non_null_block_hash(parent_proxy, height + 1, max_ending_height).await?;
     if next_hash.parent_block_hash != block_hash_res.block_hash {
         tracing::warn!(
             next_block_height = height + 1,
@@ -517,17 +517,17 @@ async fn parent_views_at_height(
     ))
 }
 
-/// Get the next non-null block hash. If height is a null round, then we need to look further util we
-/// find one that is not null round.
-async fn next_block_hash(
+/// Get the first non-null block hash in between heights. If height is a null round, then we need
+/// to look further util we find one that is not null round.
+async fn first_non_null_block_hash(
     parent_proxy: &Arc<IPCProviderProxy>,
-    height: BlockHeight,
-    mut look_ahead_limit: BlockHeight,
+    start: BlockHeight,
+    mut end: BlockHeight,
 ) -> Result<GetBlockHashResult, Error> {
     // at least we run for height
-    look_ahead_limit = max(height, look_ahead_limit);
+    end = max(start, end);
 
-    for h in height..=look_ahead_limit {
+    for h in start..=end {
         match parent_proxy.get_block_hash(h).await {
             Ok(h) => return Ok(h),
             Err(e) => {
@@ -545,5 +545,5 @@ async fn next_block_hash(
             }
         }
     }
-    Err(Error::LookAheadLimitReached(height, look_ahead_limit))
+    Err(Error::LookAheadLimitReached(start, end))
 }
