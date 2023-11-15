@@ -224,16 +224,16 @@ where
     }
 
     // we consider the chain head finalized only after the `chain_head_delay`
-    let finalized_chain_head = parent_chain_head_height - config.chain_head_delay;
+    let max_ending_height = parent_chain_head_height - config.chain_head_delay;
 
     tracing::debug!(
         last_recorded_height = last_recorded_height,
         parent_chain_head_height = parent_chain_head_height,
-        finalized_chain_head = finalized_chain_head,
+        max_ending_height = max_ending_height,
         "syncing heights",
     );
 
-    if last_recorded_height == finalized_chain_head {
+    if last_recorded_height == max_ending_height {
         tracing::debug!(
             last_recorded_height = last_recorded_height,
             "the parent has yet to produce a new block"
@@ -244,11 +244,11 @@ where
     // we are going backwards in terms of block height, the latest block height is lower
     // than our previously fetched head. It could be a chain reorg. We clear all the cache
     // in `provider` and start from scratch
-    if last_recorded_height > finalized_chain_head {
+    if last_recorded_height > max_ending_height {
         tracing::warn!(
             last_recorded_height = last_recorded_height,
-            finalized_chain_head = finalized_chain_head,
-            "last recorded height more than ending height"
+            max_ending_height = max_ending_height,
+            "last recorded height more than max ending height"
         );
         return reset_cache(parent_proxy, provider, query).await;
     }
@@ -257,7 +257,7 @@ where
     // the sequential cache to use increment == 1.
     let starting_height = last_recorded_height + 1;
     let ending_height = min(
-        finalized_chain_head,
+        max_ending_height,
         MAX_PARENT_VIEW_BLOCK_GAP + starting_height,
     );
     tracing::debug!(
@@ -271,7 +271,7 @@ where
         last_height_hash,
         starting_height,
         ending_height,
-        finalized_chain_head,
+        max_ending_height,
     )
     .await?;
 
