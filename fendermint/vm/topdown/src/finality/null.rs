@@ -188,7 +188,7 @@ impl FinalityWithNull {
     ) -> StmResult<(), Error> {
         if !top_down_msgs.is_empty() {
             // make sure incoming top down messages are ordered by nonce sequentially
-            tracing::debug!("top down messages: {top_down_msgs:?}");
+            tracing::debug!(?top_down_msgs);
             ensure_sequential(&top_down_msgs, |msg| msg.msg.nonce)?;
         };
         if !validator_changes.is_empty() {
