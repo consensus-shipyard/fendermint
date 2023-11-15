@@ -42,7 +42,7 @@ fn create_log(level: tracing::Level, log_dir: Option<&PathBuf>) -> anyhow::Resul
     };
 
     let mut config = Config {
-        default,
+        default: default.clone(),
         loggers: literally::hmap! {},
         appenders: literally::hmap! {AppenderId::from("console") => console_appender},
     };
@@ -100,6 +100,7 @@ fn create_log(level: tracing::Level, log_dir: Option<&PathBuf>) -> anyhow::Resul
         config
             .loggers
             .insert(Target::from("fendermint"), debug_logger);
+        config.loggers.insert(Target::from("fendermint"), default);
         config
             .appenders
             .insert(AppenderId::from("debug"), debug_appender);
