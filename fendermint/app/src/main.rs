@@ -108,7 +108,7 @@ fn create_log(level: tracing::Level, log_dir: Option<&PathBuf>) -> anyhow::Resul
             .insert(AppenderId::from("debug"), debug_appender);
     }
 
-    let handle = Arc::new(Handle::try_from(config).unwrap());
+    let handle = Arc::new(Handle::try_from(config)?);
 
     tracing::subscriber::set_global_default(handle.subscriber())
         .context("setting default subscriber failed")?;
