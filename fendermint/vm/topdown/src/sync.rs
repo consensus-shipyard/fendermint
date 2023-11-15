@@ -341,8 +341,9 @@ async fn last_recorded_data(
                 None => unreachable!("should have last committed finality at this point"),
                 Some(hash) => {
                     tracing::info!(
-                        "First non null parent hash: {} at height: {height}",
-                        hex::encode(&hash)
+                        block_height = height, 
+                        parent_hash = hex::encode(&hash), 
+                        "First non null parent",
                     );
                     Ok(Some((height, hash)))
                 }
