@@ -39,6 +39,9 @@ pub struct Config {
     /// conservative and avoid other from rejecting the proposal because they don't see the
     /// height as final yet.
     pub chain_head_delay: BlockHeight,
+    /// Extra delay on top of `chain_head_delay` before proposing a height as final on the parent chain,
+    /// to avoid validator disagreeing by 1 height whether something is final or not just yet.
+    pub proposal_delay: BlockHeight,
     /// Parent syncing cron period, in seconds
     pub polling_interval: Duration,
     /// Top down exponential back off retry base

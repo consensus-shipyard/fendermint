@@ -13,6 +13,10 @@ use ipc_sdk::staking::StakingChangeRequest;
 #[derive(Clone)]
 pub struct FinalityWithNull {
     genesis_epoch: BlockHeight,
+    /// Do not propose blocks until they have embedded a bit more than strictly necessary,
+    /// to avoid conditions where one validator sees something as just finalized while another
+    /// as almost but not yet.
+    proposal_delay: BlockHeight,
     /// Cached data that always syncs with the latest parent chain proactively
     cached_data: TVar<SequentialKeyCache<BlockHeight, Option<ParentViewPayload>>>,
     /// This is a in memory view of the committed parent finality. We need this as a starting point
@@ -21,9 +25,14 @@ pub struct FinalityWithNull {
 }
 
 impl FinalityWithNull {
-    pub fn new(genesis_epoch: BlockHeight, committed_finality: Option<IPCParentFinality>) -> Self {
+    pub fn new(
+        genesis_epoch: BlockHeight,
+        proposal_delay: BlockHeight,
+        committed_finality: Option<IPCParentFinality>,
+    ) -> Self {
         Self {
             genesis_epoch,
+            proposal_delay,
             cached_data: TVar::new(SequentialKeyCache::sequential()),
             last_committed_finality: TVar::new(committed_finality),
         }
@@ -97,6 +106,16 @@ impl FinalityWithNull {
             tracing::debug!("no proposal yet as height not available");
             return Ok(None);
         };
+
+        let min_proposal = self
+            .last_committed_finality
+            .read()?
+            .as_ref()
+            .as_ref()
+            .map(|f| f.height)
+            .unwrap_or(self.genesis_epoch);
+
+        let height = height.saturating_sub(self.proposal_delay).max(min_proposal);
 
         let block_hash = if let Some(h) = self.block_hash_at_height(height)? {
             h

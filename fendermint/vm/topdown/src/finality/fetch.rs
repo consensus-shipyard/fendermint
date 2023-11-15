@@ -190,7 +190,7 @@ impl<T> CachedFinalityProvider<T> {
         committed_finality: Option<IPCParentFinality>,
         parent_client: Arc<T>,
     ) -> Self {
-        let inner = FinalityWithNull::new(genesis_epoch, committed_finality);
+        let inner = FinalityWithNull::new(genesis_epoch, config.proposal_delay, committed_finality);
         Self {
             inner,
             config,

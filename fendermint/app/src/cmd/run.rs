@@ -164,6 +164,7 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         let topdown_config = settings.ipc.topdown_config()?;
         let config = fendermint_vm_topdown::Config {
             chain_head_delay: topdown_config.chain_head_delay,
+            proposal_delay: topdown_config.proposal_delay,
             polling_interval: topdown_config.polling_interval,
             exponential_back_off: topdown_config.exponential_back_off,
             exponential_retry_limit: topdown_config.exponential_retry_limit,
