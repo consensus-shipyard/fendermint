@@ -32,7 +32,7 @@ macro_rules! retry {
             let res = $f;
             if let Err(e) = &res {
                 // there is no point in retrying if the current block is null round
-                if crate::is_null_round_error(&e) {
+                if crate::is_null_round_str(&e.to_string()) {
                     tracing::warn!(
                         "cannot query ipc parent_client due to null round, skip retry"
                     );
