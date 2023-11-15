@@ -21,7 +21,6 @@ mod cmd;
 async fn main() {
     let opts = options::parse();
 
-    // Log events to stdout.
     if let Some(level) = opts.tracing_level() {
         create_log(level, &opts.log_dir).expect("cannot create logging");
     }
