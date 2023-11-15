@@ -267,10 +267,10 @@ where
                         .await
                         .context("failed to fetch validator changes")?;
                     tracing::debug!(
-                        "chain interpreter received total validator changes msgs: {} from {} to {}",
-                        validator_changes.len(),
-                        prev_height + 1,
-                        finality.height
+                        from = prev_height + 1, 
+                        to = finality.height,
+                        msgs = validator_changes.len(),
+                        "chain interpreter received total validator changes"
                     );
 
                     self.gateway_caller
