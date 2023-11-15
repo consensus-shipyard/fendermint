@@ -304,10 +304,7 @@ where
         std::fs::remove_file(snapshot_dir.join(SNAPSHOT_FILE_NAME))
             .context("failed to remove CAR file")?;
 
-        Ok(SnapshotItem {
-            snapshot_dir,
-            manifest,
-        })
+        Ok(SnapshotItem::new(snapshot_dir, manifest))
     }
 }
 
