@@ -872,7 +872,7 @@ where
     ) -> AbciResult<response::LoadSnapshotChunk> {
         if let Some(ref client) = self.snapshots {
             if let Some(snapshot) =
-                atomically(|| client.find_snapshot(request.height.value(), request.format)).await
+                atomically(|| client.access_snapshot(request.height.value(), request.format)).await
             {
                 match snapshot.load_chunk(request.chunk as usize) {
                     Ok(chunk) => {
