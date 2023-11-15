@@ -63,8 +63,8 @@ fn create_log(level: tracing::Level, log_dir: Option<&PathBuf>) -> anyhow::Resul
                 pattern: None,
             },
         };
-        let interpreter_appender = config::Appender::RollingFile {
-            path: format!("{log_folder}/interpreter.log"),
+        let debug_appender = config::Appender::RollingFile {
+            path: format!("{log_folder}/debug.log"),
             policy: Policy {
                 maximum_file_size: "10mb".to_string(),
                 // we keep the last 5 log files, older files will be deleted
@@ -78,9 +78,9 @@ fn create_log(level: tracing::Level, log_dir: Option<&PathBuf>) -> anyhow::Resul
             appenders: literally::hset! { AppenderId::from("topdown") },
             format: Format::default(),
         };
-        let interpreter_logger = config::Logger {
+        let debug_logger = config::Logger {
             level: config::LevelFilter::DEBUG,
-            appenders: literally::hset! { AppenderId::from("interpreter") },
+            appenders: literally::hset! { AppenderId::from("debug") },
             format: Format::default(),
         };
 
@@ -96,13 +96,12 @@ fn create_log(level: tracing::Level, log_dir: Option<&PathBuf>) -> anyhow::Resul
             .appenders
             .insert(AppenderId::from("topdown"), topdown_appender);
 
-        config.loggers.insert(
-            Target::from("fendermint_vm_interpreter"),
-            interpreter_logger,
-        );
+        config
+            .loggers
+            .insert(Target::from("fendermint*"), debug_logger);
         config
             .appenders
-            .insert(AppenderId::from("interpreter"), interpreter_appender);
+            .insert(AppenderId::from("debug"), debug_appender);
     }
 
     let handle = Arc::new(Handle::try_from(config).unwrap());
