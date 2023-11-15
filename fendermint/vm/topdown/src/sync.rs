@@ -340,7 +340,10 @@ async fn last_recorded_data(
             match atomically(|| provider.first_non_null_parent_hash(height)).await {
                 None => unreachable!("should have last committed finality at this point"),
                 Some(hash) => {
-                    tracing::info!("First non null parent hash: {hash:02x?} at height: {height}");
+                    tracing::info!(
+                        "First non null parent hash: {} at height: {height}",
+                        hex::encode(&hash)
+                    );
                     Ok(Some((height, hash)))
                 }
             }
@@ -384,9 +387,9 @@ async fn parent_views_in_block_range(
                 total_top_down_msgs += cross_msgs.len();
 
                 tracing::debug!(
-                    "previous previous hash: {:02x?}, previous hash: {:02x?}",
-                    previous_hash,
-                    hash
+                    "previous previous hash: {}, previous hash: {}",
+                    hex::encode(&previous_hash),
+                    hex::encode(&hash)
                 );
                 previous_hash = hash.clone();
 
@@ -431,9 +434,10 @@ async fn parent_views_at_height(
         .map_err(|e| Error::CannotQueryParent(e.to_string(), height))?;
     if block_hash_res.parent_block_hash != *previous_hash {
         tracing::warn!(
-                "parent block hash at {height} is {:02x?} diff than previous hash: {previous_hash:02x?}",
-                block_hash_res.parent_block_hash
-            );
+            "parent block hash at {height} is {} diff than previous hash: {}",
+            hex::encode(&block_hash_res.parent_block_hash),
+            hex::encode(previous_hash),
+        );
         return Err(Error::ParentChainReorgDetected);
     }
 
@@ -443,9 +447,9 @@ async fn parent_views_at_height(
         .map_err(|e| Error::CannotQueryParent(e.to_string(), height))?;
     if changes_res.block_hash != block_hash_res.block_hash {
         tracing::warn!(
-            "change set block hash at {height} is {:02x?} diff than hash: {:02x?}",
-            block_hash_res.parent_block_hash,
-            block_hash_res.block_hash
+            "change set block hash at {height} is {} diff than hash: {}",
+            hex::encode(&block_hash_res.parent_block_hash),
+            hex::encode(&block_hash_res.block_hash)
         );
         return Err(Error::ParentChainReorgDetected);
     }
@@ -458,10 +462,10 @@ async fn parent_views_at_height(
     let next_hash = next_block_hash(parent_proxy, height + 1, look_ahead_limit).await?;
     if next_hash.parent_block_hash != block_hash_res.block_hash {
         tracing::warn!(
-            "next block hash at {} is {:02x?} diff than hash: {:02x?}",
+            "next block hash at {} is {} diff than hash: {}",
             height + 1,
-            next_hash.parent_block_hash,
-            block_hash_res.block_hash
+            hex::encode(&next_hash.parent_block_hash),
+            hex::encode(&block_hash_res.block_hash)
         );
         return Err(Error::ParentChainReorgDetected);
     }
