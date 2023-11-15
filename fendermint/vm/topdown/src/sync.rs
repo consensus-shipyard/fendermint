@@ -331,7 +331,7 @@ async fn last_recorded_data(
         LastRecordedBlock::Empty => Ok(None),
         LastRecordedBlock::FilledBlock { height, hash } => Ok(Some((height, hash))),
         LastRecordedBlock::NullBlock(height) => {
-            tracing::info!(height = height, "last recorded height is a null block");
+            tracing::info!(height, "last recorded height is a null block");
 
             // Imaging the list of blocks as follows:
             //
