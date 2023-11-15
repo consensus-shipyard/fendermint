@@ -447,7 +447,16 @@ async fn parent_views_in_block_range(
     Ok(updates)
 }
 
-/// Obtain the new parent views for the target height
+/// Obtain the new parent views for the target height.
+///
+/// For `look_ahead_limit`, the explanation is as follows:
+/// Say the current height is h and we need to fetch the top down messages. For `lotus`, the state
+/// at height h is only finalized at h + 1. The block hash at height h will return empty top down
+/// messages. In this case, we need to get the block hash at height h + 1 to query the top down messages.
+/// Sadly, the height h + 1 could be null block, we need to continuously look ahead until we found
+/// a height that is not null. But we cannot go all the way to the block head as it's not considered
+/// final yet. So we need to use a `look_ahead_limit` that restricts how far as head we should go.
+/// If we still cannot find a height that is non-null, maybe we should try later
 async fn parent_views_at_height(
     parent_proxy: &Arc<IPCProviderProxy>,
     previous_hash: &BlockHash,
