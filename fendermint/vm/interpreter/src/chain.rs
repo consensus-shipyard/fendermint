@@ -242,6 +242,11 @@ where
 
                     // commit parent finality first
                     let finality = IPCParentFinality::new(p.height, p.block_hash);
+                    tracing::debug!(
+                        "chain interpreter received topdown exec proposal {}",
+                        finality
+                    );
+
                     let (prev_height, prev_finality) = topdown::commit_finality(
                         &self.gateway_caller,
                         &mut state,
@@ -250,12 +255,23 @@ where
                     )
                     .await
                     .context("failed to commit finality")?;
+                    tracing::debug!(
+                        "chain interpreter committed topdown finality, prev_height: {}, prev_finality: {})",
+                        prev_height,
+                        prev_finality.as_ref().map(|f| format!("{f}")).unwrap_or_else(|| String::from("None"))
+                    );
 
                     // error happens if we cannot get the validator set from ipc agent after retries
                     let validator_changes = provider
                         .validator_changes_from(prev_height + 1, finality.height)
                         .await
                         .context("failed to fetch validator changes")?;
+                    tracing::debug!(
+                        "chain interpreter received total validator changes msgs: {} from {} to {}",
+                        validator_changes.len(),
+                        prev_height + 1,
+                        finality.height
+                    );
 
                     self.gateway_caller
                         .store_validator_changes(&mut state, validator_changes)
@@ -267,7 +283,7 @@ where
                         .await
                         .context("failed to fetch top down messages")?;
                     tracing::debug!(
-                        "total topdown msgs: {} from {} to {}",
+                        "chain interpreter received total topdown msgs: {} from {} to {}",
                         msgs.len(),
                         prev_height + 1,
                         p.height
@@ -276,13 +292,14 @@ where
                     let ret = topdown::execute_topdown_msgs(&self.gateway_caller, &mut state, msgs)
                         .await
                         .context("failed to execute top down messages")?;
+                    tracing::debug!("chain interpreter applied topdown msgs");
 
                     atomically(|| {
                         provider.set_new_finality(finality.clone(), prev_finality.clone())
                     })
                     .await;
 
-                    tracing::debug!("new finality updated: {:?}", finality);
+                    tracing::debug!("chain interpreter has updated new finality: {:?}", finality);
 
                     Ok(((pool, provider, state), ChainMessageApplyRet::Ipc(ret)))
                 }

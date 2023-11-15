@@ -1,7 +1,15 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use tracing_subscriber::FmtSubscriber;
+use anyhow::{anyhow, Context};
+use std::path::Path;
+use std::str::FromStr;
+use std::sync::Arc;
+use trace4rs::config::{AppenderId, Policy, Target};
+use trace4rs::{
+    config::{self, Config, Format},
+    Handle,
+};
 
 pub use fendermint_app_options as options;
 pub use fendermint_app_settings as settings;
@@ -14,20 +22,66 @@ async fn main() {
 
     // Log events to stdout.
     if let Some(level) = opts.tracing_level() {
-        // Writing to stderr so if we have output like JSON then we can pipe it to something else.
-        let subscriber = FmtSubscriber::builder()
-            .with_max_level(level)
-            .with_writer(std::io::stderr)
-            .finish();
-
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("setting default subscriber failed");
+        create_log(level, &opts.home_dir).expect("cannot create logging");
     }
 
     if let Err(e) = cmd::exec(&opts).await {
         tracing::error!("failed to execute {:?}: {e:?}", opts);
         std::process::exit(1);
     }
+}
+
+fn create_log(level: tracing::Level, home_dir: &Path) -> anyhow::Result<()> {
+    let log_folder = home_dir
+        .join("logs")
+        .to_str()
+        .ok_or_else(|| anyhow!("cannot parse log folder"))?
+        .to_string();
+    std::fs::create_dir_all(&log_folder).context("cannot create log folder")?;
+
+    let console_appender = config::Appender::Console;
+    let topdown_appender = config::Appender::RollingFile {
+        path: format!("{log_folder}/topdown.log"),
+        policy: Policy {
+            maximum_file_size: "10mb".to_string(),
+            // we keep the last 5 log files, older files will be deleted
+            max_size_roll_backups: 5,
+            pattern: None,
+        },
+    };
+
+    // debug level logger
+    let topdown_logger = config::Logger {
+        level: config::LevelFilter::from_str(level.as_str())?,
+        appenders: literally::hset! { AppenderId::from("topdown") },
+        format: Format::default(),
+    };
+
+    // default logging output info log to console
+    let default = config::Logger {
+        level: config::LevelFilter::INFO,
+        appenders: literally::hset! { AppenderId::from("console") },
+        format: Format::default(),
+    };
+
+    let config = Config {
+        default,
+        loggers: literally::hmap! {
+            Target::from("fendermint_vm_topdown") => topdown_logger.clone(),
+            Target::from("fendermint_vm_interpreter::chain") => topdown_logger,
+        },
+        appenders: literally::hmap! {
+            AppenderId::from("console") => console_appender,
+            AppenderId::from("topdown") => topdown_appender
+        },
+    };
+
+    let handle = Arc::new(Handle::try_from(config).unwrap());
+
+    tracing::subscriber::set_global_default(handle.subscriber())
+        .context("setting default subscriber failed")?;
+
+    Ok(())
 }
 
 #[cfg(test)]
