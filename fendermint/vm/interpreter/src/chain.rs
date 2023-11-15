@@ -299,7 +299,7 @@ where
                     })
                     .await;
 
-                    tracing::debug!("chain interpreter has updated new finality: {:?}", finality);
+                    tracing::debug!("chain interpreter has updated new finality: {}", finality);
 
                     Ok(((pool, provider, state), ChainMessageApplyRet::Ipc(ret)))
                 }
