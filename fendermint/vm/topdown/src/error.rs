@@ -15,4 +15,6 @@ pub enum Error {
     ParentChainReorgDetected,
     #[error("Cannot query parent at height {1}: {0}")]
     CannotQueryParent(String, BlockHeight),
+    #[error("Look ahead limit reached from {0}: {1}")]
+    LookAheadLimitReached(BlockHeight, BlockHeight),
 }
