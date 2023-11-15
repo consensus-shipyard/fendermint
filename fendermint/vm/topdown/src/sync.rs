@@ -469,7 +469,8 @@ async fn parent_views_at_height(
         .map_err(|e| Error::CannotQueryParent(e.to_string(), height))?;
     if block_hash_res.parent_block_hash != *previous_hash {
         tracing::warn!(
-            heigit = hex::encode(&block_hash_res.parent_block_hash),
+            height,
+            parent_hash = hex::encode(&block_hash_res.parent_block_hash),
             previous_hash = hex::encode(previous_hash),
             "parent block hash diff than previous hash",
         );
@@ -482,7 +483,7 @@ async fn parent_views_at_height(
         .map_err(|e| Error::CannotQueryParent(e.to_string(), height))?;
     if changes_res.block_hash != block_hash_res.block_hash {
         tracing::warn!(
-            height = height,
+            height,
             change_set_hash = hex::encode(&changes_res.block_hash),
             block_hash = hex::encode(&block_hash_res.block_hash),
             "change set block hash does not equal block hash",
