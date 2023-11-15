@@ -219,16 +219,17 @@ where
         return Ok(());
     }
 
-    let ending_height = parent_chain_head_height - config.chain_head_delay;
+    // we consider the chain head finalized only after the `chain_head_delay`
+    let finalized_chain_head = parent_chain_head_height - config.chain_head_delay;
 
     tracing::debug!(
-        "last recorded height: {}, parent chain head: {}, ending_height: {}",
+        "last recorded height: {}, parent chain head: {}, finalized chain head: {}",
         last_recorded_height,
         parent_chain_head_height,
-        ending_height
+        finalized_chain_head
     );
 
-    if last_recorded_height == ending_height {
+    if last_recorded_height == finalized_chain_head {
         tracing::debug!(
             "the parent has yet to produce a new block, stops at height: {last_recorded_height}"
         );
@@ -238,9 +239,9 @@ where
     // we are going backwards in terms of block height, the latest block height is lower
     // than our previously fetched head. It could be a chain reorg. We clear all the cache
     // in `provider` and start from scratch
-    if last_recorded_height > ending_height {
+    if last_recorded_height > finalized_chain_head {
         tracing::warn!(
-            "last recorded height: {last_recorded_height} more than ending height: {ending_height}"
+            "last recorded height: {last_recorded_height} more than finalized chain head: {finalized_chain_head}"
         );
         return reset_cache(parent_proxy, provider, query).await;
     }
@@ -248,7 +249,10 @@ where
     // we are adding 1 to the height because we are fetching block by block, we also configured
     // the sequential cache to use increment == 1.
     let starting_height = last_recorded_height + 1;
-    let ending_height = min(ending_height, MAX_PARENT_VIEW_BLOCK_GAP + starting_height);
+    let ending_height = min(
+        finalized_chain_head,
+        MAX_PARENT_VIEW_BLOCK_GAP + starting_height,
+    );
     tracing::debug!("parent view range: {starting_height}-{ending_height}");
 
     let new_parent_views = parent_views_in_block_range(
@@ -256,6 +260,7 @@ where
         last_height_hash,
         starting_height,
         ending_height,
+        finalized_chain_head,
     )
     .await?;
 
@@ -377,12 +382,13 @@ async fn parent_views_in_block_range(
     mut previous_hash: BlockHash,
     start_height: BlockHeight,
     end_height: BlockHeight,
+    look_ahead_limit: BlockHeight,
 ) -> Result<GetParentViewPayload, Error> {
     let mut updates = vec![];
     let mut total_top_down_msgs = 0;
 
     for h in start_height..=end_height {
-        match parent_views_at_height(parent_proxy, &previous_hash, h, end_height).await {
+        match parent_views_at_height(parent_proxy, &previous_hash, h, look_ahead_limit).await {
             Ok((hash, changeset, cross_msgs)) => {
                 total_top_down_msgs += cross_msgs.len();
 
