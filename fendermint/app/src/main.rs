@@ -23,7 +23,7 @@ async fn main() {
 
     // Log events to stdout.
     if let Some(level) = opts.tracing_level() {
-        create_log(level, &opts.home_dir).expect("cannot create logging");
+        create_log(level, &opts.log_dir).expect("cannot create logging");
     }
 
     if let Err(e) = cmd::exec(&opts).await {
@@ -32,9 +32,8 @@ async fn main() {
     }
 }
 
-fn create_log(level: tracing::Level, home_dir: &Path) -> anyhow::Result<()> {
-    let log_folder = expand_tilde(home_dir)
-        .join("logs")
+fn create_log(level: tracing::Level, log_dir: &Path) -> anyhow::Result<()> {
+    let log_folder = expand_tilde(log_dir)
         .to_str()
         .ok_or_else(|| anyhow!("cannot parse log folder"))?
         .to_string();

@@ -28,7 +28,3 @@ COPY docker/.artifacts/bundle.car $FM_HOME_DIR/bundle.car
 COPY docker/.artifacts/contracts $FM_HOME_DIR/contracts
 COPY --from=builder /app/fendermint/app/config $FM_HOME_DIR/config
 COPY --from=builder /app/output/bin/fendermint /usr/local/bin/fendermint
-
-RUN useradd ipc && chown -R ipc $FM_HOME_DIR
-
-USER ipc
