@@ -6,8 +6,8 @@ use crate::error::Error;
 use crate::finality::ParentViewPayload;
 use crate::proxy::{IPCProviderProxy, ParentQueryProxy};
 use crate::{
-    BlockHash, BlockHeight, CachedFinalityProvider, Config, IPCParentFinality,
-    ParentFinalityProvider, Toggle, NULL_ROUND_ERR_MSG,
+    is_null_round_str, BlockHash, BlockHeight, CachedFinalityProvider, Config, IPCParentFinality,
+    ParentFinalityProvider, Toggle,
 };
 
 use async_stm::{atomically, atomically_or_err, Stm};
@@ -387,7 +387,7 @@ async fn parent_views_in_block_range(
                 total_top_down_msgs += cross_msgs.len();
 
                 tracing::debug!(
-                    "previous previous hash: {}, previous hash: {}",
+                    "at height: {h}, previous previous hash: {}, previous hash: {}",
                     hex::encode(&previous_hash),
                     hex::encode(&hash)
                 );
@@ -406,7 +406,7 @@ async fn parent_views_in_block_range(
             // A null round will never have a block, which means that we can advance to the next height.
             Err(e) => {
                 let err_msg = e.to_string();
-                if err_msg.contains(NULL_ROUND_ERR_MSG) {
+                if is_null_round_str(&err_msg) {
                     tracing::warn!("null round at height: {h} detected, skip");
                     updates.push((h, None));
                 } else {
@@ -496,7 +496,7 @@ async fn next_block_hash(
             Ok(h) => return Ok(h),
             Err(e) => {
                 let msg = e.to_string();
-                if msg.contains(NULL_ROUND_ERR_MSG) {
+                if is_null_round_str(&msg) {
                     tracing::warn!(
                         "look ahead encountered error: height {h} is a null round, message: {e}"
                     );
