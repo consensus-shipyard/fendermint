@@ -13,6 +13,7 @@ use trace4rs::{
 
 pub use fendermint_app_options as options;
 pub use fendermint_app_settings as settings;
+use fendermint_app_settings::expand_tilde;
 
 mod cmd;
 
@@ -32,7 +33,7 @@ async fn main() {
 }
 
 fn create_log(level: tracing::Level, home_dir: &Path) -> anyhow::Result<()> {
-    let log_folder = home_dir
+    let log_folder = expand_tilde(home_dir)
         .join("logs")
         .to_str()
         .ok_or_else(|| anyhow!("cannot parse log folder"))?
@@ -52,14 +53,14 @@ fn create_log(level: tracing::Level, home_dir: &Path) -> anyhow::Result<()> {
 
     // debug level logger
     let topdown_logger = config::Logger {
-        level: config::LevelFilter::from_str(level.as_str())?,
+        level: config::LevelFilter::DEBUG,
         appenders: literally::hset! { AppenderId::from("topdown") },
         format: Format::default(),
     };
 
     // default logging output info log to console
     let default = config::Logger {
-        level: config::LevelFilter::INFO,
+        level: config::LevelFilter::from_str(level.as_str())?,
         appenders: literally::hset! { AppenderId::from("console") },
         format: Format::default(),
     };
