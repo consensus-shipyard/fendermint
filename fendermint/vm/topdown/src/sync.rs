@@ -223,16 +223,17 @@ where
         return Ok(());
     }
 
-    let ending_height = parent_chain_head_height - config.chain_head_delay;
+    // we consider the chain head finalized only after the `chain_head_delay`
+    let max_ending_height = parent_chain_head_height - config.chain_head_delay;
 
     tracing::debug!(
         last_recorded_height = last_recorded_height,
         parent_chain_head_height = parent_chain_head_height,
-        ending_height = ending_height,
+        max_ending_height = max_ending_height,
         "syncing heights",
     );
 
-    if last_recorded_height == ending_height {
+    if last_recorded_height == max_ending_height {
         tracing::debug!(
             last_recorded_height = last_recorded_height,
             "the parent has yet to produce a new block"
@@ -243,11 +244,11 @@ where
     // we are going backwards in terms of block height, the latest block height is lower
     // than our previously fetched head. It could be a chain reorg. We clear all the cache
     // in `provider` and start from scratch
-    if last_recorded_height > ending_height {
+    if last_recorded_height > max_ending_height {
         tracing::warn!(
             last_recorded_height = last_recorded_height,
-            ending_height = ending_height,
-            "last recorded height more than ending height"
+            max_ending_height = max_ending_height,
+            "last recorded height more than max ending height"
         );
         return reset_cache(parent_proxy, provider, query).await;
     }
@@ -255,7 +256,10 @@ where
     // we are adding 1 to the height because we are fetching block by block, we also configured
     // the sequential cache to use increment == 1.
     let starting_height = last_recorded_height + 1;
-    let ending_height = min(ending_height, MAX_PARENT_VIEW_BLOCK_GAP + starting_height);
+    let ending_height = min(
+        max_ending_height,
+        MAX_PARENT_VIEW_BLOCK_GAP + starting_height,
+    );
     tracing::debug!(
         start = starting_height,
         end = ending_height,
@@ -267,6 +271,7 @@ where
         last_height_hash,
         starting_height,
         ending_height,
+        max_ending_height,
     )
     .await?;
 
@@ -389,12 +394,13 @@ async fn parent_views_in_block_range(
     mut previous_hash: BlockHash,
     start_height: BlockHeight,
     end_height: BlockHeight,
+    look_ahead_limit: BlockHeight,
 ) -> Result<GetParentViewPayload, Error> {
     let mut updates = vec![];
     let mut total_top_down_msgs = 0;
 
     for h in start_height..=end_height {
-        match parent_views_at_height(parent_proxy, &previous_hash, h, end_height).await {
+        match parent_views_at_height(parent_proxy, &previous_hash, h, look_ahead_limit).await {
             Ok((hash, changeset, cross_msgs)) => {
                 total_top_down_msgs += cross_msgs.len();
 
@@ -422,6 +428,13 @@ async fn parent_views_in_block_range(
                 if is_null_round_str(&err_msg) {
                     tracing::warn!(height = h, "null round detected, skip");
                     updates.push((h, None));
+                } else if let Error::LookAheadLimitReached(start, limit) = e {
+                    tracing::warn!(
+                        start_height = start,
+                        limit_height = limit,
+                        "look ahead limit reached, store updates so far in cache",
+                    );
+                    break;
                 } else {
                     return Err(e);
                 }
@@ -434,7 +447,16 @@ async fn parent_views_in_block_range(
     Ok(updates)
 }
 
-/// Obtain the new parent views for the target height
+/// Obtain the new parent views for the target height.
+///
+/// For `look_ahead_limit`, the explanation is as follows:
+/// Say the current height is h and we need to fetch the top down messages. For `lotus`, the state
+/// at height h is only finalized at h + 1. The block hash at height h will return empty top down
+/// messages. In this case, we need to get the block hash at height h + 1 to query the top down messages.
+/// Sadly, the height h + 1 could be null block, we need to continuously look ahead until we found
+/// a height that is not null. But we cannot go all the way to the block head as it's not considered
+/// final yet. So we need to use a `look_ahead_limit` that restricts how far as head we should go.
+/// If we still cannot find a height that is non-null, maybe we should try later
 async fn parent_views_at_height(
     parent_proxy: &Arc<IPCProviderProxy>,
     previous_hash: &BlockHash,
@@ -523,11 +545,5 @@ async fn next_block_hash(
             }
         }
     }
-    Err(Error::CannotQueryParent(
-        format!(
-            "cannot get next block hash in range {}-{}, check your parent chain",
-            height, look_ahead_limit
-        ),
-        look_ahead_limit,
-    ))
+    Err(Error::LookAheadLimitReached(height, look_ahead_limit))
 }
