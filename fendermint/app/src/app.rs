@@ -87,28 +87,8 @@ impl AppState {
         ChainID::from(self.state_params.chain_id)
     }
 
-    /// Produce an appliction hash that is a commitment to all data replicated by consensus,
-    /// that is, all nodes participating in the network must agree on this otherwise we have
-    /// a consensus failure.
-    ///
-    /// Notably it contains the actor state root _as well as_ some of the metadata maintained
-    /// outside the FVM, such as the timestamp and the circulating supply.
     pub fn app_hash(&self) -> tendermint::hash::AppHash {
-        // Create an artifical CID from the FVM state params, which include everything that
-        // deterministically changes under consensus.
-        let state_params_cid =
-            fendermint_vm_message::cid(&self.state_params).expect("state params have a CID");
-
-        // We could reduce it to a hash to ephasize that this is not something that we can return at the moment,
-        // but we could just as easily store the record in the Blockstore to make it retrievable.
-        // It is generally not a goal to serve the entire state over the IPLD Resolver or ABCI queries, though;
-        // for that we should rely on the CometBFT snapshot mechanism.
-        // But to keep our options open, we can return the hash as a CID that nobody can retrieve, and change our mind later.
-
-        // let state_params_hash = state_params_cid.hash();
-        let state_params_hash = state_params_cid.to_bytes();
-
-        tendermint::hash::AppHash::try_from(state_params_hash).expect("hash can be wrapped")
+        to_app_hash(&self.state_params)
     }
 
     /// The state is effective at the *next* block, that is, the effects of block N are visible in the header of block N+1,
@@ -855,7 +835,7 @@ where
         Ok(response)
     }
 
-    /// Used during state sync to discover available snapshots on peers.
+    /// List the snapshots available on this node to be served to remote peers.
     async fn list_snapshots(&self) -> AbciResult<response::ListSnapshots> {
         if let Some(ref client) = self.snapshots {
             let snapshots = atomically(|| client.list_snapshots()).await;
@@ -865,7 +845,7 @@ where
         }
     }
 
-    /// Used during state sync to retrieve chunks of snapshots from peers.
+    /// Load a particular snapshot chunk a remote peer is asking for.
     async fn load_snapshot_chunk(
         &self,
         request: request::LoadSnapshotChunk,
@@ -874,7 +854,7 @@ where
             if let Some(snapshot) =
                 atomically(|| client.access_snapshot(request.height.value(), request.format)).await
             {
-                match snapshot.load_chunk(request.chunk as usize) {
+                match snapshot.load_chunk(request.chunk) {
                     Ok(chunk) => {
                         return Ok(response::LoadSnapshotChunk {
                             chunk: chunk.into(),
@@ -883,6 +863,27 @@ where
                     Err(e) => {
                         tracing::warn!("failed to load chunk: {e:#}");
                     }
+                }
+            }
+        }
+        Ok(Default::default())
+    }
+
+    /// Decide whether to start downloading a snapshot from peers.
+    async fn offer_snapshot(
+        &self,
+        request: request::OfferSnapshot,
+    ) -> AbciResult<response::OfferSnapshot> {
+        if self.snapshots.is_some() {
+            match from_snapshot(request).context("failed to parse snapshot") {
+                Ok(manifest) => {
+                    tracing::info!(?manifest, "received snapshot offer");
+                    // We can look at the version but currently there's only one.
+                    return Ok(response::OfferSnapshot::Accept);
+                }
+                Err(e) => {
+                    tracing::warn!("failed to parse snapshot offer: {e:#}");
+                    return Ok(response::OfferSnapshot::Reject);
                 }
             }
         }

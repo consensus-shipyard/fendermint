@@ -307,8 +307,8 @@ where
         // Create and export a manifest that we can easily look up.
         let manifest = SnapshotManifest {
             block_height,
-            size: snapshot_size,
-            chunks: chunks_count,
+            size: snapshot_size as u64,
+            chunks: chunks_count as u32,
             checksum: checksum_bytes,
             state_params,
             version: snapshot_version,
