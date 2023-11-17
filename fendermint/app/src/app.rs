@@ -699,6 +699,16 @@ where
         let db = self.state_store_clone();
         let state = self.committed_state()?;
         let mut state_params = state.state_params.clone();
+
+        // Notify the snapshotter. We don't do this in `commit` because *this* is the height at which
+        // this state has been officially associated with the application hash, which is something
+        // we will receive in `offer_snapshot` and we can compare. If we did it in `commit` we'd
+        // have to associate the snapshot with `block_height + 1`. But this way we also know that
+        // others have agreed with our results.
+        if let Some(ref snapshots) = self.snapshots {
+            atomically(|| snapshots.notify(block_height as u64, state_params.clone())).await;
+        }
+
         state_params.timestamp = to_timestamp(request.header.time);
 
         let state = FvmExecState::new(db, self.multi_engine.as_ref(), block_height, state_params)
@@ -790,10 +800,9 @@ where
 
         let app_hash = state.app_hash();
         let block_height = state.block_height;
-        let state_params = state.state_params.clone();
 
         tracing::debug!(
-            height = state.block_height,
+            block_height,
             state_root = state_root.to_string(),
             app_hash = app_hash.to_string(),
             timestamp = state.state_params.timestamp.0,
@@ -821,11 +830,6 @@ where
         // Reset check state.
         let mut guard = self.check_state.lock().await;
         *guard = None;
-
-        // Notify the snapshotter.
-        if let Some(ref snapshots) = self.snapshots {
-            atomically(|| snapshots.on_commit(block_height, state_params.clone())).await;
-        }
 
         let response = response::Commit {
             data: app_hash.into(),
