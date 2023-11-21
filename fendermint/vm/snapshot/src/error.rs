@@ -14,4 +14,6 @@ pub enum SnapshotError {
     NoDownload,
     #[error("unexpected chunk index; expected {0}, got {1}")]
     UnexpectedChunk(u32, u32),
+    #[error("wrong checksum; expected {0}, got {1}")]
+    WrongChecksum(tendermint::Hash, tendermint::Hash),
 }

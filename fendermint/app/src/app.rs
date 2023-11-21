@@ -940,6 +940,15 @@ where
                         ..default
                     });
                 }
+                Err(SnapshotError::WrongChecksum(expected, got)) => {
+                    tracing::warn!(?got, ?expected, "wrong snapshot checksum");
+                    // We could retry this snapshot, or try another one.
+                    // If we retry, we have to tell which chunks to refetch.
+                    return Ok(response::ApplySnapshotChunk {
+                        result: response::ApplySnapshotChunkResult::RejectSnapshot,
+                        ..default
+                    });
+                }
                 Err(e) => {
                     tracing::error!(
                         chunk = request.index,

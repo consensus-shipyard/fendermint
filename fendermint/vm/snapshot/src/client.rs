@@ -11,6 +11,7 @@ use fendermint_vm_interpreter::fvm::state::{
 use tempfile::tempdir;
 
 use crate::{
+    manifest,
     state::{SnapshotDownload, SnapshotState},
     SnapshotError, SnapshotItem, SnapshotManifest,
 };
@@ -114,8 +115,24 @@ impl SnapshotClient {
                         cd.next_index.write(next_index)?;
 
                         if next_index == cd.manifest.chunks {
-                            // TODO: Verify the checksum then load the snapshot and remove the current download from memory.
-                            Ok(true)
+                            // Verify the checksum then load the snapshot and remove the current download from memory.
+                            match manifest::parts_checksum(cd.download_dir.as_ref()) {
+                                Ok(checksum) => {
+                                    if checksum == cd.manifest.checksum {
+                                        // TODO: Import Snapshot.
+                                        Ok(true)
+                                    } else {
+                                        abort(SnapshotError::WrongChecksum(
+                                            cd.manifest.checksum,
+                                            checksum,
+                                        ))
+                                    }
+                                }
+                                Err(e) => abort(SnapshotError::IoError(std::io::Error::new(
+                                    std::io::ErrorKind::Other,
+                                    e.to_string(),
+                                ))),
+                            }
                         } else {
                             Ok(false)
                         }

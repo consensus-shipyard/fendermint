@@ -9,6 +9,7 @@ use fendermint_vm_interpreter::fvm::state::{
     FvmStateParams,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::SnapshotItem;
 
@@ -101,6 +102,55 @@ pub fn list_manifests(snapshot_dir: impl AsRef<Path>) -> anyhow::Result<Vec<Snap
     Ok(items)
 }
 
+/// Calculate the Sha256 checksum of a file.
+pub fn file_checksum(path: impl AsRef<Path>) -> anyhow::Result<tendermint::Hash> {
+    let mut file = std::fs::File::open(&path)?;
+    let mut hasher = Sha256::new();
+    let _ = std::io::copy(&mut file, &mut hasher)?;
+    let hash = hasher.finalize().into();
+    Ok(tendermint::Hash::Sha256(hash))
+}
+
+/// Calculate the Sha256 checksum of all `{idx}.part` files in a directory.
+pub fn parts_checksum(path: impl AsRef<Path>) -> anyhow::Result<tendermint::Hash> {
+    let mut hasher = Sha256::new();
+
+    let mut chunks = std::fs::read_dir(path.as_ref())
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .with_context(|| {
+            format!(
+                "failed to collect parts in directory: {}",
+                path.as_ref().to_string_lossy()
+            )
+        })?;
+
+    chunks.retain(|item| {
+        item.path()
+            .extension()
+            .map(|x| x.to_string_lossy().to_string())
+            .unwrap_or_default()
+            == "part"
+    });
+
+    chunks.sort_by_cached_key(|item| {
+        item.path()
+            .file_stem()
+            .map(|n| n.to_string_lossy())
+            .unwrap_or_default()
+            .parse::<u32>()
+            .expect("file part names are prefixed by index")
+    });
+
+    for entry in chunks {
+        let mut file = std::fs::File::open(&entry.path()).context("failed to open part")?;
+        let _ = std::io::copy(&mut file, &mut hasher)?;
+    }
+
+    let hash = hasher.finalize().into();
+    Ok(tendermint::Hash::Sha256(hash))
+}
+
 #[cfg(feature = "arb")]
 mod arb {
 
@@ -139,5 +189,30 @@ mod arb {
                 version: Arbitrary::arbitrary(g),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use cid::multihash::MultihashDigest;
+    use tempfile::NamedTempFile;
+
+    use crate::manifest::file_checksum;
+
+    #[test]
+    fn test_file_checksum() {
+        let content = b"Hello Checksum!";
+
+        let mut file = NamedTempFile::new().expect("new temp file");
+        file.write_all(content).expect("write contents");
+        let file_path = file.into_temp_path();
+        let file_digest = file_checksum(file_path).expect("checksum");
+
+        let content_digest = cid::multihash::Code::Sha2_256.digest(content);
+        let content_digest = content_digest.digest();
+
+        assert_eq!(file_digest.as_bytes(), content_digest)
     }
 }
