@@ -32,7 +32,7 @@ use fendermint_vm_interpreter::{
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
 use fendermint_vm_message::query::FvmQueryHeight;
-use fendermint_vm_snapshot::manager::SnapshotClient;
+use fendermint_vm_snapshot::SnapshotClient;
 use fvm::engine::MultiEngine;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::chainid::ChainID;
@@ -874,15 +874,19 @@ where
     }
 
     /// Decide whether to start downloading a snapshot from peers.
+    ///
+    /// This method is also called when a download is aborted and a new snapshot is offered,
+    /// so potentially we have to clean up previous resources and start a new one.
     async fn offer_snapshot(
         &self,
         request: request::OfferSnapshot,
     ) -> AbciResult<response::OfferSnapshot> {
-        if self.snapshots.is_some() {
+        if let Some(ref _client) = self.snapshots {
             match from_snapshot(request).context("failed to parse snapshot") {
                 Ok(manifest) => {
                     tracing::info!(?manifest, "received snapshot offer");
                     // We can look at the version but currently there's only one.
+                    //if let Some(curr_snapshot) = atomically(client.offer_snapshot(manifest))
                     return Ok(response::OfferSnapshot::Accept);
                 }
                 Err(e) => {
@@ -891,6 +895,14 @@ where
                 }
             }
         }
+        Ok(Default::default())
+    }
+
+    /// Apply the given snapshot chunk to the application's state.
+    async fn apply_snapshot_chunk(
+        &self,
+        _request: request::ApplySnapshotChunk,
+    ) -> AbciResult<response::ApplySnapshotChunk> {
         Ok(Default::default())
     }
 }

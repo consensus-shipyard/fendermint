@@ -1,17 +1,16 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::{
-    path::{Path, PathBuf},
-    time::SystemTime,
-};
+use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context};
+use anyhow::Context;
 use fendermint_vm_interpreter::fvm::state::{
     snapshot::{BlockHeight, SnapshotVersion},
     FvmStateParams,
 };
 use serde::{Deserialize, Serialize};
+
+use crate::SnapshotItem;
 
 /// The file name in snapshot directories that contains the manifest.
 const MANIFEST_FILE_NAME: &str = "manifest.json";
@@ -34,44 +33,6 @@ pub struct SnapshotManifest {
     pub state_params: FvmStateParams,
     /// Snapshot format version
     pub version: SnapshotVersion,
-}
-
-/// A snapshot directory and its manifest.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct SnapshotItem {
-    /// Directory containing this snapshot, ie. the manifest ane the parts.
-    pub snapshot_dir: PathBuf,
-    /// Parsed `manifest.json` contents.
-    pub manifest: SnapshotManifest,
-    /// Last time a peer asked for a chunk from this snapshot.
-    pub last_access: SystemTime,
-}
-
-impl SnapshotItem {
-    pub fn new(snapshot_dir: PathBuf, manifest: SnapshotManifest) -> Self {
-        Self {
-            snapshot_dir,
-            manifest,
-            last_access: SystemTime::UNIX_EPOCH,
-        }
-    }
-    /// Load the data from disk.
-    ///
-    /// Returns an error if the chunk isn't within range or if the file doesn't exist any more.
-    pub fn load_chunk(&self, chunk: u32) -> anyhow::Result<Vec<u8>> {
-        if chunk >= self.manifest.chunks {
-            bail!(
-                "cannot load chunk {chunk}; only have {} in the snapshot",
-                self.manifest.chunks
-            );
-        }
-        let chunk_file = self.snapshot_dir.join("{chunk}.part");
-
-        let content = std::fs::read(&chunk_file)
-            .with_context(|| format!("failed to read chunk {}", chunk_file.to_string_lossy()))?;
-
-        Ok(content)
-    }
 }
 
 /// Save a manifest along with the other snapshot files into a snapshot specific directory.
@@ -142,7 +103,6 @@ pub fn list_manifests(snapshot_dir: impl AsRef<Path>) -> anyhow::Result<Vec<Snap
 
 #[cfg(feature = "arb")]
 mod arb {
-    use std::{path::PathBuf, time::SystemTime};
 
     use fendermint_testing::arb::{ArbCid, ArbTokenAmount};
     use fendermint_vm_core::{chainid, Timestamp};
@@ -150,7 +110,7 @@ mod arb {
     use fvm_shared::version::NetworkVersion;
     use quickcheck::Arbitrary;
 
-    use super::{SnapshotItem, SnapshotManifest};
+    use super::SnapshotManifest;
 
     impl quickcheck::Arbitrary for SnapshotManifest {
         fn arbitrary(g: &mut quickcheck::Gen) -> Self {
@@ -177,16 +137,6 @@ mod arb {
                     power_scale: *g.choose(&[-1, 0, 3]).unwrap(),
                 },
                 version: Arbitrary::arbitrary(g),
-            }
-        }
-    }
-
-    impl quickcheck::Arbitrary for SnapshotItem {
-        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-            Self {
-                manifest: SnapshotManifest::arbitrary(g),
-                snapshot_dir: PathBuf::arbitrary(g),
-                last_access: SystemTime::arbitrary(g),
             }
         }
     }
