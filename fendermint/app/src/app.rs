@@ -894,7 +894,7 @@ where
                             tracing::warn!(version, "rejecting offered snapshot version");
                             return Ok(response::OfferSnapshot::RejectFormat);
                         }
-                        Err(SnapshotError::IoError(e)) => {
+                        Err(e) => {
                             tracing::error!(error = ?e, "failed to start snapshot download");
                             return Ok(response::OfferSnapshot::Abort);
                         }
@@ -912,8 +912,45 @@ where
     /// Apply the given snapshot chunk to the application's state.
     async fn apply_snapshot_chunk(
         &self,
-        _request: request::ApplySnapshotChunk,
+        request: request::ApplySnapshotChunk,
     ) -> AbciResult<response::ApplySnapshotChunk> {
-        Ok(Default::default())
+        tracing::debug!(chunk = request.index, "received snapshot chunk");
+        let default = response::ApplySnapshotChunk::default();
+
+        if let Some(ref client) = self.snapshots {
+            match atomically_or_err(|| {
+                client.apply_chunk(request.index, request.chunk.clone().into())
+            })
+            .await
+            {
+                Ok(completed) => {
+                    if completed {
+                        tracing::info!("received all snapshot chunks");
+                    }
+                    return Ok(response::ApplySnapshotChunk {
+                        result: response::ApplySnapshotChunkResult::Accept,
+                        ..default
+                    });
+                }
+                Err(SnapshotError::UnexpectedChunk(expected, got)) => {
+                    tracing::warn!(got, expected, "unexpected snapshot chunk index");
+                    return Ok(response::ApplySnapshotChunk {
+                        result: response::ApplySnapshotChunkResult::Retry,
+                        refetch_chunks: vec![expected],
+                        ..default
+                    });
+                }
+                Err(e) => {
+                    tracing::error!(
+                        chunk = request.index,
+                        sender = request.sender,
+                        error = ?e,
+                        "failed to process snapshot chunk"
+                    );
+                }
+            }
+        }
+
+        Ok(default)
     }
 }

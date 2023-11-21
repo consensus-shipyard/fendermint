@@ -78,6 +78,8 @@ pub struct SnapshotDownload {
     pub manifest: SnapshotManifest,
     // Temporary download directory. Removed when this download is dropped.
     pub download_dir: Arc<TempDir>,
+    // Next expected chunk index.
+    pub next_index: TVar<u32>,
 }
 
 #[cfg(feature = "arb")]

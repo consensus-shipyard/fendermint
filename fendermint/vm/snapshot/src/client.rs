@@ -3,7 +3,7 @@
 
 use std::{sync::Arc, time::SystemTime};
 
-use async_stm::{abort, Stm, StmResult};
+use async_stm::{abort, Stm, StmResult, TVar};
 use fendermint_vm_interpreter::fvm::state::{
     snapshot::{BlockHeight, SnapshotVersion},
     FvmStateParams,
@@ -82,12 +82,53 @@ impl SnapshotClient {
                     let download = SnapshotDownload {
                         manifest,
                         download_dir: Arc::new(dir),
+                        next_index: TVar::new(0),
                     };
                     self.state.current_download.write(Some(download))?;
                     Ok(())
                 }
                 Err(e) => abort(SnapshotError::from(e))?,
             }
+        }
+    }
+
+    /// Take a chunk sent to us by a remote peer. This is our chance to validate chunks on the fly.
+    ///
+    /// Return a flag indicating whether all the chunks have been received and loaded to the blockstore.
+    pub fn apply_chunk(&self, index: u32, contents: Vec<u8>) -> StmResult<bool, SnapshotError> {
+        if let Some(cd) = self.state.current_download.read()?.as_ref() {
+            let next_index = cd.next_index.read_clone()?;
+            if index != next_index {
+                abort(SnapshotError::UnexpectedChunk(next_index, index))
+            } else {
+                let part_path = cd
+                    .download_dir
+                    .as_ref()
+                    .path()
+                    .join(format!("{}.part", index));
+
+                // We are doing IO inside the STM transaction, but that's okay because there is no contention on the download.
+                match std::fs::write(part_path, contents) {
+                    Ok(()) => {
+                        let next_index = index + 1;
+                        cd.next_index.write(next_index)?;
+
+                        if next_index == cd.manifest.chunks {
+                            // TODO: Verify the checksum then load the snapshot and remove the current download from memory.
+                            Ok(true)
+                        } else {
+                            Ok(false)
+                        }
+                    }
+                    Err(e) => {
+                        // If we failed to save the data to disk we can return an error that will cause all snapshots to be aborted.
+                        // There is no point trying to clear download from the state here because if we `abort` then all changes will be dropped.
+                        abort(SnapshotError::from(e))
+                    }
+                }
+            }
+        } else {
+            abort(SnapshotError::NoDownload)
         }
     }
 }

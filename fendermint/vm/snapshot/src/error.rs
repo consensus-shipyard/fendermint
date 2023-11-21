@@ -10,4 +10,8 @@ pub enum SnapshotError {
     IncompatibleVersion(SnapshotVersion),
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+    #[error("there is no ongoing snapshot download")]
+    NoDownload,
+    #[error("unexpected chunk index; expected {0}, got {1}")]
+    UnexpectedChunk(u32, u32),
 }
