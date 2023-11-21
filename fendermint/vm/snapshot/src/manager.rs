@@ -58,12 +58,7 @@ where
     ) -> anyhow::Result<(Self, SnapshotClient)> {
         let snapshot_items = list_manifests(&snapshot_dir).context("failed to list manifests")?;
 
-        let state = SnapshotState {
-            // Start with nothing to snapshot until we are notified about a new height.
-            // We could also look back to find the latest height we should have snapshotted.
-            latest_params: TVar::new(None),
-            snapshots: TVar::new(snapshot_items.into()),
-        };
+        let state = SnapshotState::new(snapshot_items);
 
         let manager = Self {
             store,

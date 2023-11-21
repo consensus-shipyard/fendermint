@@ -1,15 +1,19 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::time::SystemTime;
+use std::{sync::Arc, time::SystemTime};
 
-use async_stm::Stm;
+use async_stm::{abort, Stm, StmResult};
 use fendermint_vm_interpreter::fvm::state::{
     snapshot::{BlockHeight, SnapshotVersion},
     FvmStateParams,
 };
+use tempfile::tempdir;
 
-use crate::{state::SnapshotState, SnapshotItem};
+use crate::{
+    state::{SnapshotDownload, SnapshotState},
+    SnapshotError, SnapshotItem, SnapshotManifest,
+};
 
 /// Interface to snapshot state for the application.
 #[derive(Clone)]
@@ -65,5 +69,25 @@ impl SnapshotClient {
             self.state.snapshots.write(snapshots)?;
         }
         Ok(snapshot)
+    }
+
+    /// If the offered snapshot is accepted, we create a temporary directory to hold the chunks
+    /// and remember it as our current snapshot being downloaded.
+    pub fn offer_snapshot(&self, manifest: SnapshotManifest) -> StmResult<(), SnapshotError> {
+        if manifest.version != 1 {
+            abort(SnapshotError::IncompatibleVersion(manifest.version))
+        } else {
+            match tempdir() {
+                Ok(dir) => {
+                    let download = SnapshotDownload {
+                        manifest,
+                        download_dir: Arc::new(dir),
+                    };
+                    self.state.current_download.write(Some(download))?;
+                    Ok(())
+                }
+                Err(e) => abort(SnapshotError::from(e))?,
+            }
+        }
     }
 }

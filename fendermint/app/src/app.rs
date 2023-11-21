@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
-use async_stm::atomically;
+use async_stm::{atomically, atomically_or_err};
 use async_trait::async_trait;
 use cid::Cid;
 use fendermint_abci::util::take_until_max_size;
@@ -32,7 +32,7 @@ use fendermint_vm_interpreter::{
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
 use fendermint_vm_message::query::FvmQueryHeight;
-use fendermint_vm_snapshot::SnapshotClient;
+use fendermint_vm_snapshot::{SnapshotClient, SnapshotError};
 use fvm::engine::MultiEngine;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::chainid::ChainID;
@@ -881,13 +881,24 @@ where
         &self,
         request: request::OfferSnapshot,
     ) -> AbciResult<response::OfferSnapshot> {
-        if let Some(ref _client) = self.snapshots {
+        if let Some(ref client) = self.snapshots {
             match from_snapshot(request).context("failed to parse snapshot") {
                 Ok(manifest) => {
                     tracing::info!(?manifest, "received snapshot offer");
                     // We can look at the version but currently there's only one.
-                    //if let Some(curr_snapshot) = atomically(client.offer_snapshot(manifest))
-                    return Ok(response::OfferSnapshot::Accept);
+                    match atomically_or_err(|| client.offer_snapshot(manifest.clone())).await {
+                        Ok(()) => {
+                            return Ok(response::OfferSnapshot::Accept);
+                        }
+                        Err(SnapshotError::IncompatibleVersion(version)) => {
+                            tracing::warn!(version, "rejecting offered snapshot version");
+                            return Ok(response::OfferSnapshot::RejectFormat);
+                        }
+                        Err(SnapshotError::IoError(e)) => {
+                            tracing::error!(error = ?e, "failed to start snapshot download");
+                            return Ok(response::OfferSnapshot::Abort);
+                        }
+                    };
                 }
                 Err(e) => {
                     tracing::warn!("failed to parse snapshot offer: {e:#}");

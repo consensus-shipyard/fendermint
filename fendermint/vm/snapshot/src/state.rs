@@ -1,11 +1,12 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::{path::PathBuf, time::SystemTime};
+use std::{path::PathBuf, sync::Arc, time::SystemTime};
 
 use anyhow::{bail, Context};
 use async_stm::TVar;
 use fendermint_vm_interpreter::fvm::state::snapshot::BlockStateParams;
+use tempfile::TempDir;
 
 use crate::manifest::SnapshotManifest;
 
@@ -13,9 +14,24 @@ use crate::manifest::SnapshotManifest;
 /// and the next eligible height.
 #[derive(Clone)]
 pub struct SnapshotState {
+    /// Completed snapshots.
+    pub snapshots: TVar<im::Vector<SnapshotItem>>,
     /// The latest state parameters at a snapshottable height.
     pub latest_params: TVar<Option<BlockStateParams>>,
-    pub snapshots: TVar<im::Vector<SnapshotItem>>,
+    /// The latest snapshot offered, which CometBFT is downloading and feeding to us.
+    pub current_download: TVar<Option<SnapshotDownload>>,
+}
+
+impl SnapshotState {
+    pub fn new(snapshots: Vec<SnapshotItem>) -> Self {
+        Self {
+            snapshots: TVar::new(snapshots.into()),
+            // Start with nothing to snapshot until we are notified about a new height.
+            // We could also look back to find the latest height we should have snapshotted.
+            latest_params: TVar::new(None),
+            current_download: TVar::new(None),
+        }
+    }
 }
 
 /// A snapshot directory and its manifest.
@@ -54,6 +70,14 @@ impl SnapshotItem {
 
         Ok(content)
     }
+}
+
+/// An ongoing, incomplete download of a snapshot.
+#[derive(Clone)]
+pub struct SnapshotDownload {
+    pub manifest: SnapshotManifest,
+    // Temporary download directory. Removed when this download is dropped.
+    pub download_dir: Arc<TempDir>,
 }
 
 #[cfg(feature = "arb")]
