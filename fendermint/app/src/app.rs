@@ -958,6 +958,15 @@ where
                         state.block_height = snapshot.manifest.block_height;
                         state.state_params = snapshot.manifest.state_params;
                         self.set_committed_state(state)?;
+
+                        // TODO: We can remove the `current_download` from the STM
+                        // state here which would cause it to get dropped from /tmp,
+                        // but for now let's keep it just in case we need to investigate
+                        // some problem.
+
+                        // We could also move the files into our own snapshot directory
+                        // so that we can offer it to others, but again let's hold on
+                        // until we have done more robust validation.
                     }
                     return Ok(response::ApplySnapshotChunk {
                         result: response::ApplySnapshotChunkResult::Accept,
