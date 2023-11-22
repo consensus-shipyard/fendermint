@@ -1,7 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::{sync::Arc, time::SystemTime};
+use std::{path::PathBuf, sync::Arc, time::SystemTime};
 
 use async_stm::{abort, Stm, StmResult, TVar};
 use fendermint_vm_interpreter::fvm::state::{
@@ -74,19 +74,20 @@ impl SnapshotClient {
 
     /// If the offered snapshot is accepted, we create a temporary directory to hold the chunks
     /// and remember it as our current snapshot being downloaded.
-    pub fn offer_snapshot(&self, manifest: SnapshotManifest) -> StmResult<(), SnapshotError> {
+    pub fn offer_snapshot(&self, manifest: SnapshotManifest) -> StmResult<PathBuf, SnapshotError> {
         if manifest.version != 1 {
             abort(SnapshotError::IncompatibleVersion(manifest.version))
         } else {
             match tempdir() {
                 Ok(dir) => {
+                    let download_path = dir.path().into();
                     let download = SnapshotDownload {
                         manifest,
                         download_dir: Arc::new(dir),
                         next_index: TVar::new(0),
                     };
                     self.state.current_download.write(Some(download))?;
-                    Ok(())
+                    Ok(download_path)
                 }
                 Err(e) => abort(SnapshotError::from(e))?,
             }
@@ -95,8 +96,15 @@ impl SnapshotClient {
 
     /// Take a chunk sent to us by a remote peer. This is our chance to validate chunks on the fly.
     ///
-    /// Return a flag indicating whether all the chunks have been received and loaded to the blockstore.
-    pub fn apply_chunk(&self, index: u32, contents: Vec<u8>) -> StmResult<bool, SnapshotError> {
+    /// Returns `None` while there are more chunks to download and  `Some` [SnapshotItem] when all
+    /// the chunks have been received and basic file integrity validated.
+    ///
+    /// Then we can call `import_snapshot` to actually load the snapshot into the blockstore.
+    pub fn save_chunk(
+        &self,
+        index: u32,
+        contents: Vec<u8>,
+    ) -> StmResult<Option<SnapshotItem>, SnapshotError> {
         if let Some(cd) = self.state.current_download.read()?.as_ref() {
             let next_index = cd.next_index.read_clone()?;
             if index != next_index {
@@ -119,8 +127,11 @@ impl SnapshotClient {
                             match manifest::parts_checksum(cd.download_dir.as_ref()) {
                                 Ok(checksum) => {
                                     if checksum == cd.manifest.checksum {
-                                        // TODO: Import Snapshot.
-                                        Ok(true)
+                                        let item = SnapshotItem::new(
+                                            cd.download_dir.path().into(),
+                                            cd.manifest.clone(),
+                                        );
+                                        Ok(Some(item))
                                     } else {
                                         abort(SnapshotError::WrongChecksum(
                                             cd.manifest.checksum,
@@ -134,7 +145,7 @@ impl SnapshotClient {
                                 ))),
                             }
                         } else {
-                            Ok(false)
+                            Ok(None)
                         }
                     }
                     Err(e) => {

@@ -887,7 +887,14 @@ where
                     tracing::info!(?manifest, "received snapshot offer");
                     // We can look at the version but currently there's only one.
                     match atomically_or_err(|| client.offer_snapshot(manifest.clone())).await {
-                        Ok(()) => {
+                        Ok(path) => {
+                            tracing::info!(
+                                download_dir = path.to_string_lossy().to_string(),
+                                height = manifest.block_height,
+                                size = manifest.size,
+                                chunks = manifest.chunks,
+                                "downloading snapshot"
+                            );
                             return Ok(response::OfferSnapshot::Accept);
                         }
                         Err(SnapshotError::IncompatibleVersion(version)) => {
@@ -919,13 +926,14 @@ where
 
         if let Some(ref client) = self.snapshots {
             match atomically_or_err(|| {
-                client.apply_chunk(request.index, request.chunk.clone().into())
+                client.save_chunk(request.index, request.chunk.clone().into())
             })
             .await
             {
-                Ok(completed) => {
-                    if completed {
+                Ok(snapshot) => {
+                    if let Some(_snapshot) = snapshot {
                         tracing::info!("received all snapshot chunks");
+                        // TODO: Import the snapshot.
                     }
                     return Ok(response::ApplySnapshotChunk {
                         result: response::ApplySnapshotChunkResult::Accept,
