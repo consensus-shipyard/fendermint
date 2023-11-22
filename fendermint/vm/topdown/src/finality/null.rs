@@ -12,6 +12,8 @@ use ipc_sdk::staking::StakingChangeRequest;
 /// Finality provider that can handle null blocks
 #[derive(Clone)]
 pub struct FinalityWithNull {
+    /// The min topdown proposal height interval
+    min_proposal_interval: BlockHeight,
     genesis_epoch: BlockHeight,
     /// Cached data that always syncs with the latest parent chain proactively
     cached_data: TVar<SequentialKeyCache<BlockHeight, Option<ParentViewPayload>>>,
@@ -21,8 +23,13 @@ pub struct FinalityWithNull {
 }
 
 impl FinalityWithNull {
-    pub fn new(genesis_epoch: BlockHeight, committed_finality: Option<IPCParentFinality>) -> Self {
+    pub fn new(
+        min_proposal_interval: BlockHeight,
+        genesis_epoch: BlockHeight,
+        committed_finality: Option<IPCParentFinality>,
+    ) -> Self {
         Self {
+            min_proposal_interval,
             genesis_epoch,
             cached_data: TVar::new(SequentialKeyCache::sequential()),
             last_committed_finality: TVar::new(committed_finality),
@@ -49,25 +56,6 @@ impl FinalityWithNull {
         Ok(r)
     }
 
-    pub fn first_non_null_parent_hash(&self, height: BlockHeight) -> Stm<Option<BlockHash>> {
-        let cache = self.cached_data.read()?;
-        if let Some(lower_bound) = cache.lower_bound() {
-            for h in (lower_bound..height).rev() {
-                if let Some(Some(p)) = cache.get_value(h) {
-                    return Ok(Some(p.0.clone()));
-                }
-            }
-        }
-
-        // nothing is found in cache, check the last committed finality
-        let last_committed_finality = self.last_committed_finality.read_clone()?;
-        if let Some(f) = last_committed_finality {
-            Ok(Some(f.block_hash))
-        } else {
-            Ok(None)
-        }
-    }
-
     pub fn last_committed_finality(&self) -> Stm<Option<IPCParentFinality>> {
         self.last_committed_finality.read_clone()
     }
@@ -91,19 +79,14 @@ impl FinalityWithNull {
     }
 
     pub fn next_proposal(&self) -> Stm<Option<IPCParentFinality>> {
-        let height = if let Some(h) = self.latest_height()? {
+        let height = if let Some(h) = self.propose_next_height()? {
             h
         } else {
-            tracing::debug!("no proposal yet as height not available");
             return Ok(None);
         };
 
-        let block_hash = if let Some(h) = self.block_hash_at_height(height)? {
-            h
-        } else {
-            // Oops, we have a null round in parent, skip this proposal and wait for future blocks.
-            return Ok(None);
-        };
+        // safe to unwrap as we make sure null height will not be proposed
+        let block_hash = self.block_hash_at_height(height)?.unwrap();
 
         let proposal = IPCParentFinality { height, block_hash };
         tracing::debug!(proposal = proposal.to_string(), "new proposal");
@@ -149,6 +132,41 @@ impl FinalityWithNull {
 
 /// All the private functions
 impl FinalityWithNull {
+    /// Get the first non-null block in the range [start, end].
+    fn min_nonnull_block(&self, start: BlockHeight, end: BlockHeight) -> Stm<Option<BlockHeight>> {
+        let cache = self.cached_data.read()?;
+        for h in start..=end {
+            if let Some(Some(_)) = cache.get_value(h) {
+                return Ok(Some(h));
+            }
+        }
+        Ok(None)
+    }
+
+    fn propose_next_height(&self) -> Stm<Option<BlockHeight>> {
+        let latest_height = if let Some(h) = self.latest_height()? {
+            h
+        } else {
+            tracing::debug!("no proposal yet as height not available");
+            return Ok(None);
+        };
+
+        let last_committed_height = if let Some(h) = self.last_committed_finality.read_clone()? {
+            h.height
+        } else {
+            unreachable!("last committed finality will be available at this point");
+        };
+        let next_proposal_height = last_committed_height + self.min_proposal_interval;
+
+        Ok(Some(if next_proposal_height < latest_height {
+            // safe to unwrap as we are sure `latest_height` will not be null block
+            self.min_nonnull_block(next_proposal_height, latest_height)?
+                .unwrap()
+        } else {
+            latest_height
+        }))
+    }
+
     fn handle_null_block<T, F: Fn(&ParentViewPayload) -> T, D: Fn() -> T>(
         &self,
         height: BlockHeight,
@@ -237,15 +255,23 @@ impl FinalityWithNull {
 
         // the incoming proposal has height already committed, reject
         if last_committed_finality.height >= proposal.height {
+            tracing::debug!(
+                last_committed = last_committed_finality.height,
+                proposed = proposal.height,
+                "proposed height already committed",
+            );
             return Ok(false);
         }
 
         if let Some(latest_height) = self.latest_height()? {
+            let r = latest_height >= proposal.height;
+            tracing::debug!(is_true = r, "incoming proposal height seen?");
             // requires the incoming height cannot be more advanced than our trusted parent node
-            Ok(latest_height >= proposal.height)
+            Ok(r)
         } else {
             // latest height is not found, meaning we dont have any prefetched cache, we just be
-            // strict and vote no simply because we don't know..
+            // strict and vote no simply because we don't know.
+            tracing::debug!("reject proposal, no data in cache");
             Ok(false)
         }
     }
@@ -253,8 +279,11 @@ impl FinalityWithNull {
     fn check_block_hash(&self, proposal: &IPCParentFinality) -> Stm<bool> {
         Ok(
             if let Some(block_hash) = self.block_hash_at_height(proposal.height)? {
-                block_hash == proposal.block_hash
+                let r = block_hash == proposal.block_hash;
+                tracing::debug!(proposal = proposal.to_string(), is_same = r, "same hash?");
+                r
             } else {
+                tracing::debug!(proposal = proposal.to_string(), "reject, hash not found");
                 false
             },
         )

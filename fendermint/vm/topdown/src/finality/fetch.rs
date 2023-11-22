@@ -190,7 +190,11 @@ impl<T> CachedFinalityProvider<T> {
         committed_finality: Option<IPCParentFinality>,
         parent_client: Arc<T>,
     ) -> Self {
-        let inner = FinalityWithNull::new(genesis_epoch, committed_finality);
+        let inner = FinalityWithNull::new(
+            config.min_proposal_interval(),
+            genesis_epoch,
+            committed_finality,
+        );
         Self {
             inner,
             config,
@@ -200,10 +204,6 @@ impl<T> CachedFinalityProvider<T> {
 
     pub fn block_hash(&self, height: BlockHeight) -> Stm<Option<BlockHash>> {
         self.inner.block_hash_at_height(height)
-    }
-
-    pub fn first_non_null_parent_hash(&self, height: BlockHeight) -> Stm<Option<BlockHash>> {
-        self.inner.first_non_null_parent_hash(height)
     }
 
     pub fn latest_height(&self) -> Stm<Option<BlockHeight>> {

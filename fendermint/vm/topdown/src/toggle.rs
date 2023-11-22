@@ -122,10 +122,6 @@ impl<P> Toggle<CachedFinalityProvider<P>> {
         self.perform_or_else(|p| p.latest_height(), None)
     }
 
-    pub fn first_non_null_parent_hash(&self, height: BlockHeight) -> Stm<Option<BlockHash>> {
-        self.perform_or_else(|p| p.first_non_null_parent_hash(height), None)
-    }
-
     pub fn last_committed_finality(&self) -> Stm<Option<IPCParentFinality>> {
         self.perform_or_else(|p| p.last_committed_finality(), None)
     }

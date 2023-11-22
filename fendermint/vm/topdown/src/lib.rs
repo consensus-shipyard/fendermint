@@ -31,6 +31,8 @@ pub type BlockHash = Bytes;
 
 /// The null round error message
 pub(crate) const NULL_ROUND_ERR_MSG: &str = "requested epoch was a null round";
+/// Default topdown proposal height interval
+pub(crate) const DEFAULT_PROPOSAL_INTERVAL: BlockHeight = 10;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -45,6 +47,30 @@ pub struct Config {
     pub exponential_back_off: Duration,
     /// The max number of retries for exponential backoff before giving up
     pub exponential_retry_limit: usize,
+    /// The minimal number of blocks one should make the topdown proposal
+    pub min_proposal_interval: Option<BlockHeight>,
+}
+
+impl Config {
+    pub fn new(
+        chain_head_delay: BlockHeight,
+        polling_interval: Duration,
+        exponential_back_off: Duration,
+        exponential_retry_limit: usize,
+    ) -> Self {
+        Self {
+            chain_head_delay,
+            polling_interval,
+            exponential_back_off,
+            exponential_retry_limit,
+            min_proposal_interval: None,
+        }
+    }
+
+    pub fn min_proposal_interval(&self) -> BlockHeight {
+        self.min_proposal_interval
+            .unwrap_or(DEFAULT_PROPOSAL_INTERVAL)
+    }
 }
 
 /// The finality view for IPC parent at certain height.
