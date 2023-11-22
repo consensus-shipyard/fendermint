@@ -931,9 +931,33 @@ where
             .await
             {
                 Ok(snapshot) => {
-                    if let Some(_snapshot) = snapshot {
-                        tracing::info!("received all snapshot chunks");
-                        // TODO: Import the snapshot.
+                    if let Some(snapshot) = snapshot {
+                        tracing::info!(
+                            download_dir = snapshot.snapshot_dir.to_string_lossy().to_string(),
+                            height = snapshot.manifest.block_height,
+                            "received all snapshot chunks",
+                        );
+
+                        // Ideally we would import into some isolated store then validate,
+                        // but for now let's trust that all is well.
+                        if let Err(e) = snapshot.import(self.state_store_clone(), true).await {
+                            tracing::error!(error =? e, "failed to import snapshot");
+                            return Ok(response::ApplySnapshotChunk {
+                                result: response::ApplySnapshotChunkResult::RejectSnapshot,
+                                ..default
+                            });
+                        }
+
+                        tracing::info!(
+                            height = snapshot.manifest.block_height,
+                            "imported snapshot"
+                        );
+
+                        // Now insert the new state into the history.
+                        let mut state = self.committed_state()?;
+                        state.block_height = snapshot.manifest.block_height;
+                        state.state_params = snapshot.manifest.state_params;
+                        self.set_committed_state(state)?;
                     }
                     return Ok(response::ApplySnapshotChunk {
                         result: response::ApplySnapshotChunkResult::Accept,
