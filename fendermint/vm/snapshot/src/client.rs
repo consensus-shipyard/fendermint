@@ -13,7 +13,7 @@ use tempfile::tempdir;
 use crate::{
     manifest,
     state::{SnapshotDownload, SnapshotState},
-    SnapshotError, SnapshotItem, SnapshotManifest,
+    SnapshotError, SnapshotItem, SnapshotManifest, MANIFEST_FILE_NAME,
 };
 
 /// Interface to snapshot state for the application.
@@ -80,13 +80,32 @@ impl SnapshotClient {
         } else {
             match tempdir() {
                 Ok(dir) => {
+                    // Create a `parts` sub-directory for the chunks.
+                    if let Err(e) = std::fs::create_dir(dir.path().join("parts")) {
+                        return abort(SnapshotError::from(e));
+                    };
+
+                    // Save the manifest into the temp directory;
+                    // that way we can always see on the file system what's happening.
+                    let json = match serde_json::to_string_pretty(&manifest)
+                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+                    {
+                        Ok(json) => json,
+                        Err(e) => return abort(SnapshotError::from(e)),
+                    };
+                    if let Err(e) = std::fs::write(dir.path().join(MANIFEST_FILE_NAME), json) {
+                        return abort(SnapshotError::from(e));
+                    }
+
                     let download_path = dir.path().into();
                     let download = SnapshotDownload {
                         manifest,
                         download_dir: Arc::new(dir),
                         next_index: TVar::new(0),
                     };
+
                     self.state.current_download.write(Some(download))?;
+
                     Ok(download_path)
                 }
                 Err(e) => abort(SnapshotError::from(e))?,
@@ -96,10 +115,10 @@ impl SnapshotClient {
 
     /// Take a chunk sent to us by a remote peer. This is our chance to validate chunks on the fly.
     ///
-    /// Returns `None` while there are more chunks to download and  `Some` [SnapshotItem] when all
+    /// Returns `None` while there are more chunks to download and `Some` when all
     /// the chunks have been received and basic file integrity validated.
     ///
-    /// Then we can call `import_snapshot` to actually load the snapshot into the blockstore.
+    /// Then we can import the snapshot into the blockstore separately.
     pub fn save_chunk(
         &self,
         index: u32,
@@ -114,6 +133,7 @@ impl SnapshotClient {
                     .download_dir
                     .as_ref()
                     .path()
+                    .join("parts")
                     .join(format!("{}.part", index));
 
                 // We are doing IO inside the STM transaction, but that's okay because there is no contention on the download.

@@ -193,6 +193,14 @@ where
 
         Ok((root_cid, streamer))
     }
+
+    pub fn block_height(&self) -> BlockHeight {
+        self.block_height
+    }
+
+    pub fn state_params(&self) -> &FvmStateParams {
+        &self.state_params
+    }
 }
 
 #[pin_project::pin_project]

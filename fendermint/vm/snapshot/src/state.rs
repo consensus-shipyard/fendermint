@@ -1,14 +1,18 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::{path::PathBuf, sync::Arc, time::SystemTime};
+use std::{fs::File, io, path::PathBuf, sync::Arc, time::SystemTime};
 
 use anyhow::{bail, Context};
 use async_stm::TVar;
-use fendermint_vm_interpreter::fvm::state::snapshot::BlockStateParams;
+use fendermint_vm_interpreter::fvm::state::snapshot::{BlockStateParams, Snapshot};
+use fvm_ipld_blockstore::Blockstore;
 use tempfile::TempDir;
 
-use crate::manifest::SnapshotManifest;
+use crate::{
+    manifest::{self, SnapshotManifest},
+    PARTS_DIR_NAME, SNAPSHOT_FILE_NAME,
+};
 
 /// State of snapshots, including the list of available completed ones
 /// and the next eligible height.
@@ -37,7 +41,7 @@ impl SnapshotState {
 /// A snapshot directory and its manifest.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SnapshotItem {
-    /// Directory containing this snapshot, ie. the manifest ane the parts.
+    /// Directory containing this snapshot, ie. the manifest and the parts.
     pub snapshot_dir: PathBuf,
     /// Parsed `manifest.json` contents.
     pub manifest: SnapshotManifest,
@@ -69,6 +73,59 @@ impl SnapshotItem {
             .with_context(|| format!("failed to read chunk {}", chunk_file.to_string_lossy()))?;
 
         Ok(content)
+    }
+
+    /// Import a snapshot into the blockstore.
+    pub async fn import<BS>(&self, store: BS, validate: bool) -> anyhow::Result<Snapshot<BS>>
+    where
+        BS: Blockstore + Send + 'static,
+    {
+        let parts = manifest::list_parts(self.snapshot_dir.join(PARTS_DIR_NAME))
+            .context("failed to list snapshot parts")?;
+
+        // 1. Restore the snapshots into a complete `snapshot.car` file.
+        let car_path = self.snapshot_dir.join(SNAPSHOT_FILE_NAME);
+        let mut car_file = File::create(&car_path).context("failed to create CAR file")?;
+
+        for part in parts {
+            let mut part_file = File::open(&part).with_context(|| {
+                format!("failed to open snapshot part {}", part.to_string_lossy())
+            })?;
+
+            io::copy(&mut part_file, &mut car_file)?;
+        }
+
+        // 2. Import the contents.
+        let result = Snapshot::read_car(&car_path, store).await;
+
+        // 3. Remove the restored file.
+        std::fs::remove_file(&car_path).context("failed to remove CAR file")?;
+
+        let snapshot = result.context("failed to import the snapshot into the blockstore")?;
+
+        // 4. See if we actually imported what we thought we would.
+        if validate {
+            match snapshot {
+                Snapshot::V1(ref snapshot) => {
+                    if snapshot.block_height() != self.manifest.block_height {
+                        bail!(
+                            "invalid snapshot block height; expected {}, imported {}",
+                            self.manifest.block_height,
+                            snapshot.block_height()
+                        );
+                    }
+                    if *snapshot.state_params() != self.manifest.state_params {
+                        bail!(
+                            "invalid state params; expected {:?}, imported {:?}",
+                            self.manifest.state_params,
+                            snapshot.state_params()
+                        )
+                    }
+                }
+            }
+        }
+
+        Ok(snapshot)
     }
 }
 
