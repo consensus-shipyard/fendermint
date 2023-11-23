@@ -14,7 +14,7 @@ use async_stm::{atomically, atomically_or_err};
 use ethers::utils::hex;
 use std::sync::Arc;
 
-/// The parent syncer that constantly poll parent. This struct handles lotus null blocks and delayed
+/// Parent syncer that constantly poll parent. This struct handles lotus null blocks and deferred
 /// execution. For ETH based parent, it should work out of the box as well.
 pub(crate) struct LotusParentSyncer<T, P> {
     config: Config,
