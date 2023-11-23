@@ -110,6 +110,7 @@ mod tests {
             polling_interval: Duration::from_secs(10),
             exponential_back_off: Duration::from_secs(10),
             exponential_retry_limit: 10,
+            min_proposal_interval: None,
         };
 
         CachedFinalityProvider::new(config, 10, Some(genesis_finality()), mocked_agent_proxy())
@@ -184,9 +185,6 @@ mod tests {
             }
             // no proposal
             assert_eq!(provider.next_proposal()?, None);
-
-            let first_non_null_parent_hash = provider.first_non_null_parent_hash(100)?;
-            assert_eq!(first_non_null_parent_hash, Some(vec![1u8; 32]));
             assert_eq!(provider.latest_height()?.unwrap(), 100);
 
             provider.new_parent_view(101, Some((vec![2u8; 32], vec![], vec![])))?;
@@ -205,8 +203,6 @@ mod tests {
             for i in 102..=110 {
                 provider.new_parent_view(i, None)?;
             }
-            let first_non_null_parent_hash = provider.first_non_null_parent_hash(100)?;
-            assert_eq!(first_non_null_parent_hash, Some(vec![2u8; 32]));
             Ok(())
         })
         .await
@@ -280,6 +276,7 @@ mod tests {
             polling_interval: Duration::from_secs(10),
             exponential_back_off: Duration::from_secs(10),
             exponential_retry_limit: 10,
+            min_proposal_interval: None,
         };
 
         let genesis_finality = IPCParentFinality {

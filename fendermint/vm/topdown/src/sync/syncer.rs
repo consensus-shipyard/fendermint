@@ -169,7 +169,7 @@ where
             return Err(Error::ParentChainReorgDetected);
         }
 
-        if let Some(to_confirm) = self.sync_pointers.to_confirm() {
+        let r = if let Some(to_confirm) = self.sync_pointers.to_confirm() {
             tracing::warn!(
                 height,
                 confirm = to_confirm,
@@ -178,14 +178,18 @@ where
             let data = self
                 .fetch_data(to_confirm, block_hash_res.block_hash)
                 .await?;
-            self.sync_pointers.advance_confirm(height);
-            return Ok(Some((to_confirm, data)));
-        }
+            self.sync_pointers.advance_tail();
 
-        tracing::warn!(height, "non-null round at height, waiting for confirmation");
+            Some((to_confirm, data))
+        } else {
+            tracing::warn!(height, "non-null round at height, waiting for confirmation");
+            None
+        };
+
+        self.sync_pointers.set_confirmed(height);
         self.sync_pointers.advance_head();
 
-        Ok(None)
+        Ok(r)
     }
 
     async fn fetch_data(

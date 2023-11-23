@@ -53,10 +53,13 @@ impl SyncPointers {
         self.head += 1;
     }
 
-    pub fn advance_confirm(&mut self, height: BlockHeight) {
+    pub fn advance_tail(&mut self) {
         if let Some(h) = self.to_confirm {
             self.tail = h;
         }
+    }
+
+    pub fn set_confirmed(&mut self, height: BlockHeight) {
         self.to_confirm = Some(height);
     }
 }
