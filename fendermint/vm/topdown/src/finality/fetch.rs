@@ -206,6 +206,11 @@ impl<T> CachedFinalityProvider<T> {
         self.inner.block_hash_at_height(height)
     }
 
+    pub fn latest_height_in_cache(&self) -> Stm<Option<BlockHeight>> {
+        self.inner.latest_height_in_cache()
+    }
+
+    /// Get the latest height tracked in the provider, includes both cache and last committed finality
     pub fn latest_height(&self) -> Stm<Option<BlockHeight>> {
         self.inner.latest_height()
     }

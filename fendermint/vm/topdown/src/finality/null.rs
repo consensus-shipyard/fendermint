@@ -136,9 +136,21 @@ impl FinalityWithNull {
         self.get_at_height(height, |i| i.0.clone())
     }
 
-    pub(crate) fn latest_height(&self) -> Stm<Option<BlockHeight>> {
+    pub(crate) fn latest_height_in_cache(&self) -> Stm<Option<BlockHeight>> {
         let cache = self.cached_data.read()?;
         Ok(cache.upper_bound())
+    }
+
+    /// Get the latest height tracked in the provider, includes both cache and last committed finality
+    pub(crate) fn latest_height(&self) -> Stm<Option<BlockHeight>> {
+        let h = if let Some(h) = self.latest_height_in_cache()? {
+            h
+        } else if let Some(p) = self.last_committed_finality()? {
+            p.height
+        } else {
+            return Ok(None);
+        };
+        Ok(Some(h))
     }
 }
 
@@ -156,7 +168,7 @@ impl FinalityWithNull {
     }
 
     fn propose_next_height(&self) -> Stm<Option<BlockHeight>> {
-        let latest_height = if let Some(h) = self.latest_height()? {
+        let latest_height = if let Some(h) = self.latest_height_in_cache()? {
             h
         } else {
             tracing::debug!("no proposal yet as height not available");
@@ -278,7 +290,7 @@ impl FinalityWithNull {
             return Ok(false);
         }
 
-        if let Some(latest_height) = self.latest_height()? {
+        if let Some(latest_height) = self.latest_height_in_cache()? {
             let r = latest_height >= proposal.height;
             tracing::debug!(is_true = r, "incoming proposal height seen?");
             // requires the incoming height cannot be more advanced than our trusted parent node

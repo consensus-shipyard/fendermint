@@ -161,7 +161,7 @@ mod tests {
                 }
             );
 
-            assert_eq!(provider.latest_height()?.unwrap(), 100);
+            assert_eq!(provider.latest_height_in_cache()?.unwrap(), 100);
 
             Ok(())
         })
@@ -185,7 +185,7 @@ mod tests {
             }
             // no proposal
             assert_eq!(provider.next_proposal()?, None);
-            assert_eq!(provider.latest_height()?.unwrap(), 100);
+            assert_eq!(provider.latest_height_in_cache()?.unwrap(), 100);
 
             provider.new_parent_view(101, Some((vec![2u8; 32], vec![], vec![])))?;
             let f = provider.next_proposal()?.unwrap();

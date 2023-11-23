@@ -118,6 +118,10 @@ impl<P> Toggle<CachedFinalityProvider<P>> {
         self.perform_or_else(|p| p.block_hash(height), None)
     }
 
+    pub fn latest_height_in_cache(&self) -> Stm<Option<BlockHeight>> {
+        self.perform_or_else(|p| p.latest_height_in_cache(), None)
+    }
+
     pub fn latest_height(&self) -> Stm<Option<BlockHeight>> {
         self.perform_or_else(|p| p.latest_height(), None)
     }

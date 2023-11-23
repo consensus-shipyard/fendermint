@@ -138,7 +138,7 @@ where
     /// Poll the next block height. Returns finalized and executed block data.
     async fn poll_next(&mut self) -> Result<(), Error> {
         let height = self.sync_pointers.head() + 1;
-        let (parent_height, parent_block_hash) = self.non_null_parent_hash().await;
+        let parent_block_hash = self.non_null_parent_hash().await;
 
         tracing::debug!(
             height,
@@ -182,7 +182,8 @@ where
             atomically_or_err::<_, Error, _>(|| {
                 // we only push the null block in cache when we confirmed a block so that in cache
                 // the latest height is always a confirmed non null block.
-                for h in (parent_height + 1)..to_confirm_height {
+                let latest_height = self.provider.latest_height()?.expect("provider contains data at this point");
+                for h in (latest_height + 1)..to_confirm_height {
                     self.provider.new_parent_view(h, None)?;
                     tracing::debug!(height = h, "found null block pushed to cache");
                 }
@@ -233,29 +234,29 @@ where
     }
 
     /// We only want the non-null parent block's hash
-    async fn non_null_parent_hash(&self) -> (BlockHeight, BlockHash) {
+    async fn non_null_parent_hash(&self) -> BlockHash {
         if let Some((height, hash)) = self.sync_pointers.tail() {
             tracing::debug!(
                 pending_height = height,
                 "previous non null parent is the pending confirmation block"
             );
-            return (height, hash);
+            return hash;
         };
 
         atomically(|| {
-            Ok(if let Some(h) = self.provider.latest_height()? {
+            Ok(if let Some(h) = self.provider.latest_height_in_cache()? {
                 tracing::debug!(
                     previous_confirmed_height = h,
                     "found previous non null block in cache"
                 );
                 // safe to unwrap as we have height recorded
-                (h, self.provider.block_hash(h)?.unwrap())
+                self.provider.block_hash(h)?.unwrap()
             } else if let Some(p) = self.provider.last_committed_finality()? {
                 tracing::debug!(
                     previous_confirmed_height = p.height,
                     "no cache, found previous non null block as last committed finality"
                 );
-                (p.height, p.block_hash)
+                p.block_hash
             } else {
                 unreachable!("guaranteed to non null block hash, report bug please")
             })
