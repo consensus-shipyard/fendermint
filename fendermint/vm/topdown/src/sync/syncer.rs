@@ -154,7 +154,7 @@ where
             Err(e) => {
                 let err = e.to_string();
                 if is_null_round_str(&err) {
-                    tracing::warn!(height, "null round at height");
+                    tracing::debug!(height, "null round at height");
 
                     self.sync_pointers.advance_head();
 
