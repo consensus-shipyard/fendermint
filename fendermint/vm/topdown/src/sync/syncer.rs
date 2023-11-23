@@ -143,6 +143,11 @@ where
     async fn poll_next(&mut self) -> Result<Option<(BlockHeight, ParentViewPayload)>, Error> {
         let height = self.sync_pointers.head() + 1;
         let parent_block_hash = self.non_null_parent_hash().await;
+        tracing::debug!(
+            height,
+            parent_block_hash = hex::encode(&parent_block_hash),
+            "polling height with parent hash"
+        );
 
         let block_hash_res = match self.parent_proxy.get_block_hash(height).await {
             Ok(res) => res,
@@ -169,24 +174,24 @@ where
             return Err(Error::ParentChainReorgDetected);
         }
 
-        let r = if let Some(to_confirm) = self.sync_pointers.to_confirm() {
-            tracing::warn!(
+        let r = if let Some((to_confirm_height, to_confirm_hash)) = self.sync_pointers.to_confirm()
+        {
+            tracing::debug!(
                 height,
-                confirm = to_confirm,
+                confirm = to_confirm_height,
                 "non-null round at height, confirmed previous height"
             );
-            let data = self
-                .fetch_data(to_confirm, block_hash_res.block_hash)
-                .await?;
-            self.sync_pointers.advance_tail();
+            let data = self.fetch_data(to_confirm_height, to_confirm_hash).await?;
+            self.sync_pointers.set_tail(to_confirm_height);
 
-            Some((to_confirm, data))
+            Some((to_confirm_height, data))
         } else {
-            tracing::warn!(height, "non-null round at height, waiting for confirmation");
+            tracing::debug!(height, "non-null round at height, waiting for confirmation");
             None
         };
 
-        self.sync_pointers.set_confirmed(height);
+        self.sync_pointers
+            .set_confirmed(height, block_hash_res.block_hash);
         self.sync_pointers.advance_head();
 
         Ok(r)
@@ -224,12 +229,15 @@ where
     /// We only want the non-null parent block's hash
     async fn non_null_parent_hash(&self) -> BlockHash {
         let parent_height = match (self.sync_pointers.to_confirm(), self.sync_pointers.tail()) {
-            (Some(height), _) => {
-                tracing::debug!(height, "found height to confirm");
-                height
+            (Some((height, hash)), _) => {
+                tracing::debug!(pending_height = height, "pending height to confirm");
+                return hash;
             }
             (None, height) => {
-                tracing::debug!(height, "no height to confirm");
+                tracing::debug!(
+                    previous_confirmed_height = height,
+                    "no pending height to confirm"
+                );
                 height
             }
         };

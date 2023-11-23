@@ -121,6 +121,12 @@ impl FinalityWithNull {
 
 impl FinalityWithNull {
     pub(crate) fn block_hash_at_height(&self, height: BlockHeight) -> Stm<Option<BlockHash>> {
+        if let Some(f) = self.last_committed_finality.read()?.as_ref() {
+            if f.height == height {
+                return Ok(Some(f.block_hash.clone()));
+            }
+        }
+
         self.get_at_height(height, |i| i.0.clone())
     }
 
