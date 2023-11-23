@@ -4,9 +4,11 @@
 
 mod pointers;
 mod syncer;
+mod tendermint;
 
-use crate::proxy::{IPCProviderProxy, ParentQueryProxy};
+use crate::proxy::ParentQueryProxy;
 use crate::sync::syncer::LotusParentSyncer;
+use crate::sync::tendermint::TendermintAwareSyncer;
 use crate::{CachedFinalityProvider, Config, IPCParentFinality, ParentFinalityProvider, Toggle};
 use anyhow::anyhow;
 use async_stm::atomically;
@@ -21,20 +23,24 @@ pub trait ParentFinalityStateQuery {
 }
 
 /// Constantly syncing with parent through polling
-struct PollingParentSyncer<T, C> {
+struct PollingParentSyncer<T, C, P> {
     config: Config,
-    parent_view_provider: Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
-    parent_client: Arc<IPCProviderProxy>,
+    parent_view_provider: Arc<Toggle<CachedFinalityProvider<P>>>,
+    parent_client: Arc<P>,
     committed_state_query: Arc<T>,
     tendermint_client: C,
 }
 
 /// Queries the starting finality for polling. First checks the committed finality, if none, that
 /// means the chain has just started, then query from the parent to get the genesis epoch.
-async fn query_starting_finality<T: ParentFinalityStateQuery + Send + Sync + 'static>(
+async fn query_starting_finality<T, P>(
     query: &Arc<T>,
-    parent_client: &Arc<IPCProviderProxy>,
-) -> anyhow::Result<IPCParentFinality> {
+    parent_client: &Arc<P>,
+) -> anyhow::Result<IPCParentFinality>
+where
+    T: ParentFinalityStateQuery + Send + Sync + 'static,
+    P: ParentQueryProxy + Send + Sync + 'static,
+{
     loop {
         let mut finality = match query.get_latest_committed_finality() {
             Ok(Some(finality)) => finality,
@@ -77,16 +83,17 @@ async fn query_starting_finality<T: ParentFinalityStateQuery + Send + Sync + 'st
 }
 
 /// Start the polling parent syncer in the background
-pub async fn launch_polling_syncer<T, C>(
+pub async fn launch_polling_syncer<T, C, P>(
     query: T,
     config: Config,
-    view_provider: Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
-    parent_client: Arc<IPCProviderProxy>,
+    view_provider: Arc<Toggle<CachedFinalityProvider<P>>>,
+    parent_client: Arc<P>,
     tendermint_client: C,
 ) -> anyhow::Result<()>
 where
     T: ParentFinalityStateQuery + Send + Sync + 'static,
     C: tendermint_rpc::Client + Send + Sync + 'static,
+    P: ParentQueryProxy + Send + Sync + 'static,
 {
     if !view_provider.is_enabled() {
         return Err(anyhow!("provider not enabled, enable to run syncer"));
@@ -113,11 +120,11 @@ where
     Ok(())
 }
 
-impl<T, C> PollingParentSyncer<T, C> {
+impl<T, C, P> PollingParentSyncer<T, C, P> {
     pub fn new(
         config: Config,
-        parent_view_provider: Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
-        parent_client: Arc<IPCProviderProxy>,
+        parent_view_provider: Arc<Toggle<CachedFinalityProvider<P>>>,
+        parent_client: Arc<P>,
         query: Arc<T>,
         tendermint_client: C,
     ) -> Self {
@@ -131,10 +138,11 @@ impl<T, C> PollingParentSyncer<T, C> {
     }
 }
 
-impl<T, C> PollingParentSyncer<T, C>
+impl<T, C, P> PollingParentSyncer<T, C, P>
 where
     T: ParentFinalityStateQuery + Send + Sync + 'static,
     C: tendermint_rpc::Client + Send + Sync + 'static,
+    P: ParentQueryProxy + Send + Sync + 'static,
 {
     /// Start the parent finality listener in the background
     pub fn start(self) {
@@ -147,15 +155,15 @@ where
         let mut interval = tokio::time::interval(config.polling_interval);
 
         tokio::spawn(async move {
-            let mut inner_syncer =
-                LotusParentSyncer::new(config, parent_client, provider, query, tendermint_client)
-                    .await
-                    .expect("");
+            let lotus_syncer = LotusParentSyncer::new(config, parent_client, provider, query)
+                .await
+                .expect("");
+            let mut tendermint_syncer = TendermintAwareSyncer::new(lotus_syncer, tendermint_client);
 
             loop {
                 interval.tick().await;
 
-                if let Err(e) = inner_syncer.sync().await {
+                if let Err(e) = tendermint_syncer.sync().await {
                     tracing::error!(error = e.to_string(), "sync with parent encountered error");
                 }
             }

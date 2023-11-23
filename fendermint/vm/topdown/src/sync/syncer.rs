@@ -3,41 +3,39 @@
 //! The inner type of parent syncer
 
 use crate::finality::ParentViewPayload;
-use crate::proxy::{IPCProviderProxy, ParentQueryProxy};
+use crate::proxy::ParentQueryProxy;
 use crate::sync::pointers::SyncPointers;
 use crate::sync::{query_starting_finality, ParentFinalityStateQuery};
 use crate::{
     is_null_round_str, BlockHash, BlockHeight, CachedFinalityProvider, Config, Error, Toggle,
 };
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use async_stm::{atomically, atomically_or_err};
 use ethers::utils::hex;
 use std::sync::Arc;
 
 /// The parent syncer that constantly poll parent. This struct handles lotus null blocks and delayed
 /// execution. For ETH based parent, it should work out of the box as well.
-pub(crate) struct LotusParentSyncer<T, C> {
+pub(crate) struct LotusParentSyncer<T, P> {
     config: Config,
-    parent_proxy: Arc<IPCProviderProxy>,
-    provider: Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
+    parent_proxy: Arc<P>,
+    provider: Arc<Toggle<CachedFinalityProvider<P>>>,
     query: Arc<T>,
-    tendermint_client: C,
 
     /// The pointers that indicate which height to poll parent next
     sync_pointers: SyncPointers,
 }
 
-impl<T, C> LotusParentSyncer<T, C>
+impl<T, P> LotusParentSyncer<T, P>
 where
     T: ParentFinalityStateQuery + Send + Sync + 'static,
-    C: tendermint_rpc::Client + Send + Sync + 'static,
+    P: ParentQueryProxy + Send + Sync + 'static,
 {
     pub async fn new(
         config: Config,
-        parent_proxy: Arc<IPCProviderProxy>,
-        provider: Arc<Toggle<CachedFinalityProvider<IPCProviderProxy>>>,
+        parent_proxy: Arc<P>,
+        provider: Arc<Toggle<CachedFinalityProvider<P>>>,
         query: Arc<T>,
-        tendermint_client: C,
     ) -> anyhow::Result<Self> {
         let last_committed_finality = atomically(|| provider.last_committed_finality())
             .await
@@ -48,7 +46,6 @@ where
             parent_proxy,
             provider,
             query,
-            tendermint_client,
             sync_pointers: SyncPointers::new(last_committed_finality.height),
         })
     }
@@ -64,22 +61,17 @@ where
     /// and block height 1 is the previously finalized and executed block height.
     ///
     /// At the beginning, head == 1 and tail == None. With a new block height fetched,
-    /// `head = 2`. Since height at 2 is not a null block, `to_confirm = Some(2)`, because we cannot be sure
+    /// `head = 2`. Since height at 2 is not a null block, `tail = Some(2)`, because we cannot be sure
     /// block 2 has executed yet. When a new block is fetched, `head = 3`. Since head is a null block, we
     /// cannot confirm block height 2. When `head = 4`, it's not a null block, we can confirm block 2 is
     /// executed (also with some checks to ensure no reorg has occurred). We fetch block 2's data and set
-    /// `tail = 2`, `to_confirm = Some(4)`.
+    /// `tail = Some(4)`.
     /// The data fetch at block height 2 is pushed to cache and height 2 is ready to be proposed.
     ///
     /// At height 6, it's block height 4 will be confirmed and its data pushed to cache. At the same
     /// time, since block 3 is a null block, empty data will also be pushed to cache. Block 4 is ready
     /// to be proposed.
     pub async fn sync(&mut self) -> anyhow::Result<()> {
-        if self.is_syncing_peer().await? {
-            tracing::debug!("syncing with peer, skip parent finality syncing this round");
-            return Ok(());
-        }
-
         let chain_head = if let Some(h) = self.finalized_chain_head().await? {
             h
         } else {
@@ -116,23 +108,14 @@ where
     }
 }
 
-impl<T, C> LotusParentSyncer<T, C>
+impl<T, P> LotusParentSyncer<T, P>
 where
     T: ParentFinalityStateQuery + Send + Sync + 'static,
-    C: tendermint_rpc::Client + Send + Sync + 'static,
+    P: ParentQueryProxy + Send + Sync + 'static,
 {
     async fn exceed_cache_size_limit(&self) -> bool {
         let max_cache_blocks = self.config.max_cache_blocks();
         atomically(|| self.provider.cached_blocks()).await > max_cache_blocks
-    }
-
-    async fn is_syncing_peer(&self) -> anyhow::Result<bool> {
-        let status: tendermint_rpc::endpoint::status::Response = self
-            .tendermint_client
-            .status()
-            .await
-            .context("failed to get Tendermint status")?;
-        Ok(status.sync_info.catching_up)
     }
 
     /// Poll the next block height. Returns finalized and executed block data.
@@ -182,7 +165,10 @@ where
             atomically_or_err::<_, Error, _>(|| {
                 // we only push the null block in cache when we confirmed a block so that in cache
                 // the latest height is always a confirmed non null block.
-                let latest_height = self.provider.latest_height()?.expect("provider contains data at this point");
+                let latest_height = self
+                    .provider
+                    .latest_height()?
+                    .expect("provider contains data at this point");
                 for h in (latest_height + 1)..to_confirm_height {
                     self.provider.new_parent_view(h, None)?;
                     tracing::debug!(height = h, "found null block pushed to cache");
