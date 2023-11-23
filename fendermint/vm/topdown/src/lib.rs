@@ -33,6 +33,7 @@ pub type BlockHash = Bytes;
 pub(crate) const NULL_ROUND_ERR_MSG: &str = "requested epoch was a null round";
 /// Default topdown proposal height interval
 pub(crate) const DEFAULT_PROPOSAL_INTERVAL: BlockHeight = 10;
+pub(crate) const DEFAULT_MAX_CACHE_BLOCK: BlockHeight = 500;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -49,6 +50,8 @@ pub struct Config {
     pub exponential_retry_limit: usize,
     /// The minimal number of blocks one should make the topdown proposal
     pub min_proposal_interval: Option<BlockHeight>,
+    /// Max number of blocks that should be stored in cache
+    pub max_cache_blocks: Option<BlockHeight>,
 }
 
 impl Config {
@@ -64,12 +67,17 @@ impl Config {
             exponential_back_off,
             exponential_retry_limit,
             min_proposal_interval: None,
+            max_cache_blocks: None,
         }
     }
 
     pub fn min_proposal_interval(&self) -> BlockHeight {
         self.min_proposal_interval
             .unwrap_or(DEFAULT_PROPOSAL_INTERVAL)
+    }
+
+    pub fn max_cache_blocks(&self) -> BlockHeight {
+        self.max_cache_blocks.unwrap_or(DEFAULT_MAX_CACHE_BLOCK)
     }
 }
 

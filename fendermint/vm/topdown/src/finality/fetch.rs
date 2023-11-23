@@ -226,6 +226,11 @@ impl<T> CachedFinalityProvider<T> {
     ) -> StmResult<(), Error> {
         self.inner.new_parent_view(height, maybe_payload)
     }
+
+    /// Returns the number of blocks cached.
+    pub fn cached_blocks(&self) -> Stm<BlockHeight> {
+        self.inner.cached_blocks()
+    }
 }
 
 #[cfg(test)]

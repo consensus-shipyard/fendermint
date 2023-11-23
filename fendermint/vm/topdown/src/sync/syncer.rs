@@ -53,18 +53,17 @@ where
         })
     }
 
-    /// There are three pointers, each refers to a block height, when syncing with parent. As Lotus has
+    /// There are 2 pointers, each refers to a block height, when syncing with parent. As Lotus has
     /// delayed execution and null round, we need to ensure the topdown messages and validator
     /// changes polled are indeed finalized and executed. The following three pointers are introduced:
-    ///     - tail: The latest block height in cache that is finalized and executed
-    ///     - to_confirm: The next block height in cache to be confirmed executed, could be None
+    ///     - tail: The next block height in cache to be confirmed executed, could be None
     ///     - head: The latest block height fetched in cache, finalized but may not be executed.
     ///
     /// Say we have block chain as follows:
     /// NonNullBlock(1) -> NonNullBlock(2) -> NullBlock(3) -> NonNullBlock(4) -> NullBlock(5) -> NonNullBlock(6)
     /// and block height 1 is the previously finalized and executed block height.
     ///
-    /// At the beginning, tail == head == 1 and to_confirm == None. With a new block height fetched,
+    /// At the beginning, head == 1 and tail == None. With a new block height fetched,
     /// `head = 2`. Since height at 2 is not a null block, `to_confirm = Some(2)`, because we cannot be sure
     /// block 2 has executed yet. When a new block is fetched, `head = 3`. Since head is a null block, we
     /// cannot confirm block height 2. When `head = 4`, it's not a null block, we can confirm block 2 is
@@ -106,6 +105,11 @@ where
             return Ok(());
         }
 
+        if self.exceed_cache_size_limit().await {
+            tracing::debug!("exceeded cache size limit");
+            return Ok(());
+        }
+
         self.poll_next().await?;
 
         Ok(())
@@ -117,6 +121,11 @@ where
     T: ParentFinalityStateQuery + Send + Sync + 'static,
     C: tendermint_rpc::Client + Send + Sync + 'static,
 {
+    async fn exceed_cache_size_limit(&self) -> bool {
+        let max_cache_blocks = self.config.max_cache_blocks();
+        atomically(|| self.provider.cached_blocks()).await > max_cache_blocks
+    }
+
     async fn is_syncing_peer(&self) -> anyhow::Result<bool> {
         let status: tendermint_rpc::endpoint::status::Response = self
             .tendermint_client

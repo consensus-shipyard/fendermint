@@ -120,6 +120,12 @@ impl FinalityWithNull {
 }
 
 impl FinalityWithNull {
+    /// Returns the number of blocks cached.
+    pub(crate) fn cached_blocks(&self) -> Stm<BlockHeight> {
+        let cache = self.cached_data.read()?;
+        Ok(cache.size() as BlockHeight)
+    }
+
     pub(crate) fn block_hash_at_height(&self, height: BlockHeight) -> Stm<Option<BlockHash>> {
         if let Some(f) = self.last_committed_finality.read()?.as_ref() {
             if f.height == height {

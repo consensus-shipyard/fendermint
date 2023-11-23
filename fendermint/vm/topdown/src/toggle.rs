@@ -137,4 +137,8 @@ impl<P> Toggle<CachedFinalityProvider<P>> {
     pub fn reset(&self, finality: IPCParentFinality) -> Stm<()> {
         self.perform_or_else(|p| p.reset(finality), ())
     }
+
+    pub fn cached_blocks(&self) -> Stm<BlockHeight> {
+        self.perform_or_else(|p| p.cached_blocks(), BlockHeight::MAX)
+    }
 }
