@@ -106,20 +106,7 @@ where
             return Ok(());
         }
 
-        let tail = self.sync_pointers.tail();
-        if let Some((confirmed_height, payload)) = self.poll_next().await? {
-            atomically_or_err::<_, Error, _>(|| {
-                for h in (tail + 1)..confirmed_height {
-                    self.provider.new_parent_view(h, None)?;
-                    tracing::debug!(height = h, "null block pushed to cache");
-                }
-                self.provider
-                    .new_parent_view(confirmed_height, Some(payload.clone()))?;
-                tracing::debug!(height = confirmed_height, "non-null block pushed to cache");
-                Ok(())
-            })
-            .await?;
-        }
+        self.poll_next().await?;
 
         Ok(())
     }
@@ -140,9 +127,10 @@ where
     }
 
     /// Poll the next block height. Returns finalized and executed block data.
-    async fn poll_next(&mut self) -> Result<Option<(BlockHeight, ParentViewPayload)>, Error> {
+    async fn poll_next(&mut self) -> Result<(), Error> {
         let height = self.sync_pointers.head() + 1;
-        let parent_block_hash = self.non_null_parent_hash().await;
+        let (parent_height, parent_block_hash) = self.non_null_parent_hash().await;
+
         tracing::debug!(
             height,
             parent_block_hash = hex::encode(&parent_block_hash),
@@ -158,7 +146,7 @@ where
 
                     self.sync_pointers.advance_head();
 
-                    return Ok(None);
+                    return Ok(());
                 }
                 return Err(Error::CannotQueryParent(err, height));
             }
@@ -174,27 +162,36 @@ where
             return Err(Error::ParentChainReorgDetected);
         }
 
-        let r = if let Some((to_confirm_height, to_confirm_hash)) = self.sync_pointers.to_confirm()
-        {
+        if let Some((to_confirm_height, to_confirm_hash)) = self.sync_pointers.tail() {
             tracing::debug!(
                 height,
                 confirm = to_confirm_height,
                 "non-null round at height, confirmed previous height"
             );
-            let data = self.fetch_data(to_confirm_height, to_confirm_hash).await?;
-            self.sync_pointers.set_tail(to_confirm_height);
 
-            Some((to_confirm_height, data))
+            let data = self.fetch_data(to_confirm_height, to_confirm_hash).await?;
+            atomically_or_err::<_, Error, _>(|| {
+                // we only push the null block in cache when we confirmed a block so that in cache
+                // the latest height is always a confirmed non null block.
+                for h in (parent_height + 1)..to_confirm_height {
+                    self.provider.new_parent_view(h, None)?;
+                    tracing::debug!(height = h, "null block pushed to cache");
+                }
+                self.provider
+                    .new_parent_view(to_confirm_height, Some(data.clone()))?;
+                tracing::debug!(height = to_confirm_height, "non-null block pushed to cache");
+                Ok(())
+            })
+            .await?;
         } else {
             tracing::debug!(height, "non-null round at height, waiting for confirmation");
-            None
         };
 
         self.sync_pointers
-            .set_confirmed(height, block_hash_res.block_hash);
+            .set_tail(height, block_hash_res.block_hash);
         self.sync_pointers.advance_head();
 
-        Ok(r)
+        Ok(())
     }
 
     async fn fetch_data(
@@ -227,24 +224,34 @@ where
     }
 
     /// We only want the non-null parent block's hash
-    async fn non_null_parent_hash(&self) -> BlockHash {
-        let parent_height = match (self.sync_pointers.to_confirm(), self.sync_pointers.tail()) {
-            (Some((height, hash)), _) => {
-                tracing::debug!(pending_height = height, "pending height to confirm");
-                return hash;
-            }
-            (None, height) => {
-                tracing::debug!(
-                    previous_confirmed_height = height,
-                    "no pending height to confirm"
-                );
-                height
-            }
+    async fn non_null_parent_hash(&self) -> (BlockHeight, BlockHash) {
+        if let Some((height, hash)) = self.sync_pointers.tail() {
+            tracing::debug!(
+                pending_height = height,
+                "previous non null parent is the pending confirmation block"
+            );
+            return (height, hash);
         };
-        match atomically(|| self.provider.block_hash(parent_height)).await {
-            Some(hash) => hash,
-            None => unreachable!("guaranteed to have block hash at height {}", parent_height),
-        }
+
+        atomically(|| {
+            Ok(if let Some(h) = self.provider.latest_height()? {
+                tracing::debug!(
+                    previous_confirmed_height = h,
+                    "found previous non null block in cache"
+                );
+                // safe to unwrap as we have height recorded
+                (h, self.provider.block_hash(h)?.unwrap())
+            } else if let Some(p) = self.provider.last_committed_finality()? {
+                tracing::debug!(
+                    previous_confirmed_height = p.height,
+                    "no cache, found previous non null block as last committed finality"
+                );
+                (p.height, p.block_hash)
+            } else {
+                unreachable!("guaranteed to non null block hash, report bug please")
+            })
+        })
+        .await
     }
 
     fn has_new_blocks(&self, height: BlockHeight) -> bool {
