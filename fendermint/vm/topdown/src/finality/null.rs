@@ -170,13 +170,16 @@ impl FinalityWithNull {
         };
         let next_proposal_height = last_committed_height + self.min_proposal_interval;
 
-        Ok(Some(if next_proposal_height < latest_height {
-            // safe to unwrap as we are sure `latest_height` will not be null block
+        if next_proposal_height > latest_height {
+            tracing::debug!("proposal period not reached yet");
+            return Ok(None);
+        }
+
+        // safe to unwrap as we are sure `latest_height` will not be null block
+        Ok(Some(
             self.min_nonnull_block(next_proposal_height, latest_height)?
-                .unwrap()
-        } else {
-            latest_height
-        }))
+                .unwrap(),
+        ))
     }
 
     fn handle_null_block<T, F: Fn(&ParentViewPayload) -> T, D: Fn() -> T>(

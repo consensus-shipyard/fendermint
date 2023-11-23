@@ -151,7 +151,7 @@ where
             Err(e) => {
                 let err = e.to_string();
                 if is_null_round_str(&err) {
-                    tracing::debug!(height, "null round at height");
+                    tracing::debug!(height, "detected null round at height");
 
                     self.sync_pointers.advance_head();
 
@@ -184,7 +184,7 @@ where
                 // the latest height is always a confirmed non null block.
                 for h in (parent_height + 1)..to_confirm_height {
                     self.provider.new_parent_view(h, None)?;
-                    tracing::debug!(height = h, "null block pushed to cache");
+                    tracing::debug!(height = h, "found null block pushed to cache");
                 }
                 self.provider
                     .new_parent_view(to_confirm_height, Some(data.clone()))?;
