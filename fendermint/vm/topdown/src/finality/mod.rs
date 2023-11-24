@@ -135,82 +135,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_next_proposal_works() {
-        let provider = new_provider();
-
-        atomically_or_err(|| {
-            let r = provider.next_proposal()?;
-            assert!(r.is_none());
-
-            provider.new_parent_view(10, Some((vec![1u8; 32], vec![], vec![])))?;
-
-            let r = provider.next_proposal()?;
-            assert!(r.is_some());
-
-            // inject data
-            for i in 11..=100 {
-                provider.new_parent_view(i, Some((vec![1u8; 32], vec![], vec![])))?;
-            }
-
-            let proposal = provider.next_proposal()?.unwrap();
-            let target_block = 100;
-            assert_eq!(
-                proposal,
-                IPCParentFinality {
-                    height: target_block,
-                    block_hash: vec![1u8; 32],
-                }
-            );
-
-            assert_eq!(provider.latest_height_in_cache()?.unwrap(), 100);
-
-            Ok(())
-        })
-        .await
-        .unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_next_proposal_null_round_works() {
-        let provider = new_provider();
-
-        atomically_or_err(|| {
-            let r = provider.next_proposal()?;
-            assert!(r.is_none());
-
-            provider.new_parent_view(10, Some((vec![1u8; 32], vec![], vec![])))?;
-
-            // inject data
-            for i in 11..=100 {
-                provider.new_parent_view(i, None)?;
-            }
-            // no proposal
-            assert_eq!(provider.next_proposal()?, None);
-            assert_eq!(provider.latest_height_in_cache()?.unwrap(), 100);
-
-            provider.new_parent_view(101, Some((vec![2u8; 32], vec![], vec![])))?;
-            let f = provider.next_proposal()?.unwrap();
-            assert_eq!(f.block_hash, vec![2u8; 32]);
-            assert_eq!(f.height, 101);
-
-            provider.set_new_finality(
-                IPCParentFinality {
-                    height: 101,
-                    block_hash: vec![2u8; 32],
-                },
-                Some(genesis_finality()),
-            )?;
-
-            for i in 102..=110 {
-                provider.new_parent_view(i, None)?;
-            }
-            Ok(())
-        })
-        .await
-        .unwrap();
-    }
-
-    #[tokio::test]
     async fn test_finality_works() {
         let provider = new_provider();
 
@@ -271,54 +195,83 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_top_down_msgs_works() {
+    async fn test_next_proposal_works() {
+        let min_proposal_interval = 10;
         let config = Config {
             chain_head_delay: 2,
             polling_interval: Duration::from_secs(10),
             exponential_back_off: Duration::from_secs(10),
             exponential_retry_limit: 10,
-            min_proposal_interval: None,
+            min_proposal_interval: Some(min_proposal_interval),
             max_cache_blocks: None,
         };
 
-        let genesis_finality = IPCParentFinality {
+        let last_committed_finality = IPCParentFinality {
             height: 0,
             block_hash: vec![0; 32],
         };
 
-        let provider =
-            CachedFinalityProvider::new(config, 10, Some(genesis_finality), mocked_agent_proxy());
-
-        let cross_msgs_batch1 = vec![new_cross_msg(0), new_cross_msg(1), new_cross_msg(2)];
-        let cross_msgs_batch2 = vec![new_cross_msg(3), new_cross_msg(4), new_cross_msg(5)];
-        let cross_msgs_batch3 = vec![new_cross_msg(6), new_cross_msg(7), new_cross_msg(8)];
-        let cross_msgs_batch4 = vec![new_cross_msg(9), new_cross_msg(10), new_cross_msg(11)];
+        let provider = CachedFinalityProvider::new(
+            config,
+            10,
+            Some(last_committed_finality),
+            mocked_agent_proxy(),
+        );
 
         atomically_or_err(|| {
-            provider.new_parent_view(
-                100,
-                Some((vec![1u8; 32], vec![], cross_msgs_batch1.clone())),
-            )?;
+            for h in 1..20 {
+                provider.new_parent_view(
+                    h,
+                    Some((vec![1u8; 32], vec![], vec![new_cross_msg(h - 1)])),
+                )?;
+            }
 
-            provider.new_parent_view(
-                101,
-                Some((vec![1u8; 32], vec![], cross_msgs_batch2.clone())),
-            )?;
-
-            provider.new_parent_view(
-                102,
-                Some((vec![1u8; 32], vec![], cross_msgs_batch3.clone())),
-            )?;
-            provider.new_parent_view(
-                103,
-                Some((vec![1u8; 32], vec![], cross_msgs_batch4.clone())),
-            )?;
-
-            let mut v1 = cross_msgs_batch1.clone();
-            let v2 = cross_msgs_batch2.clone();
-            v1.extend(v2);
             let finality = IPCParentFinality {
-                height: 103,
+                height: min_proposal_interval,
+                block_hash: vec![1u8; 32],
+            };
+            let next_proposal = provider.next_proposal()?.unwrap();
+            assert_eq!(next_proposal, finality);
+
+            Ok(())
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_nex_proposal_null_blocks_works() {
+        let min_proposal_interval = 10;
+        let config = Config {
+            chain_head_delay: 2,
+            polling_interval: Duration::from_secs(10),
+            exponential_back_off: Duration::from_secs(10),
+            exponential_retry_limit: 10,
+            min_proposal_interval: Some(min_proposal_interval),
+            max_cache_blocks: None,
+        };
+
+        let last_committed_finality = IPCParentFinality {
+            height: 0,
+            block_hash: vec![0; 32],
+        };
+
+        let provider = CachedFinalityProvider::new(
+            config,
+            10,
+            Some(last_committed_finality),
+            mocked_agent_proxy(),
+        );
+
+        atomically_or_err(|| {
+            for h in 1..20 {
+                provider.new_parent_view(h, None)?;
+            }
+
+            provider.new_parent_view(20, Some((vec![1u8; 32], vec![], vec![new_cross_msg(0)])))?;
+
+            let finality = IPCParentFinality {
+                height: 20,
                 block_hash: vec![1u8; 32],
             };
             let next_proposal = provider.next_proposal()?.unwrap();
