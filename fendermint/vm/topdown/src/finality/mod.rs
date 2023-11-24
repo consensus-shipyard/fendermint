@@ -111,6 +111,7 @@ mod tests {
             exponential_back_off: Duration::from_secs(10),
             exponential_retry_limit: 10,
             min_proposal_interval: None,
+            max_cache_blocks: None,
         };
 
         CachedFinalityProvider::new(config, 10, Some(genesis_finality()), mocked_agent_proxy())
@@ -277,6 +278,7 @@ mod tests {
             exponential_back_off: Duration::from_secs(10),
             exponential_retry_limit: 10,
             min_proposal_interval: None,
+            max_cache_blocks: None,
         };
 
         let genesis_finality = IPCParentFinality {
