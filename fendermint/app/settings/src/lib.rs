@@ -106,7 +106,7 @@ pub struct BroadcastSettings {
 
 #[serde_as]
 #[derive(Debug, Deserialize, Clone)]
-pub struct TopDownConfig {
+pub struct TopDownSettings {
     /// The number of blocks to delay before reporting a height as final on the parent chain.
     /// To propose a certain number of epochs delayed from the latest height, we see to be
     /// conservative and avoid other from rejecting the proposal because they don't see the
@@ -143,7 +143,7 @@ pub struct IpcSettings {
     pub subnet_id: SubnetID,
     /// The config for top down checkpoint. It's None if subnet id is root or not activating
     /// any top down checkpoint related operations
-    pub topdown: Option<TopDownConfig>,
+    pub topdown: Option<TopDownSettings>,
 }
 
 impl IpcSettings {
@@ -151,7 +151,7 @@ impl IpcSettings {
         !self.subnet_id.is_root() && self.topdown.is_some()
     }
 
-    pub fn topdown_config(&self) -> anyhow::Result<&TopDownConfig> {
+    pub fn topdown_config(&self) -> anyhow::Result<&TopDownSettings> {
         self.topdown
             .as_ref()
             .ok_or_else(|| anyhow!("top down config missing"))
