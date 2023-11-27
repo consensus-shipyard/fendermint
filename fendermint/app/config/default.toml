@@ -41,7 +41,7 @@ state_hist_size = 0
 
 [snapshots]
 # Enable the export and import of snapshots.
-enabled = true
+enabled = false
 # How often to attempt to export snapshots in terms of block height.
 # With 1-2s block time, we can aim for 8h snapshots and cover the last 24h keeping the last 3.
 # The Filecoin Calibration net does not allow longer lookups than 16h, so we should have a snapshot within that time.
