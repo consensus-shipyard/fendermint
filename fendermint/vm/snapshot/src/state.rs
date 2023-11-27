@@ -101,6 +101,33 @@ impl SnapshotItem {
         // 3. Remove the restored file.
         std::fs::remove_file(&car_path).context("failed to remove CAR file")?;
 
+        // If the import failed, or it fails to validate, it will leave unwanted data in the blockstore.
+        //
+        // We could do the import into a namespace which is separate from the state store, and move the data
+        // if everything we see what successful, but it would need more database API exposed that we don't
+        // currently have access to. At the moment our best bet to remove the data is to implement garbage
+        // collection - if the CIDs are unreachable through state roots, they will be removed.
+        //
+        // Another thing worth noting is that the `Snapshot` imports synthetic records into the blockstore
+        // that did not exist in the original: the metadata, an some technical constructs that point at
+        // the real data and store application state (which is verfied below). It's not easy to get rid
+        // of these: the `Blockstore` doesn't allow us to delete CIDs, and the `Snapshot` doesn't readily
+        // expose what the CIDs of the extra records were. Our other option would be to load the data
+        // into a staging area (see above) and then walk the DAG and only load what is reachable from
+        // the state root.
+        //
+        // Inserting CIDs into the state store which did not exist in the original seem like a vector
+        // of attack that could be used to cause consensus failure: if the attacker deployed a contract
+        // that looked up a CID that validators who imported a snapshot have, but others don't, that
+        // would cause a fork. However,  his is why the FVM doesn't currently allow the deployment of
+        // user defined Wasm actors: the FEVM actors do not allow the lookup of arbitrary CIDs, so they
+        // are safe, while Wasm actors with direct access to the IPLD SDK methods would be vulnerable.
+        // Once the FVM implements the "reachability analysis" feature, it won't matter if we have an
+        // extra record or not.
+        //
+        // Actually a very similar situation arises with garbage collection: since the length of history
+        // is configurable, whether some CIDs are (still) present or not depends on how the validator
+        // configured their nodes, and cannot be allowed to cause a failure.
         let snapshot = result.context("failed to import the snapshot into the blockstore")?;
 
         // 4. See if we actually imported what we thought we would.
