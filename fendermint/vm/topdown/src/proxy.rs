@@ -89,6 +89,12 @@ impl ParentQueryProxy for IPCProviderProxy {
         self.ipc_provider
             .get_top_down_msgs(&self.child_subnet, height as ChainEpoch)
             .await
+            .map(|mut v| {
+                // sort ascending, we dont assume the changes are ordered
+                v.value
+                    .sort_by(|a, b| a.msg.nonce.cmp(&b.msg.nonce));
+                v
+            })
     }
 
     /// Get the validator set at the specified height.
