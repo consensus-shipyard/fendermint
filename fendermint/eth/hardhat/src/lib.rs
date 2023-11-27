@@ -120,7 +120,7 @@ impl Hardhat {
 
             let artifact = self
                 .artifact(&sc.0, &sc.1)
-                .context("failed to load dependency artifact")?;
+                .with_context(|| format!("failed to load dependency artifact: {}", sc.1))?;
 
             let cds = deps.entry(sc).or_default();
 
@@ -338,7 +338,7 @@ mod tests {
             "GatewayManagerFacet",
             "GatewayGetterFacet",
             "GatewayRouterFacet",
-            "SubnetRegistry",
+            "SubnetRegistryDiamond",
         ]
         .into_iter()
         .map(|c| (format!("{c}.sol"), c))

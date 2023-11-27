@@ -35,7 +35,7 @@ lazy_static! {
     pub static ref IPC_CONTRACTS: EthContractMap = {
         [
             (
-                "GatewayDiamond",
+                gateway::CONTRACT_NAME,
                 EthContract {
                     actor_id: GATEWAY_ACTOR_ID,
                     abi: ia::gateway_diamond::GATEWAYDIAMOND_ABI.to_owned(),
@@ -60,7 +60,7 @@ lazy_static! {
                 },
             ),
             (
-                "SubnetRegistry",
+                registry::CONTRACT_NAME,
                 EthContract {
                     actor_id: SUBNETREGISTRY_ACTOR_ID,
                     abi: ia::subnet_registry::SUBNETREGISTRY_ABI.to_owned(),
@@ -93,7 +93,7 @@ lazy_static! {
     pub static ref SUBNET_CONTRACTS: EthContractMap = {
         [
             (
-                "SubnetActorDiamond",
+                subnet::CONTRACT_NAME,
                 EthContract {
                     actor_id: 0,
                     abi: ia::subnet_actor_diamond::SUBNETACTORDIAMOND_ABI.to_owned(),
@@ -254,6 +254,7 @@ pub mod gateway {
 
     use crate::eam::EthAddress;
 
+    pub const CONTRACT_NAME: &'static str = "GatewayDiamond";
     pub const METHOD_INVOKE_CONTRACT: u64 = crate::evm::Method::InvokeContract as u64;
 
     // Constructor parameters aren't generated as part of the Rust bindings.
@@ -376,11 +377,17 @@ pub mod gateway {
     }
 }
 
+pub mod registry {
+    pub const CONTRACT_NAME: &'static str = "SubnetRegistryDiamond";
+}
+
 pub mod subnet {
     use crate::revert_errors;
     use ipc_actors_abis::gateway_manager_facet::GatewayManagerFacetErrors;
     use ipc_actors_abis::gateway_router_facet::GatewayRouterFacetErrors;
     use ipc_actors_abis::subnet_actor_manager_facet::SubnetActorManagerFacetErrors;
+
+    pub const CONTRACT_NAME: &'static str = "SubnetActorDiamond";
 
     // The subnet actor has its own errors, but it also invokes the gateway, which might revert for its own reasons.
     revert_errors! {

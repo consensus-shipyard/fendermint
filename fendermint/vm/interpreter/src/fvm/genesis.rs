@@ -280,16 +280,20 @@ where
                     .context("failed to create gateway constructor")?;
 
                 let facets = deployer
-                    .facets("GatewayDiamond")
+                    .facets(ipc::gateway::CONTRACT_NAME)
                     .context("failed to collect gateway facets")?;
 
-                deployer.deploy_contract(&mut state, "GatewayDiamond", (facets, params))?
+                deployer.deploy_contract(
+                    &mut state,
+                    ipc::gateway::CONTRACT_NAME,
+                    (facets, params),
+                )?
             };
 
             // IPC SubnetRegistry actory.
             {
                 let mut facets = deployer
-                    .facets("SubnetRegistry")
+                    .facets(ipc::registry::CONTRACT_NAME)
                     .context("failed to collect registry facets")?;
 
                 let manager_facet = facets.remove(1);
@@ -299,7 +303,7 @@ where
 
                 deployer.deploy_contract(
                     &mut state,
-                    "SubnetRegistry",
+                    ipc::registry::CONTRACT_NAME,
                     (
                         gateway_addr,
                         getter_facet.facet_address,
@@ -454,7 +458,7 @@ where
     fn top_contract(&self, contract_name: &str) -> anyhow::Result<&EthContract> {
         self.top_contracts
             .get(contract_name)
-            .ok_or(anyhow!("unknown top contract name"))
+            .ok_or_else(|| anyhow!("unknown top contract name: {contract_name}"))
     }
 }
 
