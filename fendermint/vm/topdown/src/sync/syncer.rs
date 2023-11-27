@@ -281,3 +281,250 @@ where
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::proxy::ParentQueryProxy;
+    use crate::sync::syncer::LotusParentSyncer;
+    use crate::sync::ParentFinalityStateQuery;
+    use crate::{
+        BlockHash, BlockHeight, CachedFinalityProvider, Config, IPCParentFinality,
+        ParentFinalityProvider, SequentialKeyCache, Toggle, NULL_ROUND_ERR_MSG,
+    };
+    use anyhow::anyhow;
+    use async_stm::atomically;
+    use async_trait::async_trait;
+    use ipc_provider::manager::{GetBlockHashResult, TopDownQueryPayload};
+    use ipc_sdk::cross::CrossMsg;
+    use ipc_sdk::staking::StakingChangeRequest;
+    use std::sync::Arc;
+
+    struct TestParentFinalityStateQuery {
+        latest_finality: IPCParentFinality,
+    }
+
+    impl ParentFinalityStateQuery for TestParentFinalityStateQuery {
+        fn get_latest_committed_finality(&self) -> anyhow::Result<Option<IPCParentFinality>> {
+            Ok(Some(self.latest_finality.clone()))
+        }
+    }
+
+    struct TestParentProxy {
+        blocks: SequentialKeyCache<BlockHeight, Option<BlockHash>>,
+    }
+
+    #[async_trait]
+    impl ParentQueryProxy for TestParentProxy {
+        async fn get_chain_head_height(&self) -> anyhow::Result<BlockHeight> {
+            Ok(self.blocks.upper_bound().unwrap())
+        }
+
+        async fn get_genesis_epoch(&self) -> anyhow::Result<BlockHeight> {
+            Ok(self.blocks.lower_bound().unwrap() - 1)
+        }
+
+        async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<GetBlockHashResult> {
+            let r = self.blocks.get_value(height).unwrap();
+            if r.is_none() {
+                return Err(anyhow!(NULL_ROUND_ERR_MSG));
+            }
+
+            for h in (self.blocks.lower_bound().unwrap()..height).rev() {
+                let v = self.blocks.get_value(h).unwrap();
+                if v.is_none() {
+                    continue;
+                }
+                return Ok(GetBlockHashResult {
+                    parent_block_hash: v.clone().unwrap(),
+                    block_hash: r.clone().unwrap(),
+                });
+            }
+            panic!("invalid testing data")
+        }
+
+        async fn get_top_down_msgs_with_hash(
+            &self,
+            _height: BlockHeight,
+            _block_hash: &BlockHash,
+        ) -> anyhow::Result<Vec<CrossMsg>> {
+            Ok(vec![])
+        }
+
+        async fn get_validator_changes(
+            &self,
+            height: BlockHeight,
+        ) -> anyhow::Result<TopDownQueryPayload<Vec<StakingChangeRequest>>> {
+            Ok(TopDownQueryPayload {
+                value: vec![],
+                block_hash: self.blocks.get_value(height).cloned().unwrap().unwrap(),
+            })
+        }
+    }
+
+    async fn new_syncer(
+        blocks: SequentialKeyCache<BlockHeight, Option<BlockHash>>,
+    ) -> LotusParentSyncer<TestParentFinalityStateQuery, TestParentProxy> {
+        let config = Config {
+            chain_head_delay: 2,
+            polling_interval: Default::default(),
+            exponential_back_off: Default::default(),
+            exponential_retry_limit: 0,
+            min_proposal_interval: Some(1),
+            max_cache_blocks: None,
+        };
+        let genesis_epoch = blocks.lower_bound().unwrap();
+        let proxy = Arc::new(TestParentProxy { blocks });
+        let committed_finality = IPCParentFinality {
+            height: genesis_epoch,
+            block_hash: vec![0; 32],
+        };
+
+        let provider = CachedFinalityProvider::new(
+            config.clone(),
+            genesis_epoch,
+            Some(committed_finality.clone()),
+            proxy.clone(),
+        );
+        LotusParentSyncer::new(
+            config,
+            proxy,
+            Arc::new(Toggle::enabled(provider)),
+            Arc::new(TestParentFinalityStateQuery {
+                latest_finality: committed_finality,
+            }),
+        )
+        .await
+        .unwrap()
+    }
+
+    /// Creates a mock of a new parent blockchain view. The key is the height and the value is the
+    /// block hash. If block hash is None, it means the current height is a null block.
+    macro_rules! new_parent_blocks {
+        ($($key:expr => $val:expr),* ,) => (
+            hash_map!($($key => $val),*)
+        );
+        ($($key:expr => $val:expr),*) => ({
+            let mut map = SequentialKeyCache::sequential();
+            $( map.append($key, $val).unwrap(); )*
+            map
+        });
+    }
+
+    #[tokio::test]
+    async fn happy_path() {
+        let parent_blocks = new_parent_blocks!(
+            100 => Some(vec![0; 32]),   // genesis block
+            101 => Some(vec![1; 32]),
+            102 => Some(vec![2; 32]),
+            103 => Some(vec![3; 32]),
+            104 => Some(vec![4; 32]),
+            105 => Some(vec![5; 32])    // chain head
+        );
+
+        let mut syncer = new_syncer(parent_blocks).await;
+
+        assert_eq!(syncer.sync_pointers.head(), 100);
+        assert_eq!(syncer.sync_pointers.tail(), None);
+
+        // sync block 101, which is a non-null block
+        let r = syncer.sync().await;
+        assert!(r.is_ok());
+        assert_eq!(syncer.sync_pointers.head(), 101);
+        assert_eq!(syncer.sync_pointers.tail(), Some((101, vec![1; 32])));
+        // latest height is None as we are yet to confirm block 101, so latest height should equal
+        // to the last committed finality initialized, which is the genesis block 100
+        assert_eq!(
+            atomically(|| syncer.provider.latest_height()).await,
+            Some(100)
+        );
+        // proposal is None because we dont have next height yet
+        assert_eq!(atomically(|| syncer.provider.next_proposal()).await, None);
+
+        // sync block 101, which is a non-null block
+        let r = syncer.sync().await;
+        assert!(r.is_ok());
+        assert_eq!(syncer.sync_pointers.head(), 102);
+        assert_eq!(syncer.sync_pointers.tail(), Some((102, vec![2; 32])));
+        assert_eq!(
+            atomically(|| syncer.provider.latest_height()).await,
+            Some(101)
+        );
+        assert_eq!(
+            atomically(|| syncer.provider.next_proposal()).await,
+            Some(IPCParentFinality {
+                height: 101,
+                block_hash: vec![1; 32]
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn with_non_null_block() {
+        let parent_blocks = new_parent_blocks!(
+            100 => Some(vec![0; 32]),   // genesis block
+            101 => None,
+            102 => None,
+            103 => None,
+            104 => Some(vec![4; 32]),
+            105 => None,
+            106 => None,
+            107 => None,
+            108 => Some(vec![5; 32]),
+            109 => None,
+            110 => None,
+            111 => None
+        );
+
+        let mut syncer = new_syncer(parent_blocks).await;
+
+        assert_eq!(syncer.sync_pointers.head(), 100);
+        assert_eq!(syncer.sync_pointers.tail(), None);
+
+        // sync block 101 to 103, which are null blocks
+        for h in 101..=103 {
+            let r = syncer.sync().await;
+            assert!(r.is_ok());
+            assert_eq!(syncer.sync_pointers.head(), h);
+            assert_eq!(syncer.sync_pointers.tail(), None);
+        }
+
+        // sync block 104, which is a non-null block
+        syncer.sync().await.unwrap();
+        assert_eq!(syncer.sync_pointers.head(), 104);
+        assert_eq!(syncer.sync_pointers.tail(), Some((104, vec![4; 32])));
+        // latest height is None as we are yet to confirm block 104, so latest height should equal
+        // to the last committed finality initialized, which is the genesis block 100
+        assert_eq!(
+            atomically(|| syncer.provider.latest_height()).await,
+            Some(100)
+        );
+        assert_eq!(atomically(|| syncer.provider.next_proposal()).await, None);
+
+        // sync block 105 to 107, which are null blocks
+        for h in 105..=107 {
+            let r = syncer.sync().await;
+            assert!(r.is_ok());
+            assert_eq!(syncer.sync_pointers.head(), h);
+            assert_eq!(syncer.sync_pointers.tail(), Some((104, vec![4; 32])));
+            assert_eq!(atomically(|| syncer.provider.next_proposal()).await, None);
+        }
+
+        // sync block 108, which is a non-null block
+        syncer.sync().await.unwrap();
+        assert_eq!(syncer.sync_pointers.head(), 108);
+        assert_eq!(syncer.sync_pointers.tail(), Some((108, vec![5; 32])));
+        // latest height is None as we are yet to confirm block 108, so latest height should equal
+        // to the previous confirmed block, which is 104
+        assert_eq!(
+            atomically(|| syncer.provider.latest_height()).await,
+            Some(104)
+        );
+        assert_eq!(
+            atomically(|| syncer.provider.next_proposal()).await,
+            Some(IPCParentFinality {
+                height: 104,
+                block_hash: vec![4; 32]
+            })
+        );
+    }
+}
