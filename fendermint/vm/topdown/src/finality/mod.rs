@@ -74,12 +74,14 @@ mod tests {
             Ok(GetBlockHashResult::default())
         }
 
-        async fn get_top_down_msgs_with_hash(
+        async fn get_top_down_msgs(
             &self,
             _height: BlockHeight,
-            _block_hash: &BlockHash,
-        ) -> anyhow::Result<Vec<CrossMsg>> {
-            Ok(vec![])
+        ) -> anyhow::Result<TopDownQueryPayload<Vec<CrossMsg>>> {
+            Ok(TopDownQueryPayload {
+                value: vec![],
+                block_hash: vec![],
+            })
         }
 
         async fn get_validator_changes(

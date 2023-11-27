@@ -266,7 +266,11 @@ where
 
                     // error happens if we cannot get the validator set from ipc agent after retries
                     let validator_changes = provider
-                        .validator_changes_from(prev_height + 1, finality.height)
+                        .validator_changes_from(
+                            prev_height + 1,
+                            finality.height,
+                            &finality.block_hash,
+                        )
                         .await
                         .context("failed to fetch validator changes")?;
                     tracing::debug!(

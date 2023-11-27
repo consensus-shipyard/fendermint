@@ -1,7 +1,7 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use crate::{BlockHash, BlockHeight};
+use crate::BlockHeight;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use fvm_shared::clock::ChainEpoch;
@@ -25,11 +25,10 @@ pub trait ParentQueryProxy {
     async fn get_block_hash(&self, height: BlockHeight) -> anyhow::Result<GetBlockHashResult>;
 
     /// Get the top down messages at epoch with the block hash at that height
-    async fn get_top_down_msgs_with_hash(
+    async fn get_top_down_msgs(
         &self,
         height: BlockHeight,
-        block_hash: &BlockHash,
-    ) -> anyhow::Result<Vec<CrossMsg>>;
+    ) -> anyhow::Result<TopDownQueryPayload<Vec<CrossMsg>>>;
 
     /// Get the validator set at the specified height
     async fn get_validator_changes(
@@ -83,13 +82,12 @@ impl ParentQueryProxy for IPCProviderProxy {
     }
 
     /// Get the top down messages from the starting to the ending height.
-    async fn get_top_down_msgs_with_hash(
+    async fn get_top_down_msgs(
         &self,
         height: BlockHeight,
-        block_hash: &BlockHash,
-    ) -> anyhow::Result<Vec<CrossMsg>> {
+    ) -> anyhow::Result<TopDownQueryPayload<Vec<CrossMsg>>> {
         self.ipc_provider
-            .get_top_down_msgs(&self.child_subnet, height as ChainEpoch, block_hash)
+            .get_top_down_msgs(&self.child_subnet, height as ChainEpoch)
             .await
     }
 

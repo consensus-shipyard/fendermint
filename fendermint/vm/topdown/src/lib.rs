@@ -120,18 +120,8 @@ pub trait ParentViewProvider {
         &self,
         from: BlockHeight,
         to: BlockHeight,
-    ) -> anyhow::Result<Vec<StakingChangeRequest>>;
-    /// Get the validator changes at height.
-    async fn validator_changes(
-        &self,
-        height: BlockHeight,
-    ) -> anyhow::Result<Vec<StakingChangeRequest>>;
-    /// Get the top down messages at height.
-    async fn top_down_msgs(
-        &self,
-        height: BlockHeight,
         block_hash: &BlockHash,
-    ) -> anyhow::Result<Vec<CrossMsg>>;
+    ) -> anyhow::Result<Vec<StakingChangeRequest>>;
     /// Get the top down messages from and to height.
     async fn top_down_msgs_from(
         &self,

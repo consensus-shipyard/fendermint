@@ -8,6 +8,7 @@ use crate::{
     handle_null_round, BlockHash, BlockHeight, Config, Error, IPCParentFinality,
     ParentFinalityProvider, ParentViewProvider,
 };
+use anyhow::anyhow;
 use async_stm::{Stm, StmResult};
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::staking::StakingChangeRequest;
@@ -71,65 +72,30 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
         &self,
         from: BlockHeight,
         to: BlockHeight,
+        block_hash: &BlockHash,
     ) -> anyhow::Result<Vec<StakingChangeRequest>> {
         let mut v = vec![];
-        for h in from..=to {
+        for h in from..to {
             let mut r = self.validator_changes(h).await?;
             tracing::debug!(
                 number_of_messages = r.len(),
                 height = h,
-                "obtained validator change set",
+                "fetched validator change set",
             );
             v.append(&mut r);
         }
 
+        // now we query the validator changes at height `to` and we also checks the block hash,
+        // so that we know the parent node is reliable enough.
+        let mut r = self.validator_changes_with_check(to, block_hash).await?;
+        tracing::debug!(
+            number_of_messages = r.len(),
+            height = to,
+            "fetched validator change set",
+        );
+        v.append(&mut r);
+
         Ok(v)
-    }
-
-    async fn validator_changes(
-        &self,
-        height: BlockHeight,
-    ) -> anyhow::Result<Vec<StakingChangeRequest>> {
-        let r = self.inner.validator_changes(height).await?;
-
-        if let Some(v) = r {
-            return Ok(v);
-        }
-
-        let r = retry!(
-            self.config.exponential_back_off,
-            self.config.exponential_retry_limit,
-            self.parent_client
-                .get_validator_changes(height)
-                .await
-                .map(|r| r.value)
-        );
-
-        handle_null_round(r, Vec::new)
-    }
-
-    /// Should always return the top down messages, only when ipc parent_client is down after exponential
-    /// retries
-    async fn top_down_msgs(
-        &self,
-        height: BlockHeight,
-        block_hash: &BlockHash,
-    ) -> anyhow::Result<Vec<CrossMsg>> {
-        let r = self.inner.top_down_msgs(height).await?;
-
-        if let Some(v) = r {
-            return Ok(v);
-        }
-
-        let r = retry!(
-            self.config.exponential_back_off,
-            self.config.exponential_retry_limit,
-            self.parent_client
-                .get_top_down_msgs_with_hash(height, block_hash)
-                .await
-        );
-
-        handle_null_round(r, Vec::new)
     }
 
     async fn top_down_msgs_from(
@@ -139,8 +105,8 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
         block_hash: &BlockHash,
     ) -> anyhow::Result<Vec<CrossMsg>> {
         let mut v = vec![];
-        for h in from..=to {
-            let mut r = self.top_down_msgs(h, block_hash).await?;
+        for h in from..to {
+            let mut r = self.top_down_msgs(h).await?;
             tracing::debug!(
                 number_of_top_down_messages = r.len(),
                 height = h,
@@ -148,6 +114,16 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
             );
             v.append(&mut r);
         }
+
+        // now we query the topdown messages at height `to` and we also checks the block hash,
+        // so that we know the parent node is reliable enough.
+        let mut r = self.top_down_msgs_with_check(to, block_hash).await?;
+        tracing::debug!(
+            number_of_messages = r.len(),
+            height = to,
+            "obtained topdown messages",
+        );
+        v.append(&mut r);
         Ok(v)
     }
 }
@@ -180,6 +156,111 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> CachedFinalityProvider<T> {
     pub async fn uninitialized(config: Config, parent_client: Arc<T>) -> anyhow::Result<Self> {
         let genesis = parent_client.get_genesis_epoch().await?;
         Ok(Self::new(config, genesis, None, parent_client))
+    }
+
+    /// Should always return the top down messages, only when ipc parent_client is down after exponential
+    /// retries
+    async fn validator_changes(
+        &self,
+        height: BlockHeight,
+    ) -> anyhow::Result<Vec<StakingChangeRequest>> {
+        let r = self.inner.validator_changes(height).await?;
+
+        if let Some(v) = r {
+            return Ok(v);
+        }
+
+        let r = retry!(
+            self.config.exponential_back_off,
+            self.config.exponential_retry_limit,
+            self.parent_client
+                .get_validator_changes(height)
+                .await
+                .map(|r| r.value)
+        );
+
+        handle_null_round(r, Vec::new)
+    }
+
+    /// Queries the validator change set, but also performs a check on the block hash
+    async fn validator_changes_with_check(
+        &self,
+        height: BlockHeight,
+        block_hash: &BlockHash,
+    ) -> anyhow::Result<Vec<StakingChangeRequest>> {
+        let r = self.inner.validator_changes(height).await?;
+
+        if let Some(v) = r {
+            return Ok(v);
+        }
+
+        let r = retry!(
+            self.config.exponential_back_off,
+            self.config.exponential_retry_limit,
+            self.parent_client
+                .get_validator_changes(height)
+                .await
+                .and_then(|r| {
+                    if r.block_hash != *block_hash {
+                        Err(anyhow!("block hash not equal"))
+                    } else {
+                        Ok(r.value)
+                    }
+                })
+        );
+
+        handle_null_round(r, Vec::new)
+    }
+
+    /// Should always return the top down messages, only when ipc parent_client is down after exponential
+    /// retries
+    async fn top_down_msgs(&self, height: BlockHeight) -> anyhow::Result<Vec<CrossMsg>> {
+        let r = self.inner.top_down_msgs(height).await?;
+
+        if let Some(v) = r {
+            return Ok(v);
+        }
+
+        let r = retry!(
+            self.config.exponential_back_off,
+            self.config.exponential_retry_limit,
+            self.parent_client
+                .get_top_down_msgs(height)
+                .await
+                .map(|r| r.value)
+        );
+
+        handle_null_round(r, Vec::new)
+    }
+
+    /// Queries the top down messages but also checks the block hash actually matches
+    async fn top_down_msgs_with_check(
+        &self,
+        height: BlockHeight,
+        block_hash: &BlockHash,
+    ) -> anyhow::Result<Vec<CrossMsg>> {
+        let r = self.inner.top_down_msgs(height).await?;
+
+        if let Some(v) = r {
+            return Ok(v);
+        }
+
+        let r = retry!(
+            self.config.exponential_back_off,
+            self.config.exponential_retry_limit,
+            self.parent_client
+                .get_top_down_msgs(height)
+                .await
+                .and_then(|r| {
+                    if r.block_hash != *block_hash {
+                        Err(anyhow!("block hash not equal"))
+                    } else {
+                        Ok(r.value)
+                    }
+                })
+        );
+
+        handle_null_round(r, Vec::new)
     }
 }
 

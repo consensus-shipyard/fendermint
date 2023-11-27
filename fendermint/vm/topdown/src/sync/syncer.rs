@@ -210,13 +210,22 @@ where
             return Err(Error::ParentChainReorgDetected);
         }
 
-        let top_down_msgs_res = self
+        let topdown_msgs_res = self
             .parent_proxy
-            .get_top_down_msgs_with_hash(height, &block_hash)
+            .get_top_down_msgs(height)
             .await
             .map_err(|e| Error::CannotQueryParent(e.to_string(), height))?;
+        if topdown_msgs_res.block_hash != block_hash {
+            tracing::warn!(
+                height,
+                topdown_msgs_hash = hex::encode(&topdown_msgs_res.block_hash),
+                block_hash = hex::encode(&block_hash),
+                "topdown messages block hash does not equal block hash",
+            );
+            return Err(Error::ParentChainReorgDetected);
+        }
 
-        Ok((block_hash, changes_res.value, top_down_msgs_res))
+        Ok((block_hash, changes_res.value, topdown_msgs_res.value))
     }
 
     /// We only want the non-null parent block's hash
@@ -342,12 +351,14 @@ mod tests {
             panic!("invalid testing data")
         }
 
-        async fn get_top_down_msgs_with_hash(
+        async fn get_top_down_msgs(
             &self,
             _height: BlockHeight,
-            _block_hash: &BlockHash,
-        ) -> anyhow::Result<Vec<CrossMsg>> {
-            Ok(vec![])
+        ) -> anyhow::Result<TopDownQueryPayload<Vec<CrossMsg>>> {
+            Ok(TopDownQueryPayload {
+                value: vec![],
+                block_hash: self.blocks.get_value(height).cloned().unwrap().unwrap(),
+            })
         }
 
         async fn get_validator_changes(
