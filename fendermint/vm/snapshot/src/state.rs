@@ -96,7 +96,7 @@ impl SnapshotItem {
         }
 
         // 2. Import the contents.
-        let result = Snapshot::read_car(&car_path, store).await;
+        let result = Snapshot::read_car(&car_path, store, validate).await;
 
         // 3. Remove the restored file.
         std::fs::remove_file(&car_path).context("failed to remove CAR file")?;

@@ -9,7 +9,7 @@ use cid::Cid;
 use futures_core::Stream;
 use fvm::state_tree::StateTree;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_car::{load_car_unchecked, CarHeader};
+use fvm_ipld_car::{load_car, load_car_unchecked, CarHeader};
 use fvm_ipld_encoding::{from_slice, CborStore, DAG_CBOR};
 use libipld::Ipld;
 use serde::{Deserialize, Serialize};
@@ -61,10 +61,19 @@ where
     }
 
     /// Read the snapshot from file and load all the data into the store
-    pub async fn read_car(path: impl AsRef<Path>, store: BS) -> anyhow::Result<Self> {
+    pub async fn read_car(
+        path: impl AsRef<Path>,
+        store: BS,
+        validate: bool,
+    ) -> anyhow::Result<Self> {
         let file = tokio::fs::File::open(path).await?;
 
-        let roots = load_car_unchecked(&store, file.compat()).await?;
+        let roots = if validate {
+            load_car(&store, file.compat()).await?
+        } else {
+            load_car_unchecked(&store, file.compat()).await?
+        };
+
         if roots.len() != 1 {
             return Err(anyhow!("invalid snapshot, should have 1 root cid"));
         }
@@ -377,7 +386,7 @@ mod tests {
         assert!(r.is_ok());
 
         let new_store = MemoryBlockstore::new();
-        let Snapshot::V1(loaded_snapshot) = Snapshot::read_car(tmp_file.path(), new_store)
+        let Snapshot::V1(loaded_snapshot) = Snapshot::read_car(tmp_file.path(), new_store, true)
             .await
             .unwrap();
 
