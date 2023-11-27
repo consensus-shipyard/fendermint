@@ -353,7 +353,7 @@ mod tests {
 
         async fn get_top_down_msgs(
             &self,
-            _height: BlockHeight,
+            height: BlockHeight,
         ) -> anyhow::Result<TopDownQueryPayload<Vec<CrossMsg>>> {
             Ok(TopDownQueryPayload {
                 value: vec![],

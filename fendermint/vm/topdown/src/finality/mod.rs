@@ -44,8 +44,7 @@ pub(crate) fn topdown_cross_msgs(p: &ParentViewPayload) -> Vec<CrossMsg> {
 mod tests {
     use crate::proxy::ParentQueryProxy;
     use crate::{
-        BlockHash, BlockHeight, CachedFinalityProvider, Config, IPCParentFinality,
-        ParentFinalityProvider,
+        BlockHeight, CachedFinalityProvider, Config, IPCParentFinality, ParentFinalityProvider,
     };
     use async_stm::atomically_or_err;
     use async_trait::async_trait;
