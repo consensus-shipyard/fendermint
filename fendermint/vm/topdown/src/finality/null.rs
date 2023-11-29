@@ -184,13 +184,6 @@ impl FinalityWithNull {
             unreachable!("last committed finality will be available at this point");
         };
 
-        // this is possible due to delayed execution as the proposed height's data cannot be
-        // executed because they have yet to be executed.
-        if last_committed_height == latest_height {
-            tracing::debug!(last_committed_height, latest_height, "no new blocks from cache");
-            return Ok(None);
-        }
-
         let max_proposal_height = last_committed_height + self.config.max_proposal_range();
         let candidate_height = min(max_proposal_height, latest_height);
         tracing::debug!(max_proposal_height, candidate_height, "propose heights");
@@ -208,8 +201,23 @@ impl FinalityWithNull {
         let r =
             self.first_non_null_block_before(first_non_null_height - self.config.proposal_delay())?;
         tracing::debug!(delayed_height = r, delay = self.config.proposal_delay());
+        if let Some(final_proposal) = r {
+            // this is possible due to delayed execution as the proposed height's data cannot be
+            // executed because they have yet to be executed.
+            return if last_committed_height == final_proposal {
+                tracing::debug!(
+                    last_committed_height,
+                    final_proposal,
+                    "no new blocks from cache, not proposing"
+                );
+                Ok(None)
+            } else {
+                Ok(Some(final_proposal))
+            };
+        }
 
-        Ok(r)
+        tracing::debug!(last_committed_heigh, "no non-null block after delay");
+        Ok(None)
     }
 
     fn handle_null_block<T, F: Fn(&ParentViewPayload) -> T, D: Fn() -> T>(
