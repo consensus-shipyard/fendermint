@@ -264,8 +264,10 @@ where
                         "chain interpreter committed topdown finality",
                     );
 
-                    // Execution of the proposal will be delayed by 1 for extra safety.
-                    // This is delayed execution as required by provider.
+                    // The commitment of the finality for block `N` triggers
+                    // the execution of all side-effects up till `N-1`, as for
+                    // deferred execution chains, this is the latest state that
+                    // we know for sure that we have available.
                     let execution_fr = prev_height;
                     let execution_to = finality.height - 1;
 
