@@ -406,7 +406,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_no_enough_view() {
+    async fn test_not_enough_view() {
         // max_proposal_range is 6. proposal_delay is 2
         let parent_blocks = vec![
             (100, Some((vec![0; 32], vec![], vec![]))), // last committed block
