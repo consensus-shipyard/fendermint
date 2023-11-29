@@ -289,10 +289,10 @@ mod tests {
     // These are all the libraries based on the `scripts/deploy-libraries.ts` in `ipc-solidity-actors`.
     const IPC_DEPS: [&str; 5] = [
         "AccountHelper",
-        "CheckpointHelper",
         "SubnetIDHelper",
         "CrossMsgHelper",
         "StorableMsgHelper",
+        "LibStaking",
     ];
 
     #[test]
@@ -336,9 +336,12 @@ mod tests {
         let root_contracts: Vec<(String, &str)> = vec![
             "GatewayDiamond",
             "GatewayManagerFacet",
-            "GatewayGetterFacet",
             "GatewayRouterFacet",
-            "SubnetRegistryDiamond",
+            "GatewayGetterFacet",
+            "GatewayMessengerFacet",
+            "GatewayRouterFacet",
+            "SubnetActorGetterFacet",
+            "SubnetActorManagerFacet",
         ]
         .into_iter()
         .map(|c| (format!("{c}.sol"), c))
