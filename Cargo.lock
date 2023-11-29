@@ -4679,6 +4679,7 @@ checksum = "59ce5ef949d49ee85593fc4d3f3f95ad61657076395cbbce23e2121fc5542074"
 [[package]]
 name = "ipc-identity"
 version = "0.1.0"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=dev#6a0d12b82682e6c289cb8fb2353b30fe2601e51e"
 dependencies = [
  "ahash 0.8.6",
  "anyhow",
@@ -4705,6 +4706,7 @@ dependencies = [
 [[package]]
 name = "ipc-provider"
 version = "0.1.0"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=dev#6a0d12b82682e6c289cb8fb2353b30fe2601e51e"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -4744,6 +4746,7 @@ dependencies = [
 [[package]]
 name = "ipc-sdk"
 version = "0.1.0"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=dev#6a0d12b82682e6c289cb8fb2353b30fe2601e51e"
 dependencies = [
  "anyhow",
  "cid",
@@ -4767,6 +4770,7 @@ dependencies = [
 [[package]]
 name = "ipc_actors_abis"
 version = "0.1.0"
+source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=dev#b01a2dffe367745f55111a65536a3f6fea9165f5"
 dependencies = [
  "anyhow",
  "ethers",
