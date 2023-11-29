@@ -298,7 +298,7 @@ mod tests {
     use crate::sync::ParentFinalityStateQuery;
     use crate::{
         BlockHash, BlockHeight, CachedFinalityProvider, Config, IPCParentFinality,
-        ParentFinalityProvider, SequentialKeyCache, Toggle, NULL_ROUND_ERR_MSG,
+        SequentialKeyCache, Toggle, NULL_ROUND_ERR_MSG,
     };
     use anyhow::anyhow;
     use async_stm::atomically;
@@ -380,8 +380,9 @@ mod tests {
             polling_interval: Default::default(),
             exponential_back_off: Default::default(),
             exponential_retry_limit: 0,
-            min_proposal_interval: Some(1),
+            max_proposal_range: Some(1),
             max_cache_blocks: None,
+            proposal_delay: None,
         };
         let genesis_epoch = blocks.lower_bound().unwrap();
         let proxy = Arc::new(TestParentProxy { blocks });
@@ -448,8 +449,6 @@ mod tests {
             atomically(|| syncer.provider.latest_height()).await,
             Some(100)
         );
-        // proposal is None because we dont have next height yet
-        assert_eq!(atomically(|| syncer.provider.next_proposal()).await, None);
 
         // sync block 101, which is a non-null block
         let r = syncer.sync().await;
@@ -459,13 +458,6 @@ mod tests {
         assert_eq!(
             atomically(|| syncer.provider.latest_height()).await,
             Some(101)
-        );
-        assert_eq!(
-            atomically(|| syncer.provider.next_proposal()).await,
-            Some(IPCParentFinality {
-                height: 101,
-                block_hash: vec![1; 32]
-            })
         );
     }
 
@@ -509,7 +501,6 @@ mod tests {
             atomically(|| syncer.provider.latest_height()).await,
             Some(100)
         );
-        assert_eq!(atomically(|| syncer.provider.next_proposal()).await, None);
 
         // sync block 105 to 107, which are null blocks
         for h in 105..=107 {
@@ -517,7 +508,6 @@ mod tests {
             assert!(r.is_ok());
             assert_eq!(syncer.sync_pointers.head(), h);
             assert_eq!(syncer.sync_pointers.tail(), Some((104, vec![4; 32])));
-            assert_eq!(atomically(|| syncer.provider.next_proposal()).await, None);
         }
 
         // sync block 108, which is a non-null block
@@ -529,13 +519,6 @@ mod tests {
         assert_eq!(
             atomically(|| syncer.provider.latest_height()).await,
             Some(104)
-        );
-        assert_eq!(
-            atomically(|| syncer.provider.next_proposal()).await,
-            Some(IPCParentFinality {
-                height: 104,
-                block_hash: vec![4; 32]
-            })
         );
     }
 }

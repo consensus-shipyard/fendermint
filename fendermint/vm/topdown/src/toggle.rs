@@ -54,10 +54,9 @@ impl<P: ParentViewProvider + Send + Sync + 'static> ParentViewProvider for Toggl
         &self,
         from: BlockHeight,
         to: BlockHeight,
-        block_hash: &BlockHash,
     ) -> anyhow::Result<Vec<StakingChangeRequest>> {
         match self.inner.as_ref() {
-            Some(p) => p.validator_changes_from(from, to, block_hash).await,
+            Some(p) => p.validator_changes_from(from, to).await,
             None => Err(anyhow!("provider is toggled off")),
         }
     }
@@ -66,10 +65,9 @@ impl<P: ParentViewProvider + Send + Sync + 'static> ParentViewProvider for Toggl
         &self,
         from: BlockHeight,
         to: BlockHeight,
-        block_hash: &BlockHash,
     ) -> anyhow::Result<Vec<CrossMsg>> {
         match self.inner.as_ref() {
-            Some(p) => p.top_down_msgs_from(from, to, block_hash).await,
+            Some(p) => p.top_down_msgs_from(from, to).await,
             None => Err(anyhow!("provider is toggled off")),
         }
     }

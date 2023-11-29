@@ -31,9 +31,10 @@ pub type BlockHash = Bytes;
 
 /// The null round error message
 pub(crate) const NULL_ROUND_ERR_MSG: &str = "requested epoch was a null round";
-/// Default topdown proposal height interval
-pub(crate) const DEFAULT_PROPOSAL_INTERVAL: BlockHeight = 10;
+/// Default topdown proposal height range
+pub(crate) const DEFAULT_MAX_PROPOSAL_RANGE: BlockHeight = 100;
 pub(crate) const DEFAULT_MAX_CACHE_BLOCK: BlockHeight = 500;
+pub(crate) const DEFAULT_PROPOSAL_DELAY: BlockHeight = 2;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -48,10 +49,11 @@ pub struct Config {
     pub exponential_back_off: Duration,
     /// The max number of retries for exponential backoff before giving up
     pub exponential_retry_limit: usize,
-    /// The minimal number of blocks one should make the topdown proposal
-    pub min_proposal_interval: Option<BlockHeight>,
+    /// The max number of blocks one should make the topdown proposal
+    pub max_proposal_range: Option<BlockHeight>,
     /// Max number of blocks that should be stored in cache
     pub max_cache_blocks: Option<BlockHeight>,
+    pub proposal_delay: Option<BlockHeight>,
 }
 
 impl Config {
@@ -66,14 +68,29 @@ impl Config {
             polling_interval,
             exponential_back_off,
             exponential_retry_limit,
-            min_proposal_interval: None,
+            max_proposal_range: None,
             max_cache_blocks: None,
+            proposal_delay: None,
         }
     }
 
-    pub fn min_proposal_interval(&self) -> BlockHeight {
-        self.min_proposal_interval
-            .unwrap_or(DEFAULT_PROPOSAL_INTERVAL)
+    pub fn with_max_proposal_range(mut self, max_proposal_range: BlockHeight) -> Self {
+        self.max_proposal_range = Some(max_proposal_range);
+        self
+    }
+
+    pub fn with_proposal_delay(mut self, proposal_delay: BlockHeight) -> Self {
+        self.proposal_delay = Some(proposal_delay);
+        self
+    }
+
+    pub fn max_proposal_range(&self) -> BlockHeight {
+        self.max_proposal_range
+            .unwrap_or(DEFAULT_MAX_PROPOSAL_RANGE)
+    }
+
+    pub fn proposal_delay(&self) -> BlockHeight {
+        self.proposal_delay.unwrap_or(DEFAULT_PROPOSAL_DELAY)
     }
 
     pub fn max_cache_blocks(&self) -> BlockHeight {
@@ -120,14 +137,12 @@ pub trait ParentViewProvider {
         &self,
         from: BlockHeight,
         to: BlockHeight,
-        block_hash: &BlockHash,
     ) -> anyhow::Result<Vec<StakingChangeRequest>>;
     /// Get the top down messages from and to height.
     async fn top_down_msgs_from(
         &self,
         from: BlockHeight,
         to: BlockHeight,
-        block_hash: &BlockHash,
     ) -> anyhow::Result<Vec<CrossMsg>>;
 }
 

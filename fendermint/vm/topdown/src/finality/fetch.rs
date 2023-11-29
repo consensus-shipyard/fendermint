@@ -5,10 +5,9 @@ use crate::finality::null::FinalityWithNull;
 use crate::finality::ParentViewPayload;
 use crate::proxy::ParentQueryProxy;
 use crate::{
-    handle_null_round, is_null_round_error, BlockHash, BlockHeight, Config, Error,
-    IPCParentFinality, ParentFinalityProvider, ParentViewProvider,
+    handle_null_round, BlockHash, BlockHeight, Config, Error, IPCParentFinality,
+    ParentFinalityProvider, ParentViewProvider,
 };
-use anyhow::anyhow;
 use async_stm::{Stm, StmResult};
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::staking::StakingChangeRequest;
@@ -72,10 +71,9 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
         &self,
         from: BlockHeight,
         to: BlockHeight,
-        block_hash: &BlockHash,
     ) -> anyhow::Result<Vec<StakingChangeRequest>> {
         let mut v = vec![];
-        for h in from..to {
+        for h in from..=to {
             let mut r = self.validator_changes(h).await?;
             tracing::debug!(
                 number_of_messages = r.len(),
@@ -85,31 +83,19 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
             v.append(&mut r);
         }
 
-        // now we query the validator changes at height `to` and we also checks the block hash,
-        // so that we know the parent node is reliable enough.
-        let mut r = self.validator_changes_with_check(to, block_hash).await?;
-        tracing::debug!(
-            number_of_messages = r.len(),
-            height = to,
-            "fetched validator change set",
-        );
-        v.append(&mut r);
-
         Ok(v)
     }
 
-    /// Get top down message in the range `from` to `to`, both inclusive. It also validates the block
-    /// hash at height `to` must equal to the input `block_hash`. For the check to be valid, one
+    /// Get top down message in the range `from` to `to`, both inclusive. For the check to be valid, one
     /// should not pass a height `to` that is a null block, otherwise the check is useless. In debug
     /// mode, it will throw an error.
     async fn top_down_msgs_from(
         &self,
         from: BlockHeight,
         to: BlockHeight,
-        block_hash: &BlockHash,
     ) -> anyhow::Result<Vec<CrossMsg>> {
         let mut v = vec![];
-        for h in from..to {
+        for h in from..=to {
             let mut r = self.top_down_msgs(h).await?;
             tracing::debug!(
                 number_of_top_down_messages = r.len(),
@@ -118,16 +104,6 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
             );
             v.append(&mut r);
         }
-
-        // now we query the topdown messages at height `to` and we also checks the block hash,
-        // so that we know the parent node is reliable enough.
-        let mut r = self.top_down_msgs_with_check(to, block_hash).await?;
-        tracing::debug!(
-            number_of_messages = r.len(),
-            height = to,
-            "obtained topdown messages",
-        );
-        v.append(&mut r);
         Ok(v)
     }
 }
@@ -186,42 +162,6 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> CachedFinalityProvider<T> {
         handle_null_round(r, Vec::new)
     }
 
-    /// Queries the validator change set, but also performs a check on the block hash
-    async fn validator_changes_with_check(
-        &self,
-        height: BlockHeight,
-        block_hash: &BlockHash,
-    ) -> anyhow::Result<Vec<StakingChangeRequest>> {
-        let r = self.inner.validator_changes(height).await?;
-
-        if let Some(v) = r {
-            return Ok(v);
-        }
-
-        let r = retry!(
-            self.config.exponential_back_off,
-            self.config.exponential_retry_limit,
-            self.parent_client
-                .get_validator_changes(height)
-                .await
-                .and_then(|r| {
-                    if r.block_hash != *block_hash {
-                        Err(anyhow!("block hash not equal"))
-                    } else {
-                        Ok(r.value)
-                    }
-                })
-        );
-        if let Err(e) = &r {
-            debug_assert!(
-                !is_null_round_error(e),
-                "no way of checking block hash if block is null, report bug"
-            )
-        }
-
-        handle_null_round(r, Vec::new)
-    }
-
     /// Should always return the top down messages, only when ipc parent_client is down after exponential
     /// retries
     async fn top_down_msgs(&self, height: BlockHeight) -> anyhow::Result<Vec<CrossMsg>> {
@@ -242,42 +182,6 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> CachedFinalityProvider<T> {
 
         handle_null_round(r, Vec::new)
     }
-
-    /// Queries the top down messages but also checks the block hash actually matches
-    async fn top_down_msgs_with_check(
-        &self,
-        height: BlockHeight,
-        block_hash: &BlockHash,
-    ) -> anyhow::Result<Vec<CrossMsg>> {
-        let r = self.inner.top_down_msgs(height).await?;
-
-        if let Some(v) = r {
-            return Ok(v);
-        }
-
-        let r = retry!(
-            self.config.exponential_back_off,
-            self.config.exponential_retry_limit,
-            self.parent_client
-                .get_top_down_msgs(height)
-                .await
-                .and_then(|r| {
-                    if r.block_hash != *block_hash {
-                        Err(anyhow!("block hash not equal"))
-                    } else {
-                        Ok(r.value)
-                    }
-                })
-        );
-
-        if let Err(e) = &r {
-            debug_assert!(
-                !is_null_round_error(e),
-                "no way of checking block hash if block is null, report bug"
-            )
-        }
-        handle_null_round(r, Vec::new)
-    }
 }
 
 impl<T> CachedFinalityProvider<T> {
@@ -287,11 +191,7 @@ impl<T> CachedFinalityProvider<T> {
         committed_finality: Option<IPCParentFinality>,
         parent_client: Arc<T>,
     ) -> Self {
-        let inner = FinalityWithNull::new(
-            config.min_proposal_interval(),
-            genesis_epoch,
-            committed_finality,
-        );
+        let inner = FinalityWithNull::new(config.clone(), genesis_epoch, committed_finality);
         Self {
             inner,
             config,
@@ -440,8 +340,9 @@ mod tests {
             polling_interval: Default::default(),
             exponential_back_off: Default::default(),
             exponential_retry_limit: 0,
-            min_proposal_interval: Some(1),
+            max_proposal_range: Some(1),
             max_cache_blocks: None,
+            proposal_delay: None,
         };
         let genesis_epoch = blocks.lower_bound().unwrap();
         let proxy = Arc::new(TestParentProxy { blocks });
@@ -516,10 +417,7 @@ mod tests {
             106 => Some((vec![6; 32], vec![], vec![new_cross_msg(6)]))
         );
         let provider = new_provider(parent_blocks);
-        let messages = provider
-            .top_down_msgs_from(100, 106, &vec![6; 32])
-            .await
-            .unwrap();
+        let messages = provider.top_down_msgs_from(100, 106).await.unwrap();
 
         assert_eq!(
             messages,
@@ -531,38 +429,6 @@ mod tests {
                 new_cross_msg(6),
             ]
         )
-    }
-
-    /// This test should panic with "no way of checking block hash if block is null"
-    /// In our implementation, `top_down_msgs_from` should not be called when `to` is a null block
-    #[tokio::test]
-    #[should_panic]
-    async fn test_query_topdown_msgs_boundary_null() {
-        let parent_blocks = new_parent_blocks!(
-            100 => Some((vec![0; 32], vec![], vec![new_cross_msg(0)])),   // genesis block
-            101 => None
-        );
-        let provider = new_provider(parent_blocks);
-        provider
-            .top_down_msgs_from(100, 101, &vec![6; 32])
-            .await
-            .unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_query_topdown_msgs_invalid_hash() {
-        let parent_blocks = new_parent_blocks!(
-            100 => Some((vec![0; 32], vec![], vec![new_cross_msg(0)])),   // genesis block
-            101 => Some((vec![1; 32], vec![], vec![new_cross_msg(1)])),
-            102 => Some((vec![2; 32], vec![], vec![new_cross_msg(2)])),
-            103 => Some((vec![3; 32], vec![], vec![new_cross_msg(3)])),
-            104 => None,
-            105 => None,
-            106 => Some((vec![6; 32], vec![], vec![new_cross_msg(6)]))
-        );
-        let provider = new_provider(parent_blocks);
-        let r = provider.top_down_msgs_from(100, 106, &vec![7; 32]).await;
-        assert!(r.is_err());
     }
 
     #[tokio::test]
@@ -577,45 +443,8 @@ mod tests {
             106 => Some((vec![6; 32], vec![new_validator_changes(6)], vec![]))
         );
         let provider = new_provider(parent_blocks);
-        let messages = provider
-            .validator_changes_from(100, 106, &vec![6; 32])
-            .await
-            .unwrap();
+        let messages = provider.validator_changes_from(100, 106).await.unwrap();
 
         assert_eq!(messages.len(), 4)
-    }
-
-    /// This test should panic with "no way of checking block hash if block is null"
-    /// In our implementation, `validator_changes_from` should not be called when `to` is a null block
-    #[tokio::test]
-    #[should_panic]
-    async fn test_query_validator_changes_boundary_null() {
-        let parent_blocks = new_parent_blocks!(
-            100 => Some((vec![0; 32], vec![new_validator_changes(0)], vec![new_cross_msg(0)])),   // genesis block
-            101 => None
-        );
-        let provider = new_provider(parent_blocks);
-        provider
-            .validator_changes_from(100, 101, &vec![6; 32])
-            .await
-            .unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_query_validator_changes_invalid_hash() {
-        let parent_blocks = new_parent_blocks!(
-            100 => Some((vec![0; 32], vec![new_validator_changes(0)], vec![new_cross_msg(0)])),   // genesis block
-            101 => Some((vec![1; 32], vec![new_validator_changes(1)], vec![new_cross_msg(1)])),
-            102 => Some((vec![2; 32], vec![new_validator_changes(2)], vec![new_cross_msg(2)])),
-            103 => Some((vec![3; 32], vec![new_validator_changes(3)], vec![new_cross_msg(3)])),
-            104 => None,
-            105 => None,
-            106 => Some((vec![6; 32], vec![new_validator_changes(6)], vec![new_cross_msg(6)]))
-        );
-        let provider = new_provider(parent_blocks);
-        let r = provider
-            .validator_changes_from(100, 106, &vec![7; 32])
-            .await;
-        assert!(r.is_err());
     }
 }

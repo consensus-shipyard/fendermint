@@ -48,12 +48,9 @@ mod tests {
     };
     use async_stm::atomically_or_err;
     use async_trait::async_trait;
-    use fvm_shared::address::Address;
-    use fvm_shared::econ::TokenAmount;
     use ipc_provider::manager::{GetBlockHashResult, TopDownQueryPayload};
-    use ipc_sdk::cross::{CrossMsg, StorableMsg};
+    use ipc_sdk::cross::CrossMsg;
     use ipc_sdk::staking::StakingChangeRequest;
-    use ipc_sdk::subnet_id::SubnetID;
     use std::sync::Arc;
     use tokio::time::Duration;
 
@@ -111,28 +108,12 @@ mod tests {
             polling_interval: Duration::from_secs(10),
             exponential_back_off: Duration::from_secs(10),
             exponential_retry_limit: 10,
-            min_proposal_interval: None,
+            max_proposal_range: None,
             max_cache_blocks: None,
+            proposal_delay: None,
         };
 
         CachedFinalityProvider::new(config, 10, Some(genesis_finality()), mocked_agent_proxy())
-    }
-
-    fn new_cross_msg(nonce: u64) -> CrossMsg {
-        let subnet_id = SubnetID::new(10, vec![Address::new_id(1000)]);
-        let mut msg = StorableMsg::new_fund_msg(
-            &subnet_id,
-            &Address::new_id(1),
-            &Address::new_id(2),
-            TokenAmount::from_atto(100),
-        )
-        .unwrap();
-        msg.nonce = nonce;
-
-        CrossMsg {
-            msg,
-            wrapped: false,
-        }
     }
 
     #[tokio::test]
@@ -188,95 +169,6 @@ mod tests {
             };
 
             assert!(provider.check_proposal(&finality).is_ok());
-
-            Ok(())
-        })
-        .await
-        .unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_next_proposal_works() {
-        let min_proposal_interval = 10;
-        let config = Config {
-            chain_head_delay: 2,
-            polling_interval: Duration::from_secs(10),
-            exponential_back_off: Duration::from_secs(10),
-            exponential_retry_limit: 10,
-            min_proposal_interval: Some(min_proposal_interval),
-            max_cache_blocks: None,
-        };
-
-        let last_committed_finality = IPCParentFinality {
-            height: 0,
-            block_hash: vec![0; 32],
-        };
-
-        let provider = CachedFinalityProvider::new(
-            config,
-            10,
-            Some(last_committed_finality),
-            mocked_agent_proxy(),
-        );
-
-        atomically_or_err(|| {
-            for h in 1..20 {
-                provider.new_parent_view(
-                    h,
-                    Some((vec![1u8; 32], vec![], vec![new_cross_msg(h - 1)])),
-                )?;
-            }
-
-            let finality = IPCParentFinality {
-                height: min_proposal_interval,
-                block_hash: vec![1u8; 32],
-            };
-            let next_proposal = provider.next_proposal()?.unwrap();
-            assert_eq!(next_proposal, finality);
-
-            Ok(())
-        })
-        .await
-        .unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_nex_proposal_null_blocks_works() {
-        let min_proposal_interval = 10;
-        let config = Config {
-            chain_head_delay: 2,
-            polling_interval: Duration::from_secs(10),
-            exponential_back_off: Duration::from_secs(10),
-            exponential_retry_limit: 10,
-            min_proposal_interval: Some(min_proposal_interval),
-            max_cache_blocks: None,
-        };
-
-        let last_committed_finality = IPCParentFinality {
-            height: 0,
-            block_hash: vec![0; 32],
-        };
-
-        let provider = CachedFinalityProvider::new(
-            config,
-            10,
-            Some(last_committed_finality),
-            mocked_agent_proxy(),
-        );
-
-        atomically_or_err(|| {
-            for h in 1..20 {
-                provider.new_parent_view(h, None)?;
-            }
-
-            provider.new_parent_view(20, Some((vec![1u8; 32], vec![], vec![new_cross_msg(0)])))?;
-
-            let finality = IPCParentFinality {
-                height: 20,
-                block_hash: vec![1u8; 32],
-            };
-            let next_proposal = provider.next_proposal()?.unwrap();
-            assert_eq!(next_proposal, finality);
 
             Ok(())
         })
