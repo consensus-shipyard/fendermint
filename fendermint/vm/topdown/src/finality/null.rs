@@ -184,6 +184,13 @@ impl FinalityWithNull {
             unreachable!("last committed finality will be available at this point");
         };
 
+        // this is possible due to delayed execution as the proposed height's data cannot be
+        // executed because they have yet to be executed.
+        if last_committed_height == latest_height {
+            tracing::debug!(last_committed_height, latest_height, "no new blocks from cache");
+            return Ok(None);
+        }
+
         let max_proposal_height = last_committed_height + self.config.max_proposal_range();
         let candidate_height = min(max_proposal_height, latest_height);
         tracing::debug!(max_proposal_height, candidate_height, "propose heights");
