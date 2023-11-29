@@ -111,8 +111,9 @@ mod tests {
             polling_interval: Duration::from_secs(10),
             exponential_back_off: Duration::from_secs(10),
             exponential_retry_limit: 10,
-            min_proposal_interval: None,
+            max_proposal_range: None,
             max_cache_blocks: None,
+            proposal_delay: None,
         };
 
         CachedFinalityProvider::new(config, 10, Some(genesis_finality()), mocked_agent_proxy())
@@ -203,8 +204,9 @@ mod tests {
             polling_interval: Duration::from_secs(10),
             exponential_back_off: Duration::from_secs(10),
             exponential_retry_limit: 10,
-            min_proposal_interval: Some(min_proposal_interval),
+            max_proposal_range: Some(min_proposal_interval),
             max_cache_blocks: None,
+            proposal_delay: None,
         };
 
         let last_committed_finality = IPCParentFinality {
@@ -248,8 +250,9 @@ mod tests {
             polling_interval: Duration::from_secs(10),
             exponential_back_off: Duration::from_secs(10),
             exponential_retry_limit: 10,
-            min_proposal_interval: Some(min_proposal_interval),
+            max_proposal_range: Some(min_proposal_interval),
             max_cache_blocks: None,
+            proposal_delay: None,
         };
 
         let last_committed_finality = IPCParentFinality {

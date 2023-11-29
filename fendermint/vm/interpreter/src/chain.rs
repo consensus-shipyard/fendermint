@@ -264,18 +264,19 @@ where
                         "chain interpreter committed topdown finality",
                     );
 
+                    // Execution of the proposal will be delayed by 1 for extra safety.
+                    // This is delayed execution as required by provider.
+                    let execution_fr = prev_height;
+                    let execution_to = finality.height - 1;
+
                     // error happens if we cannot get the validator set from ipc agent after retries
                     let validator_changes = provider
-                        .validator_changes_from(
-                            prev_height + 1,
-                            finality.height,
-                            &finality.block_hash,
-                        )
+                        .validator_changes_from(execution_fr, execution_to)
                         .await
                         .context("failed to fetch validator changes")?;
                     tracing::debug!(
-                        from = prev_height + 1,
-                        to = finality.height,
+                        from = execution_fr,
+                        to = execution_to,
                         msgs = validator_changes.len(),
                         "chain interpreter received total validator changes"
                     );
@@ -286,13 +287,13 @@ where
 
                     // error happens if we cannot get the cross messages from ipc agent after retries
                     let msgs = provider
-                        .top_down_msgs_from(prev_height + 1, p.height as u64, &finality.block_hash)
+                        .top_down_msgs_from(execution_fr, execution_to)
                         .await
                         .context("failed to fetch top down messages")?;
                     tracing::debug!(
                         number_of_messages = msgs.len(),
-                        start = prev_height + 1,
-                        end = p.height,
+                        start = execution_fr,
+                        end = execution_to,
                         "chain interpreter received topdown msgs",
                     );
 
