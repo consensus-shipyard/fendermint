@@ -216,7 +216,7 @@ impl FinalityWithNull {
             };
         }
 
-        tracing::debug!(last_committed_heigh, "no non-null block after delay");
+        tracing::debug!(last_committed_height, "no non-null block after delay");
         Ok(None)
     }
 
