@@ -25,6 +25,7 @@ rand_chacha = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_with = { workspace = true }
+async-stm = { workspace = true }
 tendermint = { workspace = true }
 tendermint-config = { workspace = true }
 tendermint-rpc = { workspace = true }
@@ -52,6 +53,7 @@ fendermint_vm_interpreter = { path = "../vm/interpreter", features = ["bundle"] 
 fendermint_vm_message = { path = "../vm/message" }
 fendermint_vm_resolver = { path = "../vm/resolver" }
 fendermint_vm_topdown = { path = "../vm/topdown" }
+fendermint_vm_snapshot = { path = "../vm/snapshot" }
 
 fvm = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
@@ -68,6 +70,7 @@ quickcheck = { workspace = true }
 quickcheck_macros = { workspace = true }
 
 fendermint_vm_genesis = { path = "../vm/genesis", features = ["arb"] }
+fendermint_vm_snapshot = { path = "../vm/snapshot", features = ["arb"] }
 
 
 # Load the same built-in actor bundle as the ref-fvm integration tests. We'll probably need built-in actors,

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
+use async_stm::{atomically, atomically_or_err};
 use async_trait::async_trait;
 use cid::Cid;
 use fendermint_abci::util::take_until_max_size;
@@ -31,6 +32,7 @@ use fendermint_vm_interpreter::{
     CheckInterpreter, ExecInterpreter, GenesisInterpreter, ProposalInterpreter, QueryInterpreter,
 };
 use fendermint_vm_message::query::FvmQueryHeight;
+use fendermint_vm_snapshot::{SnapshotClient, SnapshotError};
 use fvm::engine::MultiEngine;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::chainid::ChainID;
@@ -85,28 +87,8 @@ impl AppState {
         ChainID::from(self.state_params.chain_id)
     }
 
-    /// Produce an appliction hash that is a commitment to all data replicated by consensus,
-    /// that is, all nodes participating in the network must agree on this otherwise we have
-    /// a consensus failure.
-    ///
-    /// Notably it contains the actor state root _as well as_ some of the metadata maintained
-    /// outside the FVM, such as the timestamp and the circulating supply.
     pub fn app_hash(&self) -> tendermint::hash::AppHash {
-        // Create an artifical CID from the FVM state params, which include everything that
-        // deterministically changes under consensus.
-        let state_params_cid =
-            fendermint_vm_message::cid(&self.state_params).expect("state params have a CID");
-
-        // We could reduce it to a hash to ephasize that this is not something that we can return at the moment,
-        // but we could just as easily store the record in the Blockstore to make it retrievable.
-        // It is generally not a goal to serve the entire state over the IPLD Resolver or ABCI queries, though;
-        // for that we should rely on the CometBFT snapshot mechanism.
-        // But to keep our options open, we can return the hash as a CID that nobody can retrieve, and change our mind later.
-
-        // let state_params_hash = state_params_cid.hash();
-        let state_params_hash = state_params_cid.to_bytes();
-
-        tendermint::hash::AppHash::try_from(state_params_hash).expect("hash can be wrapped")
+        to_app_hash(&self.state_params)
     }
 
     /// The state is effective at the *next* block, that is, the effects of block N are visible in the header of block N+1,
@@ -169,6 +151,8 @@ where
     resolve_pool: CheckpointPool,
     /// The parent finality provider for top down checkpoint
     parent_finality_provider: TopDownFinalityProvider,
+    /// Interface to the snapshotter, if enabled.
+    snapshots: Option<SnapshotClient>,
     /// State accumulating changes during block execution.
     exec_state: Arc<tokio::sync::Mutex<Option<FvmExecState<SS>>>>,
     /// Projected (partial) state accumulating during transaction checks.
@@ -196,6 +180,7 @@ where
         interpreter: I,
         resolve_pool: CheckpointPool,
         parent_finality_provider: TopDownFinalityProvider,
+        snapshots: Option<SnapshotClient>,
     ) -> Result<Self> {
         let app = Self {
             db: Arc::new(db),
@@ -208,6 +193,7 @@ where
             interpreter: Arc::new(interpreter),
             resolve_pool,
             parent_finality_provider,
+            snapshots,
             exec_state: Arc::new(tokio::sync::Mutex::new(None)),
             check_state: Arc::new(tokio::sync::Mutex::new(None)),
         };
@@ -713,6 +699,16 @@ where
         let db = self.state_store_clone();
         let state = self.committed_state()?;
         let mut state_params = state.state_params.clone();
+
+        // Notify the snapshotter. We don't do this in `commit` because *this* is the height at which
+        // this state has been officially associated with the application hash, which is something
+        // we will receive in `offer_snapshot` and we can compare. If we did it in `commit` we'd
+        // have to associate the snapshot with `block_height + 1`. But this way we also know that
+        // others have agreed with our results.
+        if let Some(ref snapshots) = self.snapshots {
+            atomically(|| snapshots.notify(block_height as u64, state_params.clone())).await;
+        }
+
         state_params.timestamp = to_timestamp(request.header.time);
 
         let state = FvmExecState::new(db, self.multi_engine.as_ref(), block_height, state_params)
@@ -803,9 +799,10 @@ where
         state.state_params.circ_supply = circ_supply;
 
         let app_hash = state.app_hash();
+        let block_height = state.block_height;
 
         tracing::debug!(
-            height = state.block_height,
+            block_height,
             state_root = state_root.to_string(),
             app_hash = app_hash.to_string(),
             timestamp = state.state_params.timestamp.0,
@@ -834,13 +831,176 @@ where
         let mut guard = self.check_state.lock().await;
         *guard = None;
 
-        tracing::debug!("committed state");
-
         let response = response::Commit {
             data: app_hash.into(),
             // We have to retain blocks until we can support Snapshots.
             retain_height: Default::default(),
         };
         Ok(response)
+    }
+
+    /// List the snapshots available on this node to be served to remote peers.
+    async fn list_snapshots(&self) -> AbciResult<response::ListSnapshots> {
+        if let Some(ref client) = self.snapshots {
+            let snapshots = atomically(|| client.list_snapshots()).await;
+            Ok(to_snapshots(snapshots)?)
+        } else {
+            Ok(Default::default())
+        }
+    }
+
+    /// Load a particular snapshot chunk a remote peer is asking for.
+    async fn load_snapshot_chunk(
+        &self,
+        request: request::LoadSnapshotChunk,
+    ) -> AbciResult<response::LoadSnapshotChunk> {
+        if let Some(ref client) = self.snapshots {
+            if let Some(snapshot) =
+                atomically(|| client.access_snapshot(request.height.value(), request.format)).await
+            {
+                match snapshot.load_chunk(request.chunk) {
+                    Ok(chunk) => {
+                        return Ok(response::LoadSnapshotChunk {
+                            chunk: chunk.into(),
+                        });
+                    }
+                    Err(e) => {
+                        tracing::warn!("failed to load chunk: {e:#}");
+                    }
+                }
+            }
+        }
+        Ok(Default::default())
+    }
+
+    /// Decide whether to start downloading a snapshot from peers.
+    ///
+    /// This method is also called when a download is aborted and a new snapshot is offered,
+    /// so potentially we have to clean up previous resources and start a new one.
+    async fn offer_snapshot(
+        &self,
+        request: request::OfferSnapshot,
+    ) -> AbciResult<response::OfferSnapshot> {
+        if let Some(ref client) = self.snapshots {
+            match from_snapshot(request).context("failed to parse snapshot") {
+                Ok(manifest) => {
+                    tracing::info!(?manifest, "received snapshot offer");
+                    // We can look at the version but currently there's only one.
+                    match atomically_or_err(|| client.offer_snapshot(manifest.clone())).await {
+                        Ok(path) => {
+                            tracing::info!(
+                                download_dir = path.to_string_lossy().to_string(),
+                                height = manifest.block_height,
+                                size = manifest.size,
+                                chunks = manifest.chunks,
+                                "downloading snapshot"
+                            );
+                            return Ok(response::OfferSnapshot::Accept);
+                        }
+                        Err(SnapshotError::IncompatibleVersion(version)) => {
+                            tracing::warn!(version, "rejecting offered snapshot version");
+                            return Ok(response::OfferSnapshot::RejectFormat);
+                        }
+                        Err(e) => {
+                            tracing::error!(error = ?e, "failed to start snapshot download");
+                            return Ok(response::OfferSnapshot::Abort);
+                        }
+                    };
+                }
+                Err(e) => {
+                    tracing::warn!("failed to parse snapshot offer: {e:#}");
+                    return Ok(response::OfferSnapshot::Reject);
+                }
+            }
+        }
+        Ok(Default::default())
+    }
+
+    /// Apply the given snapshot chunk to the application's state.
+    async fn apply_snapshot_chunk(
+        &self,
+        request: request::ApplySnapshotChunk,
+    ) -> AbciResult<response::ApplySnapshotChunk> {
+        tracing::debug!(chunk = request.index, "received snapshot chunk");
+        let default = response::ApplySnapshotChunk::default();
+
+        if let Some(ref client) = self.snapshots {
+            match atomically_or_err(|| {
+                client.save_chunk(request.index, request.chunk.clone().into())
+            })
+            .await
+            {
+                Ok(snapshot) => {
+                    if let Some(snapshot) = snapshot {
+                        tracing::info!(
+                            download_dir = snapshot.snapshot_dir.to_string_lossy().to_string(),
+                            height = snapshot.manifest.block_height,
+                            "received all snapshot chunks",
+                        );
+
+                        // Ideally we would import into some isolated store then validate,
+                        // but for now let's trust that all is well.
+                        if let Err(e) = snapshot.import(self.state_store_clone(), true).await {
+                            tracing::error!(error =? e, "failed to import snapshot");
+                            return Ok(response::ApplySnapshotChunk {
+                                result: response::ApplySnapshotChunkResult::RejectSnapshot,
+                                ..default
+                            });
+                        }
+
+                        tracing::info!(
+                            height = snapshot.manifest.block_height,
+                            "imported snapshot"
+                        );
+
+                        // Now insert the new state into the history.
+                        let mut state = self.committed_state()?;
+                        state.block_height = snapshot.manifest.block_height;
+                        state.state_params = snapshot.manifest.state_params;
+                        self.set_committed_state(state)?;
+
+                        // TODO: We can remove the `current_download` from the STM
+                        // state here which would cause it to get dropped from /tmp,
+                        // but for now let's keep it just in case we need to investigate
+                        // some problem.
+
+                        // We could also move the files into our own snapshot directory
+                        // so that we can offer it to others, but again let's hold on
+                        // until we have done more robust validation.
+                    }
+                    return Ok(response::ApplySnapshotChunk {
+                        result: response::ApplySnapshotChunkResult::Accept,
+                        ..default
+                    });
+                }
+                Err(SnapshotError::UnexpectedChunk(expected, got)) => {
+                    tracing::warn!(got, expected, "unexpected snapshot chunk index");
+                    return Ok(response::ApplySnapshotChunk {
+                        result: response::ApplySnapshotChunkResult::Retry,
+                        refetch_chunks: vec![expected],
+                        ..default
+                    });
+                }
+                Err(SnapshotError::WrongChecksum(expected, got)) => {
+                    tracing::warn!(?got, ?expected, "wrong snapshot checksum");
+                    // We could retry this snapshot, or try another one.
+                    // If we retry, we have to tell which chunks to refetch.
+                    return Ok(response::ApplySnapshotChunk {
+                        result: response::ApplySnapshotChunkResult::RejectSnapshot,
+                        ..default
+                    });
+                }
+                Err(e) => {
+                    tracing::error!(
+                        chunk = request.index,
+                        sender = request.sender,
+                        error = ?e,
+                        "failed to process snapshot chunk"
+                    );
+                }
+            }
+        }
+
+        Ok(default)
     }
 }

@@ -9,7 +9,7 @@ use cid::Cid;
 use futures_core::Stream;
 use fvm::state_tree::StateTree;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_car::{load_car_unchecked, CarHeader};
+use fvm_ipld_car::{load_car, load_car_unchecked, CarHeader};
 use fvm_ipld_encoding::{from_slice, CborStore, DAG_CBOR};
 use libipld::Ipld;
 use serde::{Deserialize, Serialize};
@@ -21,6 +21,7 @@ use tokio_stream::StreamExt;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 pub type BlockHeight = u64;
+pub type SnapshotVersion = u32;
 
 /// Taking snapshot of the current blockchain state
 pub enum Snapshot<BS> {
@@ -39,7 +40,7 @@ type SnapshotStreamer = Box<dyn Send + Unpin + Stream<Item = (Cid, Vec<u8>)>>;
 
 impl<BS> Snapshot<BS>
 where
-    BS: Blockstore + Clone + 'static + Send,
+    BS: Blockstore + 'static + Send,
 {
     pub fn new(
         store: BS,
@@ -53,11 +54,26 @@ where
         )?))
     }
 
+    pub fn version(&self) -> SnapshotVersion {
+        match self {
+            Snapshot::V1(_) => 1,
+        }
+    }
+
     /// Read the snapshot from file and load all the data into the store
-    pub async fn read_car(path: impl AsRef<Path>, store: BS) -> anyhow::Result<Self> {
+    pub async fn read_car(
+        path: impl AsRef<Path>,
+        store: BS,
+        validate: bool,
+    ) -> anyhow::Result<Self> {
         let file = tokio::fs::File::open(path).await?;
 
-        let roots = load_car_unchecked(&store, file.compat()).await?;
+        let roots = if validate {
+            load_car(&store, file.compat()).await?
+        } else {
+            load_car_unchecked(&store, file.compat()).await?
+        };
+
         if roots.len() != 1 {
             return Err(anyhow!("invalid snapshot, should have 1 root cid"));
         }
@@ -131,11 +147,11 @@ pub struct V1Snapshot<BS> {
     block_height: BlockHeight,
 }
 
-type BlockStateParams = (FvmStateParams, BlockHeight);
+pub type BlockStateParams = (FvmStateParams, BlockHeight);
 
 impl<BS> V1Snapshot<BS>
 where
-    BS: Blockstore + Clone + 'static + Send,
+    BS: Blockstore + 'static + Send,
 {
     /// Creates a new V2Snapshot struct. Caller ensure store
     pub fn new(
@@ -186,6 +202,14 @@ where
 
         Ok((root_cid, streamer))
     }
+
+    pub fn block_height(&self) -> BlockHeight {
+        self.block_height
+    }
+
+    pub fn state_params(&self) -> &FvmStateParams {
+        &self.state_params
+    }
 }
 
 #[pin_project::pin_project]
@@ -220,8 +244,15 @@ impl<BS: Blockstore> Stream for StateTreeStreamer<BS> {
 
             match this.bs.get(&cid) {
                 Ok(Some(bytes)) => {
-                    let ipld = from_slice::<Ipld>(&bytes).unwrap();
-                    walk_ipld_cids(ipld, &mut this.dfs);
+                    // Not all data in the blockstore is traversable, e.g.
+                    // Wasm bytecode is inserted as IPLD_RAW here: https://github.com/filecoin-project/builtin-actors-bundler/blob/bf6847b2276ee8e4e17f8336f2eb5ab2fce1d853/src/lib.rs#L54C71-L54C79
+                    if cid.codec() == DAG_CBOR {
+                        // XXX: Is it okay to panic?
+                        let ipld =
+                            from_slice::<Ipld>(&bytes).expect("blocktore stores IPLD encoded data");
+
+                        walk_ipld_cids(ipld, &mut this.dfs);
+                    }
                     return Poll::Ready(Some((cid, bytes)));
                 }
                 Ok(None) => {
@@ -263,8 +294,8 @@ fn derive_cid<T: Serialize>(t: &T) -> anyhow::Result<(Cid, Vec<u8>)> {
 
 #[cfg(test)]
 mod tests {
-    use crate::fvm::state::snapshot::StateTreeStreamer;
-    use crate::fvm::state::{FvmStateParams, Snapshot};
+    use crate::fvm::state::snapshot::{Snapshot, StateTreeStreamer};
+    use crate::fvm::state::FvmStateParams;
     use crate::fvm::store::memory::MemoryBlockstore;
     use crate::fvm::store::ReadOnlyBlockstore;
     use cid::Cid;
@@ -355,7 +386,7 @@ mod tests {
         assert!(r.is_ok());
 
         let new_store = MemoryBlockstore::new();
-        let Snapshot::V1(loaded_snapshot) = Snapshot::read_car(tmp_file.path(), new_store)
+        let Snapshot::V1(loaded_snapshot) = Snapshot::read_car(tmp_file.path(), new_store, true)
             .await
             .unwrap();
 
