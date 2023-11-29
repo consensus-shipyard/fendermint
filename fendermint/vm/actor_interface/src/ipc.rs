@@ -276,7 +276,7 @@ pub mod gateway {
 
     use crate::eam::EthAddress;
 
-    pub const CONTRACT_NAME: &'static str = "GatewayDiamond";
+    pub const CONTRACT_NAME: &str = "GatewayDiamond";
     pub const METHOD_INVOKE_CONTRACT: u64 = crate::evm::Method::InvokeContract as u64;
 
     // Constructor parameters aren't generated as part of the Rust bindings.
@@ -405,7 +405,7 @@ pub mod registry {
 
     type FunctionSelector = [u8; 4];
 
-    pub const CONTRACT_NAME: &'static str = "SubnetRegistryDiamond";
+    pub const CONTRACT_NAME: &str = "SubnetRegistryDiamond";
 
     /// Container type `ConstructorParameters`.
     ///
@@ -426,7 +426,7 @@ pub mod subnet {
     use ipc_actors_abis::gateway_router_facet::GatewayRouterFacetErrors;
     use ipc_actors_abis::subnet_actor_manager_facet::SubnetActorManagerFacetErrors;
 
-    pub const CONTRACT_NAME: &'static str = "SubnetActorDiamond";
+    pub const CONTRACT_NAME: &str = "SubnetActorDiamond";
 
     // The subnet actor has its own errors, but it also invokes the gateway, which might revert for its own reasons.
     revert_errors! {
