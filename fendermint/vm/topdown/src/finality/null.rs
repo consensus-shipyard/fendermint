@@ -441,7 +441,7 @@ mod tests {
             (108, None),
             (109, None),
             (110, Some((vec![4; 32], vec![], vec![]))), // cache latest height
-                                                        // max proposal height is 106
+                                                        // max proposal height is 112
         ];
         let mut provider = new_provider(parent_blocks).await;
         provider.config.max_proposal_range = Some(8);
@@ -462,7 +462,7 @@ mod tests {
             (108, None),
             (109, None),
             (110, Some((vec![10; 32], vec![], vec![]))), // cache latest height
-                                                         // max proposal height is 106
+                                                         // max proposal height is 112
         ];
         let mut provider = new_provider(parent_blocks).await;
         provider.config.max_proposal_range = Some(8);
@@ -483,7 +483,7 @@ mod tests {
             (108, None),
             (109, None),
             (110, Some((vec![10; 32], vec![], vec![]))), // cache latest height
-                                                         // max proposal height is 106
+                                                         // max proposal height is 112
         ];
         let mut provider = new_provider(parent_blocks).await;
         provider.config.max_proposal_range = Some(8);
