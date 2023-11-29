@@ -167,7 +167,9 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
             topdown_config.polling_interval,
             topdown_config.exponential_back_off,
             topdown_config.exponential_retry_limit,
-        );
+        )
+        .with_proposal_delay(topdown_config.proposal_delay)
+        .with_max_proposal_range(topdown_config.max_proposal_range);
         let ipc_provider = Arc::new(create_ipc_provider_proxy(&settings)?);
         let finality_provider =
             CachedFinalityProvider::uninitialized(config.clone(), ipc_provider.clone()).await?;

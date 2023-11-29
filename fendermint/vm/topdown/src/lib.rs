@@ -74,6 +74,16 @@ impl Config {
         }
     }
 
+    pub fn with_max_proposal_range(mut self, max_proposal_range: BlockHeight) -> Self {
+        self.max_proposal_range = Some(max_proposal_range);
+        self
+    }
+
+    pub fn with_proposal_delay(mut self, proposal_delay: BlockHeight) -> Self {
+        self.proposal_delay = Some(proposal_delay);
+        self
+    }
+
     pub fn max_proposal_range(&self) -> BlockHeight {
         self.max_proposal_range
             .unwrap_or(DEFAULT_MAX_PROPOSAL_RANGE)

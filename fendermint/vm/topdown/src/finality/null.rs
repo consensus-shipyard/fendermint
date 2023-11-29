@@ -198,21 +198,25 @@ impl FinalityWithNull {
 
         tracing::debug!(first_non_null_height, candidate_height);
         // an extra layer of delay
-        let r =
+        let maybe_proposal_height =
             self.first_non_null_block_before(first_non_null_height - self.config.proposal_delay())?;
-        tracing::debug!(delayed_height = r, delay = self.config.proposal_delay());
-        if let Some(final_proposal) = r {
+        tracing::debug!(
+            delayed_height = maybe_proposal_height,
+            delay = self.config.proposal_delay()
+        );
+        if let Some(proposal_height) = maybe_proposal_height {
             // this is possible due to delayed execution as the proposed height's data cannot be
             // executed because they have yet to be executed.
-            return if last_committed_height == final_proposal {
+            return if last_committed_height == proposal_height {
                 tracing::debug!(
                     last_committed_height,
-                    final_proposal,
+                    proposal_height,
                     "no new blocks from cache, not proposing"
                 );
                 Ok(None)
             } else {
-                Ok(Some(final_proposal))
+                tracing::debug!(proposal_height, "new proposal height");
+                Ok(Some(proposal_height))
             };
         }
 
