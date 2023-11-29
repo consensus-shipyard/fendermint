@@ -63,9 +63,9 @@ lazy_static! {
                 registry::CONTRACT_NAME,
                 EthContract {
                     actor_id: SUBNETREGISTRY_ACTOR_ID,
-                    abi: ia::subnet_registry::SUBNETREGISTRY_ABI.to_owned(),
-                    // The registry incorporates the SubnetActor facets.
+                    abi: ia::subnet_registry_diamond::SUBNETREGISTRYDIAMOND_ABI.to_owned(),
                     facets: vec![
+                        // The registry incorporates the SubnetActor facets, although these aren't expected differently in the constructor.
                         EthFacet {
                             name: "SubnetActorGetterFacet",
                             abi: ia::subnet_actor_getter_facet::SUBNETACTORGETTERFACET_ABI
@@ -74,6 +74,28 @@ lazy_static! {
                         EthFacet {
                             name: "SubnetActorManagerFacet",
                             abi: ia::subnet_actor_manager_facet::SUBNETACTORMANAGERFACET_ABI
+                                .to_owned(),
+                        },
+                        // The registry has its own facets:
+                        // https://github.com/consensus-shipyard/ipc-solidity-actors/blob/b01a2dffe367745f55111a65536a3f6fea9165f5/scripts/deploy-registry.template.ts#L58-L67
+                        EthFacet {
+                            name: "RegisterSubnetFacet",
+                            abi: ia::register_subnet_facet::REGISTERSUBNETFACET_ABI
+                                .to_owned(),
+                        },
+                        EthFacet {
+                            name: "SubnetGetterFacet",
+                            abi: ia::subnet_getter_facet::SUBNETGETTERFACET_ABI
+                                .to_owned(),
+                        },
+                        EthFacet {
+                            name: "DiamondLoupeFacet",
+                            abi: ia::diamond_loupe_facet::DIAMONDLOUPEFACET_ABI
+                                .to_owned(),
+                        },
+                        EthFacet {
+                            name: "DiamondCutFacet",
+                            abi: ia::diamond_cut_facet::DIAMONDCUTFACET_ABI
                                 .to_owned(),
                         },
                     ],
@@ -378,7 +400,24 @@ pub mod gateway {
 }
 
 pub mod registry {
+    use ethers::contract::{EthAbiCodec, EthAbiType};
+    use ethers::core::types::Address;
+
+    type FunctionSelector = [u8; 4];
+
     pub const CONTRACT_NAME: &'static str = "SubnetRegistryDiamond";
+
+    /// Container type `ConstructorParameters`.
+    ///
+    /// See [SubnetRegistry.sol](https://github.com/consensus-shipyard/ipc-solidity-actors/blob/a830a52b1362f3d2abf2e3cc3db62aa40ee45355/src/SubnetRegistryDiamond.sol#L17-L23)
+    #[derive(Clone, EthAbiType, EthAbiCodec, Default, Debug, PartialEq, Eq, Hash)]
+    pub struct ConstructorParameters {
+        pub gateway: Address,
+        pub getter_facet: Address,
+        pub manager_facet: Address,
+        pub subnet_getter_selectors: Vec<FunctionSelector>,
+        pub subnet_manager_selectors: Vec<FunctionSelector>,
+    }
 }
 
 pub mod subnet {

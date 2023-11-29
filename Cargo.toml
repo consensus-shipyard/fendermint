@@ -150,9 +150,9 @@ merkle-tree-rs = { git = "https://github.com/consensus-shipyard/merkle-tree-rs.g
 
 
 # Uncomment to point to your local versions
-# [patch."https://github.com/consensus-shipyard/ipc"]
-# ipc-sdk = { path = "../ipc/ipc/sdk" }
-# ipc-provider = { path = "../ipc/ipc/provider" }
+[patch."https://github.com/consensus-shipyard/ipc"]
+ipc-sdk = { path = "../ipc/ipc/sdk" }
+ipc-provider = { path = "../ipc/ipc/provider" }
 
-# [patch."https://github.com/consensus-shipyard/ipc-solidity-actors.git"]
-# ipc_actors_abis = { path = "../ipc-solidity-actors/binding" }
+[patch."https://github.com/consensus-shipyard/ipc-solidity-actors.git"]
+ipc_actors_abis = { path = "../ipc-solidity-actors/binding" }

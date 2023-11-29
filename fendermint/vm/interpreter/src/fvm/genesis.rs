@@ -292,25 +292,29 @@ where
 
             // IPC SubnetRegistry actory.
             {
+                use ipc::registry::ConstructorParameters;
+
                 let mut facets = deployer
                     .facets(ipc::registry::CONTRACT_NAME)
                     .context("failed to collect registry facets")?;
 
-                let manager_facet = facets.remove(1);
                 let getter_facet = facets.remove(0);
+                let manager_facet = facets.remove(0);
 
-                debug_assert!(facets.is_empty(), "SubnetRegistry has 2 facets");
+                debug_assert_eq!(facets.len(), 4, "SubnetRegistry has 4 facets of its own");
+
+                let params = ConstructorParameters {
+                    gateway: gateway_addr,
+                    getter_facet: getter_facet.facet_address,
+                    manager_facet: manager_facet.facet_address,
+                    subnet_getter_selectors: getter_facet.function_selectors,
+                    subnet_manager_selectors: manager_facet.function_selectors,
+                };
 
                 deployer.deploy_contract(
                     &mut state,
                     ipc::registry::CONTRACT_NAME,
-                    (
-                        gateway_addr,
-                        getter_facet.facet_address,
-                        manager_facet.facet_address,
-                        getter_facet.function_selectors,
-                        manager_facet.function_selectors,
-                    ),
+                    (facets, params),
                 )?;
             };
         }
