@@ -89,7 +89,7 @@ where
                 chain_head,
                 "reorg detected from height"
             );
-            return self.reset_cache().await;
+            return self.reset().await;
         }
 
         if !self.has_new_blocks(chain_head) {
@@ -104,6 +104,14 @@ where
 
         self.poll_next().await?;
 
+        Ok(())
+    }
+
+    /// Reset the cache in the face of a reorg
+    pub async fn reset(&mut self) -> anyhow::Result<()> {
+        let finality = query_starting_finality(&self.query, &self.parent_proxy).await?;
+        atomically(|| self.provider.reset(finality.clone())).await;
+        self.sync_pointers.reset(finality.height);
         Ok(())
     }
 }
@@ -281,13 +289,6 @@ where
         Ok(Some(
             parent_chain_head_height - self.config.chain_head_delay,
         ))
-    }
-
-    /// Reset the cache in the face of a reorg
-    async fn reset_cache(&self) -> anyhow::Result<()> {
-        let finality = query_starting_finality(&self.query, &self.parent_proxy).await?;
-        atomically(|| self.provider.reset(finality.clone())).await;
-        Ok(())
     }
 }
 

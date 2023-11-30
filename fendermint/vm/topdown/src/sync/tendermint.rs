@@ -29,6 +29,7 @@ where
     pub async fn sync(&mut self) -> anyhow::Result<()> {
         if self.is_syncing_peer().await? {
             tracing::debug!("syncing with peer, skip parent finality syncing this round");
+            self.inner.reset().await?;
             return Ok(());
         }
         self.inner.sync().await

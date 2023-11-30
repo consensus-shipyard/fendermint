@@ -31,6 +31,11 @@ impl SyncPointers {
     pub fn set_tail(&mut self, height: BlockHeight, hash: BlockHash) {
         self.tail = Some((height, hash));
     }
+
+    pub fn reset(&mut self, head: BlockHeight) {
+        self.tail = None;
+        self.head = head;
+    }
 }
 
 impl Display for SyncPointers {
