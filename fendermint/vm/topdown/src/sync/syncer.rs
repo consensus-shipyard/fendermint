@@ -102,7 +102,14 @@ where
             return Ok(());
         }
 
-        self.poll_next().await?;
+        match self.poll_next().await {
+            Ok(_) => {}
+            Err(Error::ParentChainReorgDetected) => {
+                tracing::warn!("potential reorg detected, clear cache and retry");
+                self.reset().await?;
+            }
+            Err(e) => return Err(anyhow!(e)),
+        }
 
         Ok(())
     }
