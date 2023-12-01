@@ -13,6 +13,7 @@ use fvm::{
     state_tree::StateTree,
     DefaultKernel,
 };
+use fvm::kernel::filecoin::DefaultFilecoinKernel;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{
@@ -84,7 +85,7 @@ where
     DB: Blockstore + 'static,
 {
     executor:
-        DefaultExecutor<DefaultKernel<DefaultCallManager<DefaultMachine<DB, FendermintExterns>>>>,
+        DefaultExecutor<DefaultFilecoinKernel<DefaultKernel<DefaultCallManager<DefaultMachine<DB, FendermintExterns>>>>>,
 
     /// Hash of the block currently being executed. For queries and checks this is empty.
     ///
