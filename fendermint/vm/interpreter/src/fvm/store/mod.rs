@@ -1,8 +1,8 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 use cid::Cid;
-use fvm_shared::EMPTY_ARR_CID;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_shared::EMPTY_ARR_CID;
 
 pub mod memory;
 

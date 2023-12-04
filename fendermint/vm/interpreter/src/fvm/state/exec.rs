@@ -1,10 +1,9 @@
 // Copyright 2022-2023 Protocol Labs
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::collections::{HashMap, HashSet};
-
 use cid::Cid;
 use fendermint_vm_genesis::PowerScale;
+use fvm::kernel::filecoin::DefaultFilecoinKernel;
 use fvm::{
     call_manager::DefaultCallManager,
     engine::MultiEngine,
@@ -13,7 +12,6 @@ use fvm::{
     state_tree::StateTree,
     DefaultKernel,
 };
-use fvm::kernel::filecoin::DefaultFilecoinKernel;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{
@@ -22,6 +20,7 @@ use fvm_shared::{
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use std::collections::{HashMap, HashSet};
 
 use crate::fvm::externs::FendermintExterns;
 use fendermint_vm_core::{chainid::HasChainID, Timestamp};
@@ -84,8 +83,11 @@ pub struct FvmExecState<DB>
 where
     DB: Blockstore + 'static,
 {
-    executor:
-        DefaultExecutor<DefaultFilecoinKernel<DefaultKernel<DefaultCallManager<DefaultMachine<DB, FendermintExterns>>>>>,
+    executor: DefaultExecutor<
+        DefaultFilecoinKernel<
+            DefaultKernel<DefaultCallManager<DefaultMachine<DB, FendermintExterns>>>,
+        >,
+    >,
 
     /// Hash of the block currently being executed. For queries and checks this is empty.
     ///
