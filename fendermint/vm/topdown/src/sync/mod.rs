@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 //! A constant running process that fetch or listener to parent state
 
-mod pointers;
 mod syncer;
 mod tendermint;
 
@@ -155,9 +154,7 @@ where
         let mut interval = tokio::time::interval(config.polling_interval);
 
         tokio::spawn(async move {
-            let lotus_syncer = LotusParentSyncer::new(config, parent_client, provider, query)
-                .await
-                .expect("");
+            let lotus_syncer = LotusParentSyncer::new(config, parent_client, provider, query);
             let mut tendermint_syncer = TendermintAwareSyncer::new(lotus_syncer, tendermint_client);
 
             loop {

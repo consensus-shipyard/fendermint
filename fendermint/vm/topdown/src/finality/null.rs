@@ -145,20 +145,25 @@ impl FinalityWithNull {
     /// Get the latest height tracked in the provider, includes both cache and last committed finality
     pub(crate) fn latest_height(&self) -> Stm<Option<BlockHeight>> {
         let h = if let Some(h) = self.latest_height_in_cache()? {
+            tracing::debug!(height = h, "latest height found in cache");
             h
         } else if let Some(p) = self.last_committed_finality()? {
+            tracing::debug!(
+                height = p.height,
+                "no cache, use previous last committed finality"
+            );
             p.height
         } else {
             return Ok(None);
         };
         Ok(Some(h))
     }
-}
 
-/// All the private functions
-impl FinalityWithNull {
-    /// Get the first non-null block in the range [start, end].
-    fn first_non_null_block_before(&self, height: BlockHeight) -> Stm<Option<BlockHeight>> {
+    /// Get the first non-null block in the range of earliest cache block till the height specified.
+    pub(crate) fn first_non_null_block_before(
+        &self,
+        height: BlockHeight,
+    ) -> Stm<Option<BlockHeight>> {
         let cache = self.cached_data.read()?;
         Ok(cache.lower_bound().and_then(|lower_bound| {
             for h in (lower_bound..height).rev() {
@@ -169,7 +174,10 @@ impl FinalityWithNull {
             None
         }))
     }
+}
 
+/// All the private functions
+impl FinalityWithNull {
     fn propose_next_height(&self) -> Stm<Option<BlockHeight>> {
         let latest_height = if let Some(h) = self.latest_height_in_cache()? {
             h
