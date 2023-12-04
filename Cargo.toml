@@ -99,6 +99,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 # they are 0.x cargo cannot upgrade them automatically, which leads to version conflicts.
 fvm = {  git = "https://github.com/filecoin-project/ref-fvm", branch = "upgrade-fvm", default-features = false }
 fvm_shared = {  git = "https://github.com/filecoin-project/ref-fvm", branch = "upgrade-fvm", features = ["crypto"] }
+fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm.git", branch = "upgrade-fvm" }
 primitives = { git = "https://github.com/consensus-shipyard/fvm-utils", branch = "upgrade-fvm-workspace" }
 
 fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm", branch = "upgrade-fvm" }

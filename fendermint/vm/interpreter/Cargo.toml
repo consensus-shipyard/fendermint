@@ -23,6 +23,9 @@ ipc_actors_abis = { workspace = true }
 
 ipc-sdk = { workspace = true }
 
+ambassador = "0.3.5"
+multihash = { version = "0.18.1", default-features = false }
+
 async-trait = { workspace = true }
 async-stm = { workspace = true }
 anyhow = { workspace = true }
@@ -39,6 +42,7 @@ thiserror = { workspace = true }
 
 cid = { workspace = true }
 fvm = { workspace = true }
+fvm_sdk = { workspace = true }
 fvm_shared = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
@@ -63,3 +67,9 @@ fendermint_vm_genesis = { path = "../genesis", features = ["arb"] }
 [features]
 default = []
 bundle = []
+
+[dependencies.wasmtime]
+version = "12.0.2"
+default-features = false
+features = ["cranelift", "pooling-allocator", "parallel-compilation"]
+

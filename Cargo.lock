@@ -3226,6 +3226,7 @@ dependencies = [
  "fvm_ipld_blockstore 0.2.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "fvm_ipld_car",
  "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_sdk 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "hex",
  "ipc-sdk",
@@ -3825,7 +3826,7 @@ dependencies = [
 [[package]]
 name = "fvm"
 version = "4.0.0"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#e5a08066a58330267915a7ab62bf1fd3a76fad8c"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#bfc7e4d51f20756fdda015a0c43b088a7052e397"
 dependencies = [
  "ambassador",
  "anyhow",
@@ -3893,7 +3894,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_amt"
 version = "0.6.2"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#e5a08066a58330267915a7ab62bf1fd3a76fad8c"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#bfc7e4d51f20756fdda015a0c43b088a7052e397"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
@@ -3931,7 +3932,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_blockstore"
 version = "0.2.0"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#e5a08066a58330267915a7ab62bf1fd3a76fad8c"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#bfc7e4d51f20756fdda015a0c43b088a7052e397"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
@@ -3941,7 +3942,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_car"
 version = "0.7.1"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#e5a08066a58330267915a7ab62bf1fd3a76fad8c"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#bfc7e4d51f20756fdda015a0c43b088a7052e397"
 dependencies = [
  "cid 0.10.1",
  "futures",
@@ -3972,7 +3973,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_encoding"
 version = "0.4.0"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#e5a08066a58330267915a7ab62bf1fd3a76fad8c"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#bfc7e4d51f20756fdda015a0c43b088a7052e397"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
@@ -4008,7 +4009,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_hamt"
 version = "0.9.0"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#e5a08066a58330267915a7ab62bf1fd3a76fad8c"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#bfc7e4d51f20756fdda015a0c43b088a7052e397"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -4043,7 +4044,7 @@ dependencies = [
 [[package]]
 name = "fvm_sdk"
 version = "4.0.0"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#e5a08066a58330267915a7ab62bf1fd3a76fad8c"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#bfc7e4d51f20756fdda015a0c43b088a7052e397"
 dependencies = [
  "byteorder",
  "cid 0.10.1",
@@ -4083,7 +4084,7 @@ dependencies = [
 [[package]]
 name = "fvm_shared"
 version = "4.0.0"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#e5a08066a58330267915a7ab62bf1fd3a76fad8c"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#bfc7e4d51f20756fdda015a0c43b088a7052e397"
 dependencies = [
  "anyhow",
  "arbitrary",
