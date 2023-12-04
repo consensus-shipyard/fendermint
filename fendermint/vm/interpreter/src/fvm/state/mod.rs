@@ -6,6 +6,7 @@ mod exec;
 pub mod fevm;
 mod genesis;
 pub mod ipc;
+pub mod mycustomkernel;
 mod query;
 pub mod snapshot;
 
