@@ -3,7 +3,6 @@
 
 use cid::Cid;
 use fendermint_vm_genesis::PowerScale;
-use fvm::kernel::filecoin::DefaultFilecoinKernel;
 use fvm::{
     call_manager::DefaultCallManager,
     engine::MultiEngine,
@@ -78,13 +77,15 @@ pub struct FvmUpdatableParams {
 
 pub type MachineBlockstore<DB> = <DefaultMachine<DB, FendermintExterns> as Machine>::Blockstore;
 
+use crate::fvm::state::mycustomkernel::DefaultCustomKernel;
+
 /// A state we create for the execution of all the messages in a block.
 pub struct FvmExecState<DB>
 where
     DB: Blockstore + 'static,
 {
     executor: DefaultExecutor<
-        DefaultFilecoinKernel<
+        DefaultCustomKernel<
             DefaultKernel<DefaultCallManager<DefaultMachine<DB, FendermintExterns>>>,
         >,
     >,
