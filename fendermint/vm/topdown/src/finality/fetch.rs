@@ -234,8 +234,8 @@ impl<T> CachedFinalityProvider<T> {
         self.inner.cached_blocks()
     }
 
-    pub fn first_non_null_block_before(&self, height: BlockHeight) -> Stm<Option<BlockHeight>> {
-        self.inner.first_non_null_block_before(height)
+    pub fn first_non_null_block(&self, height: BlockHeight) -> Stm<Option<BlockHeight>> {
+        self.inner.first_non_null_block(height)
     }
 }
 

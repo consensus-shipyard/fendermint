@@ -124,7 +124,7 @@ impl<P> Toggle<CachedFinalityProvider<P>> {
         self.perform_or_else(|p| p.cached_blocks(), BlockHeight::MAX)
     }
 
-    pub fn first_non_null_block_before(&self, height: BlockHeight) -> Stm<Option<BlockHeight>> {
-        self.perform_or_else(|p| p.first_non_null_block_before(height), None)
+    pub fn first_non_null_block(&self, height: BlockHeight) -> Stm<Option<BlockHeight>> {
+        self.perform_or_else(|p| p.first_non_null_block(height), None)
     }
 }

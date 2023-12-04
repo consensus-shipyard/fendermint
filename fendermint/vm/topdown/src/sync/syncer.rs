@@ -120,13 +120,19 @@ where
                 unreachable!("guaranteed to have last committed finality, report bug please")
             };
 
+            // first try to get the first non null block before latest_height + 1, i.e. from cache
             let prev_non_null_height =
-                if let Some(h) = self.provider.first_non_null_block_before(latest_height)? {
-                    h
+                if let Some(height) = self.provider.first_non_null_block(latest_height)? {
+                    tracing::debug!(height, "first non null block in cache");
+                    height
+                } else if let Some(p) = self.provider.last_committed_finality()? {
+                    tracing::debug!(
+                        height = p.height,
+                        "first non null block not in cache, use latest finality"
+                    );
+                    p.height
                 } else {
-                    // guaranteed to have non null parent height because it's guaranteed to have
-                    // last committed finality
-                    unreachable!("guaranteed to have non null parent height, report bug please")
+                    unreachable!("guaranteed to have last committed finality, report bug please")
                 };
 
             let hash = if let Some(h) = self.provider.block_hash(prev_non_null_height)? {
@@ -387,36 +393,18 @@ mod tests {
             101 => Some(vec![1; 32]),
             102 => Some(vec![2; 32]),
             103 => Some(vec![3; 32]),
-            104 => Some(vec![4; 32]),
-            105 => Some(vec![5; 32])    // chain head
+            104 => Some(vec![4; 32]),   // after chain head delay, we fetch only to here
+            105 => Some(vec![5; 32]),
+            106 => Some(vec![6; 32])    // chain head
         );
 
         let mut syncer = new_syncer(parent_blocks).await;
 
-        assert_eq!(syncer.sync_pointers.head(), 100);
-        assert_eq!(syncer.sync_pointers.tail(), None);
-
-        // sync block 101, which is a non-null block
-        let r = syncer.sync().await;
-        assert!(r.is_ok());
-        assert_eq!(syncer.sync_pointers.head(), 101);
-        assert_eq!(syncer.sync_pointers.tail(), Some((101, vec![1; 32])));
-        // latest height is None as we are yet to confirm block 101, so latest height should equal
-        // to the last committed finality initialized, which is the genesis block 100
-        assert_eq!(
-            atomically(|| syncer.provider.latest_height()).await,
-            Some(100)
-        );
-
-        // sync block 101, which is a non-null block
-        let r = syncer.sync().await;
-        assert!(r.is_ok());
-        assert_eq!(syncer.sync_pointers.head(), 102);
-        assert_eq!(syncer.sync_pointers.tail(), Some((102, vec![2; 32])));
-        assert_eq!(
-            atomically(|| syncer.provider.latest_height()).await,
-            Some(101)
-        );
+        for h in 101..=104 {
+            syncer.sync().await.unwrap();
+            let p = atomically(|| syncer.provider.latest_height()).await;
+            assert_eq!(p, Some(h));
+        }
     }
 
     #[tokio::test]
@@ -438,45 +426,13 @@ mod tests {
 
         let mut syncer = new_syncer(parent_blocks).await;
 
-        assert_eq!(syncer.sync_pointers.head(), 100);
-        assert_eq!(syncer.sync_pointers.tail(), None);
-
         // sync block 101 to 103, which are null blocks
-        for h in 101..=103 {
-            let r = syncer.sync().await;
-            assert!(r.is_ok());
-            assert_eq!(syncer.sync_pointers.head(), h);
-            assert_eq!(syncer.sync_pointers.tail(), None);
+        for h in 101..=109 {
+            syncer.sync().await.unwrap();
+            assert_eq!(
+                atomically(|| syncer.provider.latest_height()).await,
+                Some(h)
+            );
         }
-
-        // sync block 104, which is a non-null block
-        syncer.sync().await.unwrap();
-        assert_eq!(syncer.sync_pointers.head(), 104);
-        assert_eq!(syncer.sync_pointers.tail(), Some((104, vec![4; 32])));
-        // latest height is None as we are yet to confirm block 104, so latest height should equal
-        // to the last committed finality initialized, which is the genesis block 100
-        assert_eq!(
-            atomically(|| syncer.provider.latest_height()).await,
-            Some(100)
-        );
-
-        // sync block 105 to 107, which are null blocks
-        for h in 105..=107 {
-            let r = syncer.sync().await;
-            assert!(r.is_ok());
-            assert_eq!(syncer.sync_pointers.head(), h);
-            assert_eq!(syncer.sync_pointers.tail(), Some((104, vec![4; 32])));
-        }
-
-        // sync block 108, which is a non-null block
-        syncer.sync().await.unwrap();
-        assert_eq!(syncer.sync_pointers.head(), 108);
-        assert_eq!(syncer.sync_pointers.tail(), Some((108, vec![5; 32])));
-        // latest height is None as we are yet to confirm block 108, so latest height should equal
-        // to the previous confirmed block, which is 104
-        assert_eq!(
-            atomically(|| syncer.provider.latest_height()).await,
-            Some(104)
-        );
     }
 }
