@@ -1448,8 +1448,8 @@ dependencies = [
  "fendermint_vm_interpreter",
  "fendermint_vm_message",
  "fvm",
- "fvm_ipld_blockstore 0.2.0",
- "fvm_shared 4.0.0",
+ "fvm_ipld_blockstore 0.2.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "hex",
  "ipc-sdk",
  "ipc_actors_abis",
@@ -2906,10 +2906,10 @@ dependencies = [
  "fendermint_vm_snapshot",
  "fendermint_vm_topdown",
  "fvm",
- "fvm_ipld_blockstore 0.2.0",
+ "fvm_ipld_blockstore 0.2.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "fvm_ipld_car",
- "fvm_ipld_encoding 0.4.0",
- "fvm_shared 4.0.0",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "hex",
  "ipc-provider",
  "ipc-sdk",
@@ -2949,8 +2949,8 @@ dependencies = [
  "cid 0.10.1",
  "clap 4.4.10",
  "fendermint_vm_actor_interface",
- "fvm_ipld_encoding 0.4.0",
- "fvm_shared 4.0.0",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "hex",
  "ipc-sdk",
  "num-traits",
@@ -2969,8 +2969,8 @@ dependencies = [
  "dirs",
  "fendermint_vm_encoding",
  "fendermint_vm_topdown",
- "fvm_ipld_encoding 0.4.0",
- "fvm_shared 4.0.0",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "ipc-provider",
  "ipc-sdk",
  "multiaddr 0.16.0",
@@ -3006,8 +3006,8 @@ dependencies = [
  "fendermint_vm_actor_interface",
  "fendermint_vm_message",
  "futures",
- "fvm_ipld_encoding 0.4.0",
- "fvm_shared 4.0.0",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "hex",
  "jsonrpc-v2",
  "lazy_static",
@@ -3044,8 +3044,8 @@ dependencies = [
  "anyhow",
  "cid 0.10.1",
  "fendermint_storage",
- "fvm_ipld_blockstore 0.2.0",
- "fvm_ipld_encoding 0.4.0",
+ "fvm_ipld_blockstore 0.2.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "num_cpus",
  "quickcheck",
  "rocksdb",
@@ -3069,8 +3069,8 @@ dependencies = [
  "fendermint_vm_actor_interface",
  "fendermint_vm_genesis",
  "fendermint_vm_message",
- "fvm_ipld_encoding 0.4.0",
- "fvm_shared 4.0.0",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "hex",
  "lazy_static",
  "prost",
@@ -3088,7 +3088,7 @@ dependencies = [
 name = "fendermint_storage"
 version = "0.1.0"
 dependencies = [
- "fvm_ipld_encoding 0.4.0",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "im",
  "quickcheck",
  "quickcheck_macros",
@@ -3105,8 +3105,8 @@ dependencies = [
  "cid 0.10.1",
  "ethers",
  "fendermint_testing",
- "fvm_ipld_encoding 0.4.0",
- "fvm_shared 4.0.0",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "hex",
  "ipc-sdk",
  "lazy_static",
@@ -3128,10 +3128,10 @@ dependencies = [
  "fendermint_crypto",
  "fendermint_vm_genesis",
  "fil_actors_evm_shared",
- "fvm_ipld_blockstore 0.2.0",
- "fvm_ipld_encoding 0.4.0",
+ "fvm_ipld_blockstore 0.2.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "fvm_ipld_hamt 0.9.0",
- "fvm_shared 4.0.0",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "hex",
  "ipc-sdk",
  "ipc_actors_abis",
@@ -3153,7 +3153,7 @@ dependencies = [
  "arbitrary",
  "cid 0.10.1",
  "fnv",
- "fvm_shared 4.0.0",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "lazy_static",
  "quickcheck",
  "quickcheck_macros",
@@ -3167,7 +3167,7 @@ name = "fendermint_vm_encoding"
 version = "0.1.0"
 dependencies = [
  "cid 0.10.1",
- "fvm_shared 4.0.0",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "ipc-sdk",
  "num-traits",
  "serde",
@@ -3186,8 +3186,8 @@ dependencies = [
  "fendermint_vm_core",
  "fendermint_vm_encoding",
  "fendermint_vm_genesis",
- "fvm_ipld_encoding 0.4.0",
- "fvm_shared 4.0.0",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "hex",
  "ipc-sdk",
  "num-traits",
@@ -3204,6 +3204,7 @@ dependencies = [
 name = "fendermint_vm_interpreter"
 version = "0.1.0"
 dependencies = [
+ "ambassador",
  "anyhow",
  "async-stm",
  "async-trait",
@@ -3222,14 +3223,15 @@ dependencies = [
  "futures-core",
  "futures-util",
  "fvm",
- "fvm_ipld_blockstore 0.2.0",
+ "fvm_ipld_blockstore 0.2.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "fvm_ipld_car",
- "fvm_ipld_encoding 0.4.0",
- "fvm_shared 4.0.0",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "hex",
  "ipc-sdk",
  "ipc_actors_abis",
  "libipld",
+ "multihash 0.18.1",
  "num-traits",
  "pin-project",
  "quickcheck",
@@ -3245,6 +3247,7 @@ dependencies = [
  "tokio-stream",
  "tokio-util 0.7.10",
  "tracing",
+ "wasmtime",
 ]
 
 [[package]]
@@ -3262,8 +3265,8 @@ dependencies = [
  "fendermint_vm_actor_interface",
  "fendermint_vm_encoding",
  "fendermint_vm_message",
- "fvm_ipld_encoding 0.4.0",
- "fvm_shared 4.0.0",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "hex",
  "ipc-sdk",
  "lazy_static",
@@ -3305,10 +3308,10 @@ dependencies = [
  "fendermint_vm_snapshot",
  "futures",
  "fvm",
- "fvm_ipld_blockstore 0.2.0",
+ "fvm_ipld_blockstore 0.2.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "fvm_ipld_car",
- "fvm_ipld_encoding 0.4.0",
- "fvm_shared 4.0.0",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "im",
  "multihash 0.18.1",
  "quickcheck",
@@ -3334,8 +3337,8 @@ dependencies = [
  "cid 0.10.1",
  "clap 4.4.10",
  "ethers",
- "fvm_ipld_encoding 0.4.0",
- "fvm_shared 4.0.0",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "ipc-provider",
  "ipc-sdk",
  "ipc_actors_abis",
@@ -3401,12 +3404,12 @@ dependencies = [
  "castaway",
  "cid 0.10.1",
  "frc42_dispatch",
- "fvm_ipld_amt 0.6.2",
- "fvm_ipld_blockstore 0.2.0",
- "fvm_ipld_encoding 0.4.0",
+ "fvm_ipld_amt 0.6.2 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_ipld_blockstore 0.2.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "fvm_ipld_hamt 0.9.0",
- "fvm_sdk 4.0.0",
- "fvm_shared 4.0.0",
+ "fvm_sdk 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "getrandom 0.2.11",
  "indexmap 1.9.3",
  "integer-encoding",
@@ -3821,6 +3824,7 @@ dependencies = [
 [[package]]
 name = "fvm"
 version = "4.0.0"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#e5a08066a58330267915a7ab62bf1fd3a76fad8c"
 dependencies = [
  "ambassador",
  "anyhow",
@@ -3831,11 +3835,11 @@ dependencies = [
  "derive_more",
  "filecoin-proofs-api",
  "fvm-wasm-instrument",
- "fvm_ipld_amt 0.6.2",
- "fvm_ipld_blockstore 0.2.0",
- "fvm_ipld_encoding 0.4.0",
+ "fvm_ipld_amt 0.6.2 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_ipld_blockstore 0.2.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "fvm_ipld_hamt 0.9.0",
- "fvm_shared 4.0.0",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "lazy_static",
  "log",
  "minstant",
@@ -3872,11 +3876,13 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_amt"
 version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fea333475130094f27ce67809aae3f69eb5247541d835950b7c5da733dbbb34"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
- "fvm_ipld_blockstore 0.2.0",
- "fvm_ipld_encoding 0.4.0",
+ "fvm_ipld_blockstore 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "fvm_ipld_encoding 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "itertools 0.11.0",
  "once_cell",
  "serde",
@@ -3886,13 +3892,12 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_amt"
 version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fea333475130094f27ce67809aae3f69eb5247541d835950b7c5da733dbbb34"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#e5a08066a58330267915a7ab62bf1fd3a76fad8c"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
- "fvm_ipld_blockstore 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "fvm_ipld_encoding 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "fvm_ipld_blockstore 0.2.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "itertools 0.11.0",
  "once_cell",
  "serde",
@@ -3914,15 +3919,6 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_blockstore"
 version = "0.2.0"
-dependencies = [
- "anyhow",
- "cid 0.10.1",
- "multihash 0.18.1",
-]
-
-[[package]]
-name = "fvm_ipld_blockstore"
-version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "417f52f6915b9f9a68de8462e1cf46f14a2c16420f484b8d2066873de2ffe420"
 dependencies = [
@@ -3932,31 +3928,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "fvm_ipld_car"
-version = "0.7.1"
-dependencies = [
- "cid 0.10.1",
- "futures",
- "fvm_ipld_blockstore 0.2.0",
- "fvm_ipld_encoding 0.4.0",
- "serde",
- "thiserror",
- "unsigned-varint",
-]
-
-[[package]]
-name = "fvm_ipld_encoding"
-version = "0.4.0"
+name = "fvm_ipld_blockstore"
+version = "0.2.0"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#e5a08066a58330267915a7ab62bf1fd3a76fad8c"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
- "fvm_ipld_blockstore 0.2.0",
  "multihash 0.18.1",
+]
+
+[[package]]
+name = "fvm_ipld_car"
+version = "0.7.1"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#e5a08066a58330267915a7ab62bf1fd3a76fad8c"
+dependencies = [
+ "cid 0.10.1",
+ "futures",
+ "fvm_ipld_blockstore 0.2.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "serde",
- "serde_ipld_dagcbor 0.4.2",
- "serde_repr",
- "serde_tuple",
  "thiserror",
+ "unsigned-varint",
 ]
 
 [[package]]
@@ -3968,6 +3960,22 @@ dependencies = [
  "anyhow",
  "cid 0.10.1",
  "fvm_ipld_blockstore 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "multihash 0.18.1",
+ "serde",
+ "serde_ipld_dagcbor 0.4.2",
+ "serde_repr",
+ "serde_tuple",
+ "thiserror",
+]
+
+[[package]]
+name = "fvm_ipld_encoding"
+version = "0.4.0"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#e5a08066a58330267915a7ab62bf1fd3a76fad8c"
+dependencies = [
+ "anyhow",
+ "cid 0.10.1",
+ "fvm_ipld_blockstore 0.2.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "multihash 0.18.1",
  "serde",
  "serde_ipld_dagcbor 0.4.2",
@@ -3999,32 +4007,19 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_hamt"
 version = "0.9.0"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#e5a08066a58330267915a7ab62bf1fd3a76fad8c"
 dependencies = [
  "anyhow",
  "byteorder",
  "cid 0.10.1",
  "forest_hash_utils",
- "fvm_ipld_blockstore 0.2.0",
- "fvm_ipld_encoding 0.4.0",
+ "fvm_ipld_blockstore 0.2.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "libipld-core",
  "multihash 0.18.1",
  "once_cell",
  "serde",
  "sha2 0.10.8",
- "thiserror",
-]
-
-[[package]]
-name = "fvm_sdk"
-version = "4.0.0"
-dependencies = [
- "byteorder",
- "cid 0.10.1",
- "fvm_ipld_encoding 0.4.0",
- "fvm_shared 4.0.0",
- "lazy_static",
- "log",
- "num-traits",
  "thiserror",
 ]
 
@@ -4045,31 +4040,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "fvm_shared"
+name = "fvm_sdk"
 version = "4.0.0"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#e5a08066a58330267915a7ab62bf1fd3a76fad8c"
 dependencies = [
- "anyhow",
- "arbitrary",
- "bitflags 2.4.1",
- "blake2b_simd",
- "bls-signatures 0.15.0",
+ "byteorder",
  "cid 0.10.1",
- "data-encoding",
- "data-encoding-macro",
- "filecoin-proofs-api",
- "fvm_ipld_encoding 0.4.0",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "lazy_static",
- "libsecp256k1",
- "multihash 0.18.1",
- "num-bigint",
- "num-derive 0.4.1",
- "num-integer",
+ "log",
  "num-traits",
- "quickcheck",
- "serde",
- "serde_tuple",
  "thiserror",
- "unsigned-varint",
 ]
 
 [[package]]
@@ -4091,6 +4073,35 @@ dependencies = [
  "num-derive 0.4.1",
  "num-integer",
  "num-traits",
+ "serde",
+ "serde_tuple",
+ "thiserror",
+ "unsigned-varint",
+]
+
+[[package]]
+name = "fvm_shared"
+version = "4.0.0"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm#e5a08066a58330267915a7ab62bf1fd3a76fad8c"
+dependencies = [
+ "anyhow",
+ "arbitrary",
+ "bitflags 2.4.1",
+ "blake2b_simd",
+ "bls-signatures 0.15.0",
+ "cid 0.10.1",
+ "data-encoding",
+ "data-encoding-macro",
+ "filecoin-proofs-api",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "lazy_static",
+ "libsecp256k1",
+ "multihash 0.18.1",
+ "num-bigint",
+ "num-derive 0.4.1",
+ "num-integer",
+ "num-traits",
+ "quickcheck",
  "serde",
  "serde_tuple",
  "thiserror",
@@ -4799,7 +4810,7 @@ dependencies = [
  "blake2b_simd",
  "bls-signatures 0.13.1",
  "ethers",
- "fvm_shared 4.0.0",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "hex",
  "libc",
  "libsecp256k1",
@@ -4829,8 +4840,8 @@ dependencies = [
  "ethers-contract",
  "fil_actors_runtime 0.0.1",
  "futures-util",
- "fvm_ipld_encoding 0.4.0",
- "fvm_shared 4.0.0",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "hex",
  "ipc-identity",
  "ipc-sdk",
@@ -4861,10 +4872,10 @@ dependencies = [
  "cid 0.10.1",
  "ethers",
  "fnv",
- "fvm_ipld_blockstore 0.2.0",
- "fvm_ipld_encoding 0.4.0",
+ "fvm_ipld_blockstore 0.2.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "fvm_ipld_hamt 0.9.0",
- "fvm_shared 4.0.0",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "integer-encoding",
  "ipc_actors_abis",
  "lazy_static",
@@ -4882,7 +4893,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "ethers",
- "fvm_shared 4.0.0",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
 ]
 
 [[package]]
@@ -4893,9 +4904,9 @@ dependencies = [
  "base64 0.21.5",
  "blake2b_simd",
  "bloom",
- "fvm_ipld_blockstore 0.2.0",
- "fvm_ipld_encoding 0.4.0",
- "fvm_shared 4.0.0",
+ "fvm_ipld_blockstore 0.2.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "gcra",
  "ipc-sdk",
  "lazy_static",
@@ -7144,10 +7155,10 @@ dependencies = [
  "anyhow",
  "cid 0.10.1",
  "fil_actors_runtime 0.0.1",
- "fvm_ipld_blockstore 0.2.0",
- "fvm_ipld_encoding 0.4.0",
+ "fvm_ipld_blockstore 0.2.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
+ "fvm_ipld_encoding 0.4.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "fvm_ipld_hamt 0.9.0",
- "fvm_shared 4.0.0",
+ "fvm_shared 4.0.0 (git+https://github.com/filecoin-project/ref-fvm?branch=upgrade-fvm)",
  "hex",
  "indexmap 1.9.3",
  "integer-encoding",
