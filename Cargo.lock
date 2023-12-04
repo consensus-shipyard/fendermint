@@ -3397,7 +3397,7 @@ dependencies = [
 [[package]]
 name = "fil_actors_runtime"
 version = "0.0.1"
-source = "git+https://github.com/consensus-shipyard/fvm-utils?branch=upgrade-fvm-workspace#7e3f4b6eb049bb4aa5706a74a566de2e877496da"
+source = "git+https://github.com/consensus-shipyard/fvm-utils?branch=upgrade-fvm-workspace#3553432d4d795b4eaf1295e51d0e69c844b6e854"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -4804,7 +4804,7 @@ dependencies = [
 [[package]]
 name = "ipc-identity"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc.git?branch=upgrade-fvm-workspace#f441ef13d1324870dafa2d86717dd5c386c0184e"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=upgrade-fvm-workspace#339123cfb53923ec0557600ff4de51926feb5acc"
 dependencies = [
  "ahash 0.8.6",
  "anyhow",
@@ -4831,7 +4831,7 @@ dependencies = [
 [[package]]
 name = "ipc-provider"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc.git?branch=upgrade-fvm-workspace#f441ef13d1324870dafa2d86717dd5c386c0184e"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=upgrade-fvm-workspace#339123cfb53923ec0557600ff4de51926feb5acc"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -4871,7 +4871,7 @@ dependencies = [
 [[package]]
 name = "ipc-sdk"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc.git?branch=upgrade-fvm-workspace#f441ef13d1324870dafa2d86717dd5c386c0184e"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=upgrade-fvm-workspace#339123cfb53923ec0557600ff4de51926feb5acc"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
@@ -4895,7 +4895,7 @@ dependencies = [
 [[package]]
 name = "ipc_actors_abis"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=upgrade-fvm-workspace#26e9fe781a706d4a3d2d899af7c70f5bf4a2e3df"
+source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=upgrade-fvm-workspace#999e8542e29b9f9713321a83af5266b4d784fe1b"
 dependencies = [
  "anyhow",
  "ethers",
@@ -4905,7 +4905,7 @@ dependencies = [
 [[package]]
 name = "ipc_ipld_resolver"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/ipc-ipld-resolver.git?branch=upgrade-fvm-workspace#0477505a93989ad68b64d73131b46e4b10d7c2ff"
+source = "git+https://github.com/consensus-shipyard/ipc-ipld-resolver.git?branch=upgrade-fvm-workspace#9ea0ea6e4a16bb6cc01ff378b3c6d436e3ed2d01"
 dependencies = [
  "anyhow",
  "base64 0.21.5",
@@ -7158,7 +7158,7 @@ dependencies = [
 [[package]]
 name = "primitives"
 version = "0.1.0"
-source = "git+https://github.com/consensus-shipyard/fvm-utils?branch=upgrade-fvm-workspace#7e3f4b6eb049bb4aa5706a74a566de2e877496da"
+source = "git+https://github.com/consensus-shipyard/fvm-utils?branch=upgrade-fvm-workspace#3553432d4d795b4eaf1295e51d0e69c844b6e854"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
