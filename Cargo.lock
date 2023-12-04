@@ -3396,6 +3396,7 @@ dependencies = [
 [[package]]
 name = "fil_actors_runtime"
 version = "0.0.1"
+source = "git+https://github.com/consensus-shipyard/fvm-utils?branch=upgrade-fvm-workspace#7e3f4b6eb049bb4aa5706a74a566de2e877496da"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -4802,6 +4803,7 @@ dependencies = [
 [[package]]
 name = "ipc-identity"
 version = "0.1.0"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=upgrade-fvm-workspace#f441ef13d1324870dafa2d86717dd5c386c0184e"
 dependencies = [
  "ahash 0.8.6",
  "anyhow",
@@ -4828,6 +4830,7 @@ dependencies = [
 [[package]]
 name = "ipc-provider"
 version = "0.1.0"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=upgrade-fvm-workspace#f441ef13d1324870dafa2d86717dd5c386c0184e"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -4867,6 +4870,7 @@ dependencies = [
 [[package]]
 name = "ipc-sdk"
 version = "0.1.0"
+source = "git+https://github.com/consensus-shipyard/ipc.git?branch=upgrade-fvm-workspace#f441ef13d1324870dafa2d86717dd5c386c0184e"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
@@ -4890,6 +4894,7 @@ dependencies = [
 [[package]]
 name = "ipc_actors_abis"
 version = "0.1.0"
+source = "git+https://github.com/consensus-shipyard/ipc-solidity-actors.git?branch=upgrade-fvm-workspace#26e9fe781a706d4a3d2d899af7c70f5bf4a2e3df"
 dependencies = [
  "anyhow",
  "ethers",
@@ -4899,6 +4904,7 @@ dependencies = [
 [[package]]
 name = "ipc_ipld_resolver"
 version = "0.1.0"
+source = "git+https://github.com/consensus-shipyard/ipc-ipld-resolver.git?branch=upgrade-fvm-workspace#0477505a93989ad68b64d73131b46e4b10d7c2ff"
 dependencies = [
  "anyhow",
  "base64 0.21.5",
@@ -7151,6 +7157,7 @@ dependencies = [
 [[package]]
 name = "primitives"
 version = "0.1.0"
+source = "git+https://github.com/consensus-shipyard/fvm-utils?branch=upgrade-fvm-workspace#7e3f4b6eb049bb4aa5706a74a566de2e877496da"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
