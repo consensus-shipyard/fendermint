@@ -5,10 +5,11 @@ use crate::finality::null::FinalityWithNull;
 use crate::finality::ParentViewPayload;
 use crate::proxy::ParentQueryProxy;
 use crate::{
-    handle_null_round, BlockHash, BlockHeight, Config, Error, IPCParentFinality,
-    ParentFinalityProvider, ParentViewProvider,
+    handle_null_round, is_null_round_error, BlockHash, BlockHeight, Config, Error,
+    IPCParentFinality, ParentFinalityProvider, ParentViewProvider,
 };
-use async_stm::{Stm, StmResult};
+use async_stm::{atomically, Stm, StmResult};
+use async_trait::async_trait;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::staking::StakingChangeRequest;
 use std::sync::Arc;
@@ -108,6 +109,7 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
     }
 }
 
+#[async_trait]
 impl<T: ParentQueryProxy + Send + Sync + 'static> ParentFinalityProvider
     for CachedFinalityProvider<T>
 {
@@ -115,8 +117,46 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentFinalityProvider
         self.inner.next_proposal()
     }
 
-    fn check_proposal(&self, proposal: &IPCParentFinality) -> Stm<bool> {
-        self.inner.check_proposal(proposal)
+    async fn check_proposal(&self, proposal: &IPCParentFinality) -> anyhow::Result<bool> {
+        if let Some(check) = atomically(|| {
+            if let Some(valid_height) = self.inner.check_height(proposal)? {
+                if !valid_height {
+                    return Ok(Some(false));
+                }
+                if let Some(valid_hash) = self.inner.check_block_hash(proposal)? {
+                    return Ok(Some(valid_hash));
+                }
+
+                tracing::warn!("height {} found in cache but not hash", proposal.height);
+            }
+            Ok(None)
+        }).await {
+            return Ok(check);
+        }
+
+
+        match retry!(
+            self.config.exponential_back_off,
+            self.config.exponential_retry_limit,
+            self.parent_client.get_block_hash(proposal.height).await
+        ) {
+            Ok(r) => Ok(r.block_hash == *proposal.block_hash),
+            Err(e) => {
+                if is_null_round_error(&e) {
+                    tracing::warn!(
+                        proposal = proposal.to_string(),
+                        "some validator proposed null block, reject"
+                    );
+                } else {
+                    tracing::error!(
+                        proposal = proposal.to_string(),
+                        error = e.to_string(),
+                        "encountered error checking proposal"
+                    )
+                }
+                Ok(false)
+            }
+        }
     }
 
     fn set_new_finality(

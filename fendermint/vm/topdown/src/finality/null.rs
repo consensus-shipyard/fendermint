@@ -93,13 +93,6 @@ impl FinalityWithNull {
         Ok(Some(proposal))
     }
 
-    pub fn check_proposal(&self, proposal: &IPCParentFinality) -> Stm<bool> {
-        if !self.check_height(proposal)? {
-            return Ok(false);
-        }
-        self.check_block_hash(proposal)
-    }
-
     pub fn set_new_finality(
         &self,
         finality: IPCParentFinality,
@@ -305,13 +298,14 @@ impl FinalityWithNull {
         Ok(())
     }
 
-    fn check_height(&self, proposal: &IPCParentFinality) -> Stm<bool> {
+    pub(crate) fn check_height(&self, proposal: &IPCParentFinality) -> Stm<Option<bool>> {
         let binding = self.last_committed_finality.read()?;
         // last committed finality is not ready yet, we don't vote, just reject
         let last_committed_finality = if let Some(f) = binding.as_ref() {
             f
         } else {
-            return Ok(false);
+            tracing::debug!("cannot check height in cache as last committed finality not ready");
+            return Ok(None);
         };
 
         // the incoming proposal has height already committed, reject
@@ -321,31 +315,34 @@ impl FinalityWithNull {
                 proposed = proposal.height,
                 "proposed height already committed",
             );
-            return Ok(false);
+            return Ok(Some(false));
         }
 
         if let Some(latest_height) = self.latest_height_in_cache()? {
             let r = latest_height >= proposal.height;
             tracing::debug!(is_true = r, "incoming proposal height seen?");
             // requires the incoming height cannot be more advanced than our trusted parent node
-            Ok(r)
+            Ok(Some(r))
         } else {
             // latest height is not found, meaning we dont have any prefetched cache, we just be
             // strict and vote no simply because we don't know.
-            tracing::debug!("reject proposal, no data in cache");
-            Ok(false)
+            tracing::debug!("cannot check height, no data in cache");
+            Ok(None)
         }
     }
 
-    fn check_block_hash(&self, proposal: &IPCParentFinality) -> Stm<bool> {
+    pub(crate) fn check_block_hash(&self, proposal: &IPCParentFinality) -> Stm<Option<bool>> {
         Ok(
             if let Some(block_hash) = self.block_hash_at_height(proposal.height)? {
                 let r = block_hash == proposal.block_hash;
                 tracing::debug!(proposal = proposal.to_string(), is_same = r, "same hash?");
-                r
+                Some(r)
             } else {
-                tracing::debug!(proposal = proposal.to_string(), "reject, hash not found");
-                false
+                tracing::debug!(
+                    proposal = proposal.to_string(),
+                    "cannot check proposal, not found in cache"
+                );
+                None
             },
         )
     }
