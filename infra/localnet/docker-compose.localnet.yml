@@ -13,7 +13,7 @@ services:
       - ./genesis.json:/cometbft/node0/config/genesis.json
       - ./abci0/validator.json:/cometbft/node0/config/priv_validator_key.json
       - ./abci0/dummy_priv_validator_state.json:/cometbft/node0/data/priv_validator_state.json
-    command: node --proxy_app=tcp://abci0:26658 --p2p.persistent_peers="7f134bdeb20032a964c01dbaa77f18320b454fd1@192.167.10.2:26656,d1ad6759714284354230c95edfd8d182150e9955@192.167.10.3:26656,e94ca57d5c317f8ca45630ccabe01c412258ff91@192.167.10.4:26656,e59905a763ea96dd095bff06c0a26a9e7af6a538@192.167.10.5:26656"
+    command: node --proxy_app=tcp://abci0:26658 --p2p.persistent_peers="784acc66e95ccdcd354e11468a40e84e0e88cba4@192.167.10.2:26656,51da5a20a302529200387f2afbdaaba2b1263734@192.167.10.3:26656,ce0f1b6bf95a5cd8a6be767b284773a32e5c5bd4@192.167.10.4:26656,ea1b191d1629c8fa1e12d5e0a6139e75883740d3@192.167.10.5:26656"
     networks:
       localnet:
         ipv4_address: 192.167.10.2
@@ -32,7 +32,7 @@ services:
       - ./genesis.json:/cometbft/node1/config/genesis.json
       - ./abci1/validator.json:/cometbft/node1/config/priv_validator_key.json
       - ./abci1/dummy_priv_validator_state.json:/cometbft/node1/data/priv_validator_state.json
-    command: node --proxy_app=tcp://abci1:26658 --p2p.persistent_peers="7f134bdeb20032a964c01dbaa77f18320b454fd1@192.167.10.2:26656,d1ad6759714284354230c95edfd8d182150e9955@192.167.10.3:26656,e94ca57d5c317f8ca45630ccabe01c412258ff91@192.167.10.4:26656,e59905a763ea96dd095bff06c0a26a9e7af6a538@192.167.10.5:26656"
+    command: node --proxy_app=tcp://abci1:26658 --p2p.persistent_peers="784acc66e95ccdcd354e11468a40e84e0e88cba4@192.167.10.2:26656,51da5a20a302529200387f2afbdaaba2b1263734@192.167.10.3:26656,ce0f1b6bf95a5cd8a6be767b284773a32e5c5bd4@192.167.10.4:26656,ea1b191d1629c8fa1e12d5e0a6139e75883740d3@192.167.10.5:26656"
     networks:
       localnet:
         ipv4_address: 192.167.10.3
@@ -51,7 +51,7 @@ services:
       - ./genesis.json:/cometbft/node2/config/genesis.json
       - ./abci2/validator.json:/cometbft/node2/config/priv_validator_key.json
       - ./abci2/dummy_priv_validator_state.json:/cometbft/node2/data/priv_validator_state.json
-    command: node --proxy_app=tcp://abci2:26658 --p2p.persistent_peers="7f134bdeb20032a964c01dbaa77f18320b454fd1@192.167.10.2:26656,d1ad6759714284354230c95edfd8d182150e9955@192.167.10.3:26656,e94ca57d5c317f8ca45630ccabe01c412258ff91@192.167.10.4:26656,e59905a763ea96dd095bff06c0a26a9e7af6a538@192.167.10.5:26656"
+    command: node --proxy_app=tcp://abci2:26658 --p2p.persistent_peers="784acc66e95ccdcd354e11468a40e84e0e88cba4@192.167.10.2:26656,51da5a20a302529200387f2afbdaaba2b1263734@192.167.10.3:26656,ce0f1b6bf95a5cd8a6be767b284773a32e5c5bd4@192.167.10.4:26656,ea1b191d1629c8fa1e12d5e0a6139e75883740d3@192.167.10.5:26656"
     networks:
       localnet:
         ipv4_address: 192.167.10.4
@@ -70,7 +70,7 @@ services:
       - ./genesis.json:/cometbft/node3/config/genesis.json
       - ./abci3/validator.json:/cometbft/node3/config/priv_validator_key.json
       - ./abci3/dummy_priv_validator_state.json:/cometbft/node3/data/priv_validator_state.json
-    command: node --proxy_app=tcp://abci3:26658 --p2p.persistent_peers="7f134bdeb20032a964c01dbaa77f18320b454fd1@192.167.10.2:26656,d1ad6759714284354230c95edfd8d182150e9955@192.167.10.3:26656,e94ca57d5c317f8ca45630ccabe01c412258ff91@192.167.10.4:26656,e59905a763ea96dd095bff06c0a26a9e7af6a538@192.167.10.5:26656"
+    command: node --proxy_app=tcp://abci3:26658 --p2p.persistent_peers="784acc66e95ccdcd354e11468a40e84e0e88cba4@192.167.10.2:26656,51da5a20a302529200387f2afbdaaba2b1263734@192.167.10.3:26656,ce0f1b6bf95a5cd8a6be767b284773a32e5c5bd4@192.167.10.4:26656,ea1b191d1629c8fa1e12d5e0a6139e75883740d3@192.167.10.5:26656"
     networks:
       localnet:
         ipv4_address: 192.167.10.5
