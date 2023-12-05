@@ -13,7 +13,7 @@ services:
       - ./abci0/validator.json:/cometbft/node0/config/priv_validator_key.json
       - ./abci0/validator.json:/cometbft/node0/config/node_key.json
       - ./abci0/dummy_priv_validator_state.json:/cometbft/node0/data/priv_validator_state.json
-    command: node --proxy_app=tcp://abci0:26658
+    command: node --proxy_app=tcp://abci0:26658 --p2p.persistent_peers="81f978e13973206fb4a187aab8a5382a8abb0ca8@192.167.10.2:26656,aeb8fa34690678c9c6ac021473743fd240afda1e@192.167.10.3:26656,603758f52c195fdb54fb5e2c8a64a747eaf0e9a5@192.167.10.4:26656,5bd6f62db9a25fbf0e4f84c36127279234207a00@192.167.10.5:26656"
     networks:
       localnet:
         ipv4_address: 192.167.10.2
@@ -32,7 +32,7 @@ services:
       - ./abci1/validator.json:/cometbft/node1/config/priv_validator_key.json
       - ./abci1/validator.json:/cometbft/node1/config/node_key.json
       - ./abci1/dummy_priv_validator_state.json:/cometbft/node1/data/priv_validator_state.json
-    command: node --proxy_app=tcp://abci1:26658
+    command: node --proxy_app=tcp://abci1:26658 --p2p.persistent_peers="81f978e13973206fb4a187aab8a5382a8abb0ca8@192.167.10.2:26656,aeb8fa34690678c9c6ac021473743fd240afda1e@192.167.10.3:26656,603758f52c195fdb54fb5e2c8a64a747eaf0e9a5@192.167.10.4:26656,5bd6f62db9a25fbf0e4f84c36127279234207a00@192.167.10.5:26656"
     networks:
       localnet:
         ipv4_address: 192.167.10.3
@@ -51,7 +51,7 @@ services:
       - ./abci2/validator.json:/cometbft/node2/config/priv_validator_key.json
       - ./abci2/validator.json:/cometbft/node2/config/node_key.json
       - ./abci2/dummy_priv_validator_state.json:/cometbft/node2/data/priv_validator_state.json
-    command: node --proxy_app=tcp://abci2:26658
+    command: node --proxy_app=tcp://abci2:26658 --p2p.persistent_peers="81f978e13973206fb4a187aab8a5382a8abb0ca8@192.167.10.2:26656,aeb8fa34690678c9c6ac021473743fd240afda1e@192.167.10.3:26656,603758f52c195fdb54fb5e2c8a64a747eaf0e9a5@192.167.10.4:26656,5bd6f62db9a25fbf0e4f84c36127279234207a00@192.167.10.5:26656"
     networks:
       localnet:
         ipv4_address: 192.167.10.4
@@ -70,7 +70,7 @@ services:
       - ./abci3/validator.json:/cometbft/node3/config/priv_validator_key.json
       - ./abci3/validator.json:/cometbft/node3/config/node_key.json
       - ./abci3/dummy_priv_validator_state.json:/cometbft/node3/data/priv_validator_state.json
-    command: node --proxy_app=tcp://abci3:26658
+    command: node --proxy_app=tcp://abci3:26658 --p2p.persistent_peers="81f978e13973206fb4a187aab8a5382a8abb0ca8@192.167.10.2:26656,aeb8fa34690678c9c6ac021473743fd240afda1e@192.167.10.3:26656,603758f52c195fdb54fb5e2c8a64a747eaf0e9a5@192.167.10.4:26656,5bd6f62db9a25fbf0e4f84c36127279234207a00@192.167.10.5:26656"
     networks:
       localnet:
         ipv4_address: 192.167.10.5
