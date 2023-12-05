@@ -9,6 +9,7 @@ services:
       - LOG=${LOG:-cometbft.log}
     volumes:
       - ./cometbft:/cometbft/cometbft
+      - ./abci0/data:/cometbft/node0/data
       - ./genesis.json:/cometbft/node0/config/genesis.json
       - ./abci0/validator.json:/cometbft/node0/config/priv_validator_key.json
       - ./abci0/dummy_priv_validator_state.json:/cometbft/node0/data/priv_validator_state.json
@@ -27,6 +28,7 @@ services:
       - LOG=${LOG:-cometbft.log}
     volumes:
       - ./cometbft:/cometbft/cometbft
+      - ./abci1/data:/cometbft/node1/data
       - ./genesis.json:/cometbft/node1/config/genesis.json
       - ./abci1/validator.json:/cometbft/node1/config/priv_validator_key.json
       - ./abci1/dummy_priv_validator_state.json:/cometbft/node1/data/priv_validator_state.json
@@ -45,6 +47,7 @@ services:
       - LOG=${LOG:-cometbft.log}
     volumes:
       - ./cometbft:/cometbft/cometbft
+      - ./abci2/data:/cometbft/node2/data
       - ./genesis.json:/cometbft/node2/config/genesis.json
       - ./abci2/validator.json:/cometbft/node2/config/priv_validator_key.json
       - ./abci2/dummy_priv_validator_state.json:/cometbft/node2/data/priv_validator_state.json
@@ -63,6 +66,7 @@ services:
       - LOG=${LOG:-cometbft.log}
     volumes:
       - ./cometbft:/cometbft/cometbft
+      - ./abci3/data:/cometbft/node3/data
       - ./genesis.json:/cometbft/node3/config/genesis.json
       - ./abci3/validator.json:/cometbft/node3/config/priv_validator_key.json
       - ./abci3/dummy_priv_validator_state.json:/cometbft/node3/data/priv_validator_state.json
