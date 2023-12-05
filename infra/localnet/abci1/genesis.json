@@ -1,0 +1,60 @@
+{
+  "genesis_time": "1970-01-14T06:53:27Z",
+  "chain_id": "1236677877404273",
+  "initial_height": "1",
+  "consensus_params": {
+    "block": {
+      "max_bytes": "22020096",
+      "max_gas": "-1",
+      "time_iota_ms": "1000"
+    },
+    "evidence": {
+      "max_age_num_blocks": "100000",
+      "max_age_duration": "172800000000000",
+      "max_bytes": "1048576"
+    },
+    "validator": {
+      "pub_key_types": [
+        "secp256k1"
+      ]
+    }
+  },
+  "validators": [],
+  "app_hash": "",
+  "app_state": {
+    "accounts": [],
+    "base_fee": "1000",
+    "chain_name": "/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq",
+    "ipc": {
+      "gateway": {
+        "active_validators_limit": 100,
+        "bottom_up_check_period": 10,
+        "majority_percentage": 60,
+        "min_collateral": "40000000000000000",
+        "msg_fee": "0",
+        "subnet_id": "/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
+      }
+    },
+    "network_version": 18,
+    "power_scale": 3,
+    "timestamp": 1148007,
+    "validators": [
+      {
+        "power": "10000000000000000",
+        "public_key": "BHqEW8YfDUpE43r2T7fhmOqmn8Fg0g7kdysPe1+E82XRsjFfQpsuMzDbkfW51dAx9lPS6GEq9qDSO3A8pGcFZuo="
+      },
+      {
+        "power": "10000000000000000",
+        "public_key": "BDtaVzCIoD8zrxzTXBM7KNbOQT6RCEu18fXcOMASCQJ/i6NC2bomd/Hu0AXXaeDtQ+yeXavd63ad8ymdhrNxi+s="
+      },
+      {
+        "power": "10000000000000000",
+        "public_key": "BIrF21nBH7H9RTZRtmpDbGCLwwLwM8UcOoiuQGr1iWKMaeSOKw92JHER3mkzPY7SZDZ/M3CUi8Z5T0s6uTkN4i0="
+      },
+      {
+        "power": "10000000000000000",
+        "public_key": "BNYAdP3V1WBw2IMezQjG9Gy5HY1BwrjChMYQsi4jYTnKr3/JFYWAbGHCCaFn3yCERVNDIng2wY/lmrlYx2I/SO0="
+      }
+    ]
+  }
+}
