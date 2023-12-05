@@ -11,6 +11,7 @@ services:
       - ./cometbft:/cometbft/cometbft
       - ./genesis.json:/cometbft/node0/config/genesis.json
       - ./abci0/validator.json:/cometbft/node0/config/priv_validator_key.json
+      - ./abci0/dummy_priv_validator_state.json:/cometbft/node0/data/priv_validator_state.json
     command: node --proxy_app=tcp://abci0:26658
     networks:
       localnet:
@@ -28,6 +29,7 @@ services:
       - ./cometbft:/cometbft/cometbft
       - ./genesis.json:/cometbft/node1/config/genesis.json
       - ./abci1/validator.json:/cometbft/node1/config/priv_validator_key.json
+      - ./abci1/dummy_priv_validator_state.json:/cometbft/node1/data/priv_validator_state.json
     command: node --proxy_app=tcp://abci1:26658
     networks:
       localnet:
@@ -45,6 +47,7 @@ services:
       - ./cometbft:/cometbft/cometbft
       - ./genesis.json:/cometbft/node2/config/genesis.json
       - ./abci2/validator.json:/cometbft/node2/config/priv_validator_key.json
+      - ./abci2/dummy_priv_validator_state.json:/cometbft/node2/data/priv_validator_state.json
     command: node --proxy_app=tcp://abci2:26658
     networks:
       localnet:
@@ -62,6 +65,7 @@ services:
       - ./cometbft:/cometbft/cometbft
       - ./genesis.json:/cometbft/node3/config/genesis.json
       - ./abci3/validator.json:/cometbft/node3/config/priv_validator_key.json
+      - ./abci3/dummy_priv_validator_state.json:/cometbft/node3/data/priv_validator_state.json
     command: node --proxy_app=tcp://abci3:26658
     networks:
       localnet:
