@@ -90,7 +90,7 @@ services:
       - FM_NETWORK=test
       - RUST_BACKTRACE=1
     volumes:
-      - ./localnet/abci0/private_key:/root/fendermint/data/private_key
+      - ./abci0/private_key:/root/fendermint/data/private_key
     networks:
       localnet:
         ipv4_address: 192.167.10.6
@@ -128,7 +128,7 @@ services:
       - RUST_BACKTRACE=1
       - FM_NETWORK=test
     volumes:
-      - ./localnet/abci1/private_key:/root/fendermint/data/private_key
+      - ./abci1/private_key:/root/fendermint/data/private_key
     networks:
       localnet:
         ipv4_address: 192.167.10.7
@@ -166,7 +166,7 @@ services:
       - RUST_BACKTRACE=1
       - FM_NETWORK=test
     volumes:
-      - ./localnet/abci2/private_key:/root/fendermint/data/private_key
+      - ./abci2/private_key:/root/fendermint/data/private_key
     networks:
       localnet:
         ipv4_address: 192.167.10.8
@@ -204,7 +204,7 @@ services:
       - RUST_BACKTRACE=1
       - FM_NETWORK=test
     volumes:
-      - ./localnet/abci3/private_key:/root/fendermint/data/private_key
+      - ./abci3/private_key:/root/fendermint/data/private_key
     networks:
       localnet:
         ipv4_address: 192.167.10.9
