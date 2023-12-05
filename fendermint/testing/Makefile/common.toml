@@ -38,7 +38,7 @@ run_task = { name = [
 [tasks.setup]
 dependencies = [
   "test-data-dir",
-  "network-create",
+  "docker-network-create",
   "cometbft-init",
   "fendermint-init",
   "fendermint-start",
@@ -63,15 +63,17 @@ run_task = { name = [
   "fendermint-rm",
   "ethapi-stop",
   "ethapi-rm",
-  "network-rm",
+  "docker-network-rm",
   "test-data-dir-rm",
 ] }
 
 
 [tasks.test-data-dir]
 script = """
-mkdir -p ${TEST_DATA_DIR}/fendermint;
-mkdir -p ${TEST_DATA_DIR}/cometbft;
+mkdir -p ${TEST_DATA_DIR}/keys;
+mkdir -p ${TEST_DATA_DIR}/${NODE_NAME}/fendermint/data/logs;
+mkdir -p ${TEST_DATA_DIR}/${NODE_NAME}/cometbft;
+cp -r ${TEST_SCRIPTS_DIR} ${TEST_DATA_DIR}/scripts
 """
 
 [tasks.test-data-dir-rm]

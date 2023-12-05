@@ -1,25 +1,3 @@
-
-[tasks.network-create]
-command = "docker"
-args = ["network", "create", "${NETWORK_NAME}"]
-ignore_errors = true
-
-[tasks.network-rm]
-command = "docker"
-args = ["network", "rm", "${NETWORK_NAME}"]
-ignore_errors = true
-
-[tasks.docker-stop]
-command = "docker"
-args = ["stop", "${CONTAINER_NAME}"]
-ignore_errors = true
-
-[tasks.docker-rm]
-command = "docker"
-args = ["rm", "--force", "${CONTAINER_NAME}"]
-ignore_errors = true
-
-[tasks.docker-logs]
-command = "docker"
-args = ["logs", "${CONTAINER_NAME}"]
-ignore_errors = true
+extend = [
+  { path = "../../../infra/scripts/docker.toml" },
+]
