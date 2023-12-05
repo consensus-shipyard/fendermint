@@ -11,10 +11,12 @@ services:
       - ./cometbft:/cometbft/cometbft
       - ./genesis.json:/cometbft/node0/config/genesis.json
       - ./abci0/validator.json:/cometbft/node0/config/priv_validator_key.json
-    command: node --proxy_app=tcp://abci0:26658
+    command: node --proxy_app=tcp://abci0:26658 --pex=false
     networks:
       localnet:
         ipv4_address: 192.167.10.2
+    depends_on:
+     - abci0
 
   node1:
     container_name: node1
@@ -26,10 +28,12 @@ services:
       - ./cometbft:/cometbft/cometbft
       - ./genesis.json:/cometbft/node1/config/genesis.json
       - ./abci1/validator.json:/cometbft/node1/config/priv_validator_key.json
-    command: node --proxy_app=tcp://abci1:26658
+    command: node --proxy_app=tcp://abci1:26658 --pex=false
     networks:
       localnet:
         ipv4_address: 192.167.10.3
+    depends_on:
+      - abci1
 
   node2:
     container_name: node2
@@ -41,10 +45,12 @@ services:
       - ./cometbft:/cometbft/cometbft
       - ./genesis.json:/cometbft/node2/config/genesis.json
       - ./abci2/validator.json:/cometbft/node2/config/priv_validator_key.json
-    command: node --proxy_app=tcp://abci2:26658
+    command: node --proxy_app=tcp://abci2:26658 --pex=false
     networks:
       localnet:
         ipv4_address: 192.167.10.4
+    depends_on:
+      - abci2
 
   node3:
     container_name: node3
@@ -56,10 +62,12 @@ services:
       - ./cometbft:/cometbft/cometbft
       - ./genesis.json:/cometbft/node3/config/genesis.json
       - ./abci3/validator.json:/cometbft/node3/config/priv_validator_key.json
-    command: node --proxy_app=tcp://abci3:26658
+    command: node --proxy_app=tcp://abci3:26658 --pex=false
     networks:
       localnet:
         ipv4_address: 192.167.10.5
+    depends_on:
+      - abci4
 
   abci0:
     container_name: abci0
