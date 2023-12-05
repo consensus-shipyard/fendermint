@@ -63,18 +63,18 @@ services:
     entrypoint: "fendermint"
     command: "run"
     environment:
-      - NETWORK_NAME="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
+      - NETWORK_NAME=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
       - NODE_ID=abci0
       - BASE_DIR=/root/fendermint
       - UID=0
       - FM_DATA_DIR=/root/fendermint/data
       - FM_LOG_DIR=/root/fendermint/data/logs
-      - FM_CHAIN_NAME="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
-      - FM_IPC__SUBNET_ID="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
+      - FM_CHAIN_NAME=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
+      - FM_IPC__SUBNET_ID=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
       - FM_IPC__TOPDOWN__CHAIN_HEAD_DELAY=10
-      - FM_IPC__TOPDOWN__PARENT_HTTP_ENDPOINT="https://api.calibration.node.glif.io/rpc/v1"
-      - FM_IPC__TOPDOWN__PARENT_REGISTRY="0x5FE1a06cA4534cB878260522a572e2254214261D"
-      - FM_IPC__TOPDOWN__PARENT_GATEWAY="0x2e994B75095a39EB7C6dDA0516731B02AbcDbdb4"
+      - FM_IPC__TOPDOWN__PARENT_HTTP_ENDPOINT=https://api.calibration.node.glif.io/rpc/v1
+      - FM_IPC__TOPDOWN__PARENT_REGISTRY=0x5FE1a06cA4534cB878260522a572e2254214261D
+      - FM_IPC__TOPDOWN__PARENT_GATEWAY=0x2e994B75095a39EB7C6dDA0516731B02AbcDbdb4
       - FM_IPC__TOPDOWN__EXPONENTIAL_BACK_OFF=5
       - FM_IPC__TOPDOWN__EXPONENTIAL_RETRY_LIMIT=5
       - FM_IPC__TOPDOWN__POLLING_INTERVAL=10
@@ -82,8 +82,8 @@ services:
       - FM_IPC__TOPDOWN__MAX_PROPOSAL_RANGE=100
       - FM_ABCI__LISTEN__HOST=0.0.0.0
       - FM_ETH__LISTEN__HOST=0.0.0.0
-      - FM_TENDERMINT_RPC_URL="http://node0:26657"
-      - TENDERMINT_RPC_URL="http://node0:26657"
+      - FM_TENDERMINT_RPC_URL=http://node0:26657
+      - TENDERMINT_RPC_URL=http://node0:26657
       - FM_VALIDATOR_KEY__PATH=/root/fendermint/data/private_key
       - FM_VALIDATOR_KEY__KIND=ethereum
       - LOG_LEVEL=info
@@ -101,18 +101,18 @@ services:
     entrypoint: "fendermint"
     command: "run"
     environment:
-      - NETWORK_NAME="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
+      - NETWORK_NAME=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
       - NODE_ID=abci1
       - BASE_DIR=/root/fendermint
       - UID=0
       - FM_DATA_DIR=/root/fendermint/data
       - FM_LOG_DIR=/root/fendermint/data/logs
-      - FM_CHAIN_NAME="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
-      - FM_IPC__SUBNET_ID="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
+      - FM_CHAIN_NAME=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
+      - FM_IPC__SUBNET_ID=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
       - FM_IPC__TOPDOWN__CHAIN_HEAD_DELAY=10
-      - FM_IPC__TOPDOWN__PARENT_HTTP_ENDPOINT="https://api.calibration.node.glif.io/rpc/v1"
-      - FM_IPC__TOPDOWN__PARENT_REGISTRY="0x5FE1a06cA4534cB878260522a572e2254214261D"
-      - FM_IPC__TOPDOWN__PARENT_GATEWAY="0x2e994B75095a39EB7C6dDA0516731B02AbcDbdb4"
+      - FM_IPC__TOPDOWN__PARENT_HTTP_ENDPOINT=https://api.calibration.node.glif.io/rpc/v1
+      - FM_IPC__TOPDOWN__PARENT_REGISTRY=0x5FE1a06cA4534cB878260522a572e2254214261D
+      - FM_IPC__TOPDOWN__PARENT_GATEWAY=0x2e994B75095a39EB7C6dDA0516731B02AbcDbdb4
       - FM_IPC__TOPDOWN__EXPONENTIAL_BACK_OFF=5
       - FM_IPC__TOPDOWN__EXPONENTIAL_RETRY_LIMIT=5
       - FM_IPC__TOPDOWN__POLLING_INTERVAL=10
@@ -120,8 +120,8 @@ services:
       - FM_IPC__TOPDOWN__MAX_PROPOSAL_RANGE=100
       - FM_ABCI__LISTEN__HOST=0.0.0.0
       - FM_ETH__LISTEN__HOST=0.0.0.0
-      - FM_TENDERMINT_RPC_URL="http://node1:26657"
-      - TENDERMINT_RPC_URL="http://node1:26657"
+      - FM_TENDERMINT_RPC_URL=http://node1:26657
+      - TENDERMINT_RPC_URL=http://node1:26657
       - FM_VALIDATOR_KEY__PATH=/root/fendermint/data/private_key
       - FM_VALIDATOR_KEY__KIND=ethereum
       - LOG_LEVEL=info
@@ -139,18 +139,18 @@ services:
     entrypoint: "fendermint"
     command: "run"
     environment:
-      - NETWORK_NAME="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
+      - NETWORK_NAME=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
       - NODE_ID=abci2
       - BASE_DIR=/root/fendermint
       - UID=0
       - FM_DATA_DIR=/root/fendermint/data
       - FM_LOG_DIR=/root/fendermint/data/logs
-      - FM_CHAIN_NAME="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
-      - FM_IPC__SUBNET_ID="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
+      - FM_CHAIN_NAME=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
+      - FM_IPC__SUBNET_ID=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
       - FM_IPC__TOPDOWN__CHAIN_HEAD_DELAY=10
-      - FM_IPC__TOPDOWN__PARENT_HTTP_ENDPOINT="https://api.calibration.node.glif.io/rpc/v1"
-      - FM_IPC__TOPDOWN__PARENT_REGISTRY="0x5FE1a06cA4534cB878260522a572e2254214261D"
-      - FM_IPC__TOPDOWN__PARENT_GATEWAY="0x2e994B75095a39EB7C6dDA0516731B02AbcDbdb4"
+      - FM_IPC__TOPDOWN__PARENT_HTTP_ENDPOINT=https://api.calibration.node.glif.io/rpc/v1
+      - FM_IPC__TOPDOWN__PARENT_REGISTRY=0x5FE1a06cA4534cB878260522a572e2254214261D
+      - FM_IPC__TOPDOWN__PARENT_GATEWAY=0x2e994B75095a39EB7C6dDA0516731B02AbcDbdb4
       - FM_IPC__TOPDOWN__EXPONENTIAL_BACK_OFF=5
       - FM_IPC__TOPDOWN__EXPONENTIAL_RETRY_LIMIT=5
       - FM_IPC__TOPDOWN__POLLING_INTERVAL=10
@@ -158,8 +158,8 @@ services:
       - FM_IPC__TOPDOWN__MAX_PROPOSAL_RANGE=100
       - FM_ABCI__LISTEN__HOST=0.0.0.0
       - FM_ETH__LISTEN__HOST=0.0.0.0
-      - FM_TENDERMINT_RPC_URL="http://node2:26657"
-      - TENDERMINT_RPC_URL="http://node2:26657"
+      - FM_TENDERMINT_RPC_URL=http://node2:26657
+      - TENDERMINT_RPC_URL=http://node2:26657
       - FM_VALIDATOR_KEY__PATH=/root/fendermint/data/private_key
       - FM_VALIDATOR_KEY__KIND=ethereum
       - LOG_LEVEL=info
@@ -177,29 +177,29 @@ services:
     entrypoint: "fendermint"
     command: "run"
     environment:
-      - NETWORK_NAME="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
+      - NETWORK_NAME=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
       - NODE_ID=abci3
       - BASE_DIR=/root/fendermint
       - UID=0
-      - FM_DATA_DIR="/root/fendermint/data"
-      - FM_LOG_DIR="/root/fendermint/data/logs"
-      - FM_CHAIN_NAME="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
-      - FM_IPC__SUBNET_ID="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
+      - FM_DATA_DIR=/root/fendermint/data
+      - FM_LOG_DIR=/root/fendermint/data/logs
+      - FM_CHAIN_NAME=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
+      - FM_IPC__SUBNET_ID=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
       - FM_IPC__TOPDOWN__CHAIN_HEAD_DELAY=10
-      - FM_IPC__TOPDOWN__PARENT_HTTP_ENDPOINT="https://api.calibration.node.glif.io/rpc/v1"
-      - FM_IPC__TOPDOWN__PARENT_REGISTRY="0x5FE1a06cA4534cB878260522a572e2254214261D"
-      - FM_IPC__TOPDOWN__PARENT_GATEWAY="0x2e994B75095a39EB7C6dDA0516731B02AbcDbdb4"
+      - FM_IPC__TOPDOWN__PARENT_HTTP_ENDPOINT=https://api.calibration.node.glif.io/rpc/v1
+      - FM_IPC__TOPDOWN__PARENT_REGISTRY=0x5FE1a06cA4534cB878260522a572e2254214261D
+      - FM_IPC__TOPDOWN__PARENT_GATEWAY=0x2e994B75095a39EB7C6dDA0516731B02AbcDbdb4
       - FM_IPC__TOPDOWN__EXPONENTIAL_BACK_OFF=5
       - FM_IPC__TOPDOWN__EXPONENTIAL_RETRY_LIMIT=5
       - FM_IPC__TOPDOWN__POLLING_INTERVAL=10
       - FM_IPC__TOPDOWN__PROPOSAL_DELAY=2
       - FM_IPC__TOPDOWN__MAX_PROPOSAL_RANGE=100
-      - FM_ABCI__LISTEN__HOST="0.0.0.0"
-      - FM_ETH__LISTEN__HOST="0.0.0.0"
-      - FM_TENDERMINT_RPC_URL="http://node3:26657"
-      - TENDERMINT_RPC_URL="http://node3:26657"
-      - FM_VALIDATOR_KEY__PATH="/root/fendermint/data/private_key"
-      - FM_VALIDATOR_KEY__KIND="ethereum"
+      - FM_ABCI__LISTEN__HOST=0.0.0.0
+      - FM_ETH__LISTEN__HOST=0.0.0.0
+      - FM_TENDERMINT_RPC_URL=http://node3:26657
+      - TENDERMINT_RPC_URL=http://node3:26657
+      - FM_VALIDATOR_KEY__PATH=/root/fendermint/data/private_key
+      - FM_VALIDATOR_KEY__KIND=ethereum
       - LOG_LEVEL=info
       - RUST_BACKTRACE=1
       - FM_NETWORK=test
