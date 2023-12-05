@@ -63,10 +63,6 @@ services:
     entrypoint: "fendermint"
     command: "run"
     environment:
-      - NETWORK_NAME=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
-      - NODE_ID=abci0
-      - BASE_DIR=/root/fendermint
-      - UID=0
       - FM_DATA_DIR=/root/fendermint/data
       - FM_LOG_DIR=/root/fendermint/data/logs
       - FM_CHAIN_NAME=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
@@ -84,13 +80,13 @@ services:
       - FM_ETH__LISTEN__HOST=0.0.0.0
       - FM_TENDERMINT_RPC_URL=http://node0:26657
       - TENDERMINT_RPC_URL=http://node0:26657
-      - FM_VALIDATOR_KEY__PATH=/root/fendermint/data/private_key
+      - FM_VALIDATOR_KEY__PATH=/fendermint/private_key
       - FM_VALIDATOR_KEY__KIND=ethereum
       - LOG_LEVEL=info
       - FM_NETWORK=test
       - RUST_BACKTRACE=1
     volumes:
-      - ./abci0/private_key:/root/fendermint/data/private_key
+      - ./abci0/private_key:/fendermint/private_key
     networks:
       localnet:
         ipv4_address: 192.167.10.6
@@ -101,10 +97,6 @@ services:
     entrypoint: "fendermint"
     command: "run"
     environment:
-      - NETWORK_NAME=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
-      - NODE_ID=abci1
-      - BASE_DIR=/root/fendermint
-      - UID=0
       - FM_DATA_DIR=/root/fendermint/data
       - FM_LOG_DIR=/root/fendermint/data/logs
       - FM_CHAIN_NAME=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
@@ -122,13 +114,13 @@ services:
       - FM_ETH__LISTEN__HOST=0.0.0.0
       - FM_TENDERMINT_RPC_URL=http://node1:26657
       - TENDERMINT_RPC_URL=http://node1:26657
-      - FM_VALIDATOR_KEY__PATH=/root/fendermint/data/private_key
+      - FM_VALIDATOR_KEY__PATH=/fendermint/private_key
       - FM_VALIDATOR_KEY__KIND=ethereum
       - LOG_LEVEL=info
       - RUST_BACKTRACE=1
       - FM_NETWORK=test
     volumes:
-      - ./abci1/private_key:/root/fendermint/data/private_key
+      - ./abci1/private_key:/fendermint/private_key
     networks:
       localnet:
         ipv4_address: 192.167.10.7
@@ -139,10 +131,6 @@ services:
     entrypoint: "fendermint"
     command: "run"
     environment:
-      - NETWORK_NAME=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
-      - NODE_ID=abci2
-      - BASE_DIR=/root/fendermint
-      - UID=0
       - FM_DATA_DIR=/root/fendermint/data
       - FM_LOG_DIR=/root/fendermint/data/logs
       - FM_CHAIN_NAME=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
@@ -160,13 +148,13 @@ services:
       - FM_ETH__LISTEN__HOST=0.0.0.0
       - FM_TENDERMINT_RPC_URL=http://node2:26657
       - TENDERMINT_RPC_URL=http://node2:26657
-      - FM_VALIDATOR_KEY__PATH=/root/fendermint/data/private_key
+      - FM_VALIDATOR_KEY__PATH=/fendermint/private_key
       - FM_VALIDATOR_KEY__KIND=ethereum
       - LOG_LEVEL=info
       - RUST_BACKTRACE=1
       - FM_NETWORK=test
     volumes:
-      - ./abci2/private_key:/root/fendermint/data/private_key
+      - ./abci2/private_key:/fendermint/private_key
     networks:
       localnet:
         ipv4_address: 192.167.10.8
@@ -177,10 +165,6 @@ services:
     entrypoint: "fendermint"
     command: "run"
     environment:
-      - NETWORK_NAME=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
-      - NODE_ID=abci3
-      - BASE_DIR=/root/fendermint
-      - UID=0
       - FM_DATA_DIR=/root/fendermint/data
       - FM_LOG_DIR=/root/fendermint/data/logs
       - FM_CHAIN_NAME=/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq
@@ -198,13 +182,13 @@ services:
       - FM_ETH__LISTEN__HOST=0.0.0.0
       - FM_TENDERMINT_RPC_URL=http://node3:26657
       - TENDERMINT_RPC_URL=http://node3:26657
-      - FM_VALIDATOR_KEY__PATH=/root/fendermint/data/private_key
+      - FM_VALIDATOR_KEY__PATH=/fendermint/private_key
       - FM_VALIDATOR_KEY__KIND=ethereum
       - LOG_LEVEL=info
       - RUST_BACKTRACE=1
       - FM_NETWORK=test
     volumes:
-      - ./abci3/private_key:/root/fendermint/data/private_key
+      - ./abci3/private_key:/fendermint/private_key
     networks:
       localnet:
         ipv4_address: 192.167.10.9
