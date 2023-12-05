@@ -10,7 +10,8 @@ services:
       - ID=0
       - LOG=${LOG:-cometbft.log}
     volumes:
-      - ./build:/cometbft:Z
+      - ./genesis.json:/cometbft/config/genesis.json
+      - ./abci0/validator.json:/cometbft/config/priv_validator_key.json
     command: node --proxy_app=tcp://abci0:26658
     networks:
       localnet:
@@ -25,7 +26,8 @@ services:
       - ID=1
       - LOG=${LOG:-cometbft.log}
     volumes:
-      - ./build:/cometbft:Z
+      - ./genesis.json:/cometbft/config/genesis.json
+      - ./abci1/validator.json:/cometbft/config/priv_validator_key.json
     command: node --proxy_app=tcp://abci1:26658
     networks:
       localnet:
@@ -40,7 +42,8 @@ services:
     ports:
       - "26661-26662:26656-26657"
     volumes:
-      - ./build:/cometbft:Z
+      - ./genesis.json:/cometbft/config/genesis.json
+      - ./abci2/validator.json:/cometbft/config/priv_validator_key.json
     command: node --proxy_app=tcp://abci2:26658
     networks:
       localnet:
@@ -55,7 +58,8 @@ services:
     ports:
       - "26663-26664:26656-26657"
     volumes:
-      - ./build:/cometbft:Z
+      - ./genesis.json:/cometbft/config/genesis.json
+      - ./abci3/validator.json:/cometbft/config/priv_validator_key.json
     command: node --proxy_app=tcp://abci3:26658
     networks:
       localnet:
@@ -69,12 +73,12 @@ services:
     environment:
       - FM_DATA_DIR=/root/fendermint/data
       - FM_LOG_DIR=/root/fendermint/data/logs
-      - FM_CHAIN_NAME="/r314159/t410fv6i4pa4fxlqvhcivanzkjckrsnvl6awbvk7gmfa"
-      - FM_IPC__SUBNET_ID="/r314159/t410fv6i4pa4fxlqvhcivanzkjckrsnvl6awbvk7gmfa"
+      - FM_CHAIN_NAME="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
+      - FM_IPC__SUBNET_ID="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
       - FM_IPC__TOPDOWN__CHAIN_HEAD_DELAY=10
       - FM_IPC__TOPDOWN__PARENT_HTTP_ENDPOINT="https://api.calibration.node.glif.io/rpc/v1"
-      - FM_IPC__TOPDOWN__PARENT_REGISTRY="0x7A6b4ac3a47Ed9aDcF6e0d89f2B473dD3f5ddf5a"
-      - FM_IPC__TOPDOWN__PARENT_GATEWAY="0xDD64A1303d97691837B6f5Bc2D72fd5eF3cCE628"
+      - FM_IPC__TOPDOWN__PARENT_REGISTRY="0x5FE1a06cA4534cB878260522a572e2254214261D"
+      - FM_IPC__TOPDOWN__PARENT_GATEWAY="0x2e994B75095a39EB7C6dDA0516731B02AbcDbdb4"
       - FM_IPC__TOPDOWN__EXPONENTIAL_BACK_OFF=5
       - FM_IPC__TOPDOWN__EXPONENTIAL_RETRY_LIMIT=5
       - FM_IPC__TOPDOWN__POLLING_INTERVAL=10
@@ -89,7 +93,7 @@ services:
       - LOG_LEVEL=info
       - RUST_BACKTRACE=1
     volumes:
-      - ./localnet/abci0:/root/fendermint/data
+      - ./localnet/abci0/private_key:/root/fendermint/data/private_key
     networks:
       localnet:
         ipv4_address: 192.167.10.6
@@ -102,12 +106,12 @@ services:
     environment:
       - FM_DATA_DIR=/root/fendermint/data
       - FM_LOG_DIR=/root/fendermint/data/logs
-      - FM_CHAIN_NAME="/r314159/t410fv6i4pa4fxlqvhcivanzkjckrsnvl6awbvk7gmfa"
-      - FM_IPC__SUBNET_ID="/r314159/t410fv6i4pa4fxlqvhcivanzkjckrsnvl6awbvk7gmfa"
+      - FM_CHAIN_NAME="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
+      - FM_IPC__SUBNET_ID="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
       - FM_IPC__TOPDOWN__CHAIN_HEAD_DELAY=10
       - FM_IPC__TOPDOWN__PARENT_HTTP_ENDPOINT="https://api.calibration.node.glif.io/rpc/v1"
-      - FM_IPC__TOPDOWN__PARENT_REGISTRY="0x7A6b4ac3a47Ed9aDcF6e0d89f2B473dD3f5ddf5a"
-      - FM_IPC__TOPDOWN__PARENT_GATEWAY="0xDD64A1303d97691837B6f5Bc2D72fd5eF3cCE628"
+      - FM_IPC__TOPDOWN__PARENT_REGISTRY="0x5FE1a06cA4534cB878260522a572e2254214261D"
+      - FM_IPC__TOPDOWN__PARENT_GATEWAY="0x2e994B75095a39EB7C6dDA0516731B02AbcDbdb4"
       - FM_IPC__TOPDOWN__EXPONENTIAL_BACK_OFF=5
       - FM_IPC__TOPDOWN__EXPONENTIAL_RETRY_LIMIT=5
       - FM_IPC__TOPDOWN__POLLING_INTERVAL=10
@@ -122,7 +126,7 @@ services:
       - LOG_LEVEL=info
       - RUST_BACKTRACE=1
     volumes:
-      - ./localnet/abci1:/root/fendermint/data
+      - ./localnet/abci1/private_key:/root/fendermint/data/private_key
     networks:
       localnet:
         ipv4_address: 192.167.10.7
@@ -135,12 +139,12 @@ services:
     environment:
       - FM_DATA_DIR=/root/fendermint/data
       - FM_LOG_DIR=/root/fendermint/data/logs
-      - FM_CHAIN_NAME="/r314159/t410fv6i4pa4fxlqvhcivanzkjckrsnvl6awbvk7gmfa"
-      - FM_IPC__SUBNET_ID="/r314159/t410fv6i4pa4fxlqvhcivanzkjckrsnvl6awbvk7gmfa"
+      - FM_CHAIN_NAME="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
+      - FM_IPC__SUBNET_ID="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
       - FM_IPC__TOPDOWN__CHAIN_HEAD_DELAY=10
       - FM_IPC__TOPDOWN__PARENT_HTTP_ENDPOINT="https://api.calibration.node.glif.io/rpc/v1"
-      - FM_IPC__TOPDOWN__PARENT_REGISTRY="0x7A6b4ac3a47Ed9aDcF6e0d89f2B473dD3f5ddf5a"
-      - FM_IPC__TOPDOWN__PARENT_GATEWAY="0xDD64A1303d97691837B6f5Bc2D72fd5eF3cCE628"
+      - FM_IPC__TOPDOWN__PARENT_REGISTRY="0x5FE1a06cA4534cB878260522a572e2254214261D"
+      - FM_IPC__TOPDOWN__PARENT_GATEWAY="0x2e994B75095a39EB7C6dDA0516731B02AbcDbdb4"
       - FM_IPC__TOPDOWN__EXPONENTIAL_BACK_OFF=5
       - FM_IPC__TOPDOWN__EXPONENTIAL_RETRY_LIMIT=5
       - FM_IPC__TOPDOWN__POLLING_INTERVAL=10
@@ -155,7 +159,7 @@ services:
       - LOG_LEVEL=info
       - RUST_BACKTRACE=1
     volumes:
-      - ./localnet/abci2:/root/fendermint/data
+      - ./localnet/abci2/private_key:/root/fendermint/data/private_key
     networks:
       localnet:
         ipv4_address: 192.167.10.8
@@ -168,12 +172,12 @@ services:
     environment:
       - FM_DATA_DIR="/root/fendermint/data"
       - FM_LOG_DIR="/root/fendermint/data/logs"
-      - FM_CHAIN_NAME="/r314159/t410fv6i4pa4fxlqvhcivanzkjckrsnvl6awbvk7gmfa"
-      - FM_IPC__SUBNET_ID="/r314159/t410fv6i4pa4fxlqvhcivanzkjckrsnvl6awbvk7gmfa"
+      - FM_CHAIN_NAME="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
+      - FM_IPC__SUBNET_ID="/r314159/t410f6c5hpqeqau4idqe7mund4tilojxdihutnmk7enq"
       - FM_IPC__TOPDOWN__CHAIN_HEAD_DELAY=10
       - FM_IPC__TOPDOWN__PARENT_HTTP_ENDPOINT="https://api.calibration.node.glif.io/rpc/v1"
-      - FM_IPC__TOPDOWN__PARENT_REGISTRY="0x7A6b4ac3a47Ed9aDcF6e0d89f2B473dD3f5ddf5a"
-      - FM_IPC__TOPDOWN__PARENT_GATEWAY="0xDD64A1303d97691837B6f5Bc2D72fd5eF3cCE628"
+      - FM_IPC__TOPDOWN__PARENT_REGISTRY="0x5FE1a06cA4534cB878260522a572e2254214261D"
+      - FM_IPC__TOPDOWN__PARENT_GATEWAY="0x2e994B75095a39EB7C6dDA0516731B02AbcDbdb4"
       - FM_IPC__TOPDOWN__EXPONENTIAL_BACK_OFF=5
       - FM_IPC__TOPDOWN__EXPONENTIAL_RETRY_LIMIT=5
       - FM_IPC__TOPDOWN__POLLING_INTERVAL=10
@@ -188,7 +192,7 @@ services:
       - LOG_LEVEL=info
       - RUST_BACKTRACE=1
     volumes:
-      - ./localnet/abci3:/root/fendermint/data
+      - ./localnet/abci3/private_key:/root/fendermint/data/private_key
     networks:
       localnet:
         ipv4_address: 192.167.10.9
