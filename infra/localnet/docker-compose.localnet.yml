@@ -8,6 +8,7 @@ services:
       - ID=0
       - LOG=${LOG:-cometbft.log}
     volumes:
+      - ./cometbft:/cometbft/cometbft
       - ./genesis.json:/cometbft/config/genesis.json
       - ./abci0/validator.json:/cometbft/config/priv_validator_key.json
     command: node --proxy_app=tcp://abci0:26658
@@ -22,6 +23,7 @@ services:
       - ID=1
       - LOG=${LOG:-cometbft.log}
     volumes:
+      - ./cometbft:/cometbft/cometbft
       - ./genesis.json:/cometbft/config/genesis.json
       - ./abci1/validator.json:/cometbft/config/priv_validator_key.json
     command: node --proxy_app=tcp://abci1:26658
@@ -36,6 +38,7 @@ services:
       - ID=2
       - LOG=${LOG:-cometbft.log}
     volumes:
+      - ./cometbft:/cometbft/cometbft
       - ./genesis.json:/cometbft/config/genesis.json
       - ./abci2/validator.json:/cometbft/config/priv_validator_key.json
     command: node --proxy_app=tcp://abci2:26658
@@ -50,6 +53,7 @@ services:
       - ID=3
       - LOG=${LOG:-cometbft.log}
     volumes:
+      - ./cometbft:/cometbft/cometbft
       - ./genesis.json:/cometbft/config/genesis.json
       - ./abci3/validator.json:/cometbft/config/priv_validator_key.json
     command: node --proxy_app=tcp://abci3:26658

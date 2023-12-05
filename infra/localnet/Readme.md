@@ -1,6 +1,9 @@
 # Spin up fendermint local network
 This will guide you through how to setup a 4-node fendermint network on local machine for debugging.
 
+### Build cometbft binary
+TODO
+
 ### Create validators
 The validators are already created, their credential information are stored in `abci*`. If you want to use your own set
 of validators, just regenerate the private key file on your own and replace the files.
