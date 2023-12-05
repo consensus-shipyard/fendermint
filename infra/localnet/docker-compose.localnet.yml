@@ -54,7 +54,7 @@ services:
       - LOG=${LOG:-cometbft.log}
     volumes:
       - ./cometbft:/cometbft/cometbft
-      - ./genesis.json:/cometbft/node0/config/genesis.json
+      - ./genesis.json:/cometbft/node3/config/genesis.json
       - ./abci3/validator.json:/cometbft/node3/config/priv_validator_key.json
     command: node --proxy_app=tcp://abci3:26658
     networks:
