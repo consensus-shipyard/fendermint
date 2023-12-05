@@ -19,44 +19,7 @@
       ]
     }
   },
-  "validators": [
-    {
-      "address": "81F978E13973206FB4A187AAB8A5382A8ABB0CA8",
-      "pub_key": {
-        "type": "tendermint/PubKeySecp256k1",
-        "value": "AnqEW8YfDUpE43r2T7fhmOqmn8Fg0g7kdysPe1+E82XR"
-      },
-      "power": "10000000000000000",
-      "name": "node0"
-    },
-    {
-      "address": "AEB8FA34690678C9C6AC021473743FD240AFDA1E",
-      "pub_key": {
-        "type": "tendermint/PubKeySecp256k1",
-        "value": "AztaVzCIoD8zrxzTXBM7KNbOQT6RCEu18fXcOMASCQJ/"
-      },
-      "power": "10000000000000000",
-      "name": "node1"
-    },
-    {
-      "address": "603758F52C195FDB54FB5E2C8A64A747EAF0E9A5",
-      "pub_key": {
-        "type": "tendermint/PubKeySecp256k1",
-        "value": "A4rF21nBH7H9RTZRtmpDbGCLwwLwM8UcOoiuQGr1iWKM"
-      },
-      "power": "10000000000000000",
-      "name": "node2"
-    },
-    {
-      "address": "5BD6F62DB9A25FBF0E4F84C36127279234207A00",
-      "pub_key": {
-        "type": "tendermint/PubKeySecp256k1",
-        "value": "A9YAdP3V1WBw2IMezQjG9Gy5HY1BwrjChMYQsi4jYTnK"
-      },
-      "power": "10000000000000000",
-      "name": "node3"
-    }
-  ],
+  "validators": [],
   "app_hash": "",
   "app_state": {
     "accounts": [],
