@@ -87,6 +87,7 @@ services:
       - FM_VALIDATOR_KEY__PATH=/root/fendermint/data/private_key
       - FM_VALIDATOR_KEY__KIND=ethereum
       - LOG_LEVEL=info
+      - FM_NETWORK=test
       - RUST_BACKTRACE=1
     volumes:
       - ./localnet/abci0/private_key:/root/fendermint/data/private_key
@@ -125,6 +126,7 @@ services:
       - FM_VALIDATOR_KEY__KIND=ethereum
       - LOG_LEVEL=info
       - RUST_BACKTRACE=1
+      - FM_NETWORK=test
     volumes:
       - ./localnet/abci1/private_key:/root/fendermint/data/private_key
     networks:
@@ -162,6 +164,7 @@ services:
       - FM_VALIDATOR_KEY__KIND=ethereum
       - LOG_LEVEL=info
       - RUST_BACKTRACE=1
+      - FM_NETWORK=test
     volumes:
       - ./localnet/abci2/private_key:/root/fendermint/data/private_key
     networks:
@@ -199,6 +202,7 @@ services:
       - FM_VALIDATOR_KEY__KIND="ethereum"
       - LOG_LEVEL=info
       - RUST_BACKTRACE=1
+      - FM_NETWORK=test
     volumes:
       - ./localnet/abci3/private_key:/root/fendermint/data/private_key
     networks:
