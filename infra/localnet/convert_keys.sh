@@ -15,7 +15,7 @@ chmod 600 ./abci1/validator.json
 chmod 600 ./abci2/validator.json
 chmod 600 ./abci3/validator.json
 
-rm ./abci0/abci0.*
-rm ./abci1/abci1.*
-rm ./abci2/abci2.*
-rm ./abci3/abci3.*
+rm ./abci0/abci0.pk
+rm ./abci1/abci1.pk
+rm ./abci2/abci2.pk
+rm ./abci3/abci3.pk
