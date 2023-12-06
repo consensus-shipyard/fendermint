@@ -1,13 +1,10 @@
-# smoke-test infrastructure:
-# cargo install cargo-make
-#
-# cd fendermint/testing/smoke-test
+# cd fendermint/testing/snapshot-test
 # - then -
-# cargo make --profile ci
+# cargo make
 # - or -
 # cargo make setup
 # cargo make test
-# docker logs smoke-ethapi
+# docker logs snapshot-fendermint
 # cargo make teardown
 
 extend = [
