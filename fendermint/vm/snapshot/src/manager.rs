@@ -52,6 +52,9 @@ where
         last_access_hold: Duration,
         sync_poll_interval: Duration,
     ) -> anyhow::Result<(Self, SnapshotClient)> {
+        // Make sure the target directory exists.
+        std::fs::create_dir_all(&snapshots_dir).context("failed to create snapshots directory")?;
+
         let snapshot_items = list_manifests(&snapshots_dir).context("failed to list manifests")?;
 
         let state = SnapshotState::new(snapshot_items);
