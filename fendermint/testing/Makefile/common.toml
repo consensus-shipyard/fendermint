@@ -38,6 +38,7 @@ run_task = { name = [
 [tasks.setup]
 dependencies = [
   "test-data-dir",
+  "test-data-env",
   "docker-network-create",
   "cometbft-init",
   "fendermint-init",
@@ -79,4 +80,9 @@ cp -r ${TEST_SCRIPTS_DIR} ${TEST_DATA_DIR}/scripts
 [tasks.test-data-dir-rm]
 script = """
 rm -rf ${TEST_DATA_DIR}
+"""
+
+[tasks.test-data-env]
+script = """
+touch ${TEST_DATA_DIR}/.env
 """

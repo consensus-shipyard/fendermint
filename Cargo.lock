@@ -8407,6 +8407,10 @@ name = "smoke-test"
 version = "0.1.0"
 
 [[package]]
+name = "snapshot-test"
+version = "0.1.0"
+
+[[package]]
 name = "snow"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
