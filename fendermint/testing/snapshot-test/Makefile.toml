@@ -20,16 +20,6 @@ env_files = [
   { path = "../Makefile/ci.env", profile = "ci" },
 ]
 
-[tasks.test]
-clear = true
-dependencies = ["snapshot-test"]
-
-
-[tasks.snapshot-test]
-script = """
-echo "Hello Snapshots!"
-"""
-
 # Overriding th env file to enable snapshotting.
 [tasks.test-data-env]
 script = """
@@ -41,4 +31,23 @@ FM_SNAPSHOTS__HIST_SIZE=10
 FM_SNAPSHOTS__CHUNK_SIZE_BYTES=1048576
 FM_SNAPSHOTS__SYNC_POLL_INTERVAL=10
 EOF
+"""
+
+[tasks.test]
+clear = true
+dependencies = ["snapshot-wait", "snapshot-created"]
+
+# Wait enought time that some snapshots should be exported.
+[tasks.snapshot-wait]
+extend = "wait"
+env = { "CARGO_MAKE_WAIT_MILLISECONDS" = "15000" }
+
+# Check that some snapshots are being produced.
+[tasks.snapshot-created]
+script = """
+FM_SNAPSHOTS_DIR=${TEST_DATA_DIR}/${NODE_NAME}/fendermint/snapshots
+if [ -z "$(ls -A $FM_SNAPSOTS_DIR)" ]; then
+   echo "ERROR: No snapshots created at $FM_SNAPSHOTS_DIR"
+   exit 1
+fi
 """
