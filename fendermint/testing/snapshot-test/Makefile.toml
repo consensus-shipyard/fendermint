@@ -79,7 +79,7 @@ run_task = { name = [
 env_files = [{ path = "./scripts/fullnode.env" }]
 script = """
 CMT_SEED_ID=$(cat $BASE_DIR/$SEED_NODE_NAME/node-id)
-CMT_PERSISTENT_PEERS=$CMT_SEED_ID@$SEED_NODE_NAME:26656
+CMT_PERSISTENT_PEERS=$CMT_SEED_ID@$SEED_CMT_CONTAINER_NAME:26656
 sed -i'' -e "s|persistent_peers = \\"\\"|persistent_peers = \\"$CMT_PERSISTENT_PEERS\\"|" $BASE_DIR/${NODE_NAME}/cometbft/config/config.toml
 """
 
@@ -92,10 +92,18 @@ cp $BASE_DIR/${SEED_NODE_NAME}/cometbft/config/genesis.json \
    $BASE_DIR/${NODE_NAME}/cometbft/config/genesis.json
 """
 
-# TODO: See if it managed to sync.
+# See if it managed to sync.
 [tasks.fullnode-test]
 env_files = [{ path = "./scripts/fullnode.env" }]
-script = "echo TESTING $FM_CONTAINER_NAME"
+script = """
+EARLIEST=$(curl -s localhost:${CMT_RPC_HOST_PORT}/status | jq -r ".result.sync_info.earliest_block_height")
+LATEST=$(curl -s localhost:${CMT_RPC_HOST_PORT}/status | jq -r ".result.sync_info.latest_block_height")
+
+if [ "$EARLIEST" = "$LATEST" ]; then
+  echo "ERROR: The chain is not syncing!"
+  exit 1
+fi
+"""
 
 
 [tasks.fullnode-teardown]
