@@ -82,7 +82,7 @@ impl FinalityWithNull {
         height: BlockHeight,
         maybe_payload: Option<ParentViewPayload>,
     ) -> StmResult<(), Error> {
-        if let Some(p) = self.last_committed_finality.read_clone()? {
+        if let Some(p) = self.last_committed_finality.read()?.as_ref() {
             if p.height > height {
                 tracing::debug!(
                     height,
