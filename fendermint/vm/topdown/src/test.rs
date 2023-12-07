@@ -205,8 +205,7 @@ async fn while_syncing_cache_purged() {
 
     loop {
         if let Some(_) = rx.recv().await {
-            // syncer.sync is waiting, we mock a new proposal from peer, which the parent blockchain
-            // has not seen before, i.e. 107
+            // syncer.sync is waiting, we mock a new proposal from peer
             atomically(|| {
                 provider.set_new_finality(
                     IPCParentFinality {
