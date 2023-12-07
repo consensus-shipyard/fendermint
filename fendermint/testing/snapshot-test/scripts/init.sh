@@ -31,8 +31,8 @@ for NAME in victoria veronica vivienne; do
 
   # Convert FM validator key to CMT
   fendermint \
-    key into-tendermint --secret-key $KEYS_DIR/$VALIDATOR_NAME.sk \
-      --out $KEYS_DIR/$VALIDATOR_NAME.priv_validator_key.json
+    key into-tendermint --secret-key $KEYS_DIR/$NAME.sk \
+      --out $KEYS_DIR/$NAME.priv_validator_key.json
 done
 
 # Add a validator
