@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 /// Parent syncer that constantly poll parent. This struct handles lotus null blocks and deferred
 /// execution. For ETH based parent, it should work out of the box as well.
-pub(crate) struct LotusParentSyncer<T, P> {
+pub struct LotusParentSyncer<T, P> {
     config: Config,
     parent_proxy: Arc<P>,
     provider: Arc<Toggle<CachedFinalityProvider<P>>>,

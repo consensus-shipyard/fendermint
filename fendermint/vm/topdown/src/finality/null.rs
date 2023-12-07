@@ -63,6 +63,17 @@ impl FinalityWithNull {
     /// Clear the cache and set the committed finality to the provided value
     pub fn reset(&self, finality: IPCParentFinality) -> Stm<()> {
         self.cached_data.write(SequentialKeyCache::sequential())?;
+
+        if let Some(p) = self.last_committed_finality.read_clone()? {
+            if p.height > finality.height {
+                tracing::warn!(
+                    last = p.to_string(),
+                    next = finality.to_string(),
+                    "reset to a lower finality"
+                );
+            }
+        }
+
         self.last_committed_finality.write(Some(finality))
     }
 
@@ -71,6 +82,17 @@ impl FinalityWithNull {
         height: BlockHeight,
         maybe_payload: Option<ParentViewPayload>,
     ) -> StmResult<(), Error> {
+        if let Some(p) = self.last_committed_finality.read_clone()? {
+            if p.height > height {
+                tracing::debug!(
+                    height,
+                    last_committed_height = p.height,
+                    "no need update parent view"
+                );
+                return Ok(());
+            }
+        }
+
         if let Some((block_hash, validator_changes, top_down_msgs)) = maybe_payload {
             self.parent_block_filled(height, block_hash, validator_changes, top_down_msgs)
         } else {
