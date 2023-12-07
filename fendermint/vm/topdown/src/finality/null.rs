@@ -64,7 +64,7 @@ impl FinalityWithNull {
     pub fn reset(&self, finality: IPCParentFinality) -> Stm<()> {
         self.cached_data.write(SequentialKeyCache::sequential())?;
 
-        if let Some(p) = self.last_committed_finality.read_clone()? {
+        if let Some(p) = self.last_committed_finality.read()?.as_ref() {
             if p.height > finality.height {
                 tracing::warn!(
                     last = p.to_string(),
