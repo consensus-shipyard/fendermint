@@ -204,7 +204,7 @@ async fn while_syncing_cache_purged() {
     });
 
     loop {
-        if let Some(_) = rx.recv().await {
+        if (rx.recv().await).is_some() {
             // syncer.sync is waiting, we mock a new proposal from peer
             atomically(|| {
                 provider.set_new_finality(
