@@ -8,6 +8,8 @@ pub mod sync;
 
 pub mod convert;
 pub mod proxy;
+#[cfg(test)]
+mod test;
 mod toggle;
 
 use async_stm::Stm;

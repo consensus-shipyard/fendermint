@@ -6,7 +6,7 @@ mod syncer;
 mod tendermint;
 
 use crate::proxy::ParentQueryProxy;
-use crate::sync::syncer::LotusParentSyncer;
+pub(crate) use crate::sync::syncer::LotusParentSyncer;
 use crate::sync::tendermint::TendermintAwareSyncer;
 use crate::{CachedFinalityProvider, Config, IPCParentFinality, ParentFinalityProvider, Toggle};
 use anyhow::anyhow;
