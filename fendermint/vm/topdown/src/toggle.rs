@@ -8,6 +8,7 @@ use crate::{
 };
 use anyhow::anyhow;
 use async_stm::{Stm, StmResult};
+use async_trait::async_trait;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::staking::StakingChangeRequest;
 
@@ -73,13 +74,18 @@ impl<P: ParentViewProvider + Send + Sync + 'static> ParentViewProvider for Toggl
     }
 }
 
+#[async_trait]
 impl<P: ParentFinalityProvider + Send + Sync + 'static> ParentFinalityProvider for Toggle<P> {
     fn next_proposal(&self) -> Stm<Option<IPCParentFinality>> {
         self.perform_or_else(|p| p.next_proposal(), None)
     }
 
-    fn check_proposal(&self, proposal: &IPCParentFinality) -> Stm<bool> {
-        self.perform_or_else(|p| p.check_proposal(proposal), false)
+    async fn check_proposal(&self, proposal: &IPCParentFinality) -> anyhow::Result<bool> {
+        if let Some(p) = &self.inner {
+            p.check_proposal(proposal).await
+        } else {
+            Ok(false)
+        }
     }
 
     fn set_new_finality(

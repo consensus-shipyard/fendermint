@@ -5,10 +5,11 @@ use crate::finality::null::FinalityWithNull;
 use crate::finality::ParentViewPayload;
 use crate::proxy::ParentQueryProxy;
 use crate::{
-    handle_null_round, BlockHash, BlockHeight, Config, Error, IPCParentFinality,
-    ParentFinalityProvider, ParentViewProvider,
+    handle_null_round, is_null_round_error, BlockHash, BlockHeight, Config, Error,
+    IPCParentFinality, ParentFinalityProvider, ParentViewProvider,
 };
-use async_stm::{Stm, StmResult};
+use async_stm::{atomically, Stm, StmResult};
+use async_trait::async_trait;
 use ipc_sdk::cross::CrossMsg;
 use ipc_sdk::staking::StakingChangeRequest;
 use std::sync::Arc;
@@ -108,6 +109,7 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentViewProvider for CachedF
     }
 }
 
+#[async_trait]
 impl<T: ParentQueryProxy + Send + Sync + 'static> ParentFinalityProvider
     for CachedFinalityProvider<T>
 {
@@ -115,8 +117,47 @@ impl<T: ParentQueryProxy + Send + Sync + 'static> ParentFinalityProvider
         self.inner.next_proposal()
     }
 
-    fn check_proposal(&self, proposal: &IPCParentFinality) -> Stm<bool> {
-        self.inner.check_proposal(proposal)
+    async fn check_proposal(&self, proposal: &IPCParentFinality) -> anyhow::Result<bool> {
+        if let Some(check) = atomically(|| {
+            if let Some(valid_height) = self.inner.check_height(proposal)? {
+                if !valid_height {
+                    return Ok(Some(false));
+                }
+                if let Some(valid_hash) = self.inner.check_block_hash(proposal)? {
+                    return Ok(Some(valid_hash));
+                }
+
+                tracing::info!("height {} found in cache but not hash", proposal.height);
+            }
+            Ok(None)
+        })
+        .await
+        {
+            return Ok(check);
+        }
+
+        match retry!(
+            self.config.exponential_back_off,
+            self.config.exponential_retry_limit,
+            self.parent_client.get_block_hash(proposal.height).await
+        ) {
+            Ok(r) => Ok(r.block_hash == *proposal.block_hash),
+            Err(e) => {
+                if is_null_round_error(&e) {
+                    tracing::warn!(
+                        proposal = proposal.to_string(),
+                        "some validator proposed null block, reject"
+                    );
+                } else {
+                    tracing::error!(
+                        proposal = proposal.to_string(),
+                        error = e.to_string(),
+                        "encountered error checking proposal"
+                    )
+                }
+                Ok(false)
+            }
+        }
     }
 
     fn set_new_finality(
@@ -244,10 +285,11 @@ mod tests {
     use crate::finality::ParentViewPayload;
     use crate::proxy::ParentQueryProxy;
     use crate::{
-        BlockHeight, CachedFinalityProvider, Config, IPCParentFinality, ParentViewProvider,
-        SequentialKeyCache, NULL_ROUND_ERR_MSG,
+        BlockHeight, CachedFinalityProvider, Config, IPCParentFinality, ParentFinalityProvider,
+        ParentViewProvider, SequentialKeyCache, NULL_ROUND_ERR_MSG,
     };
     use anyhow::anyhow;
+    use async_stm::atomically_or_err;
     use async_trait::async_trait;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
@@ -450,5 +492,77 @@ mod tests {
         let messages = provider.validator_changes_from(100, 106).await.unwrap();
 
         assert_eq!(messages.len(), 4)
+    }
+
+    #[tokio::test]
+    async fn test_check_proposal() {
+        let parent_blocks = new_parent_blocks!(
+            100 => Some((vec![0; 32], vec![new_validator_changes(0)], vec![])),   // genesis block
+            101 => Some((vec![1; 32], vec![new_validator_changes(1)], vec![])),
+            102 => Some((vec![2; 32], vec![], vec![])),
+            103 => Some((vec![3; 32], vec![new_validator_changes(3)], vec![])),
+            104 => None,
+            105 => None,
+            106 => Some((vec![6; 32], vec![new_validator_changes(6)], vec![]))
+        );
+        let provider = new_provider(parent_blocks);
+        let proposal = IPCParentFinality {
+            height: 101,
+            block_hash: vec![1; 32],
+        };
+        let is_ok = provider.check_proposal(&proposal).await.unwrap();
+        assert!(is_ok);
+
+        // miss cache and invalid block hash
+        let is_ok = provider
+            .check_proposal(&IPCParentFinality {
+                height: 101,
+                block_hash: vec![2; 32],
+            })
+            .await
+            .unwrap();
+        assert!(!is_ok);
+
+        // hit last committed finality but invalid height
+        let is_ok = provider
+            .check_proposal(&IPCParentFinality {
+                height: 100,
+                block_hash: vec![2; 32],
+            })
+            .await
+            .unwrap();
+        assert!(!is_ok);
+
+        // hit last committed finality but invalid height
+        let is_ok = provider
+            .check_proposal(&IPCParentFinality {
+                height: 99,
+                block_hash: vec![2; 32],
+            })
+            .await
+            .unwrap();
+        assert!(!is_ok);
+
+        // insert cache
+        atomically_or_err(|| {
+            provider.inner.new_parent_view(
+                101,
+                Some((vec![1; 32], vec![new_validator_changes(1)], vec![])),
+            )?;
+            provider.inner.new_parent_view(
+                102,
+                Some((vec![2; 32], vec![new_validator_changes(1)], vec![])),
+            )
+        })
+        .await
+        .unwrap();
+        let is_ok = provider
+            .check_proposal(&IPCParentFinality {
+                height: 102,
+                block_hash: vec![2; 32],
+            })
+            .await
+            .unwrap();
+        assert!(is_ok);
     }
 }

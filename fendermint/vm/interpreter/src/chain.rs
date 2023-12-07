@@ -155,7 +155,7 @@ where
                         height: height as u64,
                         block_hash,
                     };
-                    let is_final = atomically(|| finality_provider.check_proposal(&prop)).await;
+                    let is_final = finality_provider.check_proposal(&prop).await?;
                     if !is_final {
                         return Ok(false);
                     }

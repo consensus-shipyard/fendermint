@@ -146,11 +146,12 @@ pub trait ParentViewProvider {
     ) -> anyhow::Result<Vec<CrossMsg>>;
 }
 
+#[async_trait]
 pub trait ParentFinalityProvider: ParentViewProvider {
     /// Latest proposal for parent finality
     fn next_proposal(&self) -> Stm<Option<IPCParentFinality>>;
     /// Check if the target proposal is valid
-    fn check_proposal(&self, proposal: &IPCParentFinality) -> Stm<bool>;
+    async fn check_proposal(&self, proposal: &IPCParentFinality) -> anyhow::Result<bool>;
     /// Called when finality is committed
     fn set_new_finality(
         &self,
