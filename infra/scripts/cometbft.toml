@@ -157,6 +157,12 @@ id=`docker exec ${CMT_CONTAINER_NAME} cometbft show-node-id`
 echo $id
 """
 
+[tasks.cometbft-export-node-id]
+script = """
+id=`docker exec ${CMT_CONTAINER_NAME} cometbft show-node-id`
+echo $id > ${TEST_DATA_DIR}/${NODE_NAME}/node-id
+"""
+
 [tasks.cometbft-seed]
 dependencies = ["get-external-ip"]
 script = """
@@ -202,16 +208,10 @@ sed -i'' -e "s|allow_duplicate_ip = false|allow_duplicate_ip = true|" ${CMT_DIR}
 """
 
 [tasks.cometbft-config]
-dependencies = [
+run_task = { name = [
     "cometbft-init",
     "set-seeds",
     "addr-book-enable",
     "set-external-addr",
     "duplicate-ip-enable",
-]
-
-
-[tasks.node-id]
-command = "docker"
-args = ["exec", "${CONTAINER_NAME}", "cometbft show-node-id"]
-ignore_errors = true
+] }
