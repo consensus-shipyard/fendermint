@@ -1057,19 +1057,77 @@ pub async fn unsubscribe<C>(
     uninstall_filter(data, Params((filter_id,))).await
 }
 
-use params::{EstimateGasParams, SubscribeParams};
-
-use self::params::TypedTransactionCompat;
+use params::{EstimateGasParams, SubscribeParams, TypedTransactionCompat};
 
 mod params {
     use ethers_core::types::transaction::eip2718::TypedTransaction;
     use ethers_core::types::Eip1559TransactionRequest;
     use ethers_core::types::{self as et, Eip2930TransactionRequest, TransactionRequest};
-    use serde::{Deserialize, Serialize};
+    use serde::{Deserialize, Deserializer};
 
     use crate::state::WebSocketId;
 
-    #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+    /// Deserialize either the `input` or the `data` field, preferring the former.
+    fn deserialize_input_or_data<'d, D: Deserializer<'d>>(
+        d: D,
+    ) -> Result<Option<et::Bytes>, D::Error> {
+        #[derive(Deserialize)]
+        struct InputOrData {
+            input: Option<et::Bytes>,
+            data: Option<et::Bytes>,
+        }
+
+        let InputOrData { input, data } = InputOrData::deserialize(d)?;
+
+        Ok(input.or(data))
+    }
+
+    /// Parameters for sending a transaction
+    ///
+    /// Copied from ethers because the `go-ethereum` client now sends `input` instead of `data`.
+    ///
+    /// See https://github.com/filecoin-project/lotus/pull/11471
+    #[derive(Clone, Default, Deserialize, PartialEq, Eq, Debug)]
+    pub struct Eip1559TransactionRequestCompat {
+        pub from: Option<et::Address>,
+        pub to: Option<et::NameOrAddress>,
+        pub gas: Option<et::U256>,
+        pub value: Option<et::U256>,
+        #[serde(deserialize_with = "deserialize_input_or_data", flatten)]
+        pub data: Option<et::Bytes>,
+        pub nonce: Option<et::U256>,
+        #[serde(rename = "accessList", default)]
+        pub access_list: et::transaction::eip2930::AccessList,
+
+        #[serde(rename = "maxPriorityFeePerGas", default)]
+        pub max_priority_fee_per_gas: Option<et::U256>,
+
+        #[serde(rename = "maxFeePerGas", default)]
+        pub max_fee_per_gas: Option<et::U256>,
+
+        #[serde(default, rename = "chainId")]
+        /// Chain ID (None for mainnet)
+        pub chain_id: Option<et::U64>,
+    }
+
+    impl From<Eip1559TransactionRequestCompat> for Eip1559TransactionRequest {
+        fn from(value: Eip1559TransactionRequestCompat) -> Self {
+            Eip1559TransactionRequest {
+                from: value.from,
+                to: value.to,
+                gas: value.gas,
+                value: value.value,
+                data: value.data,
+                nonce: value.nonce,
+                access_list: value.access_list,
+                max_priority_fee_per_gas: value.max_priority_fee_per_gas,
+                max_fee_per_gas: value.max_fee_per_gas,
+                chain_id: value.chain_id,
+            }
+        }
+    }
+
+    #[derive(Deserialize, Clone, PartialEq, Eq, Debug)]
     // NOTE: Using untagged so is able to deserialize as a legacy transaction
     // directly if the type is not set. Needed for backward compatibility.
     // #[serde(tag = "type")]
@@ -1079,7 +1137,7 @@ mod params {
         #[serde(rename = "0x00", alias = "0x0")]
         Legacy(TransactionRequest),
         #[serde(rename = "0x02", alias = "0x2")]
-        Eip1559(Eip1559TransactionRequest),
+        Eip1559(Eip1559TransactionRequestCompat),
         // 0x01
         #[serde(rename = "0x01", alias = "0x1")]
         Eip2930(Eip2930TransactionRequest),
@@ -1088,7 +1146,7 @@ mod params {
     impl From<TypedTransactionCompat> for TypedTransaction {
         fn from(value: TypedTransactionCompat) -> Self {
             match value {
-                TypedTransactionCompat::Eip1559(v) => TypedTransaction::Eip1559(v),
+                TypedTransactionCompat::Eip1559(v) => TypedTransaction::Eip1559(v.into()),
                 TypedTransactionCompat::Legacy(v) => TypedTransaction::Legacy(v),
                 TypedTransactionCompat::Eip2930(v) => TypedTransaction::Eip2930(v),
             }
@@ -1117,7 +1175,7 @@ mod params {
 
     #[cfg(test)]
     mod tests {
-        use crate::apis::eth::params::EstimateGasParams;
+        use crate::apis::eth::params::{Eip1559TransactionRequestCompat, EstimateGasParams};
 
         #[test]
         fn deserialize_estimate_gas_params() {
@@ -1126,6 +1184,27 @@ mod params {
             "#;
             let r = serde_json::from_str::<EstimateGasParams>(raw_str);
             assert!(r.is_ok());
+        }
+
+        #[test]
+        fn deserialize_input_and_data() {
+            let examples = [
+                ("01", r#" "data":"0x0d", "input": "0x01" "#),
+                ("02", r#" "data":"0x02" "#),
+                ("03", r#" "input":"0x03" "#),
+            ];
+            for (exp, frag) in examples {
+                let json = format!(
+                    "{{ {frag}, \"from\":\"0x1a79385ead0e873fe0c441c034636d3edf7014cc\",\"maxFeePerGas\":\"0x596836d0\",\"maxPriorityFeePerGas\":\"0x59682f00\" }}"
+                );
+
+                let r = serde_json::from_str::<Eip1559TransactionRequestCompat>(&json)
+                    .unwrap_or_else(|e| panic!("failed to parse {json}: {e}"));
+
+                let d = r.data.expect("data is empty");
+
+                assert_eq!(hex::encode(d), exp)
+            }
         }
     }
 }
