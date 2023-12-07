@@ -17,7 +17,7 @@ env_files = [
   { path = "../Makefile/ci.env", profile = "ci" },
 ]
 
-# Overriding th env file to enable snapshotting.
+# Overriding the env file to enable snapshotting.
 [tasks.test-data-env]
 script = """
 cat << EOF > ${TEST_DATA_DIR}/.env
@@ -34,7 +34,7 @@ EOF
 clear = true
 dependencies = ["snapshot-wait", "snapshot-created"]
 
-# Wait enought time that some snapshots should be exported.
+# Wait enough time that some snapshots should be exported.
 [tasks.snapshot-wait]
 extend = "wait"
 env = { "CARGO_MAKE_WAIT_MILLISECONDS" = "15000" }

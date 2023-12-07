@@ -59,12 +59,9 @@ dependencies = []
 [tasks.teardown]
 # `dependencies` doesn't seem to work with `cleanup_task`.
 run_task = { name = [
-  "cometbft-stop",
-  "cometbft-rm",
-  "fendermint-stop",
-  "fendermint-rm",
-  "ethapi-stop",
-  "ethapi-rm",
+  "cometbft-destroy",
+  "fendermint-destroy",
+  "ethapi-destroy",
   "docker-network-rm",
   "test-data-dir-rm",
 ] }
