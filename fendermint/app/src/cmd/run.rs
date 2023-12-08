@@ -171,10 +171,10 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
             topdown_config.exponential_back_off,
             topdown_config.exponential_retry_limit,
         );
-        if let Some(c) = &topdown_config.proposal_delay{
+        if let Some(c) = &topdown_config.proposal_delay {
             config = config.with_proposal_delay(*c);
         }
-        if let Some(c) = &topdown_config.max_proposal_range{
+        if let Some(c) = &topdown_config.max_proposal_range {
             config = config.with_max_proposal_range(*c);
         }
         let ipc_provider = Arc::new(create_ipc_provider_proxy(&settings)?);
