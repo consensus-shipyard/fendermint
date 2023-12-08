@@ -1068,6 +1068,10 @@ mod params {
     use crate::state::WebSocketId;
 
     /// Deserialize either the `input` or the `data` field, preferring the former.
+    ///
+    /// The `go-ethereum` client now sends `input` instead of `data`.
+    ///
+    /// See <https://github.com/filecoin-project/lotus/pull/11471>
     fn deserialize_input_or_data<'d, D: Deserializer<'d>>(
         d: D,
     ) -> Result<Option<et::Bytes>, D::Error> {
@@ -1082,11 +1086,40 @@ mod params {
         Ok(input.or(data))
     }
 
-    /// Parameters for sending a transaction
+    /// Copied from `ethers` to override `data` deserialization.
     ///
-    /// Copied from ethers because the `go-ethereum` client now sends `input` instead of `data`.
-    ///
-    /// See https://github.com/filecoin-project/lotus/pull/11471
+    /// This is accepted for gas estimation only.
+    #[derive(Clone, Default, Deserialize, PartialEq, Eq, Debug)]
+    pub struct TransactionRequestCompat {
+        pub from: Option<et::Address>,
+        pub to: Option<et::NameOrAddress>,
+        pub gas: Option<et::U256>,
+        #[serde(rename = "gasPrice")]
+        pub gas_price: Option<et::U256>,
+        pub value: Option<et::U256>,
+        #[serde(deserialize_with = "deserialize_input_or_data", flatten)]
+        pub data: Option<et::Bytes>,
+        pub nonce: Option<et::U256>,
+        #[serde(default, rename = "chainId")]
+        pub chain_id: Option<et::U64>,
+    }
+
+    impl From<TransactionRequestCompat> for TransactionRequest {
+        fn from(value: TransactionRequestCompat) -> Self {
+            TransactionRequest {
+                from: value.from,
+                to: value.to,
+                gas: value.gas,
+                gas_price: value.gas_price,
+                value: value.value,
+                data: value.data,
+                nonce: value.nonce,
+                chain_id: value.chain_id,
+            }
+        }
+    }
+
+    /// Copied from `ethers` to override `data` deserialization.
     #[derive(Clone, Default, Deserialize, PartialEq, Eq, Debug)]
     pub struct Eip1559TransactionRequestCompat {
         pub from: Option<et::Address>,
@@ -1098,13 +1131,10 @@ mod params {
         pub nonce: Option<et::U256>,
         #[serde(rename = "accessList", default)]
         pub access_list: et::transaction::eip2930::AccessList,
-
         #[serde(rename = "maxPriorityFeePerGas", default)]
         pub max_priority_fee_per_gas: Option<et::U256>,
-
         #[serde(rename = "maxFeePerGas", default)]
         pub max_fee_per_gas: Option<et::U256>,
-
         #[serde(default, rename = "chainId")]
         /// Chain ID (None for mainnet)
         pub chain_id: Option<et::U64>,
@@ -1133,12 +1163,10 @@ mod params {
     // #[serde(tag = "type")]
     #[serde(untagged)]
     pub enum TypedTransactionCompat {
-        // 0x00
         #[serde(rename = "0x00", alias = "0x0")]
-        Legacy(TransactionRequest),
+        Legacy(TransactionRequestCompat),
         #[serde(rename = "0x02", alias = "0x2")]
         Eip1559(Eip1559TransactionRequestCompat),
-        // 0x01
         #[serde(rename = "0x01", alias = "0x1")]
         Eip2930(Eip2930TransactionRequest),
     }
@@ -1147,7 +1175,7 @@ mod params {
         fn from(value: TypedTransactionCompat) -> Self {
             match value {
                 TypedTransactionCompat::Eip1559(v) => TypedTransaction::Eip1559(v.into()),
-                TypedTransactionCompat::Legacy(v) => TypedTransaction::Legacy(v),
+                TypedTransactionCompat::Legacy(v) => TypedTransaction::Legacy(v.into()),
                 TypedTransactionCompat::Eip2930(v) => TypedTransaction::Eip2930(v),
             }
         }
