@@ -22,7 +22,7 @@ env_files = [
 
 [tasks.test]
 clear = true
-dependencies = ["simplecoin-example", "ethapi-example"]
+dependencies = ["simplecoin-example", "ethers-example"]
 
 
 [tasks.simplecoin-example]
@@ -35,7 +35,7 @@ cargo run -p fendermint_rpc --release --example simplecoin -- \
 """
 
 
-[tasks.ethapi-example]
+[tasks.ethers-example]
 script = """
 cd ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}
 cargo run -p fendermint_eth_api --release --example ethers -- \
