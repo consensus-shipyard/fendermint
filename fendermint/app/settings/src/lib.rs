@@ -115,9 +115,9 @@ pub struct TopDownSettings {
     /// The number of blocks on top of `chain_head_delay` to wait before proposing a height
     /// as final on the parent chain, to avoid slight disagreements between validators whether
     /// a block is final, or not just yet.
-    pub proposal_delay: BlockHeight,
+    pub proposal_delay: Option<BlockHeight>,
     /// The max number of blocks one should make the topdown proposal
-    pub max_proposal_range: BlockHeight,
+    pub max_proposal_range: Option<BlockHeight>,
     /// Parent syncing cron period, in seconds
     #[serde_as(as = "DurationSeconds<u64>")]
     pub polling_interval: Duration,
