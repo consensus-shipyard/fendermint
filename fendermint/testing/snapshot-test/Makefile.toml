@@ -30,7 +30,7 @@ FM_SNAPSHOTS__BLOCK_INTERVAL=10
 FM_SNAPSHOTS__HIST_SIZE=10
 FM_SNAPSHOTS__CHUNK_SIZE_BYTES=1048576
 FM_SNAPSHOTS__SYNC_POLL_INTERVAL=10
-CMT_PEX=true
+CMT_P2P_PEX=true
 CMT_P2P_MAX_NUM_OUTBOUND_PEERS=2
 CMT_STATESYNC__ENABLE=true
 EOF
@@ -77,8 +77,8 @@ run_task = { name = [
 [tasks.node-set-seed]
 script = """
 CMT_SEED_ID=$(cat $BASE_DIR/$SEED_NODE_NAME/node-id)
-CMT_PERSISTENT_PEERS=$CMT_SEED_ID@$SEED_CMT_CONTAINER_NAME:26656
-sed -i'' -e "s|persistent_peers = \\"\\"|persistent_peers = \\"$CMT_PERSISTENT_PEERS\\"|" $BASE_DIR/${NODE_NAME}/cometbft/config/config.toml
+CMT_P2P_PERSISTENT_PEERS=$CMT_SEED_ID@$SEED_CMT_CONTAINER_NAME:26656
+sed -i'' -e "s|persistent_peers = \\"\\"|persistent_peers = \\"$CMT_P2P_PERSISTENT_PEERS\\"|" $BASE_DIR/${NODE_NAME}/cometbft/config/config.toml
 """
 
 # Get the genesis from node-0
