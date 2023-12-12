@@ -85,11 +85,6 @@ impl SnapshotClient {
         } else {
             match tempfile::tempdir_in(&self.download_dir) {
                 Ok(dir) => {
-                    // Create a `parts` sub-directory for the chunks.
-                    if let Err(e) = std::fs::create_dir(dir.path().join("parts")) {
-                        return abort(SnapshotError::from(e));
-                    };
-
                     // Save the manifest into the temp directory;
                     // that way we can always see on the file system what's happening.
                     let json = match serde_json::to_string_pretty(&manifest)
@@ -98,16 +93,22 @@ impl SnapshotClient {
                         Ok(json) => json,
                         Err(e) => return abort(SnapshotError::from(e)),
                     };
-                    if let Err(e) = std::fs::write(dir.path().join(MANIFEST_FILE_NAME), json) {
-                        return abort(SnapshotError::from(e));
-                    }
 
-                    let download_path = dir.path().into();
+                    let download_path: PathBuf = dir.path().into();
                     let download = SnapshotDownload {
                         manifest,
                         download_dir: Arc::new(dir),
                         next_index: TVar::new(0),
                     };
+
+                    // Create a `parts` sub-directory for the chunks.
+                    if let Err(e) = std::fs::create_dir(download.parts_dir()) {
+                        return abort(SnapshotError::from(e));
+                    };
+
+                    if let Err(e) = std::fs::write(download_path.join(MANIFEST_FILE_NAME), json) {
+                        return abort(SnapshotError::from(e));
+                    }
 
                     self.state.current_download.write(Some(download))?;
 
