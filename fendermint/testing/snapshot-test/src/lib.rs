@@ -9,6 +9,8 @@
 //!
 //! Note that CometBFT state sync requires 2 RPC servers, which is why we need 3 nodes.
 //!
+//! See <https://docs.cometbft.com/v0.37/core/state-sync> and <https://docs.cometbft.com/v0.37/core/configuration>
+//!
 //! Example:
 //!
 //! ```text

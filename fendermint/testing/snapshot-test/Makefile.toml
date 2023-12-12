@@ -123,21 +123,28 @@ if [ "$EARLIEST" = "$LATEST" ]; then
 fi
 """
 
-# Tell node-1 to prune history, and node-2 to statesync from node-0 or node-1
+# Tell node-2 to statesync from node-0 or node-1
+# Setting the trusted height to 10 and fetching its block hash (which appears in the header @ 11),
+# so that it can do whatever it wants after that.
+# Not telling any of the nodes to prune their history with `FM_DB__STATE_HIST_SIZE=100` for example,
+# so that we can repeat this test any time (node-1 needs to sync from genesis of node-0) and also
+# so that we can check that node-2 will not have a full history of blocks, which should only be the
+# case if it synced from a snapshot; if it was also told to prune the data then that test would be
+# inconclusive.
+# Alternatively we could set up 4 nodes: node-0 no pruning, node-1 and node-2 boot from node-0 and prune, node-3 boot from node-1 and node-2,
+# however it's unclear whether node-3 would discover node-0 through PEX and boot from there, and also the setting of a trusted height would shift.
 [tasks.node-env]
 script = """
 cat ${TEST_DATA_DIR}/.env > ${TEST_DATA_DIR}/${NODE_NAME}/.env
 
-if [ $NODE_NAME = "node-1" ]; then
-cat << EOL >> ${TEST_DATA_DIR}/${NODE_NAME}/.env
-FM_DB__HIST_SIZE=100
-EOL
-fi
-
 if [ $NODE_NAME = "node-2" ]; then
+
+TRUST_HASH=$(curl -s "http://localhost:26657/header?height=11" | jq -r ".result.header.last_block_id.hash")
+
 cat << EOL >> ${TEST_DATA_DIR}/${NODE_NAME}/.env
-FM_DB__HIST_SIZE=100
-CMT_STATESYNC__RPC_SERVERS="http://snapshot-cometbft:26657,http://snapshot-cometbft-1:26657"
+CMT_STATESYNC_RPC_SERVERS="http://snapshot-cometbft:26657,http://snapshot-cometbft-1:26657"
+CMT_STATESYNC_TRUST_HEIGHT=10
+CMT_STATESYNC_TRUST_HASH=$TRUST_HASH
 EOL
 fi
 """
@@ -163,7 +170,7 @@ extend = "node-sync-test"
 # ### node-2 tasks
 
 # TODO: Get a trusted height and block hash from node-0, something that has a snapshot.
-# TODO: Make sure when node-2 starts it's unable to sync from genesis.
+# TODO: Test that node-2 did not sync from genesis.
 [tasks.node-2-setup]
 env_files = [{ path = "./scripts/node-2.env" }]
 extend = "node-setup"
