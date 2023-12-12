@@ -848,8 +848,10 @@ where
     async fn list_snapshots(&self) -> AbciResult<response::ListSnapshots> {
         if let Some(ref client) = self.snapshots {
             let snapshots = atomically(|| client.list_snapshots()).await;
+            tracing::info!(snapshot_count = snapshots.len(), "listing snaphots");
             Ok(to_snapshots(snapshots)?)
         } else {
+            tracing::info!("listing snaphots disabled");
             Ok(Default::default())
         }
     }
@@ -887,6 +889,11 @@ where
         request: request::OfferSnapshot,
     ) -> AbciResult<response::OfferSnapshot> {
         if let Some(ref client) = self.snapshots {
+            tracing::info!(
+                height = request.snapshot.height.value(),
+                "received snapshot offer"
+            );
+
             match from_snapshot(request).context("failed to parse snapshot") {
                 Ok(manifest) => {
                     tracing::info!(?manifest, "received snapshot offer");
