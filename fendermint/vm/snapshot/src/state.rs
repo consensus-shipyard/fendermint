@@ -67,7 +67,7 @@ impl SnapshotItem {
                 self.manifest.chunks
             );
         }
-        let chunk_file = self.snapshot_dir.join("{chunk}.part");
+        let chunk_file = self.snapshot_dir.join(format!("{chunk}.part"));
 
         let content = std::fs::read(&chunk_file)
             .with_context(|| format!("failed to read chunk {}", chunk_file.to_string_lossy()))?;
