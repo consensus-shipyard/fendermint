@@ -24,7 +24,7 @@ cargo make --makefile infra/Makefile.toml \
     -e BOOTSTRAPS=<BOOTSTRAP_ENDPOINT>
     -e PARENT_REGISTRY=<PARENT_REGISTRY_CONTRACT_ADDR> \
     -e PARENT_GATEWAY=<GATEWAY_REGISTRY_CONTRACT_ADDR> \
-    -e CMT_EXTERNAL_ADDR=<COMETBFT_EXTERNAL_ENDPOINT> \
+    -e CMT_P2P_EXTERNAL_ADDR=<COMETBFT_EXTERNAL_ENDPOINT> \
     bootstrap
 ```
 You'll see that by the end of the output, this command should output the network address of your bootstrap. You can use this endpoint to include this bootstrap node as a seed in the `seeds` configuration of CometBFT.
@@ -47,7 +47,7 @@ cargo make --makefile infra/Makefile.toml \
 - `SUBNET_ID`: SubnetID the bootstrap is operating in.
 - `NODE_NAME` (optional): Node name information to attach to the containers of the deployment. This will be needed to deploy more than one bootstrap in the same local environment.
 - `BOOTSTRAPS`: Comma separated list of bootstraps (or seeds in CometBFT parlance) that we want this bootstrap to also be connected to.
-- `CMT_EXTERNAL_ADDR`: Address to advertise to peers for them to dial. If empty, will use the same as the default listening address from CometBFT (generally `0.0.0.0:<P2P_RPC_PORT>`).
+- `CMT_P2P_EXTERNAL_ADDR`: Address to advertise to peers for them to dial. If empty, will use the same as the default listening address from CometBFT (generally `0.0.0.0:<P2P_RPC_PORT>`).
 - `PARENT_ENDPOINT`: Public endpoint that the validator should use to connect to the parent.
 - `PARENT_REGISTRY`: Ethereum address of the IPC registry contract in the parent
 - `PARENT_GATEWAY`: Ethereum address of the IPC gateway contract in the parent.
@@ -122,4 +122,3 @@ The full node also has its corresponding commands to kill and restart the node:
 cargo make --makefile infra/Makefile.toml child-fullnode-down
 cargo make --makefile infra/Makefile.toml child-fullnode-restart
 ```
-
