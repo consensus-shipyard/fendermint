@@ -690,15 +690,17 @@ where
             tendermint::Hash::None => return Err(anyhow!("empty block hash").into()),
         };
 
-        tracing::debug!(
-            height = block_height,
-            app_hash = request.header.app_hash.to_string(),
-            "begin block"
-        );
-
         let db = self.state_store_clone();
         let state = self.committed_state()?;
         let mut state_params = state.state_params.clone();
+
+        tracing::debug!(
+            height = block_height,
+            timestamp = request.header.time.unix_timestamp(),
+            app_hash = request.header.app_hash.to_string(),
+            //app_state_hash = to_app_hash(&state_params).to_string(), // should be the same as `app_hash`
+            "begin block"
+        );
 
         // Notify the snapshotter. We don't do this in `commit` because *this* is the height at which
         // this state has been officially associated with the application hash, which is something

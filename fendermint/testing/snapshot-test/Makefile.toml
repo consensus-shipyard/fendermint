@@ -130,7 +130,7 @@ script = """
 cat ${TEST_DATA_DIR}/.env > ${TEST_DATA_DIR}/${NODE_NAME}/.env
 
 cat << EOL >> ${TEST_DATA_DIR}/${NODE_NAME}/.env
-FM_DB__STATE_HIST_SIZE=45
+FM_DB__STATE_HIST_SIZE=100
 EOL
 
 if [ $NODE_NAME = "node-3" ]; then
