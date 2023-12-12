@@ -76,7 +76,7 @@ cargo make --makefile infra/Makefile.toml \
     -e BOOTSTRAPS=<BOOTSTRAP_ENDPOINT>
     -e PARENT_REGISTRY=<PARENT_REGISTRY_CONTRACT_ADDR> \
     -e PARENT_GATEWAY=<GATEWAY_REGISTRY_CONTRACT_ADDR> \
-    -e CMT_EXTERNAL_ADDR=<COMETBFT_EXTERNAL_ENDPOINT> \
+    -e CMT_P2P_EXTERNAL_ADDR=<COMETBFT_EXTERNAL_ENDPOINT> \
     child-validator
 ```
 This command will run the infrastructure for a Fendermint validator in the child subnet. It will generate the genesis of the subnet from the information in its parent, and will run the validator's infrastructure with the specific configuration passed in the command.
@@ -89,7 +89,7 @@ This command will run the infrastructure for a Fendermint validator in the child
 - `PRIVATE_KEY_PATH`: Path of the hex encoded private key for your validator (it should be the corresponding one used to join the subnet in the parent). This can be exported from the `ipc-cli` or any other wallet like Metamask.
 - `SUBNET_ID`: SubnetID for the child subnet.
 - `BOOTSTRAPS`: Comma separated list of bootstraps (or seeds in CometBFT parlance).
-- `CMT_EXTERNAL_ADDR`: Address to advertise to peers for them to dial. If empty, will use the same as the default listening address from CometBFT (generally `0.0.0.0:<P2P_RPC_PORT>`).
+- `CMT_P2P_EXTERNAL_ADDR`: Address to advertise to peers for them to dial. If empty, will use the same as the default listening address from CometBFT (generally `0.0.0.0:<P2P_RPC_PORT>`).
 - `PARENT_ENDPOINT`: Public endpoint that the validator should use to connect to the parent.
 - `PARENT_REGISTRY`: Ethereum address of the IPC registry contract in the parent
 - `PARENT_GATEWAY`: Ethereum address of the IPC gateway contract in the parent.
@@ -114,7 +114,7 @@ cargo make --makefile infra/Makefile.toml \
     -e BOOTSTRAPS=<BOOTSTRAP_ENDPOINT>
     -e PARENT_REGISTRY=<PARENT_REGISTRY_CONTRACT_ADDR> \
     -e PARENT_GATEWAY=<GATEWAY_REGISTRY_CONTRACT_ADDR> \
-    -e CMT_EXTERNAL_ADDR=<COMETBFT_EXTERNAL_ENDPOINT> \
+    -e CMT_P2P_EXTERNAL_ADDR=<COMETBFT_EXTERNAL_ENDPOINT> \
     child-fullnode
 ```
 The full node also has its corresponding commands to kill and restart the node:
