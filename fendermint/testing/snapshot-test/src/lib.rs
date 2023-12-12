@@ -12,11 +12,24 @@
 //!
 //! See <https://docs.cometbft.com/v0.37/core/state-sync> and <https://docs.cometbft.com/v0.37/core/configuration>
 //!
-//! Example:
+//! Examples:
 //!
+//! 1. All in one go
 //! ```text
 //! cd fendermint/testing/snapshot-test
 //! cargo make
+//! ```
+//!
+//! 2. One by one
+//! //! ```text
+//! cd fendermint/testing/snapshot-test
+//! cargo make setup
+//! cargo make node-1 setup
+//! cargo make node-2 setup
+//! cargo make node-3 setup
+//! docker logs snapshot-cometbft-3
+//! cargo make snapshot-teardown
+//! cargo make teardown
 //! ```
 //!
 //! Make sure you installed cargo-make by running `cargo install cargo-make` first.

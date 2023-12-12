@@ -26,7 +26,6 @@ FM_SNAPSHOTS__CHUNK_SIZE_BYTES=1048576
 FM_SNAPSHOTS__SYNC_POLL_INTERVAL=10
 CMT_P2P_PEX=false
 CMT_P2P_MAX_NUM_OUTBOUND_PEERS=3
-CMT_STATESYNC__ENABLE=true
 EOF
 """
 
@@ -131,7 +130,7 @@ script = """
 cat ${TEST_DATA_DIR}/.env > ${TEST_DATA_DIR}/${NODE_NAME}/.env
 
 cat << EOL >> ${TEST_DATA_DIR}/${NODE_NAME}/.env
-FM_DB__STATE_HIST_SIZE=90
+FM_DB__STATE_HIST_SIZE=45
 EOL
 
 if [ $NODE_NAME = "node-3" ]; then
@@ -142,9 +141,11 @@ QUERY_HEIGHT=$(($TRUST_HEIGHT+1))
 TRUST_HASH=$(curl -s "http://localhost:26657/header?height=$QUERY_HEIGHT" | jq -r ".result.header.last_block_id.hash")
 
 cat << EOL >> ${TEST_DATA_DIR}/${NODE_NAME}/.env
-CMT_STATESYNC_RPC_SERVERS="http://snapshot-cometbft-1:26657,http://snapshot-cometbft-2:26657"
+CMT_STATESYNC_ENABLE=true
+CMT_STATESYNC_RPC_SERVERS=http://snapshot-cometbft-1:26657,http://snapshot-cometbft-2:26657
 CMT_STATESYNC_TRUST_HEIGHT=$TRUST_HEIGHT
 CMT_STATESYNC_TRUST_HASH=$TRUST_HASH
+CMT_STATESYNC_TEMP_DIR=/cometbft
 EOL
 fi
 """
