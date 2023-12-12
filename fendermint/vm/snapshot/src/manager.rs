@@ -46,6 +46,7 @@ where
     pub fn new(
         store: BS,
         snapshots_dir: PathBuf,
+        download_dir: PathBuf,
         block_interval: BlockHeight,
         chunk_size: usize,
         hist_size: usize,
@@ -71,7 +72,7 @@ where
             is_syncing: TVar::new(true),
         };
 
-        let client = SnapshotClient::new(block_interval, state);
+        let client = SnapshotClient::new(download_dir, block_interval, state);
 
         Ok((manager, client))
     }
@@ -225,7 +226,9 @@ where
 
         // Create a checksum over the CAR file.
         let checksum_bytes = file_checksum(&snapshot_path).context("failed to compute checksum")?;
-        std::fs::write(&checksum_path, checksum_bytes).context("failed to write checksum file")?;
+
+        std::fs::write(&checksum_path, checksum_bytes.to_string())
+            .context("failed to write checksum file")?;
 
         // Create a directory for the parts.
         std::fs::create_dir(&parts_path).context("failed to create parts dir")?;
@@ -343,7 +346,8 @@ mod tests {
         let (state_params, store) = init_genesis().await;
 
         // Now we have one store initialized with genesis, let's create a manager and snapshot it.
-        let temp_dir = tempfile::tempdir().expect("failed to create tmp dir");
+        let snapshots_dir = tempfile::tempdir().expect("failed to create tmp dir");
+        let download_dir = tempfile::tempdir().expect("failed to create tmp dir");
 
         // Not polling because it's cumbersome to mock it.
         let never_poll_sync = Duration::ZERO;
@@ -351,7 +355,8 @@ mod tests {
 
         let (snapshot_manager, snapshot_client) = SnapshotManager::new(
             store.clone(),
-            temp_dir.path().into(),
+            snapshots_dir.path().into(),
+            download_dir.path().into(),
             1,
             10000,
             1,
@@ -393,13 +398,13 @@ mod tests {
         assert_eq!(snapshot.manifest.state_params, state_params);
         assert_eq!(
             snapshot.snapshot_dir.as_path(),
-            temp_dir.path().join("snapshot-0")
+            snapshots_dir.path().join("snapshot-0")
         );
 
         let _ = std::fs::File::open(snapshot.snapshot_dir.join("manifest.json"))
             .expect("manifests file exists");
 
-        let snapshots = manifest::list_manifests(temp_dir.path()).unwrap();
+        let snapshots = manifest::list_manifests(snapshots_dir.path()).unwrap();
 
         assert_eq!(snapshots.len(), 1, "can list manifests");
         assert_eq!(snapshots[0], snapshot);
@@ -416,7 +421,8 @@ mod tests {
         // Create a new manager instance
         let (_, new_client) = SnapshotManager::new(
             store,
-            temp_dir.path().into(),
+            snapshots_dir.path().into(),
+            download_dir.path().into(),
             1,
             10000,
             1,

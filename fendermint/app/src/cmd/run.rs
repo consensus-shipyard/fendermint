@@ -188,6 +188,7 @@ async fn run(settings: Settings) -> anyhow::Result<()> {
         let (manager, client) = SnapshotManager::new(
             state_store.clone(),
             settings.snapshots_dir(),
+            settings.snapshots.download_dir(),
             settings.snapshots.block_interval,
             settings.snapshots.chunk_size_bytes,
             settings.snapshots.hist_size,

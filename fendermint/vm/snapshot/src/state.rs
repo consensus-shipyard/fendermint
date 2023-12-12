@@ -171,6 +171,12 @@ pub struct SnapshotDownload {
     pub next_index: TVar<u32>,
 }
 
+impl SnapshotDownload {
+    pub fn parts_dir(&self) -> PathBuf {
+        self.download_dir.path().join(PARTS_DIR_NAME)
+    }
+}
+
 #[cfg(feature = "arb")]
 mod arb {
     use std::{path::PathBuf, time::SystemTime};
