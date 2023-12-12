@@ -1,11 +1,4 @@
-# cd fendermint/testing/snapshot-test
-# - then -
-# cargo make
-# - or -
-# cargo make setup
-# cargo make test
-# docker logs snapshot-fendermint
-# cargo make teardown
+# See fendermint/testing/snapshot-test/src/lib.rs for description.
 
 extend = [
   { path = "../Makefile/common.toml" },
@@ -22,16 +15,17 @@ env_files = [
 # This one is applied on every *container*.
 # The other env files are for `cargo make` itself,
 # the values are only available inside TOML files.
+# Disabling PEX so nodes only connect to what they are told about.
 [tasks.test-data-env]
 script = """
 cat << EOF > ${TEST_DATA_DIR}/.env
 FM_SNAPSHOTS__ENABLED=true
 FM_SNAPSHOTS__BLOCK_INTERVAL=10
-FM_SNAPSHOTS__HIST_SIZE=10
+FM_SNAPSHOTS__HIST_SIZE=6
 FM_SNAPSHOTS__CHUNK_SIZE_BYTES=1048576
 FM_SNAPSHOTS__SYNC_POLL_INTERVAL=10
-CMT_P2P_PEX=true
-CMT_P2P_MAX_NUM_OUTBOUND_PEERS=2
+CMT_P2P_PEX=false
+CMT_P2P_MAX_NUM_OUTBOUND_PEERS=3
 CMT_STATESYNC__ENABLE=true
 EOF
 """
@@ -46,6 +40,8 @@ run_task = { name = [
   "node-1-sync-test",
   "node-2-setup",
   "node-2-sync-test",
+  "node-3-setup",
+  "node-3-sync-test",
 ], fork = true, cleanup_task = "snapshot-teardown" }
 
 # Wait enough time that some snapshots should be exported.
@@ -68,10 +64,28 @@ fi
 run_task = { name = [
   "node-1-teardown",
   "node-2-teardown",
+  "node-3-teardown",
 ] }
 
 
 # ### General tasks for node-1 and node-2
+
+[tasks.node-setup]
+# Export node-0 ID.
+dependencies = ["cometbft-export-node-id"]
+run_task = { name = [
+  "test-node-dir",
+  "node-env",
+  "cometbft-init",
+  "node-set-seed",
+  "node-copy-genesis",
+  "fendermint-start",
+  "cometbft-start",
+  "cometbft-wait",
+  "cometbft-export-node-id",
+  "fendermint-logs",
+  "cometbft-logs",
+] }
 
 # Set the persistent peer address to that of the default node-0.
 [tasks.node-set-seed]
@@ -87,22 +101,6 @@ script = """
 cp $BASE_DIR/${SEED_NODE_NAME}/cometbft/config/genesis.json \
    $BASE_DIR/${NODE_NAME}/cometbft/config/genesis.json
 """
-
-[tasks.node-setup]
-# Export node-0 ID.
-dependencies = ["cometbft-export-node-id"]
-run_task = { name = [
-  "test-node-dir",
-  "node-env",
-  "cometbft-init",
-  "node-set-seed",
-  "node-copy-genesis",
-  "fendermint-start",
-  "cometbft-start",
-  "cometbft-wait",
-  "fendermint-logs",
-  "cometbft-logs",
-] }
 
 [tasks.node-teardown]
 run_task = { name = [
@@ -123,37 +121,35 @@ if [ "$EARLIEST" = "$LATEST" ]; then
 fi
 """
 
-# Tell node-2 to statesync from node-0 or node-1
+# Tell node-3 to statesync from node-1 and node-2
 # Setting the trusted height to 10 and fetching its block hash (which appears in the header @ 11),
 # so that it can do whatever it wants after that.
-# Not telling any of the nodes to prune their history with `FM_DB__STATE_HIST_SIZE=100` for example,
-# so that we can repeat this test any time (node-1 needs to sync from genesis of node-0) and also
-# so that we can check that node-2 will not have a full history of blocks, which should only be the
-# case if it synced from a snapshot; if it was also told to prune the data then that test would be
-# inconclusive.
-# Alternatively we could set up 4 nodes: node-0 no pruning, node-1 and node-2 boot from node-0 and prune, node-3 boot from node-1 and node-2,
-# however it's unclear whether node-3 would discover node-0 through PEX and boot from there, and also the setting of a trusted height would shift.
+# Tell node-1 and node-2 to prune their states so node-3 (who only knows aobut node-1) has no chance
+# but to use snapshots to sync itself.
 [tasks.node-env]
 script = """
 cat ${TEST_DATA_DIR}/.env > ${TEST_DATA_DIR}/${NODE_NAME}/.env
 
-if [ $NODE_NAME = "node-2" ]; then
+cat << EOL >> ${TEST_DATA_DIR}/${NODE_NAME}/.env
+FM_DB__STATE_HIST_SIZE=90
+EOL
 
-TRUST_HASH=$(curl -s "http://localhost:26657/header?height=11" | jq -r ".result.header.last_block_id.hash")
+if [ $NODE_NAME = "node-3" ]; then
+
+LATEST_HEIGHT=$(curl -s http://localhost:26657/commit | jq -r ".result.signed_header.header.height")
+TRUST_HEIGHT=$(($LATEST_HEIGHT-30))
+QUERY_HEIGHT=$(($TRUST_HEIGHT+1))
+TRUST_HASH=$(curl -s "http://localhost:26657/header?height=$QUERY_HEIGHT" | jq -r ".result.header.last_block_id.hash")
 
 cat << EOL >> ${TEST_DATA_DIR}/${NODE_NAME}/.env
-CMT_STATESYNC_RPC_SERVERS="http://snapshot-cometbft:26657,http://snapshot-cometbft-1:26657"
-CMT_STATESYNC_TRUST_HEIGHT=10
+CMT_STATESYNC_RPC_SERVERS="http://snapshot-cometbft-1:26657,http://snapshot-cometbft-2:26657"
+CMT_STATESYNC_TRUST_HEIGHT=$TRUST_HEIGHT
 CMT_STATESYNC_TRUST_HASH=$TRUST_HASH
 EOL
 fi
 """
 
 # ### node-1 tasks
-
-[tasks.node-1-env]
-env_files = [{ path = "./scripts/node-1.env" }]
-extend = "node-env"
 
 [tasks.node-1-setup]
 env_files = [{ path = "./scripts/node-1.env" }]
@@ -169,8 +165,6 @@ extend = "node-sync-test"
 
 # ### node-2 tasks
 
-# TODO: Get a trusted height and block hash from node-0, something that has a snapshot.
-# TODO: Test that node-2 did not sync from genesis.
 [tasks.node-2-setup]
 env_files = [{ path = "./scripts/node-2.env" }]
 extend = "node-setup"
@@ -181,4 +175,19 @@ extend = "node-teardown"
 
 [tasks.node-2-sync-test]
 env_files = [{ path = "./scripts/node-2.env" }]
+extend = "node-sync-test"
+
+
+# ### node-3 tasks
+
+[tasks.node-3-setup]
+env_files = [{ path = "./scripts/node-3.env" }]
+extend = "node-setup"
+
+[tasks.node-3-teardown]
+env_files = [{ path = "./scripts/node-3.env" }]
+extend = "node-teardown"
+
+[tasks.node-3-sync-test]
+env_files = [{ path = "./scripts/node-3.env" }]
 extend = "node-sync-test"

@@ -20,14 +20,6 @@ env_files = [
   { path = "../Makefile/ci.env", profile = "ci" },
 ]
 
-# Overriding the env file to enable state pruning.
-[tasks.test-data-env]
-script = """
-cat << EOF > ${TEST_DATA_DIR}/.env
-FM_DB__STATE_HIST_SIZE=30
-EOF
-"""
-
 [tasks.test]
 clear = true
 dependencies = ["simplecoin-example", "ethapi-example"]
