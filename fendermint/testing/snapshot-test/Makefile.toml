@@ -25,7 +25,6 @@ env_files = [
 [tasks.test-data-env]
 script = """
 cat << EOF > ${TEST_DATA_DIR}/.env
-FM_DB__HIST_SIZE=100
 FM_SNAPSHOTS__ENABLED=true
 FM_SNAPSHOTS__BLOCK_INTERVAL=10
 FM_SNAPSHOTS__HIST_SIZE=10
@@ -33,6 +32,7 @@ FM_SNAPSHOTS__CHUNK_SIZE_BYTES=1048576
 FM_SNAPSHOTS__SYNC_POLL_INTERVAL=10
 CMT_PEX=true
 CMT_MAX_NUM_OUTBOUND_PEERS=2
+CMT_STATESYNC__ENABLE=true
 EOF
 """
 
@@ -93,6 +93,7 @@ cp $BASE_DIR/${SEED_NODE_NAME}/cometbft/config/genesis.json \
 dependencies = ["cometbft-export-node-id"]
 run_task = { name = [
   "test-node-dir",
+  "node-env",
   "cometbft-init",
   "node-set-seed",
   "node-copy-genesis",
@@ -122,7 +123,30 @@ if [ "$EARLIEST" = "$LATEST" ]; then
 fi
 """
 
+# Tell node-1 to prune history, and node-2 to statesync from node-0 or node-1
+[tasks.node-env]
+script = """
+cat ${TEST_DATA_DIR}/.env > ${TEST_DATA_DIR}/${NODE_NAME}/.env
+
+if [ $NODE_NAME = "node-1" ]; then
+cat << EOL >> ${TEST_DATA_DIR}/${NODE_NAME}/.env
+FM_DB__HIST_SIZE=100
+EOL
+fi
+
+if [ $NODE_NAME = "node-2" ]; then
+cat << EOL >> ${TEST_DATA_DIR}/${NODE_NAME}/.env
+FM_DB__HIST_SIZE=100
+CMT_STATESYNC__RPC_SERVERS="http://snapshot-cometbft:26657,http://snapshot-cometbft-1:26657"
+EOL
+fi
+"""
+
 # ### node-1 tasks
+
+[tasks.node-1-env]
+env_files = [{ path = "./scripts/node-1.env" }]
+extend = "node-env"
 
 [tasks.node-1-setup]
 env_files = [{ path = "./scripts/node-1.env" }]
@@ -139,7 +163,6 @@ extend = "node-sync-test"
 # ### node-2 tasks
 
 # TODO: Get a trusted height and block hash from node-0, something that has a snapshot.
-# TODO: Configure node-2 to use the RPC addresses of node-0 and node-1 for state sync.
 # TODO: Make sure when node-2 starts it's unable to sync from genesis.
 [tasks.node-2-setup]
 env_files = [{ path = "./scripts/node-2.env" }]

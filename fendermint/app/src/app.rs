@@ -801,6 +801,13 @@ where
         let app_hash = state.app_hash();
         let block_height = state.block_height;
 
+        // Tell CometBFT how much of the block history it can forget.
+        let retain_height = if self.state_hist_size == 0 {
+            Default::default()
+        } else {
+            block_height.saturating_sub(self.state_hist_size)
+        };
+
         tracing::debug!(
             block_height,
             state_root = state_root.to_string(),
@@ -831,12 +838,10 @@ where
         let mut guard = self.check_state.lock().await;
         *guard = None;
 
-        let response = response::Commit {
+        Ok(response::Commit {
             data: app_hash.into(),
-            // We have to retain blocks until we can support Snapshots.
-            retain_height: Default::default(),
-        };
-        Ok(response)
+            retain_height: retain_height.try_into().expect("height is valid"),
+        })
     }
 
     /// List the snapshots available on this node to be served to remote peers.
