@@ -702,15 +702,6 @@ where
             "begin block"
         );
 
-        // Notify the snapshotter. We don't do this in `commit` because *this* is the height at which
-        // this state has been officially associated with the application hash, which is something
-        // we will receive in `offer_snapshot` and we can compare. If we did it in `commit` we'd
-        // have to associate the snapshot with `block_height + 1`. But this way we also know that
-        // others have agreed with our results.
-        if let Some(ref snapshots) = self.snapshots {
-            atomically(|| snapshots.notify(block_height as u64, state_params.clone())).await;
-        }
-
         state_params.timestamp = to_timestamp(request.header.time);
 
         let state = FvmExecState::new(db, self.multi_engine.as_ref(), block_height, state_params)
@@ -832,6 +823,24 @@ where
         // it in and out, unless we want to defer commit to here (which the interpreters aren't
         // notified about), we could add it to the `ChainMessageInterpreter` as a constructor argument,
         // a sort of "ambient state", and not worry about in in the `App` at all.
+
+        // Notify the snapshotter. It wasn't clear whether this should be done in `commit` or `begin_block`,
+        // that is, whether the _height_ of the snapshot should be `block_height` or `block_height+1`.
+        // When CometBFT calls `offer_snapshot` it sends an `app_hash` in it that we compare to the CID
+        // of the `state_params`. Based on end-to-end testing it looks like it gives the `app_hash` from
+        // the *next* block, so we have to do it here.
+        // For example:
+        // a) Notify in `begin_block`: say we are at committing block 899, then we notify in `begin_block`
+        //    that block 900 has this state (so we use `block_height+1` in notification);
+        //    CometBFT is going to offer it with the `app_hash` of block 901, which won't match, because
+        //    by then the timestamp will be different in the state params after committing block 900.
+        // b) Notify in `commit`: say we are committing block 900 and notify immediately that it has this state
+        //    (even though this state will only be available to query from the next height);
+        //    CometBFT is going to offer it with the `app_hash` of 901, but in this case that's good, because
+        //    that hash reflects the changes made by block 900, which this state param is the result of.
+        if let Some(ref snapshots) = self.snapshots {
+            atomically(|| snapshots.notify(block_height, state.state_params.clone())).await;
+        }
 
         // Commit app state to the datastore.
         self.set_committed_state(state)?;
@@ -969,6 +978,8 @@ where
 
                         // Now insert the new state into the history.
                         let mut state = self.committed_state()?;
+
+                        // The height reflects that it was produced in `commit`.
                         state.block_height = snapshot.manifest.block_height;
                         state.state_params = snapshot.manifest.state_params;
                         self.set_committed_state(state)?;
