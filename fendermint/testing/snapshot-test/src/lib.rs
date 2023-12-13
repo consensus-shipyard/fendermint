@@ -21,7 +21,7 @@
 //! ```
 //!
 //! 2. One by one
-//! //! ```text
+//! ```text
 //! cd fendermint/testing/snapshot-test
 //! cargo make setup
 //! cargo make node-1 setup

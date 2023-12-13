@@ -26,6 +26,7 @@ FM_SNAPSHOTS__CHUNK_SIZE_BYTES=1048576
 FM_SNAPSHOTS__SYNC_POLL_INTERVAL=10
 CMT_P2P_PEX=false
 CMT_P2P_MAX_NUM_OUTBOUND_PEERS=3
+CMT_CONSENSUS_TIMEOUT_COMMIT=1s
 EOF
 """
 
@@ -33,12 +34,12 @@ EOF
 [tasks.test]
 clear = true
 run_task = { name = [
-  "snapshot-wait",
-  "snapshot-created",
   "node-1-setup",
   "node-1-sync-test",
   "node-2-setup",
   "node-2-sync-test",
+  "snapshot-wait",
+  "snapshot-created",
   "node-3-setup",
   "node-3-sync-test",
 ], fork = true, cleanup_task = "snapshot-teardown" }
@@ -146,6 +147,7 @@ CMT_STATESYNC_RPC_SERVERS=http://snapshot-cometbft-1:26657,http://snapshot-comet
 CMT_STATESYNC_TRUST_HEIGHT=$TRUST_HEIGHT
 CMT_STATESYNC_TRUST_HASH=$TRUST_HASH
 CMT_STATESYNC_TEMP_DIR=/cometbft
+CMT_STATESYNC_DISCOVERY_TIME=5s
 FM_SNAPSHOTS__DOWNLOAD_DIR=/data/${NODE_NAME}/fendermint/data
 EOL
 fi
