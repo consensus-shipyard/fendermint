@@ -158,8 +158,10 @@ impl SignedMessage {
         chain_id: &ChainID,
     ) -> Result<Option<DomainHash>, SignedMessageError> {
         if maybe_eth_address(&self.message.from).is_some() {
-            let tx = from_fvm::to_eth_transaction_request(self.message(), chain_id)
-                .map_err(SignedMessageError::Ethereum)?;
+            let tx: TypedTransaction =
+                from_fvm::to_eth_transaction_request(self.message(), chain_id)
+                    .map_err(SignedMessageError::Ethereum)?
+                    .into();
 
             let sig = from_fvm::to_eth_signature(self.signature(), true)
                 .map_err(SignedMessageError::Ethereum)?;
