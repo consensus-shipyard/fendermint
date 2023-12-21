@@ -3,12 +3,14 @@
 BUILTIN_ACTORS_TAG    ?= v11.0.0
 BUILTIN_ACTORS_BUNDLE := $(PWD)/builtin-actors/output/bundle.car
 
-# Make sure this tag matches the one in Cargo.toml
-IPC_ACTORS_TAG		  ?= d0b67da2816dc92187d9a0087c4df288b02ce869 #origin/dev
+# Make sure this tag matches the one in Cargo.toml for the ABI binding
+IPC_ACTORS_TAG				?= origin/pre-audit
 IPC_ACTORS_DIR        := $(PWD)/../ipc-solidity-actors
 IPC_ACTORS_CODE       := $(shell find $(IPC_ACTORS_DIR) -type f -name "*.sol")
 IPC_ACTORS_ABI        := .make/.ipc-actors-abi
-IPC_ACTORS_OUT        := $(IPC_ACTORS_DIR)/.out
+
+# We checked out an earlier commit where .out did not exist yet.
+IPC_ACTORS_OUT        := $(IPC_ACTORS_DIR)/out
 
 FENDERMINT_CODE       := $(shell find . -type f \( -name "*.rs" -o -name "Cargo.toml" \) | grep -v target)
 
