@@ -9,7 +9,9 @@ use thiserror::Error;
 pub enum Error {
     #[error("Incoming items are not order sequentially")]
     NotSequential,
-    #[error("The parent view update with block height is not sequential: {0:?}")]
+    #[error(
+        "Cache update wrt height is not sequential, cache might be changed during fetching: {0:?}"
+    )]
     NonSequentialParentViewInsert(SequentialAppendError),
     #[error("Parent chain reorg detected")]
     ParentChainReorgDetected,
